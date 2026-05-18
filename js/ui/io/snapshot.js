@@ -1,0 +1,216 @@
+/* Snapshot system — Save / Save-as / Version history.
+ *
+ * localStorage key: "chronexa.snapshots" -> JSON array:
+ *   [{ id, name, ts, sizeKB, payload }, …]
+ *
+ * payload = base64(gzip(JSON.stringify(school)))  if window.pako is loaded;
+ *           else base64(JSON.stringify(school))   (fallback, larger).
+ *
+ * 1482-card school: ~280KB JSON  → ~50KB gzipped (3-7x reduction).
+ */
+(function () {
+  "use strict";
+  const APP = window.APP;
+  const notify = window._chrxNotify || console.log;
+  const KEY = "chronexa.snapshots";
+  const CUR_KEY = "chronexa.current-snapshot";
+
+  function listSnapshots() {
+    try { return JSON.parse(localStorage.getItem(KEY) || "[]"); }
+    catch { return []; }
+  }
+  function writeSnapshots(arr) {
+    try { localStorage.setItem(KEY, JSON.stringify(arr)); return true; }
+    catch (e) { notify("Snapshot storage failed: " + e.message, "error"); return false; }
+  }
+  function setCurrent(id) { try { localStorage.setItem(CUR_KEY, id || ""); } catch {} }
+  function getCurrent() { try { return localStorage.getItem(CUR_KEY) || ""; } catch { return ""; } }
+
+  // ─── Encode / decode ─────────────────────────────────────────────────────
+  function makeSerializable(school) {
+    // Strip _idx (re-derivable, huge). Keep _meta with sourceText.
+    const out = {};
+    for (const k in school) if (k !== "_idx") out[k] = school[k];
+    return out;
+  }
+
+  function encode(school) {
+    const json = JSON.stringify(makeSerializable(school));
+    if (window.pako && window.pako.gzip) {
+      const u8 = window.pako.gzip(json);
+      return { payload: "gz:" + toBase64(u8), bytes: u8.length };
+    }
+    return { payload: "raw:" + toBase64(new TextEncoder().encode(json)), bytes: json.length };
+  }
+  function decode(payload) {
+    if (payload.startsWith("gz:")) {
+      const u8 = fromBase64(payload.slice(3));
+      const txt = window.pako.ungzip(u8, { to: "string" });
+      return JSON.parse(txt);
+    }
+    const u8 = fromBase64(payload.slice(4));
+    return JSON.parse(new TextDecoder().decode(u8));
+  }
+  function toBase64(u8) {
+    let s = "";
+    const CHUNK = 0x8000;
+    for (let i = 0; i < u8.length; i += CHUNK)
+      s += String.fromCharCode.apply(null, u8.subarray(i, i + CHUNK));
+    return btoa(s);
+  }
+  function fromBase64(b64) {
+    const bin = atob(b64), u8 = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    return u8;
+  }
+
+  // ─── Save / Save as ──────────────────────────────────────────────────────
+  function save() {
+    if (!APP.school) { notify("Open a timetable first.", "error"); return; }
+    const cur = getCurrent();
+    const list = listSnapshots();
+    const found = list.find(s => s.id === cur);
+    if (found) {
+      const enc = encode(APP.school);
+      found.payload = enc.payload;
+      found.ts = Date.now();
+      found.sizeKB = Math.round(enc.bytes / 1024);
+      writeSnapshots(list);
+      notify("Saved · " + found.name + " · " + found.sizeKB + " KB");
+    } else {
+      saveAs();
+    }
+  }
+  function saveAs() {
+    if (!APP.school) { notify("Open a timetable first.", "error"); return; }
+    promptName(APP.school.schoolName || "Untitled", (name) => {
+      if (!name) return;
+      const list = listSnapshots();
+      const enc = encode(APP.school);
+      const id = "snap_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      const item = { id, name, ts: Date.now(), sizeKB: Math.round(enc.bytes / 1024), payload: enc.payload };
+      list.push(item);
+      if (!writeSnapshots(list)) return;
+      setCurrent(id);
+      notify("Saved as · " + name + " · " + item.sizeKB + " KB");
+    });
+  }
+  function open(snapId) {
+    const list = listSnapshots();
+    const found = list.find(s => s.id === snapId);
+    if (!found) { notify("Snapshot not found.", "error"); return; }
+    try {
+      const school = decode(found.payload);
+      setCurrent(snapId);
+      // Re-derive _idx by re-parsing sourceText if available, else accept stripped form
+      if (school._meta && school._meta.sourceText && window.parseAscXml) {
+        const fresh = window.parseAscXml.parseText(school._meta.sourceText, school._meta.sourceFilename);
+        fresh._meta = school._meta;
+        // Restore custom mutations (e.g. cards changed since import)
+        if (school.cards) fresh.cards = school.cards;
+        APP.io.applySchool(fresh);
+      } else {
+        APP.io.applySchool(school);
+      }
+      notify("Loaded · " + found.name);
+    } catch (e) { notify("Load failed: " + e.message, "error"); console.error(e); }
+  }
+  function removeOne(snapId) {
+    const list = listSnapshots().filter(s => s.id !== snapId);
+    writeSnapshots(list);
+    if (getCurrent() === snapId) setCurrent("");
+  }
+
+  // ─── Diff between snapshot N and N-1 ─────────────────────────────────────
+  function diffSummary(curSchool, prevSchool) {
+    if (!prevSchool) return "—";
+    const fields = ["teachers","classes","classrooms","subjects","lessons","cards"];
+    const out = [];
+    for (const f of fields) {
+      const a = (curSchool[f] || []).length, b = (prevSchool[f] || []).length;
+      if (a !== b) out.push(f + ": " + b + "→" + a);
+    }
+    return out.length ? out.join(", ") : "no entity-count changes";
+  }
+
+  // ─── Dialogs ─────────────────────────────────────────────────────────────
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      if (k === "class") n.className = attrs[k];
+      else if (k.startsWith("on") && typeof attrs[k] === "function") n.addEventListener(k.slice(2), attrs[k]);
+      else if (attrs[k] != null) n.setAttribute(k, attrs[k]);
+    }
+    for (const c of kids) { if (c == null) continue; n.appendChild(typeof c === "string" ? document.createTextNode(c) : c); }
+    return n;
+  }
+  function modal(title, body, actions) {
+    const scrim = el("div", { class: "chrx-dlg-scrim is-open" });
+    const dlg = el("div", { class: "chrx-dlg" });
+    dlg.appendChild(el("h2", null, title));
+    body.forEach(b => dlg.appendChild(b));
+    const act = el("div", { class: "chrx-dlg__actions" });
+    actions.forEach(a => act.appendChild(a));
+    dlg.appendChild(act);
+    scrim.appendChild(dlg); document.body.appendChild(scrim);
+    scrim.addEventListener("click", (e) => { if (e.target === scrim) scrim.remove(); });
+    return scrim;
+  }
+  function promptName(suggest, cb) {
+    const inp = el("input", { type: "text", value: suggest });
+    setTimeout(() => { inp.focus(); inp.select(); }, 50);
+    const ok = el("button", { class: "chrx-tb-btn chrx-tb-btn--primary", type: "button" }, "Save");
+    const cancel = el("button", { class: "chrx-tb-btn", type: "button" }, "Cancel");
+    const wrap = modal("Save as…",
+      [el("p", null, "Pick a name for this snapshot."),
+       el("label", null, "Name", inp)],
+      [cancel, ok]);
+    inp.addEventListener("keydown", (e) => { if (e.key === "Enter") ok.click(); });
+    ok.onclick     = () => { const v = inp.value.trim(); wrap.remove(); cb(v); };
+    cancel.onclick = () => { wrap.remove(); cb(null); };
+  }
+  function openVersionHistory() {
+    const list = listSnapshots().slice().sort((a, b) => b.ts - a.ts);
+    const tableBody = el("tbody");
+    let prevSchool = null;
+    list.forEach((s, i) => {
+      let summary = "—";
+      try {
+        const cur = decode(s.payload);
+        const prev = list[i + 1] ? decode(list[i + 1].payload) : null;
+        summary = diffSummary(cur, prev);
+      } catch {}
+      const tr = el("tr", { class: "chrx-dlg__row" },
+        el("td", null, s.name),
+        el("td", null, new Date(s.ts).toLocaleString()),
+        el("td", null, s.sizeKB + " KB"),
+        el("td", null, summary),
+      );
+      const rm = el("button", { class: "chrx-tb-btn", style: "padding:2px 6px;font-size:11px" }, "✕");
+      rm.onclick = (e) => { e.stopPropagation(); if (confirm("Delete " + s.name + "?")) { removeOne(s.id); wrap.remove(); openVersionHistory(); } };
+      tr.appendChild(el("td", null, rm));
+      tr.onclick = () => { wrap.remove(); open(s.id); };
+      tableBody.appendChild(tr);
+    });
+    const body = list.length
+      ? el("table", null,
+          el("thead", null, el("tr", null,
+            el("th", null, "Name"), el("th", null, "Saved"), el("th", null, "Size"),
+            el("th", null, "Diff vs prev"), el("th", null, ""))),
+          tableBody)
+      : el("div", { class: "chrx-dlg__empty" }, "No saved snapshots yet. Hit Save as… to start.");
+    const close = el("button", { class: "chrx-tb-btn", type: "button", onclick: () => wrap.remove() }, "Close");
+    const newBtn = el("button", { class: "chrx-tb-btn chrx-tb-btn--primary", type: "button",
+      onclick: () => { wrap.remove(); saveAs(); } }, "Save current as…");
+    const wrap = modal("Version history",
+      [el("p", null, list.length + " snapshot" + (list.length === 1 ? "" : "s") + " in localStorage."), body],
+      APP.school ? [close, newBtn] : [close]);
+  }
+
+  // ─── Wire events ─────────────────────────────────────────────────────────
+  window.addEventListener("app:save",          save);
+  window.addEventListener("app:save-as",       saveAs);
+  window.addEventListener("app:open-snapshot", openVersionHistory);
+
+  APP.snapshot = { save, saveAs, open, listSnapshots, openVersionHistory, diffSummary };
+})();

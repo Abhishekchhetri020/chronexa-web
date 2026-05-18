@@ -1,0 +1,31 @@
+/* Main menu — New / Open / Save / Save-as / Snapshot / Version history / Undo / Redo / Close / Demo */
+(function () {
+  "use strict";
+  const APP = window.APP;
+  function fire(name, detail) { window.dispatchEvent(new CustomEvent(name, { detail: detail || {} })); }
+  function hasSchool() { return !!APP.school; }
+  function canUndo() { return (APP.audit?.undoStack?.length || 0) > 0; }
+  function canRedo() { return (APP.audit?.redoStack?.length || 0) > 0; }
+
+  APP.ribbon.registerMenu({
+    key: "main", label: "Main",
+    build() {
+      return [
+        { icon: "🆕", label: "New timetable", hint: "⌘N", run: () => fire("app:new") },
+        { icon: "📂", label: "Open…",        hint: "⌘O", run: () => fire("app:open-file") },
+        { sep: true },
+        { icon: "💾", label: "Save",         hint: "⌘S",   run: () => fire("app:save"),    disabled: !hasSchool() },
+        { icon: "📋", label: "Save as…",     hint: "⇧⌘S",  run: () => fire("app:save-as"), disabled: !hasSchool() },
+        { icon: "📸", label: "Snapshot…",                  run: () => fire("app:save-as", { snapshotOnly: true }), disabled: !hasSchool() },
+        { icon: "🕘", label: "Version history…",           run: () => fire("app:open-snapshot"),                   disabled: !hasSchool() },
+        { sep: true },
+        { icon: "↶", label: "Undo", hint: "⌘Z",          run: () => fire("app:undo"), disabled: !canUndo() },
+        { icon: "↷", label: "Redo", hint: "⇧⌘Z",         run: () => fire("app:redo"), disabled: !canRedo() },
+        { sep: true },
+        { icon: "🎬", label: "Show demo file",             run: () => fire("app:open-demo") },
+        { sep: true },
+        { icon: "✕",  label: "Close",                      run: () => fire("app:close"), disabled: !hasSchool() },
+      ];
+    },
+  });
+})();

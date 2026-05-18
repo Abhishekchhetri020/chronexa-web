@@ -1,0 +1,50 @@
+/* Ribbon bootstrap — mounts the ribbon host after all topbar + menu files have loaded.
+ * Also wires search/perspective/zoom into the existing grid_view filters.
+ */
+(function () {
+  "use strict";
+  const APP = window.APP;
+
+  function boot() {
+    const host = document.getElementById("chrx-ribbon");
+    if (host && APP.ribbon && APP.ribbon.mount) APP.ribbon.mount(host);
+
+    // Search → existing GridView filter pipeline + legacy #search-input
+    window.addEventListener("app:search", (e) => {
+      const q = (e.detail?.query || "").toLowerCase();
+      APP.filter = q;
+      const legacy = document.getElementById("search-input");
+      if (legacy && legacy.value !== q) legacy.value = q;
+      const host = document.getElementById(`step-${APP.step || 1}-body`);
+      if (host && window.GridView?.applyFilter) window.GridView.applyFilter(host);
+    });
+
+    // Perspective → map to legacy step nav
+    window.addEventListener("app:perspective", (e) => {
+      const k = e.detail?.kind;
+      const stepFor = { class: 3, teacher: 4, room: 5, lesson: 3 }[k] || 3;
+      if (!APP.school) return;
+      const btn = document.querySelector(`.step-btn[data-step="${stepFor}"]`);
+      if (btn) btn.click();
+    });
+
+    // School-loaded notification → re-render any visible grid
+    window.addEventListener("app:school-loaded", (e) => {
+      if (!e.detail?.school) return;
+      const btn = document.querySelector('.step-btn[data-step="2"]');
+      if (btn && !btn.disabled) btn.click();
+    });
+
+    // Close → go back to step 1
+    window.addEventListener("app:close", () => {
+      const btn = document.querySelector('.step-btn[data-step="1"]');
+      if (btn) btn.click();
+    });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", boot);
+  } else {
+    boot();
+  }
+})();
