@@ -1,8 +1,12 @@
 """Chronexa Web — FastAPI backend.
 
 Endpoints:
-- GET  /health  → service health + versions
-- POST /solve   → run the OR-Tools CP-SAT solver against a SchoolData payload
+- GET  /health                 → service health + versions
+- POST /solve                  → SYNC solver (backward compatible); under the
+                                  hood it now uses the async machinery.
+- POST /solve/start            → start a background solver job, return jobId
+- GET  /solve/status/{jobId}   → poll job state + progress (+ result when done)
+- POST /solve/cancel/{jobId}   → request cancellation of a running job
 
 CORS: open to the GitHub Pages frontend and to localhost dev servers.
 Logging: stdout (captured by Docker); each request gets a request_id.
@@ -10,6 +14,7 @@ Logging: stdout (captured by Docker); each request gets a request_id.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import sys
@@ -17,12 +22,13 @@ import time
 import uuid
 from typing import Any, Dict, List, Literal, Optional
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from . import solver as solver_module
+from .jobs import REGISTRY, Job
 
 # --- version + logging ---------------------------------------------------
 
@@ -172,6 +178,26 @@ class SolveResponse(BaseModel):
     violations: Optional[List[Violation]] = None
 
 
+class SolveJobAck(BaseModel):
+    jobId: str
+
+
+class SolveProgress(BaseModel):
+    p1: float = 0.0
+    p2: float = 0.0
+    iter: int = 0
+    hardConflicts: int = 0
+    softScore: int = 0
+    durationMs: int = 0
+
+
+class SolveStatus(BaseModel):
+    state: Literal["queued", "running", "done", "cancelled", "error"]
+    progress: SolveProgress
+    result: Optional[SolveResponse] = None
+    error: Optional[str] = None
+
+
 # --- app -----------------------------------------------------------------
 
 app = FastAPI(
@@ -237,24 +263,126 @@ async def health() -> Dict[str, Any]:
     }
 
 
+def _run_solver_blocking(
+    payload: Dict[str, Any],
+    opts: Dict[str, Any],
+    job: Optional[Job],
+    time_limit: float,
+) -> Dict[str, Any]:
+    """CPU-bound wrapper. Called inside a threadpool from the async path."""
+    on_progress = None
+    cancel_check = None
+    if job is not None:
+        time_limit_ms = max(1.0, time_limit) * 1000.0
+
+        def _on_prog(p: Dict[str, Any]) -> None:
+            # Map durationMs into the EduPage-style p1 bar (overall progress).
+            dt = float(p.get("durationMs") or 0)
+            p1 = min(1.0, dt / time_limit_ms)
+            payload = dict(p)
+            payload["p1"] = p1
+            # p2 is "current branch" — we don't expose branches per-solve,
+            # but a sawtooth of the iter counter keeps the UI lively.
+            payload["p2"] = float(int(p.get("iter") or 0) % 1000) / 1000.0
+            job.set_progress(payload)
+
+        on_progress = _on_prog
+        cancel_check = job.cancel_requested
+    return solver_module.solve(payload, opts, on_progress=on_progress, cancel_check=cancel_check)
+
+
+async def _execute_solve(req: SolveRequest, job: Optional[Job], rid: str) -> Dict[str, Any]:
+    """Top-level async solver runner. Used by both /solve and /solve/start."""
+    payload = req.school.model_dump()
+    opts = req.options.model_dump() if req.options else {}
+    time_limit = float((opts.get("timeLimitSec") or 60.0))
+    if job is not None:
+        job.mark_running()
+    try:
+        result = await asyncio.get_running_loop().run_in_executor(
+            None, _run_solver_blocking, payload, opts, job, time_limit
+        )
+    except Exception as exc:
+        LOG.exception("rid=%s solver crashed: %s", rid, exc)
+        crash = {
+            "status": "ERROR",
+            "assignment": [],
+            "stats": {"placed": 0, "unplaced": 0, "hardConflicts": 0, "softScore": 0, "durationMs": 0},
+            "violations": [{"ruleId": "solver-crash", "description": str(exc)}],
+        }
+        if job is not None:
+            job.mark_error(str(exc))
+        return crash
+    if job is not None:
+        # If cancellation was requested mid-solve we still got a result;
+        # honor the user's cancel by reporting cancelled state.
+        if job.cancel_requested():
+            job.mark_cancelled()
+        else:
+            job.mark_done(result)
+    return result
+
+
 @app.post("/solve", response_model=SolveResponse)
 async def solve(req: SolveRequest, request: Request) -> SolveResponse:
+    """Synchronous solve. Backward-compatible with v0 clients.
+
+    Internally this now uses the same background-task path as /solve/start
+    but awaits its completion before returning.
+    """
     rid = getattr(request.state, "request_id", "-")
     LOG.info("rid=%s solve lessons=%d teachers=%d classes=%d",
              rid, len(req.school.lessons), len(req.school.teachers), len(req.school.classes))
-    payload = req.school.model_dump()
-    opts = req.options.model_dump() if req.options else {}
-    try:
-        result = solver_module.solve(payload, opts)
-    except Exception as exc:
-        LOG.exception("rid=%s solver crashed: %s", rid, exc)
-        return SolveResponse(
-            status="ERROR",
-            assignment=[],
-            stats=SolveStats(placed=0, unplaced=0, hardConflicts=0, softScore=0, durationMs=0),
-            violations=[Violation(ruleId="solver-crash", description=str(exc))],
-        )
+    result = await _execute_solve(req, job=None, rid=rid)
     return SolveResponse(**result)
+
+
+@app.post("/solve/start", response_model=SolveJobAck)
+async def solve_start(req: SolveRequest, request: Request) -> SolveJobAck:
+    """Kick off a background solver job. Returns immediately with a jobId."""
+    rid = getattr(request.state, "request_id", "-")
+    job = REGISTRY.create()
+    LOG.info("rid=%s solve/start job=%s lessons=%d teachers=%d classes=%d",
+             rid, job.id, len(req.school.lessons), len(req.school.teachers), len(req.school.classes))
+
+    async def _runner() -> None:
+        try:
+            await _execute_solve(req, job=job, rid=rid)
+        except asyncio.CancelledError:
+            job.mark_cancelled()
+            raise
+        except Exception as exc:  # pragma: no cover - defensive
+            LOG.exception("rid=%s job=%s background runner crashed: %s", rid, job.id, exc)
+            job.mark_error(str(exc))
+
+    task = asyncio.create_task(_runner())
+    REGISTRY.attach_task(job.id, task)
+    return SolveJobAck(jobId=job.id)
+
+
+@app.get("/solve/status/{job_id}", response_model=SolveStatus)
+async def solve_status(job_id: str) -> SolveStatus:
+    job = REGISTRY.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail={"error": "unknown jobId", "jobId": job_id})
+    snap = job.snapshot()
+    payload: Dict[str, Any] = {
+        "state": snap["state"],
+        "progress": snap["progress"],
+    }
+    if "result" in snap and snap["result"] is not None:
+        payload["result"] = snap["result"]
+    if snap.get("error"):
+        payload["error"] = snap["error"]
+    return SolveStatus(**payload)
+
+
+@app.post("/solve/cancel/{job_id}")
+async def solve_cancel(job_id: str) -> Dict[str, Any]:
+    ok = REGISTRY.cancel(job_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail={"error": "unknown jobId", "jobId": job_id})
+    return {"ok": True, "jobId": job_id}
 
 
 # --- entrypoint ----------------------------------------------------------

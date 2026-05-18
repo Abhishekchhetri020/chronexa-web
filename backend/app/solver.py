@@ -30,11 +30,55 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ortools.sat.python import cp_model
 
 LOG = logging.getLogger("chronexa.solver")
+
+
+# --- progress callback shim -----------------------------------------------
+#
+# Used by /solve/start to report intermediate progress and to react to
+# user-issued cancel requests. The callback is invoked from CP-SAT's own
+# search thread, so it must be cheap and exception-safe.
+
+class _ProgressCallback(cp_model.CpSolverSolutionCallback):
+    """Wraps a user `on_progress` fn and a `cancel_check` fn.
+
+    on_progress({iter, softScore, hardConflicts, durationMs}) is called once
+    per intermediate solution; cancel_check() returning True stops the
+    search via StopSearch().
+    """
+
+    def __init__(
+        self,
+        on_progress: Optional[Callable[[Dict[str, Any]], None]],
+        cancel_check: Optional[Callable[[], bool]],
+        t0: float,
+    ) -> None:
+        super().__init__()
+        self._on_progress = on_progress
+        self._cancel_check = cancel_check
+        self._t0 = t0
+        self._iter = 0
+
+    def on_solution_callback(self) -> None:  # noqa: N802 (OR-Tools API)
+        self._iter += 1
+        try:
+            duration_ms = int((time.perf_counter() - self._t0) * 1000)
+            payload = {
+                "iter": self._iter,
+                "softScore": int(self.ObjectiveValue()) if self.HasResponse() else 0,
+                "hardConflicts": 0,  # any solution found is feasible by definition
+                "durationMs": duration_ms,
+            }
+            if self._on_progress is not None:
+                self._on_progress(payload)
+            if self._cancel_check is not None and self._cancel_check():
+                self.StopSearch()
+        except Exception as exc:  # pragma: no cover - never let the cb crash CP-SAT
+            LOG.warning("progress callback raised: %s", exc)
 
 # --- domain ---------------------------------------------------------------
 
@@ -57,12 +101,20 @@ def _teaching_period_indices(school: Dict[str, Any]) -> List[int]:
 
 # --- main entrypoint ------------------------------------------------------
 
-def solve(payload: Dict[str, Any], options: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def solve(
+    payload: Dict[str, Any],
+    options: Optional[Dict[str, Any]] = None,
+    on_progress: Optional[Callable[[Dict[str, Any]], None]] = None,
+    cancel_check: Optional[Callable[[], bool]] = None,
+) -> Dict[str, Any]:
     """Solve a timetable. Returns a SolveResponse dict.
 
     Args:
         payload: SchoolData dict (DATA_SHAPES.md).
         options: SolveRequest.options dict.
+        on_progress: optional callback invoked on every intermediate
+            CP-SAT solution with {iter, softScore, hardConflicts, durationMs}.
+        cancel_check: optional fn that returns True to halt the search.
     """
     options = options or {}
     time_limit = float(options.get("timeLimitSec") or 60.0)
@@ -388,7 +440,13 @@ def solve(payload: Dict[str, Any], options: Optional[Dict[str, Any]] = None) -> 
         len(lessons), len(occs), len(teachers), len(classes), len(rooms), len(soft_terms), time_limit,
     )
 
-    status = solver.Solve(model)
+    if on_progress is not None or cancel_check is not None:
+        cb = _ProgressCallback(on_progress, cancel_check, t0)
+        # enumerate_all_solutions=False but the callback still fires on every
+        # improving feasible solution, which is what we want for progress.
+        status = solver.Solve(model, cb)
+    else:
+        status = solver.Solve(model)
     duration_ms = int((time.perf_counter() - t0) * 1000)
 
     status_label = _status_label(status)
