@@ -1,0 +1,161 @@
+/**
+ * Substitution module — entry point.
+ *
+ * Listens for `app:substitutions` from the Timetable ribbon menu and opens a
+ * dialog that walks the user through:
+ *   1. Pick a date + absent teachers   (absence_input.js)
+ *   2. Generate ranked candidates       (candidate_ranker.js)
+ *   3. Review class-wise output         (classwise_output.js)
+ *   4. Review teacher-wise output       (teacherwise_output.js)
+ *   5. Print A4 memo                    (print_memo.js)
+ *
+ * Holds shared state on APP.substitution: { date, absent[], assignments[] }
+ * (assignments mutate when the user picks an alternate substitute in
+ * classwise_output.)
+ *
+ * Stays out of every other module's way — no global side effects beyond
+ * `APP.substitution` and the dialog overlay it owns.
+ */
+(function () {
+  "use strict";
+
+  const APP = window.APP;
+  if (!APP) return;
+
+  // ---------------- state ----------------
+  function initState() {
+    APP.substitution = APP.substitution || {
+      date: todayYmd(),
+      absent: [],           // teacher IDs
+      assignments: [],      // [{slotKey, classSection, period, subject, originalTeacher, candidates, chosen}]
+    };
+    return APP.substitution;
+  }
+
+  function todayYmd() {
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  // Mon=0..Sat=5 (matches parse_asc_xml day indexing). Sunday → -1.
+  function ymdToDay(ymd) {
+    if (!ymd) return 0;
+    const parts = ymd.split("-").map(Number);
+    if (parts.length !== 3) return 0;
+    const js = new Date(parts[0], parts[1] - 1, parts[2]).getDay(); // 0=Sun..6=Sat
+    if (js === 0) return -1;
+    return js - 1; // Mon=0..Sat=5
+  }
+
+  // ---------------- DOM helpers ----------------
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      const v = attrs[k];
+      if (v == null) continue;
+      if (k === "class") n.className = v;
+      else if (k === "html") n.innerHTML = v;
+      else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v);
+    }
+    for (const c of kids) if (c != null && c !== false) {
+      n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    }
+    return n;
+  }
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, c =>
+      ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+  }
+
+  // ---------------- dialog ----------------
+  let host = null;
+
+  function open() {
+    if (!APP.school) {
+      alert("Load a timetable XML first.");
+      return;
+    }
+    initState();
+    if (host) host.remove();
+    host = buildShell();
+    document.body.appendChild(host);
+    document.addEventListener("keydown", onKey, true);
+    renderTab("absence");
+  }
+
+  function close() {
+    document.removeEventListener("keydown", onKey, true);
+    if (host) { host.remove(); host = null; }
+  }
+
+  function onKey(e) {
+    if (e.key === "Escape") { e.preventDefault(); close(); }
+  }
+
+  function buildShell() {
+    const root = el("div", { class: "chrx-sub-dialog", role: "dialog", "aria-modal": "true",
+      onclick: (e) => { if (e.target === root) close(); } });
+    const panel = el("div", { class: "chrx-sub-panel" });
+
+    panel.appendChild(el("header", { class: "chrx-sub-head" },
+      el("h2", null, "Substitution planner"),
+      el("nav", { class: "chrx-sub-tabs" },
+        el("button", { class: "chrx-sub-tab is-active", "data-tab": "absence",
+          onclick: () => renderTab("absence") }, "1. Absent teachers"),
+        el("button", { class: "chrx-sub-tab", "data-tab": "classwise",
+          onclick: () => renderTab("classwise") }, "2. Class-wise"),
+        el("button", { class: "chrx-sub-tab", "data-tab": "teacherwise",
+          onclick: () => renderTab("teacherwise") }, "3. Teacher-wise"),
+        el("button", { class: "chrx-sub-tab", "data-tab": "print",
+          onclick: () => renderTab("print") }, "4. Print memo"),
+      ),
+      el("button", { class: "chrx-sub-x", "aria-label": "Close", onclick: close }, "×"),
+    ));
+
+    panel.appendChild(el("section", { class: "chrx-sub-body", id: "chrx-sub-body" }));
+    root.appendChild(panel);
+    return root;
+  }
+
+  function renderTab(tab) {
+    if (!host) return;
+    host.querySelectorAll(".chrx-sub-tab").forEach(b => {
+      b.classList.toggle("is-active", b.dataset.tab === tab);
+    });
+    const body = host.querySelector("#chrx-sub-body");
+    body.innerHTML = "";
+
+    const s = APP.substitution;
+    switch (tab) {
+      case "absence":
+        window.SubstitutionAbsence.render(body, s, () => {
+          // After generate, jump to class-wise output.
+          renderTab("classwise");
+        });
+        break;
+      case "classwise":
+        window.SubstitutionClasswise.render(body, s, () => renderTab("classwise"));
+        break;
+      case "teacherwise":
+        window.SubstitutionTeacherwise.render(body, s);
+        break;
+      case "print":
+        window.SubstitutionPrintMemo.render(body, s);
+        break;
+    }
+  }
+
+  // ---------------- wire ----------------
+  window.addEventListener("app:substitutions", open);
+
+  // ---------------- exports ----------------
+  window.Substitution = {
+    open, close, renderTab,
+    el, esc, todayYmd, ymdToDay,
+  };
+})();
