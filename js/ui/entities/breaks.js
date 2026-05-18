@@ -1,0 +1,174 @@
+/* Breaks CRUD dialog. window.EntityBreaks.open()
+ * Standalone break entities (RECESS / FRUIT BREAK / LUNCH). The solver uses
+ * these to inject mandatory gaps that block teacher + room availability.
+ * Fields: name, short, starttime, endtime, daydata (per-day variation),
+ * printtext, printinsummary, printinclasses, printinteachers,
+ * printinclassrooms. */
+(function (global) {
+  "use strict";
+  const D = window.EntityDialog;
+  if (!D) return;
+
+  const DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat"];
+
+  function ensure() {
+    const s = window.APP.school = window.APP.school || {};
+    if (!Array.isArray(s.breaks)) s.breaks = [];
+    return s.breaks;
+  }
+
+  function rows() {
+    return ensure().map(b => ({
+      id: b.id, name: b.name || "(unnamed)",
+      short: b.short || "",
+      starttime: b.starttime || "",
+      endtime: b.endtime || "",
+      days: daysSummary(b.daydata),
+      print: printSummary(b),
+      _ref: b,
+    }));
+  }
+
+  function daysSummary(dd) {
+    if (!dd) return "All";
+    const on = DAYS.filter((_, i) => dd[i] !== false);
+    if (on.length === 6) return "All";
+    return on.join(",");
+  }
+  function printSummary(b) {
+    const flags = [];
+    if (b.printinsummary)   flags.push("S");
+    if (b.printinclasses)   flags.push("C");
+    if (b.printinteachers)  flags.push("T");
+    if (b.printinclassrooms)flags.push("R");
+    return flags.join("") || "—";
+  }
+
+  function columns() { return [
+    { key:"name",      label:"Name" },
+    { key:"short",     label:"Short" },
+    { key:"starttime", label:"Start" },
+    { key:"endtime",   label:"End" },
+    { key:"days",      label:"Days" },
+    { key:"print",     label:"Print" },
+  ]; }
+
+  function openEdit(r) {
+    const isNew = !r;
+    const ref = r ? r._ref : null;
+    const draft = isNew
+      ? { name:"", short:"", starttime:"", endtime:"", printtext:"",
+          daydata:[true,true,true,true,true,true],
+          printinsummary:false, printinclasses:false,
+          printinteachers:false, printinclassrooms:false }
+      : { name:ref.name||"", short:ref.short||"",
+          starttime:ref.starttime||"", endtime:ref.endtime||"",
+          printtext:ref.printtext||"",
+          daydata:(ref.daydata || [true,true,true,true,true,true]).slice(),
+          printinsummary:!!ref.printinsummary,
+          printinclasses:!!ref.printinclasses,
+          printinteachers:!!ref.printinteachers,
+          printinclassrooms:!!ref.printinclassrooms };
+
+    const fName = D.el("input", { type:"text", value:draft.name, required:"required",
+      maxlength:"30", oninput:(e)=>draft.name = e.target.value });
+    const fShort = D.el("input", { type:"text", value:draft.short, maxlength:"10",
+      oninput:(e)=>draft.short = e.target.value });
+    const fSt = D.el("input", { type:"time", value:draft.starttime,
+      oninput:(e)=>draft.starttime = e.target.value });
+    const fEt = D.el("input", { type:"time", value:draft.endtime,
+      oninput:(e)=>draft.endtime = e.target.value });
+    const fPt = D.el("input", { type:"text", value:draft.printtext,
+      oninput:(e)=>draft.printtext = e.target.value });
+
+    const dayWrap = D.el("div", { class:"chrx-ent-daystrip" });
+    DAYS.forEach((d, i) => {
+      const b = D.el("button", { type:"button",
+        class: "chrx-ent-daystrip__b" + (draft.daydata[i] ? " is-on" : ""),
+        onclick:()=>{
+          draft.daydata[i] = !draft.daydata[i];
+          b.classList.toggle("is-on", draft.daydata[i]);
+        } }, d);
+      dayWrap.appendChild(b);
+    });
+
+    function chk(key, label) {
+      const c = D.el("input", { type:"checkbox",
+        checked: draft[key] ? "checked" : null,
+        onchange:(e)=> draft[key] = e.target.checked });
+      return D.el("label", { class:"chrx-ent-inline" }, c,
+        D.el("span", null, " " + label));
+    }
+    const printBox = D.el("div", { class:"chrx-ent-printflags" },
+      chk("printinsummary",  "In summary"),
+      chk("printinclasses",  "In class schedules"),
+      chk("printinteachers", "In teacher schedules"),
+      chk("printinclassrooms","In classroom schedules"));
+
+    D.buildEditSheet({
+      title: isNew ? "New break" : `Edit break — ${draft.name}`,
+      fields:[
+        { label:"Name",      control:fName },
+        { label:"Short",     control:fShort },
+        { label:"Start",     control:fSt },
+        { label:"End",       control:fEt },
+        { label:"Print text",control:fPt },
+        { label:"Days",      control:dayWrap },
+        { label:"Print flags", control:printBox },
+      ],
+      onSave:()=>{
+        if (!draft.name.trim()) { fName.focus(); return; }
+        if (draft.starttime && draft.endtime && draft.starttime >= draft.endtime) {
+          alert("End time must be after start time."); fSt.focus(); return;
+        }
+        const all = ensure();
+        const payload = {
+          name: draft.name.trim(),
+          short: draft.short.trim() || undefined,
+          starttime: draft.starttime || undefined,
+          endtime: draft.endtime || undefined,
+          printtext: draft.printtext.trim() || undefined,
+          daydata: draft.daydata.slice(),
+          printinsummary: !!draft.printinsummary,
+          printinclasses: !!draft.printinclasses,
+          printinteachers: !!draft.printinteachers,
+          printinclassrooms: !!draft.printinclassrooms,
+        };
+        if (!isNew) {
+          const before = { ...ref };
+          Object.assign(ref, payload);
+          window.APP.audit.append({ entity:"breaks", op:"update", before, after:{...ref} });
+        } else {
+          if (all.some(x => x.name === payload.name)) { fName.focus(); return; }
+          payload.id = D.uid("brk");
+          all.push(payload);
+          window.APP.audit.append({ entity:"breaks", op:"add", after:{...payload} });
+        }
+        D.closeSheet(); D.refresh(rows());
+      },
+    });
+  }
+
+  function open() {
+    ensure();
+    D.open({
+      entity:"breaks", title:"Breaks",
+      columns:columns(), rows:rows(),
+      onAction:(cmd, row) => {
+        if (cmd === "new") return openEdit(null);
+        if (cmd === "edit" && row) return openEdit(row);
+        if (cmd === "delete" && row) {
+          const all = ensure();
+          const i = all.findIndex(x => x.id === row._ref.id);
+          if (i >= 0) {
+            const removed = all.splice(i,1)[0];
+            window.APP.audit.append({ entity:"breaks", op:"remove", before:{...removed} });
+            D.refresh(rows());
+          }
+        }
+      },
+    });
+  }
+
+  global.EntityBreaks = { open };
+})(window);
