@@ -42,11 +42,8 @@
 <!-- ─────────────────────── RIBBON (Agent H) ─────────────────────── -->
 <div id="chrx-ribbon"></div>
 
-<!-- ─────────────────────── EDITOR ROOTS (Agent E) ─────────────────────── -->
-<!-- The main grid + pending strip mount here when APP.editor.active = true.
-     Hidden by default; ribbon "Edit" button or Editor.activate() toggles them. -->
-<div id="editor-root" hidden></div>
-<div id="pending-strip-root" hidden></div>
+<!-- (Editor mounts live INSIDE step-6 only. The previous orphan divs here
+     caused duplicate IDs and rendered the editor above the header.) -->
 
 <!-- ─────────────────────── HEADER ─────────────────────── -->
 <header class="bg-gradient-to-r from-slate-900 to-blue-900 text-white shadow-lg">
@@ -196,7 +193,7 @@
 
 <!-- ─────────────────────── SCRIPTS ─────────────────────── -->
 <!-- Bump APP_VER on every deploy so the browser refetches the JS bundle -->
-<script>window.APP_VER = "20260518-e4";</script>
+<script>window.APP_VER = "20260518-e5";</script>
 <!-- Backend URL — leave empty to force "Run on this computer". Override at deploy time. -->
 <script>window.CHRONEXA_BACKEND_URL = window.CHRONEXA_BACKEND_URL || "";</script>
 <script>
