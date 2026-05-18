@@ -1,0 +1,65 @@
+/* GP-Untis DIF (Data Interchange Format) exporter.
+ * Mirror of import_gp_untis.js — emits keyed records:
+ *   #1 teachers   id;short;name
+ *   #2 classes    id;short;name
+ *   #3 subjects   id;short;name
+ *   #4 rooms      id;short;name;capacity
+ *   #5 lessons    id;classes;subject;teachers;periodsPerWeek
+ *
+ * Trailing newline; CRLF for Windows-friendliness.
+ */
+(function () {
+  "use strict";
+  const APP = window.APP;
+  const notify = window._chrxNotify || console.log;
+
+  function esc(v) {
+    if (v == null) return "";
+    const s = String(v);
+    return /[;\r\n"]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+
+  function build(school) {
+    const out = [];
+    out.push("// Chronexa GP-Untis DIF export");
+    out.push("// generated: " + new Date().toISOString());
+    out.push("// school:    " + (school.schoolName || ""));
+    out.push("");
+
+    for (const t of (school.teachers || []))
+      out.push(`#1;${esc(t.id)};${esc(t.abbr || t.name)};${esc(t.name)}`);
+    for (const c of (school.classes || []))
+      out.push(`#2;${esc(c.id)};${esc(c.name)};${esc(c.name)}`);
+    for (const s of (school.subjects || []))
+      out.push(`#3;${esc(s.id)};${esc(s.abbr || s.name)};${esc(s.name)}`);
+    for (const r of (school.classrooms || []))
+      out.push(`#4;${esc(r.id)};${esc(r.name)};${esc(r.name)};${r.capacity || ""}`);
+    for (const l of (school.lessons || [])) {
+      const cls = (l.classIds || []).join(",");
+      const tch = (l.teacherIds || []).join(",");
+      out.push(`#5;${esc(l.id)};${esc(cls)};${esc(l.subjectId)};${esc(tch)};${l.periodsPerWeek || 0}`);
+    }
+    return out.join("\r\n") + "\r\n";
+  }
+
+  function download(text, fname) {
+    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = fname;
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  }
+
+  function run(school) {
+    school = school || APP.school;
+    if (!school) { notify("Open a timetable first.", "error"); return; }
+    const text = build(school);
+    const base = (school._meta?.sourceFilename || school.schoolName || "chronexa").replace(/\.\w+$/, "");
+    download(text, base + "-untis.txt");
+    notify("Exported " + base + "-untis.txt");
+  }
+
+  window.ExportGpUntisDif = { run, build };
+  window.addEventListener("app:export-gp-untis-dif", () => run());
+})();
