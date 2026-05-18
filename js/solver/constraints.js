@@ -132,3 +132,228 @@ export const SOFT_CONSTRAINTS = Object.freeze([
   { id: "teacher_last_period_overflow", description: "Avoid stacking last-period duties on one teacher." },
   { id: "period_load_balance", description: "Spread load across preferred periods of the day." },
 ]);
+
+// ---------------------------------------------------------------------------
+// CKrit* constraint family — JS ports of the ASC Tabu Search criterion classes.
+//
+// Each function takes (assignment, lessonsById, schoolData) and returns
+// `{violations: int, weight: int}` — `violations` is a non-negative count of
+// rule breaks, `weight` is the per-violation penalty (matches the original
+// ASC penalty table; see docs/SOLVER_V2.md and Chronexa-AUDIT-Master.md).
+//
+// Shapes:
+//   assignment   — Array<{lessonId, day, period, classroomId?, teacherId, classIds[]}>
+//                  (a SolveResponse.assignment[] entry)
+//   lessonsById  — Map<string, Lesson> or plain object keyed by lesson.id
+//   schoolData   — full SchoolData; we only touch: classroomsupervisions[],
+//                  coursegroups[], classes[], teachers[], subjects[],
+//                  bell.periods[]
+//
+// Conventions: `day` is 0-based; `period` is 1-based (matches AssignmentEntry).
+// Functions never mutate inputs.
+// ---------------------------------------------------------------------------
+
+/** Weight table for the CKrit* family. Source: Chronexa-AUDIT-Master.md table. */
+export const CKRIT_WEIGHTS = Object.freeze({
+  ckrit_sluzba: 50000,
+  ckrit_course_group: 150,
+  ckrit_triedny: 10,
+  ckrit_resty: 10,
+  ckrit_vhodne_na_spojenie: 150,
+});
+
+function lessonsByIdMap(lessonsById) {
+  // Accept Map<string,Lesson> | Record<string,Lesson> | undefined.
+  if (!lessonsById) return null;
+  if (typeof lessonsById.get === "function") return lessonsById;
+  const m = new Map();
+  for (const k of Object.keys(lessonsById)) m.set(k, lessonsById[k]);
+  return m;
+}
+
+/**
+ * CKritSluzba — hall-duty supervision conflict.
+ * A teacher pre-occupied via `classroomsupervisions[]` for some (day,period)
+ * must not simultaneously have a teaching assignment in that slot.
+ * Returns one violation per double-booked (teacher, day, period) supervision.
+ */
+export function CKritSluzba(assignment, lessonsById, schoolData) {
+  const w = CKRIT_WEIGHTS.ckrit_sluzba;
+  const sups = (schoolData && schoolData.classroomsupervisions) || [];
+  if (!sups.length || !assignment || !assignment.length) {
+    return { violations: 0, weight: w };
+  }
+  // Index assignment by (teacherId, day, period) for O(1) lookup.
+  const taught = new Set();
+  for (const a of assignment) {
+    if (a.teacherId == null) continue;
+    taught.add(`${a.teacherId}|${a.day | 0}|${a.period | 0}`);
+  }
+  let violations = 0;
+  for (const s of sups) {
+    if (!s || s.teacherid == null || s.day == null || s.period == null) continue;
+    const key = `${s.teacherid}|${s.day | 0}|${s.period | 0}`;
+    if (taught.has(key)) violations++;
+  }
+  return { violations, weight: w };
+}
+
+/**
+ * CKritCourseGroup — students in a course-group must attend the same elective
+ * lesson at the same time. v1 check: for each coursegroup, all lessons whose
+ * subjectId is in its `subjectids[]` should coincide on (day,period). Each
+ * pair that does not coincide is one violation.
+ */
+export function CKritCourseGroup(assignment, lessonsById, schoolData) {
+  const w = CKRIT_WEIGHTS.ckrit_course_group;
+  const groups = (schoolData && schoolData.coursegroups) || [];
+  if (!groups.length || !assignment || !assignment.length) {
+    return { violations: 0, weight: w };
+  }
+  const lookup = lessonsByIdMap(lessonsById);
+  // Build subjectId → list of (day, period) it appears at, via the assignment.
+  const subjectSlots = new Map();
+  for (const a of assignment) {
+    const l = lookup && lookup.get(a.lessonId);
+    const subjectId = (l && l.subjectId) || a.subjectId;
+    if (!subjectId) continue;
+    if (!subjectSlots.has(subjectId)) subjectSlots.set(subjectId, []);
+    subjectSlots.get(subjectId).push(`${a.day | 0}|${a.period | 0}`);
+  }
+  let violations = 0;
+  for (const g of groups) {
+    const sids = (g && g.subjectids) || [];
+    if (sids.length < 2) continue;
+    // Gather all slots used by ANY subject in this group.
+    const slotCounts = new Map();
+    for (const sid of sids) {
+      const slots = subjectSlots.get(sid) || [];
+      for (const k of slots) slotCounts.set(k, (slotCounts.get(k) || 0) + 1);
+    }
+    // For a group of S subjects, each (day,period) should host exactly S
+    // coinciding lessons; anything less means at least one subject is missing
+    // from that synchronisation point — count the gap.
+    for (const [, count] of slotCounts) {
+      if (count > 0 && count < sids.length) violations += (sids.length - count);
+    }
+  }
+  return { violations, weight: w };
+}
+
+/**
+ * CKritTriedny — class-teacher last-period preference. The class-teacher of a
+ * class should ideally teach the last period of their class's day. Mild
+ * penalty for each class whose class-teacher does not appear in the last
+ * teaching period of any day. `schoolData.classes[i].classTeacherId` (or
+ * `teacherid`) names the class-teacher; we tolerate either spelling.
+ */
+export function CKritTriedny(assignment, lessonsById, schoolData) {
+  const w = CKRIT_WEIGHTS.ckrit_triedny;
+  const classes = (schoolData && schoolData.classes) || [];
+  if (!classes.length || !assignment || !assignment.length) {
+    return { violations: 0, weight: w };
+  }
+  const periods = (schoolData.bell && schoolData.bell.periods) || [];
+  const teaching = periods.filter(p => p.isTeaching !== false);
+  const lastPeriod = teaching.length ? (teaching[teaching.length - 1].index | 0) : 8;
+  // For each class, days on which the class-teacher does NOT occupy lastPeriod.
+  // Group assignments by class.
+  const classDayLast = new Map(); // key=`${classId}|${day}` -> teacherId at last
+  for (const a of assignment) {
+    if ((a.period | 0) !== lastPeriod) continue;
+    for (const cid of (a.classIds || [])) {
+      classDayLast.set(`${cid}|${a.day | 0}`, a.teacherId);
+    }
+  }
+  // Days the class actually has assignments (so empty days don't count).
+  const classDays = new Map(); // classId -> Set<day>
+  for (const a of assignment) {
+    for (const cid of (a.classIds || [])) {
+      if (!classDays.has(cid)) classDays.set(cid, new Set());
+      classDays.get(cid).add(a.day | 0);
+    }
+  }
+  let violations = 0;
+  for (const c of classes) {
+    const ct = c.classTeacherId || c.teacherid || c.classteacher;
+    if (!ct) continue;
+    const days = classDays.get(c.id);
+    if (!days) continue;
+    for (const d of days) {
+      const occupant = classDayLast.get(`${c.id}|${d}`);
+      if (occupant !== ct) violations++;
+    }
+  }
+  return { violations, weight: w };
+}
+
+/**
+ * CKritResty — residue / leftover accounting. v1 counts unplaced lessons that
+ * would have required a substitute (i.e. lessons present in `lessonsById` but
+ * not in the `assignment`). One violation per unplaced lesson.
+ */
+export function CKritResty(assignment, lessonsById, schoolData) {
+  const w = CKRIT_WEIGHTS.ckrit_resty;
+  // Resolve full lesson list from lessonsById, falling back to schoolData.lessons.
+  let allLessons = [];
+  const lookup = lessonsByIdMap(lessonsById);
+  if (lookup) {
+    for (const [, l] of lookup) allLessons.push(l);
+  } else if (schoolData && Array.isArray(schoolData.lessons)) {
+    allLessons = schoolData.lessons;
+  }
+  if (!allLessons.length) return { violations: 0, weight: w };
+  const placed = new Set((assignment || []).map(a => a.lessonId));
+  let unplaced = 0;
+  for (const l of allLessons) {
+    if (!placed.has(l.id)) unplaced++;
+  }
+  return { violations: unplaced, weight: w };
+}
+
+/**
+ * CKritVhodneNaSpojenie — parallel-lesson merge opportunity. When two
+ * different classes are taught the same subject at the same (day,period),
+ * prefer placing them in the same room (so the classes could be joined).
+ * Each cross-class pair with the same (day, period, subjectId) but different
+ * `classroomId` is one violation.
+ */
+export function CKritVhodneNaSpojenie(assignment, lessonsById, schoolData) {
+  const w = CKRIT_WEIGHTS.ckrit_vhodne_na_spojenie;
+  if (!assignment || assignment.length < 2) {
+    return { violations: 0, weight: w };
+  }
+  const lookup = lessonsByIdMap(lessonsById);
+  // Bucket by (day, period, subjectId) → list of {classIds, roomId}.
+  const buckets = new Map();
+  for (const a of assignment) {
+    const l = lookup && lookup.get(a.lessonId);
+    const subjectId = (l && l.subjectId) || a.subjectId;
+    if (!subjectId) continue;
+    const key = `${a.day | 0}|${a.period | 0}|${subjectId}`;
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push({ classIds: a.classIds || [], roomId: a.classroomId });
+  }
+  let violations = 0;
+  for (const [, rows] of buckets) {
+    if (rows.length < 2) continue;
+    for (let i = 0; i < rows.length; i++) {
+      for (let j = i + 1; j < rows.length; j++) {
+        // Only different classes are a "merge candidate" pair.
+        const sameClass = rows[i].classIds.some(c => rows[j].classIds.indexOf(c) !== -1);
+        if (sameClass) continue;
+        if (rows[i].roomId !== rows[j].roomId) violations++;
+      }
+    }
+  }
+  return { violations, weight: w };
+}
+
+/** Map of CKrit* function id → function. Used by the violations panel. */
+export const CKRIT_FUNCTIONS = Object.freeze({
+  ckrit_sluzba: CKritSluzba,
+  ckrit_course_group: CKritCourseGroup,
+  ckrit_triedny: CKritTriedny,
+  ckrit_resty: CKritResty,
+  ckrit_vhodne_na_spojenie: CKritVhodneNaSpojenie,
+});
