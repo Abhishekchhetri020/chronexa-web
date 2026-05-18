@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Chronexa · design system preview</title>
+<link rel="stylesheet" href="../css/chronexa-theme.css">
+<link rel="stylesheet" href="../css/components.css">
+<style>
+  body { margin: 0; }
+  .chrx-app { min-height: 100vh; padding: 24px; display: flex; flex-direction: column; gap: 24px; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .demo { background: var(--chrx-bg-tile); border-radius: var(--chrx-radius-xl); padding: 16px; box-shadow: var(--chrx-shadow-tile); }
+  .topbar { display: flex; align-items: center; gap: 12px; }
+  h1 { margin: 0; font-size: 20px; font-weight: 700; }
+  .grid-demo {
+    display: grid;
+    grid-template-columns: 50px repeat(5, 1fr);
+    gap: 4px;
+  }
+  .day-cell {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--chrx-fg-secondary); padding: 4px 6px; align-self: center;
+  }
+</style>
+</head>
+<body>
+<div class="chrx-app">
+
+  <header class="topbar">
+    <h1>Chronexa design system preview</h1>
+    <div style="flex:1"></div>
+    <button class="chrx-btn" type="button" onclick="toggleTheme()">Toggle theme</button>
+    <button class="chrx-btn chrx-btn--primary" type="button" onclick="Palette.open()">Open palette (⌘K)</button>
+    <button class="chrx-btn" type="button" onclick="Verification.toggle()">Toggle verification</button>
+  </header>
+
+  <section class="demo">
+    <div style="font: 600 12px/1 var(--chrx-font-sans); letter-spacing: 0.05em; text-transform: uppercase; color: var(--chrx-fg-tertiary); margin-bottom: 12px;">Grid cells</div>
+    <div class="grid-demo">
+      <div class="day-cell">Day</div>
+      <div class="day-cell" style="text-align:center">P1</div>
+      <div class="day-cell" style="text-align:center">P2</div>
+      <div class="day-cell" style="text-align:center">P3</div>
+      <div class="day-cell" style="text-align:center">P4</div>
+      <div class="day-cell" style="text-align:center">P5</div>
+
+      <div class="day-cell">Mon</div>
+      <button class="chrx-grid-cell chrx-grid-cell--selected" data-subject="math"
+              aria-label="Math, period 1, Mrs Tiwari, R204, Monday"
+              onclick="openInspector('math','Math','NT','R204',0,1)">
+        <div class="chrx-grid-cell__subject">Maths</div>
+        <div class="chrx-grid-cell__teacher">NT</div>
+        <div class="chrx-grid-cell__room">R204</div>
+      </button>
+      <button class="chrx-grid-cell" data-subject="english"
+              aria-label="English, period 2, Mr Alvarez, R118, Monday"
+              onclick="openInspector('english','English','AL','R118',0,2)">
+        <div class="chrx-grid-cell__subject">English</div>
+        <div class="chrx-grid-cell__teacher">AL</div>
+        <div class="chrx-grid-cell__room">R118</div>
+      </button>
+      <button class="chrx-grid-cell chrx-grid-cell--conflict" data-subject="science"
+              aria-label="Science, period 3, conflicts with another class, Monday"
+              onclick="openInspector('science','Science','OK','LAB1',0,3)">
+        <div class="chrx-grid-cell__subject">Science</div>
+        <div class="chrx-grid-cell__teacher">OK</div>
+        <div class="chrx-grid-cell__room">LAB1</div>
+      </button>
+      <button class="chrx-grid-cell chrx-grid-cell--locked" data-subject="art"
+              aria-label="Art, period 4, locked, Monday"
+              onclick="openInspector('art','Art','ZH','R101',0,4)">
+        <div class="chrx-grid-cell__subject">Art</div>
+        <div class="chrx-grid-cell__teacher">ZH</div>
+        <div class="chrx-grid-cell__room">R101</div>
+      </button>
+      <button class="chrx-grid-cell chrx-grid-cell--empty" aria-label="Empty, period 5, Monday"></button>
+    </div>
+  </section>
+
+  <div class="row">
+    <section class="demo" id="stats-host"></section>
+    <section class="demo" id="timeoff-host"></section>
+  </div>
+
+  <p style="color: var(--chrx-fg-secondary); font-size: 12px;">
+    Click a grid cell to open the Inspector. Press ⌘K (Mac) or Ctrl+K (Win/Linux)
+    to open the command palette. The toggle button overrides the OS theme via
+    <code>&lt;html data-theme="..."&gt;</code>.
+  </p>
+</div>
+
+<script src="../js/ui/components/inspector.js"></script>
+<script src="../js/ui/components/palette.js"></script>
+<script src="../js/ui/components/time_off.js"></script>
+<script src="../js/ui/components/stats.js"></script>
+<script src="../js/ui/components/verification.js"></script>
+<script>
+  function toggleTheme() {
+    const html = document.documentElement;
+    const cur = html.getAttribute("data-theme");
+    const next = cur === "dark" ? "light" : "dark";
+    html.setAttribute("data-theme", next);
+  }
+  function openInspector(slug, name, tabbr, room, day, period) {
+    Inspector.open({
+      lessonId: "demo",
+      subject: { name, slug },
+      class:   { name: "IV A", count: 28 },
+      teacher: { name: "Ms. Nutan", abbr: tabbr },
+      room:    { name: room, floor: "F2" },
+      day, period,
+      time: { start: "8:30", end: "9:15" },
+      locked: false,
+      conflicts: slug === "science"
+        ? [{ kind: "Room", level: "hard", msg: "LAB1 already booked Mon P3" }]
+        : [],
+      checks: [
+        { ok: true,  label: "Teacher available" },
+        { ok: true,  label: "Room free" },
+        { ok: slug !== "science", label: "Class free" },
+      ],
+      notes: "",
+      history: [{ when: "today 14:32", text: "Moved from P3 to P1", author: "Priya" }],
+    });
+  }
+
+  // Stats
+  Stats.render(document.getElementById("stats-host"), {
+    title: "Statistics",
+    kpis: [
+      { label: "Placed",    value: 944, meta: "of 959",       tone: "green",  icon: "✓" },
+      { label: "Unplaced",  value: 15,  meta: "needs review", tone: "red",    icon: "!" },
+      { label: "Conflicts", value: 8,   meta: "hard",         tone: "orange", icon: "⚠" },
+      { label: "Score",     value: 87,  meta: "soft / 100",   tone: "purple", icon: "★" },
+    ],
+    sections: [{
+      title: "Per-teacher load", meta: "Mon-Sat",
+      bars: [
+        { name: "Mrs Tiwari",  value: 28, max: 30, count: "28/30" },
+        { name: "Mr Alvarez",  value: 22, max: 30, count: "22/30", tone: "green" },
+        { name: "Ms Kabita",   value: 31, max: 30, count: "31/30", tone: "red" },
+        { name: "Mr Iqbal",    value: 25, max: 30, count: "25/30", tone: "orange" },
+      ],
+    }],
+  });
+
+  // Time-off
+  TimeOff.render(document.getElementById("timeoff-host"), {
+    title: "Time-off · Mrs Tiwari",
+    subtitle: "Click cells to cycle availability.",
+    periods: 5,
+    state: { "0_1": "preferred", "2_3": "unavailable", "4_4": "preferred" },
+  });
+
+  // Palette
+  Palette.mount();
+  Palette.register([
+    { id: "search-1", label: "Math IV-A · Mon P3", crumb: "IV A · Ms. Nutan · R204", group: "Lessons", hue: 220 },
+    { id: "search-2", label: "English IV-B · Tue P2", crumb: "IV B · Mr Alvarez · R118", group: "Lessons", hue: 12 },
+    { id: "search-3", label: "Ms Tiwari", crumb: "32 lessons · 96% util", group: "Teachers" },
+    { id: "search-4", label: "Mr Alvarez", crumb: "22 lessons · 71% util", group: "Teachers" },
+    { id: "search-5", label: "Class IV A", crumb: "28 students", group: "Classes" },
+    { id: "search-6", label: "Verify schedule", crumb: "8 hard conflicts", group: "Actions" },
+    { id: "search-7", label: "Export XML", crumb: "Round-trip · 940 cards", group: "Actions" },
+  ]);
+
+  // Verification
+  Verification.mount();
+  Verification.update([
+    { kind: "Teacher", level: "hard", title: "Mrs Tiwari clash Mon P3", body: "Math IV-A vs Eng IV-B" },
+    { kind: "Teacher", level: "soft", title: "Mr Alvarez over 5 in a row", body: "Tue P1-P5" },
+    { kind: "Room",    level: "hard", title: "LAB1 double-booked Mon P3", body: "Sci IV-A vs Sci V-B" },
+    { kind: "Class",   level: "soft", title: "IV A · 3 hard subjects 1st period", body: "Mon, Wed, Fri" },
+  ]);
+</script>
+</body>
+</html>
