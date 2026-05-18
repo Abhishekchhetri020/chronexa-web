@@ -1,0 +1,90 @@
+/* Chronexa drag-drop UX — cursor-following ghost + validity halos.
+ * Owns ONLY drag visuals. editor.css already paints the in-hand empty-slot
+ * dashed-green outline; we extend it with per-slot validity halos
+ * (green/amber/red) and a brief bump animation on rejected drops.
+ *
+ * Tokens from chronexa-theme.css; amber has no theme token yet so we use
+ * the system orange (#FF9F0A is Apple's systemOrange dark, #FF9500 light).
+ */
+
+/* ── Cursor-following ghost ──────────────────────────────────────────── */
+.chrx-card-ghost{
+  position:fixed; left:0; top:0;
+  width:60px; height:24px;
+  z-index:9999;
+  opacity:.85;
+  pointer-events:none;
+  filter:drop-shadow(0 4px 10px rgba(0,0,0,.32)) drop-shadow(0 1px 2px rgba(0,0,0,.18));
+  will-change:transform;
+  transform:translate(-9999px,-9999px);
+}
+.chrx-card-ghost > .chrx-vkarta{
+  position:static; inset:auto;
+  width:60px; height:24px;
+  box-shadow:0 1px 0 hsl(var(--hue) 50% 35%/.6), inset 0 0 0 1px hsl(var(--hue) 60% 55%/.6);
+  transform:scale(1.04);
+}
+.chrx-card-ghost-snap{
+  transition:transform var(--chrx-duration-base, 180ms) var(--chrx-ease, ease-out), opacity 180ms ease-out;
+  opacity:.5;
+}
+.chrx-card-ghost-fade{
+  transition:opacity 160ms ease-out, transform 160ms ease-out;
+  opacity:0; transform:translate(var(--gx,0), var(--gy,0)) scale(.85);
+}
+
+/* ── Validity halos (only when card in hand) ─────────────────────────── */
+/* editor.css already paints a green dashed outline for every empty slot
+ * while body.chrx-card-in-hand. We override that for slots specifically
+ * tagged by placement_validator. */
+body.chrx-card-in-hand .chrx-slot.empty[data-validity="green"]{
+  outline:2px solid var(--chrx-green, #34C759);
+  outline-offset:-3px;
+  background:var(--chrx-green-bg, rgba(52,199,89,.18));
+  cursor:copy;
+}
+body.chrx-card-in-hand .chrx-slot.empty[data-validity="amber"]{
+  outline:2px solid #FF9500;
+  outline-offset:-3px;
+  background:rgba(255,149,0,.16);
+  cursor:copy;
+}
+body.chrx-card-in-hand .chrx-slot.empty[data-validity="red"]{
+  outline:2px solid var(--chrx-red, #FF3B30);
+  outline-offset:-3px;
+  background:var(--chrx-red-bg, rgba(255,59,48,.18));
+  cursor:not-allowed;
+}
+
+/* Keyboard focus halo (Tab between empty slots while card in hand). */
+body.chrx-card-in-hand .chrx-slot.empty:focus{
+  outline-width:3px;
+  outline-style:dashed;
+  outline-offset:-4px;
+}
+
+/* ── Snap-back / rejection bump ──────────────────────────────────────── */
+@keyframes chrx-slot-bump{
+  0%   { transform:translateX(0); }
+  25%  { transform:translateX(-3px); }
+  50%  { transform:translateX(3px); }
+  75%  { transform:translateX(-2px); }
+  100% { transform:translateX(0); }
+}
+.chrx-slot.chrx-slot-bump{
+  animation:chrx-slot-bump 200ms var(--chrx-ease, ease-out);
+}
+
+/* While dragging, kill body text selection so swipes don't highlight rows. */
+body.chrx-card-in-hand{
+  user-select:none;
+  -webkit-user-select:none;
+}
+
+/* Dark-mode tweak: amber a bit brighter for contrast. */
+@media (prefers-color-scheme: dark){
+  body.chrx-card-in-hand .chrx-slot.empty[data-validity="amber"]{
+    outline-color:#FF9F0A;
+    background:rgba(255,159,10,.20);
+  }
+}
