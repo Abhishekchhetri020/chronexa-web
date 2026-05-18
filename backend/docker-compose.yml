@@ -1,0 +1,79 @@
+# Chronexa Web — production docker-compose for Hostinger VPS.
+#
+# Services:
+#   app      — FastAPI + OR-Tools on internal port 8001
+#   nginx    — TLS terminator + reverse proxy (80, 443)
+#   certbot  — Let's Encrypt cert issue / renew (one-shot for issue, scheduled for renew)
+#
+# First-cert acquisition (run once after DNS is pointed at the VPS):
+#   1) Comment out the `nginx` 443 server block in nginx/default.conf (HTTP-only)
+#      until the cert exists, OR run `docker-compose run --rm certbot` from the
+#      compose file with `certonly --standalone -d $DOMAIN`. See DEPLOY.md.
+#   2) Then bring the stack up:  docker-compose up -d
+
+services:
+  app:
+    build: .
+    image: chronexa-app:latest
+    container_name: chronexa-app
+    restart: unless-stopped
+    env_file:
+      - .env
+    expose:
+      - "8001"
+    networks:
+      - chronexa-net
+    # Resource caps to keep room for nginx + system on a 16 GB VPS.
+    deploy:
+      resources:
+        limits:
+          memory: 4g
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: chronexa-nginx
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - letsencrypt:/etc/letsencrypt:ro
+      - certbot-www:/var/www/certbot:ro
+    networks:
+      - chronexa-net
+
+  # First-time cert + renewals.
+  #
+  # ONE-TIME CERT ISSUE (run after DNS is pointed at the VPS):
+  #   docker compose run --rm certbot certonly \
+  #       --webroot --webroot-path=/var/www/certbot \
+  #       --email "$ACME_EMAIL" --agree-tos --no-eff-email \
+  #       -d "$DOMAIN"
+  #
+  # RENEWAL (run via host cron every 12h is fine):
+  #   docker compose run --rm certbot renew --quiet && docker compose exec nginx nginx -s reload
+  certbot:
+    image: certbot/certbot:latest
+    container_name: chronexa-certbot
+    env_file:
+      - .env
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+      - certbot-www:/var/www/certbot
+    networks:
+      - chronexa-net
+    entrypoint: ["/bin/sh", "-c", "trap exit TERM; sleep infinity"]
+    restart: "no"
+    profiles:
+      - tools
+
+networks:
+  chronexa-net:
+    driver: bridge
+
+volumes:
+  letsencrypt:
+  certbot-www:
