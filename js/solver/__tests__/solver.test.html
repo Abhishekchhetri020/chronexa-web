@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>CSP Solver — browser tests</title>
+<style>
+  body { font: 14px system-ui, sans-serif; max-width: 980px; margin: 24px auto; padding: 0 16px; color: #111; }
+  h1 { margin-top: 0 }
+  .case { border: 1px solid #ddd; border-radius: 6px; padding: 12px 14px; margin: 10px 0; }
+  .pass { background: #e6fbe6 }
+  .fail { background: #fde6e6 }
+  pre { background: #f4f4f4; padding: 8px; border-radius: 4px; max-height: 280px; overflow: auto; white-space: pre-wrap; }
+  table { border-collapse: collapse; margin: 8px 0 }
+  td, th { border: 1px solid #ccc; padding: 4px 8px; font-size: 12px; text-align: center; }
+  th { background: #fafafa }
+  .summary { font-size: 16px; font-weight: 600; padding: 12px; border-radius: 6px; margin-bottom: 14px; }
+  .ok { background: #d3f5d3; color: #114a11; }
+  .bad { background: #f7d3d3; color: #5a0c0c; }
+</style>
+</head>
+<body>
+<h1>CSP Solver browser tests</h1>
+<div id="summary" class="summary">Running…</div>
+<div id="cases"></div>
+<script type="module">
+import { solve } from "../csp_solver.js";
+
+// ---------------------------------------------------------------------------
+// Fixture 1: feasible. 2 teachers x 2 classes x 1 room over 2 days x 4 periods.
+// Lessons:
+//   T1-C1-Math, T1-C2-English, T2-C1-Science, T2-C2-Hindi
+// Expected: all 4 placed, 0 hard conflicts.
+// ---------------------------------------------------------------------------
+const fixtureFeasible = {
+  schoolName: "TinyFeasible",
+  daysPerWeek: 2,
+  bell: {
+    periods: [
+      { index: 1, label: "P1", startMin: 480, endMin: 520, isTeaching: true },
+      { index: 2, label: "P2", startMin: 520, endMin: 560, isTeaching: true },
+      { index: 3, label: "P3", startMin: 560, endMin: 600, isTeaching: true },
+      { index: 4, label: "P4", startMin: 600, endMin: 640, isTeaching: true },
+    ],
+  },
+  teachers: [
+    { id: "T1", name: "Teacher 1" },
+    { id: "T2", name: "Teacher 2" },
+  ],
+  classes: [
+    { id: "C1", name: "Class 1" },
+    { id: "C2", name: "Class 2" },
+  ],
+  classrooms: [
+    { id: "R1", name: "Room 1" },
+    { id: "R2", name: "Room 2" },
+  ],
+  subjects: [
+    { id: "S_MATH", name: "Math" },
+    { id: "S_ENG", name: "English" },
+    { id: "S_SCI", name: "Science" },
+    { id: "S_HIN", name: "Hindi" },
+  ],
+  lessons: [
+    { id: "L1", classIds: ["C1"], teacherIds: ["T1"], subjectId: "S_MATH", periodsPerWeek: 1 },
+    { id: "L2", classIds: ["C2"], teacherIds: ["T1"], subjectId: "S_ENG",  periodsPerWeek: 1 },
+    { id: "L3", classIds: ["C1"], teacherIds: ["T2"], subjectId: "S_SCI",  periodsPerWeek: 1 },
+    { id: "L4", classIds: ["C2"], teacherIds: ["T2"], subjectId: "S_HIN",  periodsPerWeek: 1 },
+  ],
+};
+
+// ---------------------------------------------------------------------------
+// Fixture 2: infeasible. 1 teacher, 2 classes, both lessons fixed to (day=0,
+// period=1). Solver can't place both — same teacher in 2 places at once.
+// Expected: status INFEASIBLE, unplaced >= 1.
+// ---------------------------------------------------------------------------
+const fixtureInfeasible = {
+  schoolName: "TinyInfeasible",
+  daysPerWeek: 1,
+  bell: {
+    periods: [
+      { index: 1, label: "P1", startMin: 480, endMin: 520, isTeaching: true },
+    ],
+  },
+  teachers: [
+    { id: "T1", name: "Teacher 1" },
+  ],
+  classes: [
+    { id: "C1", name: "Class 1" },
+    { id: "C2", name: "Class 2" },
+  ],
+  classrooms: [
+    { id: "R1", name: "Room 1" },
+  ],
+  subjects: [
+    { id: "S_MATH", name: "Math" },
+  ],
+  lessons: [
+    { id: "L1", classIds: ["C1"], teacherIds: ["T1"], subjectId: "S_MATH", periodsPerWeek: 1, fixedDay: 0, fixedPeriod: 1 },
+    { id: "L2", classIds: ["C2"], teacherIds: ["T1"], subjectId: "S_MATH", periodsPerWeek: 1, fixedDay: 0, fixedPeriod: 1 },
+  ],
+};
+
+// ---------------------------------------------------------------------------
+// Fixture 3: feasible with required-room-type. One lab subject must go in
+// a lab room; ordinary subjects go in regular rooms.
+// ---------------------------------------------------------------------------
+const fixtureRoomType = {
+  schoolName: "TinyRoomType",
+  daysPerWeek: 2,
+  bell: { periods: [
+    { index: 1, label: "P1", startMin: 480, endMin: 520, isTeaching: true },
+    { index: 2, label: "P2", startMin: 520, endMin: 560, isTeaching: true },
+  ]},
+  teachers: [{ id: "T1", name: "T1" }],
+  classes: [{ id: "C1", name: "C1" }],
+  classrooms: [
+    { id: "R1", name: "Reg", roomType: "classroom" },
+    { id: "LAB1", name: "Lab", roomType: "lab" },
+  ],
+  subjects: [{ id: "S_CHEM", name: "Chem" }, { id: "S_MATH", name: "Math" }],
+  lessons: [
+    { id: "L_CHEM", classIds: ["C1"], teacherIds: ["T1"], subjectId: "S_CHEM", periodsPerWeek: 1, requiredRoomType: "lab" },
+    { id: "L_MATH", classIds: ["C1"], teacherIds: ["T1"], subjectId: "S_MATH", periodsPerWeek: 1 },
+  ],
+};
+
+// ---------------------------------------------------------------------------
+// Runner
+// ---------------------------------------------------------------------------
+function renderGrid(school, response) {
+  const days = school.daysPerWeek;
+  const periodsPerDay = (school.bell?.periods || []).length;
+  const grid = {};
+  for (const a of response.assignment) {
+    if (!grid[a.day]) grid[a.day] = {};
+    if (!grid[a.day][a.period]) grid[a.day][a.period] = [];
+    grid[a.day][a.period].push(`${a.lessonId}@${a.classroomId}/${a.teacherId}/${a.classIds.join(",")}`);
+  }
+  const header = ["<tr><th>day\\period</th>"];
+  for (let p = 1; p <= periodsPerDay; p++) header.push(`<th>P${p}</th>`);
+  header.push("</tr>");
+  const rows = [];
+  for (let d = 0; d < days; d++) {
+    const row = [`<tr><th>D${d}</th>`];
+    for (let p = 1; p <= periodsPerDay; p++) {
+      const cell = (grid[d] && grid[d][p]) || [];
+      row.push(`<td>${cell.join("<br>") || "&nbsp;"}</td>`);
+    }
+    row.push("</tr>");
+    rows.push(row.join(""));
+  }
+  return `<table>${header.join("")}${rows.join("")}</table>`;
+}
+
+function runCase(name, school, expect) {
+  const t0 = performance.now();
+  const result = solve(school, { timeLimitSec: 10, seed: 1 });
+  const ms = Math.round(performance.now() - t0);
+
+  const errors = [];
+  if (expect.status && result.status !== expect.status) {
+    errors.push(`expected status=${expect.status}, got ${result.status}`);
+  }
+  if (expect.placed != null && result.stats.placed !== expect.placed) {
+    errors.push(`expected placed=${expect.placed}, got ${result.stats.placed}`);
+  }
+  if (expect.minPlaced != null && result.stats.placed < expect.minPlaced) {
+    errors.push(`expected placed>=${expect.minPlaced}, got ${result.stats.placed}`);
+  }
+  if (expect.maxPlaced != null && result.stats.placed > expect.maxPlaced) {
+    errors.push(`expected placed<=${expect.maxPlaced}, got ${result.stats.placed}`);
+  }
+  if (expect.roomTypeCheck) {
+    for (const a of result.assignment) {
+      const l = school.lessons.find(x => x.id === a.lessonId);
+      const room = school.classrooms.find(x => x.id === a.classroomId);
+      if (l.requiredRoomType && room.roomType !== l.requiredRoomType) {
+        errors.push(`lesson ${a.lessonId} placed in ${room.id} (type ${room.roomType}); required ${l.requiredRoomType}`);
+      }
+    }
+  }
+  if (expect.noTeacherClash) {
+    const seen = new Set();
+    for (const a of result.assignment) {
+      const k = `${a.teacherId}_${a.day}_${a.period}`;
+      if (seen.has(k)) errors.push(`teacher ${a.teacherId} double-booked at day=${a.day} p=${a.period}`);
+      seen.add(k);
+    }
+  }
+  if (expect.noClassClash) {
+    const seen = new Set();
+    for (const a of result.assignment) {
+      for (const c of a.classIds) {
+        const k = `${c}_${a.day}_${a.period}`;
+        if (seen.has(k)) errors.push(`class ${c} double-booked at day=${a.day} p=${a.period}`);
+        seen.add(k);
+      }
+    }
+  }
+
+  const pass = errors.length === 0;
+  const box = document.createElement("div");
+  box.className = "case " + (pass ? "pass" : "fail");
+  box.innerHTML = `
+    <h3>${pass ? "PASS" : "FAIL"} — ${name}</h3>
+    <div>status=<b>${result.status}</b>, placed=${result.stats.placed}, unplaced=${result.stats.unplaced}, hardConflicts=${result.stats.hardConflicts}, softScore=${result.stats.softScore}, durationMs=${result.stats.durationMs}, wallMs=${ms}</div>
+    ${errors.length ? `<pre>${errors.map(e => "ERROR: " + e).join("\n")}</pre>` : ""}
+    ${renderGrid(school, result)}
+    <details><summary>raw response</summary><pre>${JSON.stringify(result, null, 2)}</pre></details>
+  `;
+  document.getElementById("cases").appendChild(box);
+  return pass;
+}
+
+const results = [];
+results.push(runCase("Fixture 1: 4-lesson feasible", fixtureFeasible, {
+  status: "FEASIBLE", placed: 4, noTeacherClash: true, noClassClash: true,
+}));
+results.push(runCase("Fixture 2: 1-teacher-2-classes-same-fixed-slot infeasible", fixtureInfeasible, {
+  status: "INFEASIBLE", maxPlaced: 1,
+}));
+results.push(runCase("Fixture 3: required-room-type respected", fixtureRoomType, {
+  status: "FEASIBLE", placed: 2, roomTypeCheck: true,
+}));
+
+const passCount = results.filter(Boolean).length;
+const summary = document.getElementById("summary");
+summary.classList.add(passCount === results.length ? "ok" : "bad");
+summary.textContent = `${passCount} / ${results.length} cases passed`;
+</script>
+</body>
+</html>
