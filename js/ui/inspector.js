@@ -1,0 +1,72 @@
+/**
+ * Lesson inspector — placeholder modal. Click any grid cell to see full details.
+ * Editor functionality will be added later by the editor agent.
+ */
+window.Inspector = (function () {
+  "use strict";
+  const t = (k) => I18N.t(k);
+  let host = null;
+
+  function ensureHost() {
+    if (host) return host;
+    host = document.createElement("div");
+    host.id = "lesson-inspector";
+    host.className = "fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/40";
+    document.body.appendChild(host);
+    host.addEventListener("click", (e) => { if (e.target === host) close(); });
+    return host;
+  }
+
+  function open(entry, ctx) {
+    const S = window.APP.school;
+    if (!S || !entry) return;
+    ensureHost();
+
+    const period = S.bell.periods.find(p => p.index === entry.period);
+    const periodLabel = period ? `${period.label} (${fmt(period.startMin)}–${fmt(period.endMin)})` : `P${entry.period}`;
+
+    host.innerHTML = `
+      <div class="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden">
+        <div class="px-5 py-3 bg-gradient-to-r from-blue-900 to-slate-900 text-white flex items-center justify-between">
+          <h3 class="font-bold text-sm">${t("inspectorTitle")}</h3>
+          <button id="inspector-close" class="text-white/80 hover:text-white text-lg leading-none">×</button>
+        </div>
+        <div class="p-5 space-y-3 text-sm">
+          ${row("Subject", entry.subject || entry.subjectAbbr)}
+          ${row("Class(es)", entry.classes.join(", "))}
+          ${row("Teacher(s)", entry.teachers.join(", "))}
+          ${row("Room", entry.classroom || "—")}
+          ${row("Day", I18N.dayLabel(entry.day, true))}
+          ${row("Period", periodLabel)}
+        </div>
+        <div class="px-5 py-3 bg-slate-50 border-t border-slate-200 text-right">
+          <button id="inspector-ok" class="px-3 py-1.5 rounded bg-blue-700 text-white text-sm font-semibold hover:bg-blue-800">${t("closeBtn")}</button>
+        </div>
+      </div>`;
+    host.classList.remove("hidden");
+    host.classList.add("flex");
+    host.querySelector("#inspector-close").onclick = close;
+    host.querySelector("#inspector-ok").onclick = close;
+  }
+  function close() {
+    if (!host) return;
+    host.classList.remove("flex");
+    host.classList.add("hidden");
+    host.innerHTML = "";
+  }
+  function row(label, value) {
+    return `
+      <div class="grid grid-cols-3 gap-2">
+        <div class="text-slate-500 col-span-1">${escapeHtml(label)}</div>
+        <div class="text-slate-900 col-span-2 font-medium">${escapeHtml(value || "—")}</div>
+      </div>`;
+  }
+  function fmt(min) {
+    const h = Math.floor(min / 60), m = min % 60;
+    return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
+  }
+  function escapeHtml(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  }
+  return { open, close };
+})();

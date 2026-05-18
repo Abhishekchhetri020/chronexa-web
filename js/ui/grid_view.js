@@ -1,0 +1,173 @@
+/**
+ * Generic timetable grid renderer used by class/teacher/room views.
+ *
+ * Layout (desktop):
+ *   ┌────────────┬─── Mon ───┬─── Tue ───┬─ … ┬─── Sat ───┐
+ *   │ row label  │ P1 P2 …P8 │ P1 P2 …P8 │ …  │ P1 …  P8  │
+ *   ├────────────┼───────────┼───────────┼────┼───────────┤
+ *   │ I A        │ … cells … │ … cells … │    │           │
+ *   │ I B        │           │           │    │           │
+ *
+ * Mobile (<md, ~ <768px):
+ *   day-picker shows ONE day's columns; the rest are hidden via CSS class.
+ *
+ * Search: hides whole rows whose label/contents don't match APP.filter.
+ *
+ * Click on a cell → opens Inspector modal with full lesson details.
+ */
+window.GridView = (function () {
+  "use strict";
+  const NUM_DAYS = 6;
+  const t = (k) => I18N.t(k);
+
+  /**
+   * @param {HTMLElement} host
+   * @param {object} opts
+   *   rows:        [{id, label, sublabel?}]
+   *   cellEntries: (rowId, day, period) => Array<entry>   // entry from parser
+   *   periods:     [{index, label, startMin, endMin}]
+   *   onCellClick: (entry, rowId) => void
+   *   rowSearchText: (row) => string                       // for filter match
+   *   cellSearchText: (entry) => string                    // for filter match
+   */
+  function render(host, opts) {
+    const periods = opts.periods;
+    const day = window.APP.day || 0;
+
+    const dayHeaders = [];
+    for (let d = 0; d < NUM_DAYS; d++) {
+      dayHeaders.push(`
+        <th colspan="${periods.length}"
+            class="day-col day-col-${d} px-2 py-1.5 text-center bg-slate-100 border-b border-r border-slate-200 ${d !== day ? 'mobile-hidden' : ''}">
+          <div class="text-xs font-bold text-slate-700">${I18N.dayLabel(d)}</div>
+        </th>`);
+    }
+
+    const periodHeaders = [];
+    for (let d = 0; d < NUM_DAYS; d++) {
+      for (const p of periods) {
+        periodHeaders.push(`
+          <th class="day-col day-col-${d} px-1 py-0.5 text-[10px] font-semibold text-slate-500 bg-slate-50 border-r border-b border-slate-200 ${d !== day ? 'mobile-hidden' : ''}">${t("period")}${p.index}</th>`);
+      }
+    }
+
+    const rowsHtml = opts.rows.map(row => {
+      const searchHaystack = (opts.rowSearchText(row) || "").toLowerCase();
+      // Pre-build cells; while building, also check if any cell matches filter.
+      const cellsHtml = [];
+      let anyCellMatch = false;
+      for (let d = 0; d < NUM_DAYS; d++) {
+        for (const p of periods) {
+          const entries = opts.cellEntries(row.id, d, p.index) || [];
+          const cellTxt = entries.map(opts.cellSearchText).join(" ").toLowerCase();
+          if (cellTxt) anyCellMatch = anyCellMatch || (window.APP.filter && cellTxt.includes(window.APP.filter));
+          cellsHtml.push(renderCell(row.id, d, p.index, entries, d !== day));
+        }
+      }
+      const rowMatch = !window.APP.filter ||
+        searchHaystack.includes(window.APP.filter) ||
+        anyCellMatch;
+      return `
+        <tr class="grid-row ${rowMatch ? '' : 'hidden'}" data-row-id="${escapeAttr(row.id)}">
+          <th scope="row" class="row-label sticky left-0 z-10 bg-white border-r border-b border-slate-200 px-3 py-1.5 text-left align-top">
+            <div class="text-sm font-semibold text-slate-900">${escapeHtml(row.label)}</div>
+            ${row.sublabel ? `<div class="text-[10px] text-slate-500 mt-0.5">${escapeHtml(row.sublabel)}</div>` : ""}
+          </th>
+          ${cellsHtml.join("")}
+        </tr>`;
+    }).join("");
+
+    const visibleRows = opts.rows.length;
+    const emptyMsg = visibleRows === 0
+      ? `<div class="text-center text-slate-500 text-sm py-8">${t("noMatches")}</div>`
+      : "";
+
+    host.innerHTML = `
+      <div class="grid-toolbar md:hidden flex items-center gap-2 mb-2 text-sm" role="tablist" aria-label="Day picker">
+        <span class="text-slate-500">${t("showAllDays").replace(/^All\s/, "")}:</span>
+        <div class="flex flex-wrap gap-1" id="day-picker-${escapeAttr(opts.viewId || "view")}">
+          ${Array.from({length: NUM_DAYS}, (_, d) => `
+            <button data-day="${d}"
+                    class="day-pick px-2.5 py-1 rounded text-xs font-semibold border ${d === day ? 'bg-blue-700 text-white border-blue-700' : 'bg-white text-slate-700 border-slate-300'}"
+                    aria-pressed="${d === day}">${I18N.dayLabel(d)}</button>`).join("")}
+        </div>
+      </div>
+      <div class="grid-wrap overflow-x-auto border border-slate-200 rounded-lg shadow-sm bg-white">
+        <table class="grid-table min-w-full text-sm border-collapse">
+          <thead>
+            <tr>
+              <th class="row-label-head sticky left-0 z-20 bg-slate-100 border-b border-r border-slate-200 px-3 py-1.5 text-left text-xs font-semibold text-slate-600">${escapeHtml(opts.rowHeader || "")}</th>
+              ${dayHeaders.join("")}
+            </tr>
+            <tr>
+              <th class="row-label-head sticky left-0 z-20 bg-slate-50 border-b border-r border-slate-200"></th>
+              ${periodHeaders.join("")}
+            </tr>
+          </thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
+      </div>
+      ${emptyMsg}
+    `;
+
+    // Wire day picker (mobile)
+    host.querySelectorAll(".day-pick").forEach(b => {
+      b.onclick = () => {
+        window.APP.day = parseInt(b.dataset.day, 10);
+        render(host, opts);                                  // re-render same opts
+      };
+    });
+    // Wire cell clicks
+    host.querySelectorAll(".tt-cell[data-entries]").forEach(cell => {
+      cell.onclick = () => {
+        try {
+          const entries = JSON.parse(cell.dataset.entries);
+          if (entries.length && opts.onCellClick) opts.onCellClick(entries[0], cell.dataset.rowId);
+        } catch (e) { /* swallow */ }
+      };
+    });
+  }
+
+  /** Refresh visibility-only (when filter changes, no need to rebuild HTML). */
+  function applyFilter(host) {
+    const f = window.APP.filter;
+    host.querySelectorAll(".grid-row").forEach(row => {
+      const txt = row.textContent.toLowerCase();
+      const match = !f || txt.includes(f);
+      row.classList.toggle("hidden", !match);
+    });
+  }
+
+  // -----------------------------------------------------------------------
+  function renderCell(rowId, day, period, entries, mobileHidden) {
+    const dayClass = `day-col day-col-${day}` + (mobileHidden ? " mobile-hidden" : "");
+    if (!entries.length) {
+      return `<td class="tt-cell ${dayClass} border-r border-b border-slate-100 text-center text-slate-300 text-[11px] align-top py-1">·</td>`;
+    }
+    const primary = entries[0];
+    const subjLabel = primary.subjectAbbr || primary.subject || "";
+    const tchLabel  = primary.teachers.join(", ");
+    const roomLabel = primary.classroom || "";
+    const more = entries.length > 1 ? `<div class="text-[10px] text-amber-600">+${entries.length - 1}</div>` : "";
+
+    return `
+      <td class="tt-cell ${dayClass} border-r border-b border-slate-100 px-1 py-0.5 align-top cursor-pointer hover:bg-blue-50 transition-colors"
+          data-row-id="${escapeAttr(rowId)}"
+          data-entries='${escapeAttr(JSON.stringify(entries))}'
+          title="${escapeAttr(subjLabel + (tchLabel ? " · " + tchLabel : "") + (roomLabel ? " · " + roomLabel : ""))}">
+        <div class="text-[11px] font-semibold text-blue-900 leading-tight">${escapeHtml(subjLabel)}</div>
+        ${tchLabel ? `<div class="text-[10px] text-slate-700 leading-tight truncate">${escapeHtml(tchLabel)}</div>` : ""}
+        ${roomLabel ? `<div class="text-[10px] text-slate-400 leading-tight truncate">${escapeHtml(roomLabel)}</div>` : ""}
+        ${more}
+      </td>`;
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  }
+  function escapeAttr(s) {
+    return escapeHtml(s);
+  }
+
+  return { render, applyFilter };
+})();

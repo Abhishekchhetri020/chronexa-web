@@ -3,152 +3,138 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GDGPSD Examination Sitting Planner</title>
-<script src="https://cdn.tailwindcss.com"></script>
-<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/docx@9.0.2/build/index.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
-<link rel="stylesheet" href="css/style.css">
-</head>
-<body class="bg-slate-50 text-slate-800 min-h-screen">
+<title>Chronexa — Open Timetable Viewer</title>
+<meta name="description" content="Browser-based school timetable viewer. Upload an aSc Timetables XML and explore class / teacher / room grids. Everything runs locally — no upload, no tracking.">
 
+<!-- Tailwind via CDN (same pattern as sitting-planner v7) -->
+<script src="https://cdn.tailwindcss.com"></script>
+
+<!-- Agent D owns css/style.css; we just reference it so it picks up when D ships -->
+<link rel="stylesheet" href="css/style.css">
+
+<style>
+  /* Minimal inline rules used by the grid view. Lives here only because the
+     class names are coupled to the JS (mobile day-picker behaviour). Theming
+     belongs in css/style.css (agent D). */
+  @media (max-width: 767px) {
+    .grid-table .mobile-hidden { display: none; }
+  }
+  .grid-table th, .grid-table td { vertical-align: top; }
+  .grid-table .tt-cell { min-width: 80px; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif; }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
+
+<!-- ─────────────────────── HEADER ─────────────────────── -->
 <header class="bg-gradient-to-r from-slate-900 to-blue-900 text-white shadow-lg">
-  <div class="max-w-6xl mx-auto px-6 py-5">
-    <h1 class="text-2xl font-bold">G.D. Goenka Public School, Darbhanga</h1>
-    <p class="text-sm text-amber-200 italic">Thrive. For Life.</p>
-    <h2 class="text-lg font-semibold mt-2">Examination Sitting Planner</h2>
-    <p class="text-xs text-slate-300">Sitting plans · Invigilation duty · Door notices · All in one place</p>
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between gap-3 flex-wrap">
+    <div class="min-w-0">
+      <h1 class="text-xl sm:text-2xl font-bold tracking-tight" data-i18n="appTitle">Chronexa</h1>
+      <p class="text-xs sm:text-sm text-amber-200 italic" data-i18n="tagline">Open timetable. Yours to keep.</p>
+    </div>
+    <div class="flex items-center gap-2">
+      <div class="relative">
+        <input id="search-input" type="search"
+               class="w-44 sm:w-64 pl-7 pr-3 py-1.5 rounded text-sm text-slate-900 placeholder-slate-400 bg-white/95 focus:outline-none focus:ring-2 focus:ring-amber-400"
+               placeholder="Search…">
+        <svg class="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>
+        </svg>
+      </div>
+      <div class="inline-flex rounded overflow-hidden border border-white/40">
+        <button id="lang-en" data-lang="en" data-i18n="langToggleEN"
+                class="px-2.5 py-1 text-xs font-bold bg-blue-700 text-white">EN</button>
+        <button id="lang-hi" data-lang="hi" data-i18n="langToggleHI"
+                class="px-2.5 py-1 text-xs font-bold bg-white text-slate-700">हिं</button>
+      </div>
+    </div>
   </div>
 </header>
 
-<nav class="bg-white shadow-sm sticky top-0 z-10">
-  <div class="max-w-6xl mx-auto px-6 py-3 flex flex-wrap gap-2 text-sm">
-    <button data-step="1" class="step-btn px-3 py-1.5 rounded font-medium bg-blue-700 text-white">1. Roster</button>
-    <button data-step="2" class="step-btn px-3 py-1.5 rounded font-medium bg-slate-200">2. Timetable XML</button>
-    <button data-step="3" class="step-btn px-3 py-1.5 rounded font-medium bg-slate-200">3. Datesheet</button>
-    <button data-step="4" class="step-btn px-3 py-1.5 rounded font-medium bg-slate-200">4. Rooms</button>
-    <button data-step="5" class="step-btn px-3 py-1.5 rounded font-medium bg-slate-200">5. Policy</button>
-    <button data-step="6" class="step-btn px-3 py-1.5 rounded font-medium bg-slate-200">6. Generate</button>
-    <button data-step="7" class="step-btn px-3 py-1.5 rounded font-medium bg-slate-200">7. Download</button>
+<!-- ─────────────────────── STEP NAV ─────────────────────── -->
+<nav class="bg-white shadow-sm sticky top-0 z-30 border-b border-slate-200">
+  <div class="max-w-7xl mx-auto px-2 sm:px-6 py-2 flex flex-wrap gap-1.5 text-xs sm:text-sm">
+    <button data-step="1" class="step-btn px-3 py-1.5 rounded font-semibold bg-blue-700 text-white"
+            data-i18n="nav1">1. Upload XML</button>
+    <button data-step="2" class="step-btn needs-school px-3 py-1.5 rounded font-semibold bg-slate-200 text-slate-700"
+            data-i18n="nav2" disabled>2. School Info</button>
+    <button data-step="3" class="step-btn needs-school px-3 py-1.5 rounded font-semibold bg-slate-200 text-slate-700"
+            data-i18n="nav3" disabled>3. Class Grid</button>
+    <button data-step="4" class="step-btn needs-school px-3 py-1.5 rounded font-semibold bg-slate-200 text-slate-700"
+            data-i18n="nav4" disabled>4. Teacher Grid</button>
+    <button data-step="5" class="step-btn needs-school px-3 py-1.5 rounded font-semibold bg-slate-200 text-slate-700"
+            data-i18n="nav5" disabled>5. Room Grid</button>
   </div>
 </nav>
 
-<main class="max-w-6xl mx-auto px-6 py-8">
+<!-- ─────────────────────── ERROR SLOT ─────────────────────── -->
+<div id="error-slot" class="max-w-7xl mx-auto w-full px-4 sm:px-6 pt-3"></div>
 
-  <!-- ───────── STEP 1: ROSTER ───────── -->
+<!-- ─────────────────────── MAIN ─────────────────────── -->
+<main class="flex-1 max-w-7xl mx-auto w-full px-3 sm:px-6 py-4 sm:py-6">
+
+  <!-- STEP 1 — Upload XML -->
   <section id="step-1" class="step-panel">
-    <h3 class="text-xl font-bold mb-2 text-blue-900">Step 1 — Upload Student Roster</h3>
-    <p class="text-sm text-slate-600 mb-4">Upload the school's <code class="bg-slate-100 px-1 rounded">Student_Profile_Detail_Report.xls</code> file. Header should be on row 5; columns include <strong>Class, Section, Student Name, Admission No.</strong>.</p>
-    <label class="block">
-      <input type="file" id="roster-file" accept=".xls,.xlsx" class="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-blue-700 file:text-white hover:file:bg-blue-800 cursor-pointer">
-    </label>
-    <div id="roster-status" class="mt-4 text-sm"></div>
-    <div id="roster-preview" class="mt-4"></div>
-  </section>
-
-  <!-- ───────── STEP 2: XML ───────── -->
-  <section id="step-2" class="step-panel hidden">
-    <h3 class="text-xl font-bold mb-2 text-blue-900">Step 2 — Upload ASC Timetable XML</h3>
-    <p class="text-sm text-slate-600 mb-4">Upload the latest <code class="bg-slate-100 px-1 rounded">asctt2012*.xml</code> file from aSc Timetables. The app reads teachers, classes, subjects, and which teacher is busy in which period.</p>
-    <label class="block">
+    <h2 class="text-xl sm:text-2xl font-bold mb-1 text-blue-900" data-i18n="step1Title">Upload aSc Timetable XML</h2>
+    <p class="text-sm text-slate-600 mb-4" data-i18n="step1Desc">Drop your asctt2012*.xml export here. Everything stays in your browser — no upload to any server.</p>
+    <label class="block bg-white border-2 border-dashed border-slate-300 rounded-lg p-6 hover:border-blue-500 transition-colors cursor-pointer">
       <input type="file" id="xml-file" accept=".xml" class="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-blue-700 file:text-white hover:file:bg-blue-800 cursor-pointer">
     </label>
     <div id="xml-status" class="mt-4 text-sm"></div>
-    <div id="xml-preview" class="mt-4"></div>
   </section>
 
-  <!-- ───────── STEP 3: DATESHEET ───────── -->
+  <!-- STEP 2 — School Info -->
+  <section id="step-2" class="step-panel hidden">
+    <h2 class="text-xl sm:text-2xl font-bold mb-1 text-blue-900" data-i18n="step2Title">School Info</h2>
+    <p class="text-sm text-slate-600 mb-4" data-i18n="step2Desc">Summary of what was parsed from your XML.</p>
+    <div id="step-2-body"></div>
+  </section>
+
+  <!-- STEP 3 — Class Grid -->
   <section id="step-3" class="step-panel hidden">
-    <h3 class="text-xl font-bold mb-2 text-blue-900">Step 3 — Datesheet</h3>
-    <p class="text-sm text-slate-600 mb-4">Enter the exam schedule. One row per (date, class). Use <code class="bg-slate-100 px-1 rounded">REGULAR</code> if a class has no exam that day, and <code class="bg-slate-100 px-1 rounded">OFF</code> for pre-primary weekly off.</p>
-
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-      <label class="block">
-        <span class="text-sm font-medium">Start time</span>
-        <input id="exam-start" type="time" value="07:55" class="mt-1 block w-full rounded border-slate-300 shadow-sm text-sm p-2 border">
-      </label>
-      <label class="block">
-        <span class="text-sm font-medium">Duration (minutes)</span>
-        <input id="exam-duration" type="number" value="90" min="30" max="180" class="mt-1 block w-full rounded border-slate-300 shadow-sm text-sm p-2 border">
-      </label>
-      <div class="flex items-end">
-        <button id="autofill-pt1" class="px-4 py-2 bg-amber-500 text-white rounded hover:bg-amber-600 text-sm font-medium">Pre-fill PT-1 2026-27</button>
-      </div>
-    </div>
-
-    <p class="text-xs text-slate-500 mb-2">Tip: click <em>Pre-fill PT-1 2026-27</em> to load the schedule extracted from your WhatsApp datesheet (21-26 May 2026).</p>
-
-    <div id="datesheet-table" class="mt-4 overflow-x-auto"></div>
+    <h2 class="text-xl sm:text-2xl font-bold mb-1 text-blue-900" data-i18n="step3Title">Class Grid</h2>
+    <p class="text-sm text-slate-600 mb-4" data-i18n="step3Desc">Each row is a section. Each cell shows the subject, teacher, and room for that period.</p>
+    <div id="step-3-body"></div>
   </section>
 
-  <!-- ───────── STEP 4: ROOMS ───────── -->
+  <!-- STEP 4 — Teacher Grid -->
   <section id="step-4" class="step-panel hidden">
-    <h3 class="text-xl font-bold mb-2 text-blue-900">Step 4 — Room Geometry</h3>
-    <p class="text-sm text-slate-600 mb-4">Each classroom has <strong>3 rows of benches</strong>, each row holds 5 or 6 benches (max 6). Each bench seats 2 students.</p>
-
-    <div class="bg-amber-50 border-l-4 border-amber-400 p-3 mb-4 text-sm">
-      <strong>Default for all rooms:</strong>
-      <div class="inline-flex items-center gap-2 ml-2">
-        <input id="default-row1" type="number" min="3" max="6" value="6" class="w-16 rounded border-slate-300 text-sm p-1 border">
-        ×
-        <input id="default-row2" type="number" min="3" max="6" value="5" class="w-16 rounded border-slate-300 text-sm p-1 border">
-        ×
-        <input id="default-row3" type="number" min="3" max="6" value="6" class="w-16 rounded border-slate-300 text-sm p-1 border">
-        <button id="apply-default-rooms" class="ml-2 px-3 py-1 bg-blue-700 text-white rounded text-sm hover:bg-blue-800">Apply to all sections</button>
-      </div>
-    </div>
-
-    <div id="rooms-table" class="overflow-x-auto"></div>
+    <h2 class="text-xl sm:text-2xl font-bold mb-1 text-blue-900" data-i18n="step4Title">Teacher Grid</h2>
+    <p class="text-sm text-slate-600 mb-4" data-i18n="step4Desc">Each row is a teacher. Each cell shows class + subject + room.</p>
+    <div id="step-4-body"></div>
   </section>
 
-  <!-- ───────── STEP 5: POLICY ───────── -->
+  <!-- STEP 5 — Room Grid -->
   <section id="step-5" class="step-panel hidden">
-    <h3 class="text-xl font-bold mb-2 text-blue-900">Step 5 — Sitting & Invigilator Policy</h3>
-    <p class="text-sm text-slate-600 mb-4">Pick a policy preset, or open Advanced rules to fine-tune. Mother teachers (Nursery/I/II) are auto-detected from the timetable and held with their own kids.</p>
-    <div id="policy-panel"></div>
-  </section>
-
-  <!-- ───────── STEP 6: GENERATE ───────── -->
-  <section id="step-6" class="step-panel hidden">
-    <h3 class="text-xl font-bold mb-2 text-blue-900">Step 6 — Generate Sitting Plan</h3>
-    <p class="text-sm text-slate-600 mb-4">Click <em>Generate</em>. The algorithm will:</p>
-    <ol class="list-decimal list-inside text-sm text-slate-600 space-y-1 mb-4">
-      <li>For each exam date, assign every student to a bench (row × column)</li>
-      <li>Pick an invigilator per room, respecting timetable conflicts and your soft preferences</li>
-      <li>Detect capacity overruns (room too small for the section's strength)</li>
-      <li>Show a preview here</li>
-    </ol>
-    <button id="generate-btn" class="px-6 py-3 bg-blue-700 text-white rounded font-bold hover:bg-blue-800 disabled:bg-slate-400" disabled>
-      Generate
-    </button>
-    <div id="generate-status" class="mt-4 text-sm"></div>
-    <div id="generate-preview" class="mt-6"></div>
-  </section>
-
-  <!-- ───────── STEP 7: DOWNLOAD ───────── -->
-  <section id="step-7" class="step-panel hidden">
-    <h3 class="text-xl font-bold mb-2 text-blue-900">Step 7 — Download</h3>
-    <p class="text-sm text-slate-600 mb-4">Download all DOCX artefacts as a ZIP. Inside the ZIP, files are organized by date.</p>
-    <button id="download-zip" class="px-6 py-3 bg-emerald-600 text-white rounded font-bold hover:bg-emerald-700 disabled:bg-slate-400" disabled>
-      Download Sitting Plan ZIP
-    </button>
-    <div id="download-status" class="mt-4 text-sm"></div>
+    <h2 class="text-xl sm:text-2xl font-bold mb-1 text-blue-900" data-i18n="step5Title">Room Grid</h2>
+    <p class="text-sm text-slate-600 mb-4" data-i18n="step5Desc">Each row is a classroom. See which class + subject + teacher is in each period.</p>
+    <div id="step-5-body"></div>
   </section>
 
 </main>
 
-<footer class="mt-16 py-6 bg-slate-100 text-slate-600 text-center text-xs">
-  Built for G.D. Goenka Public School, Darbhanga · Open-source on GitHub · Runs entirely in your browser (no server)
+<footer class="mt-8 py-4 bg-slate-100 text-slate-600 text-center text-xs">
+  <span data-i18n="footer">Runs entirely in your browser — no upload, no tracking.</span>
 </footer>
 
-<!-- ───── App scripts ───── -->
+<!-- ─────────────────────── SCRIPTS ─────────────────────── -->
 <!-- Bump APP_VER on every deploy so the browser refetches the JS bundle -->
-<script>window.APP_VER = "20260518-05";</script>
-<script>document.write([
-  "state","bell_periods","streams","parse_roster","parse_xml","datesheet","rooms","policy",
-  "seat_assignment","invigilator","render","main"
-].map(n => '<script src="js/' + n + '.js?v=' + window.APP_VER + '"><\/script>').join(""));</script>
+<script>window.APP_VER = "20260518-01";</script>
+<script>
+  document.write([
+    ["ui","state"],
+    ["ui","i18n"],
+    ["xml","parse_asc_xml"],
+    ["ui","grid_view"],
+    ["ui","school_info"],
+    ["ui","class_grid"],
+    ["ui","teacher_grid"],
+    ["ui","room_grid"],
+    ["ui","inspector"],
+    ["ui","main"],
+  ].map(([d, n]) => '<script src="js/' + d + '/' + n + '.js?v=' + window.APP_VER + '"><\/script>').join(""));
+</script>
 
 </body>
 </html>
