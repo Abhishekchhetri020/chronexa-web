@@ -17,6 +17,8 @@
 <link rel="stylesheet" href="css/ribbon.css">
 <link rel="stylesheet" href="css/entities.css">
 <link rel="stylesheet" href="css/editor.css">
+<link rel="stylesheet" href="css/drag_ux.css">
+<link rel="stylesheet" href="css/substitution.css">
 
 <!-- Excel + gzip libs for ribbon Export/Snapshot (loaded once) -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
@@ -176,6 +178,9 @@
     // ─── Editor (Agent E) ─────────────────────────────────────
     ["ui","editor/grid_canvas"],
     ["ui","editor/pending_strip"],
+    // ─── Drag-drop UX (Agent J) ───────────────────────────────
+    ["ui","editor/placement_validator"],
+    ["ui","editor/card_in_hand"],
     ["ui","main"],
     // ─── Ribbon (Agent H) ─────────────────────────────────────
     ["ui","ribbon/topbar"],
@@ -194,6 +199,13 @@
     ["ui","io/snapshot"],
     ["ui","print_preview/print_preview"],
     ["ui","ribbon/bootstrap"],
+    // ─── Substitution (Agent K) ───────────────────────────────
+    ["ui","substitution/main"],
+    ["ui","substitution/candidate_ranker"],
+    ["ui","substitution/absence_input"],
+    ["ui","substitution/classwise_output"],
+    ["ui","substitution/teacherwise_output"],
+    ["ui","substitution/print_memo"],
   ].map(([d, n]) => '<script src="js/' + d + '/' + n + '.js?v=' + window.APP_VER + '"><\/script>').join(""));
 </script>
 <script>
