@@ -11,6 +11,14 @@
 
 <!-- Agent D owns css/style.css; we just reference it so it picks up when D ships -->
 <link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/chronexa-theme.css">
+<link rel="stylesheet" href="css/components.css">
+<link rel="stylesheet" href="css/solver_ui.css">
+<link rel="stylesheet" href="css/ribbon.css">
+
+<!-- Excel + gzip libs for ribbon Export/Snapshot (loaded once) -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js" defer></script>
 
 <style>
   /* Minimal inline rules used by the grid view. Lives here only because the
@@ -25,6 +33,9 @@
 </style>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
+
+<!-- ─────────────────────── RIBBON (Agent H) ─────────────────────── -->
+<div id="chrx-ribbon"></div>
 
 <!-- ─────────────────────── HEADER ─────────────────────── -->
 <header class="bg-gradient-to-r from-slate-900 to-blue-900 text-white shadow-lg">
@@ -48,6 +59,12 @@
         <button id="lang-hi" data-lang="hi" data-i18n="langToggleHI"
                 class="px-2.5 py-1 text-xs font-bold bg-white text-slate-700">हिं</button>
       </div>
+      <button id="cta-generate" type="button" class="needs-school px-3 py-1.5 rounded font-semibold bg-amber-400 text-slate-900 text-sm hover:bg-amber-300 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+        Generate
+      </button>
+      <button id="cta-test" type="button" class="needs-school px-3 py-1.5 rounded font-semibold bg-white/90 text-slate-900 text-sm hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+        Test
+      </button>
     </div>
   </div>
 </header>
@@ -120,7 +137,9 @@
 
 <!-- ─────────────────────── SCRIPTS ─────────────────────── -->
 <!-- Bump APP_VER on every deploy so the browser refetches the JS bundle -->
-<script>window.APP_VER = "20260518-01";</script>
+<script>window.APP_VER = "20260518-02";</script>
+<!-- Backend URL — leave empty to force "Run on this computer". Override at deploy time. -->
+<script>window.CHRONEXA_BACKEND_URL = window.CHRONEXA_BACKEND_URL || "";</script>
 <script>
   document.write([
     ["ui","state"],
@@ -132,8 +151,87 @@
     ["ui","teacher_grid"],
     ["ui","room_grid"],
     ["ui","inspector"],
+    ["ui","components/verification"],
+    ["ui","solver_ui/backend_client"],
+    ["ui","solver_ui/prelaunch_dialog"],
+    ["ui","solver_ui/progress_modal"],
+    ["ui","solver_ui/result_panel"],
+    ["ui","solver_ui/verification_panel"],
+    ["ui","solver_ui/test_dialog"],
     ["ui","main"],
+    // ─── Ribbon (Agent H) ─────────────────────────────────────
+    ["ui","ribbon/topbar"],
+    ["ui","ribbon/undo_redo"],
+    ["ui","ribbon/menus/main_menu"],
+    ["ui","ribbon/menus/files_menu"],
+    ["ui","ribbon/menus/specification_menu"],
+    ["ui","ribbon/menus/view_menu"],
+    ["ui","ribbon/menus/timetable_menu"],
+    ["ui","ribbon/menus/options_menu"],
+    ["ui","ribbon/menus/help_menu"],
+    ["ui","ribbon/menus/ai_menu"],
+    ["ui","io/import_asc_xml"],
+    ["ui","io/export_asc_xml"],
+    ["ui","io/export_excel"],
+    ["ui","io/snapshot"],
+    ["ui","print_preview/print_preview"],
+    ["ui","ribbon/bootstrap"],
   ].map(([d, n]) => '<script src="js/' + d + '/' + n + '.js?v=' + window.APP_VER + '"><\/script>').join(""));
+</script>
+<script>
+  // Wire the header CTAs once the DOM is parsed.
+  (function () {
+    function bind() {
+      var gen = document.getElementById("cta-generate");
+      var tst = document.getElementById("cta-test");
+      if (gen) gen.addEventListener("click", function () {
+        if (!window.APP || !window.APP.school) return;
+        window.SolverUI.PreLaunch.open({
+          defaultMode: "generate",
+          school: window.APP.school,
+          onConfirm: function (cfg) {
+            if (cfg.mode === "test") return window.SolverUI._runTest(window.APP.school);
+            var source = window.SolverUI.run({
+              school: window.APP.school,
+              options: { timeLimitSec: cfg.timeLimitSec, verbose: false },
+              algorithm: cfg.algorithm,
+              onFallback: function (why) {
+                window.SolverUI._toast("Cloud unavailable — using in-browser solver.");
+                console.warn("[solver fallback]", why);
+              },
+            });
+            window.SolverUI.Progress.open({
+              source: source,
+              mode: "generate",
+              timeLimitSec: cfg.timeLimitSec,
+              totalLessons: (window.APP.school.lessons || []).length,
+              showReport: cfg.showReport,
+              onDone: function (result) {
+                if (!result) return;
+                window.SolverUI.Result.open({
+                  result: result,
+                  school: window.APP.school,
+                  mode: "generate",
+                  onViewViolations: function (violations) {
+                    window.SolverUI.Verification.show(violations, window.APP.school);
+                  },
+                });
+                if (cfg.showReport && result.violations && result.violations.length) {
+                  window.SolverUI.Verification.show(result.violations, window.APP.school);
+                }
+              },
+            });
+          },
+        });
+      });
+      if (tst) tst.addEventListener("click", function () {
+        if (!window.APP || !window.APP.school) return;
+        window.SolverUI.Test.open({ school: window.APP.school });
+      });
+    }
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bind);
+    else bind();
+  })();
 </script>
 
 </body>
