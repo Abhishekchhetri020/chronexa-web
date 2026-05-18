@@ -1,0 +1,39 @@
+name: frontend-static-check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "index.html"
+      - "css/**"
+      - "js/**"
+      - ".github/workflows/frontend.yml"
+  pull_request:
+    paths:
+      - "index.html"
+      - "css/**"
+      - "js/**"
+
+jobs:
+  static-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: HTML sanity check
+        run: |
+          test -s index.html
+          grep -q "<title>" index.html
+      - name: JS smoke check
+        run: |
+          # Every js/**/*.js must parse cleanly via node (no syntax errors)
+          find js -type f -name "*.js" | while read f; do
+            node --check "$f" || (echo "SYNTAX ERROR: $f" && exit 1)
+          done
+      - name: Page serves
+        run: |
+          python3 -m http.server 8000 &
+          SERVER=$!
+          sleep 2
+          curl -sf http://localhost:8000/ > /dev/null
+          curl -sf http://localhost:8000/index.html > /dev/null
+          kill $SERVER
