@@ -1,0 +1,89 @@
+/* PowerSchool Excel exporter — three tabs: Sections, Teachers, Periods.
+ * Column names use PowerSchool's standard import field labels so the file
+ * can be picked up by PowerSchool's bulk import without much remapping.
+ */
+(function () {
+  "use strict";
+  const APP = window.APP;
+  const notify = window._chrxNotify || console.log;
+
+  function need() {
+    if (typeof window.XLSX === "undefined") {
+      notify("PowerSchool export needs SheetJS — check internet connection.", "error");
+      return false;
+    }
+    if (!APP.school) { notify("Open a timetable first.", "error"); return false; }
+    return true;
+  }
+
+  function sheet(rows) { return window.XLSX.utils.aoa_to_sheet(rows); }
+  function minToTime(m) {
+    if (m == null) return "";
+    const h = Math.floor(m / 60), mm = m % 60;
+    return String(h).padStart(2, "0") + ":" + String(mm).padStart(2, "0");
+  }
+
+  function buildSections(school) {
+    const teachers = {}; (school.teachers || []).forEach(t => teachers[t.id] = t);
+    const subjects = {}; (school.subjects || []).forEach(s => subjects[s.id] = s);
+    const classes  = {}; (school.classes  || []).forEach(c => classes[c.id]  = c);
+    const rows = [[
+      "Section_Number", "Course_Number", "Course_Name", "Teacher_Number",
+      "Teacher_Name", "Room", "Periods", "Class_List",
+    ]];
+    for (const l of (school.lessons || [])) {
+      const sub = subjects[l.subjectId] || {};
+      const tch = teachers[l.teacherIds?.[0]] || {};
+      rows.push([
+        l.id,
+        sub.id || "",
+        sub.name || "",
+        tch.id || "",
+        tch.name || "",
+        l.preferredRoomId || "",
+        l.periodsPerWeek || 0,
+        (l.classIds || []).map(id => classes[id]?.name || id).join(", "),
+      ]);
+    }
+    return rows;
+  }
+
+  function buildTeachers(school) {
+    const rows = [["Teacher_Number", "Last_Name", "First_Name", "Email", "Initials"]];
+    for (const t of (school.teachers || [])) {
+      const parts = (t.name || "").split(/\s+/);
+      const last = parts.length > 1 ? parts.pop() : "";
+      const first = parts.join(" ");
+      rows.push([t.id, last, first, t.email || "", t.abbr || ""]);
+    }
+    return rows;
+  }
+
+  function buildPeriods(school) {
+    const rows = [["Period_Number", "Period_Name", "Start_Time", "End_Time"]];
+    for (const p of (school.bell?.periods || [])) {
+      rows.push([p.index, p.label, minToTime(p.startMin), minToTime(p.endMin)]);
+    }
+    return rows;
+  }
+
+  function fileName(s) {
+    const base = (s._meta?.sourceFilename || s.schoolName || "chronexa").replace(/\.\w+$/, "");
+    return base + "-powerschool.xlsx";
+  }
+
+  function run(school) {
+    if (!need()) return;
+    school = school || APP.school;
+    const wb = window.XLSX.utils.book_new();
+    window.XLSX.utils.book_append_sheet(wb, sheet(buildSections(school)), "Sections");
+    window.XLSX.utils.book_append_sheet(wb, sheet(buildTeachers(school)), "Teachers");
+    window.XLSX.utils.book_append_sheet(wb, sheet(buildPeriods(school)),  "Periods");
+    const fname = fileName(school);
+    window.XLSX.writeFile(wb, fname);
+    notify("Exported " + fname);
+  }
+
+  window.ExportPowerschool = { run };
+  window.addEventListener("app:export-powerschool", () => run());
+})();
