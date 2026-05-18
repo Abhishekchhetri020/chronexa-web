@@ -16,6 +16,7 @@
 <link rel="stylesheet" href="css/solver_ui.css">
 <link rel="stylesheet" href="css/ribbon.css">
 <link rel="stylesheet" href="css/entities.css">
+<link rel="stylesheet" href="css/editor.css">
 
 <!-- Excel + gzip libs for ribbon Export/Snapshot (loaded once) -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
@@ -37,6 +38,12 @@
 
 <!-- ─────────────────────── RIBBON (Agent H) ─────────────────────── -->
 <div id="chrx-ribbon"></div>
+
+<!-- ─────────────────────── EDITOR ROOTS (Agent E) ─────────────────────── -->
+<!-- The main grid + pending strip mount here when APP.editor.active = true.
+     Hidden by default; ribbon "Edit" button or Editor.activate() toggles them. -->
+<div id="editor-root" hidden></div>
+<div id="pending-strip-root" hidden></div>
 
 <!-- ─────────────────────── HEADER ─────────────────────── -->
 <header class="bg-gradient-to-r from-slate-900 to-blue-900 text-white shadow-lg">
@@ -138,7 +145,7 @@
 
 <!-- ─────────────────────── SCRIPTS ─────────────────────── -->
 <!-- Bump APP_VER on every deploy so the browser refetches the JS bundle -->
-<script>window.APP_VER = "20260518-h1";</script>
+<script>window.APP_VER = "20260518-e1";</script>
 <!-- Backend URL — leave empty to force "Run on this computer". Override at deploy time. -->
 <script>window.CHRONEXA_BACKEND_URL = window.CHRONEXA_BACKEND_URL || "";</script>
 <script>
@@ -166,6 +173,9 @@
     ["ui","solver_ui/result_panel"],
     ["ui","solver_ui/verification_panel"],
     ["ui","solver_ui/test_dialog"],
+    // ─── Editor (Agent E) ─────────────────────────────────────
+    ["ui","editor/grid_canvas"],
+    ["ui","editor/pending_strip"],
     ["ui","main"],
     // ─── Ribbon (Agent H) ─────────────────────────────────────
     ["ui","ribbon/topbar"],
