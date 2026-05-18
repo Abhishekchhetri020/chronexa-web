@@ -1,0 +1,111 @@
+name: release-zip
+
+# Tag-driven: push a tag like v0.1.0 → build a downloadable zip of the static
+# site (excluding backend/, .git/, etc.) and attach to a GitHub Release.
+#
+# Users who want to run chronexa-web entirely offline can download this zip,
+# unzip, and double-click index.html. No backend needed; the solver runs in
+# the browser on their own machine.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v0.1.0)"
+        required: true
+        default: "v0.1.0"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set TAG variable
+        run: |
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            echo "TAG=${{ github.event.inputs.tag }}" >> "$GITHUB_ENV"
+          else
+            echo "TAG=${GITHUB_REF#refs/tags/}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build frontend zip
+        run: |
+          mkdir -p dist
+          NAME="chronexa-web-${TAG}"
+          # Stage only the files users need to run the app fully offline.
+          mkdir -p "dist/${NAME}"
+          cp -R \
+            index.html \
+            manifest.json \
+            sw.js \
+            css \
+            js \
+            assets \
+            docs \
+            README.md \
+            "dist/${NAME}/"
+          # Drop pycache + DS_Store noise
+          find "dist/${NAME}" -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+          find "dist/${NAME}" -name ".DS_Store" -delete 2>/dev/null || true
+          # Add a one-page README about how to run it offline
+          cat > "dist/${NAME}/HOW_TO_RUN_OFFLINE.txt" <<'TXT'
+          Chronexa Web — offline use
+          ==========================
+          1. Unzip this folder anywhere on your computer.
+          2. Open index.html in a modern browser (Chrome, Edge, Firefox, Safari).
+             → On macOS: double-click index.html
+             → On Windows: right-click index.html → Open with → Chrome / Edge
+
+          That's it. The whole app runs in your browser. The CSP solver uses
+          a Web Worker — i.e. your laptop's CPU. No internet needed.
+
+          If your browser blocks file:// service workers (some do), serve the
+          folder over localhost instead:
+              python3 -m http.server 8000
+              open http://localhost:8000/
+
+          Project: https://github.com/Abhishekchhetri020/chronexa-web
+          TXT
+          cd dist && zip -r "${NAME}.zip" "${NAME}"
+          ls -lh "${NAME}.zip"
+          echo "ZIP=$(pwd)/${NAME}.zip" >> "$GITHUB_ENV"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$ZIP" --clobber
+          else
+            gh release create "$TAG" "$ZIP" \
+              --title "Chronexa Web $TAG" \
+              --notes "$(cat <<EOF
+          ## Chronexa Web $TAG
+
+          Browser-based school timetable builder. Drag cards, run the solver, export to aSc XML / Excel / PDF.
+
+          ### How to use this release
+
+          **Mode A — Just open the live URL**
+          [https://abhishekchhetri020.github.io/chronexa-web/](https://abhishekchhetri020.github.io/chronexa-web/) — no install.
+
+          **Mode B — Install as an app (PWA)**
+          Visit the URL above in Chrome/Edge. Click *Install Chronexa* in the address bar (or the green banner). It appears as a real app on your machine and works offline after the first visit.
+
+          **Mode C — Download this ZIP**
+          Download the asset below, unzip, double-click \`index.html\`. Works entirely offline. The solver runs on your own CPU via a Web Worker — no server involved.
+
+          See \`HOW_TO_RUN_OFFLINE.txt\` inside the zip for details.
+          EOF
+          )"
+          fi

@@ -6,6 +6,14 @@
 <title>Chronexa — Open Timetable Viewer</title>
 <meta name="description" content="Browser-based school timetable viewer. Upload an aSc Timetables XML and explore class / teacher / room grids. Everything runs locally — no upload, no tracking.">
 
+<!-- PWA: installable + offline-capable. Solver runs on the user's CPU via Web Workers. -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1e3a8a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Chronexa">
+<link rel="apple-touch-icon" href="assets/icon-192.png">
+
 <!-- Tailwind via CDN (same pattern as sitting-planner v7) -->
 <script src="https://cdn.tailwindcss.com"></script>
 
@@ -193,7 +201,7 @@
 
 <!-- ─────────────────────── SCRIPTS ─────────────────────── -->
 <!-- Bump APP_VER on every deploy so the browser refetches the JS bundle -->
-<script>window.APP_VER = "20260518-e5";</script>
+<script>window.APP_VER = "20260518-pwa1";</script>
 <!-- Backend URL — leave empty to force "Run on this computer". Override at deploy time. -->
 <script>window.CHRONEXA_BACKEND_URL = window.CHRONEXA_BACKEND_URL || "";</script>
 <script>
@@ -235,6 +243,8 @@
     // ─── Wizard + Editor activator ────────────────────────────
     ["ui","wizard/create_new"],
     ["ui","editor/activator"],
+    // ─── PWA install + service-worker registration ────────────
+    ["ui","pwa_install"],
     // ─── Editor (Agent E) ─────────────────────────────────────
     ["ui","editor/grid_canvas"],
     ["ui","editor/pending_strip"],
