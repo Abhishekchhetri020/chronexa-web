@@ -1,0 +1,99 @@
+/* Class Register Excel exporter — one sheet per class, pre-filled with the
+ * next 30 weekdays from today.  Columns: Date / Period / Subject / Teacher /
+ * Topic / Attendance.  Subject + Teacher are pulled from APP.school.cards
+ * when the cell day/period matches; otherwise left blank for the teacher
+ * to fill in.
+ */
+(function () {
+  "use strict";
+  const APP = window.APP;
+  const notify = window._chrxNotify || console.log;
+  const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+  const N_DAYS = 30;
+
+  function need() {
+    if (typeof window.XLSX === "undefined") {
+      notify("Class Register export needs SheetJS — check internet connection.", "error");
+      return false;
+    }
+    if (!APP.school) { notify("Open a timetable first.", "error"); return false; }
+    return true;
+  }
+
+  function sheet(rows) { return window.XLSX.utils.aoa_to_sheet(rows); }
+  function fmtDate(d) {
+    return d.getFullYear() + "-" +
+      String(d.getMonth() + 1).padStart(2, "0") + "-" +
+      String(d.getDate()).padStart(2, "0");
+  }
+  function nextWeekdays(n) {
+    const out = [];
+    const d = new Date();
+    while (out.length < n) {
+      const dow = d.getDay();             // 0=Sun, 6=Sat
+      if (dow !== 0) out.push(new Date(d.getTime()));   // skip Sundays (M–Sa)
+      d.setDate(d.getDate() + 1);
+    }
+    return out;
+  }
+  function dayIdxForDate(d) {
+    // 0=Mon, 1=Tue, ..., 5=Sat (matches DATA_SHAPES dayIdx)
+    const dow = d.getDay();
+    return dow === 0 ? -1 : dow - 1;
+  }
+
+  function buildClassSheet(school, klass, dates) {
+    const periods = school.bell?.periods || [];
+    const subjects = {}; (school.subjects || []).forEach(s => subjects[s.id] = s);
+    const teachers = {}; (school.teachers || []).forEach(t => teachers[t.id] = t);
+    const lessons  = {}; (school.lessons  || []).forEach(l => lessons[l.id]  = l);
+    const cardsByClass = (school.cards || []).filter(c => {
+      const l = lessons[c.lessonId];
+      return l && (l.classIds || []).includes(klass.id);
+    });
+
+    const rows = [["Date", "Day", "Period", "Subject", "Teacher", "Topic", "Attendance"]];
+    for (const d of dates) {
+      const di = dayIdxForDate(d);
+      for (const p of periods) {
+        const card = cardsByClass.find(c => c.day === di && c.period === p.index);
+        const l    = card ? lessons[card.lessonId] : null;
+        const sub  = l ? subjects[l.subjectId]?.name || "" : "";
+        const tch  = l ? (l.teacherIds || []).map(id => teachers[id]?.name || id).join(", ") : "";
+        rows.push([fmtDate(d), DAYS[d.getDay()], p.index, sub, tch, "", ""]);
+      }
+    }
+    return rows;
+  }
+
+  function safeSheetName(name) {
+    return String(name).slice(0, 31).replace(/[\\/?*[\]]/g, "_");
+  }
+
+  function fileName(s) {
+    const base = (s._meta?.sourceFilename || s.schoolName || "chronexa").replace(/\.\w+$/, "");
+    return base + "-class-register.xlsx";
+  }
+
+  function run(school) {
+    if (!need()) return;
+    school = school || APP.school;
+    const wb = window.XLSX.utils.book_new();
+    const dates = nextWeekdays(N_DAYS);
+    const classes = school.classes || [];
+    if (!classes.length) {
+      window.XLSX.utils.book_append_sheet(wb, sheet([["No classes defined"]]), "Empty");
+    } else {
+      for (const c of classes) {
+        const rows = buildClassSheet(school, c, dates);
+        window.XLSX.utils.book_append_sheet(wb, sheet(rows), safeSheetName(c.name || c.id));
+      }
+    }
+    const fname = fileName(school);
+    window.XLSX.writeFile(wb, fname);
+    notify("Exported " + fname);
+  }
+
+  window.ExportExcelClassRegister = { run };
+  window.addEventListener("app:export-class-register", () => run());
+})();
