@@ -1,0 +1,106 @@
+/**
+ * Teacher-wise output — pivot of assignments by substituting teacher.
+ *
+ * Columns: Teacher · Extra periods today · Classes covered · Total score-load
+ *
+ * "Total score-load" sums the scores of the slots assigned to that teacher.
+ * Higher = more good-fit picks; useful as a "did we lean on this teacher
+ * because they're the best fit?" signal versus "we just dumped on them".
+ */
+(function () {
+  "use strict";
+  const APP = window.APP;
+  const S = window.Substitution;
+  if (!APP || !S) return;
+  const el = S.el;
+
+  function render(host, state) {
+    host.innerHTML = "";
+
+    if (!state.assignments.length) {
+      host.appendChild(el("div", { class: "chrx-sub-empty" },
+        el("p", null, "No substitutions generated yet."),
+        el("p", { class: "chrx-sub-hint" },
+          "Generate substitutions on step 1 first."),
+      ));
+      return;
+    }
+
+    // Group by chosen teacher.
+    const pivot = Object.create(null);
+    let uncovered = 0;
+    for (const a of state.assignments) {
+      if (!a.chosen) { uncovered++; continue; }
+      const tid = a.chosen.teacherId;
+      if (!pivot[tid]) {
+        pivot[tid] = {
+          teacherId: tid,
+          teacher: a.chosen.teacher,
+          rows: [],
+          scoreSum: 0,
+        };
+      }
+      pivot[tid].rows.push(a);
+      pivot[tid].scoreSum += a.chosen.score;
+    }
+
+    const list = Object.values(pivot).sort((a, b) =>
+      b.rows.length - a.rows.length ||
+      b.scoreSum - a.scoreSum ||
+      a.teacher.localeCompare(b.teacher));
+
+    host.appendChild(el("div", { class: "chrx-sub-banner" },
+      el("b", null, `${list.length} substitute${list.length === 1 ? "" : "s"} carry ${state.assignments.length - uncovered} extra period(s)`),
+      uncovered ? el("span", { class: "chrx-sub-pill is-red" },
+        `${uncovered} uncovered`) : null,
+    ));
+
+    const table = el("table", { class: "chrx-sub-table" },
+      el("thead", null, el("tr", null,
+        el("th", null, "Teacher"),
+        el("th", null, "Extra periods"),
+        el("th", null, "Classes covered"),
+        el("th", null, "Score-load"),
+      )),
+    );
+    const tbody = el("tbody");
+    list.forEach(g => {
+      const periodTags = g.rows.map(r => `P${r.period}`).join(", ");
+      const classTags  = g.rows.map(r =>
+        `${r.classSection} (${r.subject || "—"})`).join(" · ");
+
+      tbody.appendChild(el("tr", { class: "chrx-sub-tr" },
+        el("td", null,
+          el("b", null, g.teacher),
+          el("div", { class: "chrx-sub-reasons" }, `${g.rows.length} slot(s)`),
+        ),
+        el("td", null, periodTags),
+        el("td", null, classTags),
+        el("td", { class: "chrx-sub-score" }, String(g.scoreSum)),
+      ));
+    });
+    table.appendChild(tbody);
+    host.appendChild(el("div", { class: "chrx-sub-tablewrap" }, table));
+  }
+
+  /**
+   * Pure helper — used by print_memo to render the same pivot without DOM.
+   * Returns [{teacher, rows[], scoreSum}, …].
+   */
+  function pivotByTeacher(assignments) {
+    const pivot = Object.create(null);
+    for (const a of assignments) {
+      if (!a.chosen) continue;
+      const tid = a.chosen.teacherId;
+      if (!pivot[tid]) pivot[tid] = {
+        teacherId: tid, teacher: a.chosen.teacher, rows: [], scoreSum: 0,
+      };
+      pivot[tid].rows.push(a);
+      pivot[tid].scoreSum += a.chosen.score;
+    }
+    return Object.values(pivot).sort((a, b) =>
+      b.rows.length - a.rows.length || a.teacher.localeCompare(b.teacher));
+  }
+
+  window.SubstitutionTeacherwise = { render, pivotByTeacher };
+})();
