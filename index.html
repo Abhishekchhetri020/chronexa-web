@@ -18,6 +18,7 @@
 <link rel="stylesheet" href="css/entities.css">
 <link rel="stylesheet" href="css/editor.css">
 <link rel="stylesheet" href="css/drag_ux.css">
+<link rel="stylesheet" href="css/teacher_colors.css">
 <link rel="stylesheet" href="css/substitution.css">
 
 <!-- Excel + gzip libs for ribbon Export/Snapshot (loaded once) -->
@@ -82,16 +83,12 @@
 <!-- ─────────────────────── STEP NAV ─────────────────────── -->
 <nav class="bg-white shadow-sm sticky top-0 z-30 border-b border-slate-200">
   <div class="max-w-7xl mx-auto px-2 sm:px-6 py-2 flex flex-wrap gap-1.5 text-xs sm:text-sm">
-    <button data-step="1" class="step-btn px-3 py-1.5 rounded font-semibold bg-blue-700 text-white"
-            data-i18n="nav1">1. Upload XML</button>
-    <button data-step="2" class="step-btn needs-school px-3 py-1.5 rounded font-semibold bg-slate-200 text-slate-700"
-            data-i18n="nav2" disabled>2. School Info</button>
-    <button data-step="3" class="step-btn needs-school px-3 py-1.5 rounded font-semibold bg-slate-200 text-slate-700"
-            data-i18n="nav3" disabled>3. Class Grid</button>
-    <button data-step="4" class="step-btn needs-school px-3 py-1.5 rounded font-semibold bg-slate-200 text-slate-700"
-            data-i18n="nav4" disabled>4. Teacher Grid</button>
-    <button data-step="5" class="step-btn needs-school px-3 py-1.5 rounded font-semibold bg-slate-200 text-slate-700"
-            data-i18n="nav5" disabled>5. Room Grid</button>
+    <button data-step="1" class="step-btn px-3 py-1.5 rounded font-semibold bg-blue-700 text-white">1. Start</button>
+    <button data-step="6" class="step-btn needs-school px-3 py-1.5 rounded font-semibold bg-emerald-600 text-white" disabled>🪄 Editor (drag-drop)</button>
+    <button data-step="2" class="step-btn needs-school px-3 py-1.5 rounded font-semibold bg-slate-200 text-slate-700" disabled>School Info</button>
+    <button data-step="3" class="step-btn needs-school px-3 py-1.5 rounded font-semibold bg-slate-200 text-slate-700" disabled>Class Grid</button>
+    <button data-step="4" class="step-btn needs-school px-3 py-1.5 rounded font-semibold bg-slate-200 text-slate-700" disabled>Teacher Grid</button>
+    <button data-step="5" class="step-btn needs-school px-3 py-1.5 rounded font-semibold bg-slate-200 text-slate-700" disabled>Room Grid</button>
   </div>
 </nav>
 
@@ -101,14 +98,66 @@
 <!-- ─────────────────────── MAIN ─────────────────────── -->
 <main class="flex-1 max-w-7xl mx-auto w-full px-3 sm:px-6 py-4 sm:py-6">
 
-  <!-- STEP 1 — Upload XML -->
+  <!-- STEP 1 — Start (build new OR upload existing) -->
   <section id="step-1" class="step-panel">
-    <h2 class="text-xl sm:text-2xl font-bold mb-1 text-blue-900" data-i18n="step1Title">Upload aSc Timetable XML</h2>
-    <p class="text-sm text-slate-600 mb-4" data-i18n="step1Desc">Drop your asctt2012*.xml export here. Everything stays in your browser — no upload to any server.</p>
-    <label class="block bg-white border-2 border-dashed border-slate-300 rounded-lg p-6 hover:border-blue-500 transition-colors cursor-pointer">
-      <input type="file" id="xml-file" accept=".xml" class="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-blue-700 file:text-white hover:file:bg-blue-800 cursor-pointer">
-    </label>
+    <h2 class="text-xl sm:text-2xl font-bold mb-1 text-blue-900">Start your timetable</h2>
+    <p class="text-sm text-slate-600 mb-6">Build a fresh timetable from scratch, or open an existing one. Everything runs in your browser — no upload, no tracking.</p>
+
+    <div class="grid md:grid-cols-2 gap-4 mb-6">
+      <!-- BUILD NEW TIMETABLE -->
+      <div class="bg-white border-2 border-emerald-500 rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow">
+        <div class="flex items-center gap-2 mb-3">
+          <span class="text-3xl">🪄</span>
+          <h3 class="text-lg font-bold text-emerald-700">Build a new timetable</h3>
+        </div>
+        <p class="text-sm text-slate-600 mb-4">Start with a blank canvas. Set up your school, add teachers, classes, classrooms, subjects, and lessons. Drag cards onto the grid or run the auto-generator.</p>
+        <button id="cta-build-new" class="w-full px-4 py-2.5 rounded-lg bg-emerald-600 text-white font-semibold hover:bg-emerald-700">
+          ✨ Create new timetable
+        </button>
+        <p class="text-xs text-slate-500 mt-3">After you finish, export as aSc XML, Excel, or print.</p>
+      </div>
+
+      <!-- LOAD EXISTING -->
+      <div class="bg-white border-2 border-slate-300 rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow">
+        <div class="flex items-center gap-2 mb-3">
+          <span class="text-3xl">📂</span>
+          <h3 class="text-lg font-bold text-slate-700">Load an existing timetable</h3>
+        </div>
+        <p class="text-sm text-slate-600 mb-4">Already have an <code class="bg-slate-100 px-1 rounded">asctt2012*.xml</code> from aSc or EduPage? Drop it here to view, edit, and re-generate.</p>
+        <label class="block bg-slate-50 border-2 border-dashed border-slate-300 rounded-lg p-3 hover:border-blue-500 transition-colors cursor-pointer">
+          <input type="file" id="xml-file" accept=".xml" class="block w-full text-xs file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:bg-blue-700 file:text-white hover:file:bg-blue-800 cursor-pointer">
+        </label>
+        <p class="text-xs text-slate-500 mt-3">Demo file: <button id="cta-load-demo" class="text-blue-700 hover:underline font-semibold">try the bundled GD Goenka sample</button></p>
+      </div>
+    </div>
+
     <div id="xml-status" class="mt-4 text-sm"></div>
+  </section>
+
+  <!-- STEP 6 — Editor (drag-drop main grid) -->
+  <section id="step-6" class="step-panel hidden">
+    <div class="flex items-center justify-between mb-2">
+      <div>
+        <h2 class="text-xl sm:text-2xl font-bold text-blue-900">🪄 Timetable Editor</h2>
+        <p class="text-sm text-slate-600">Click a card to pick it up. Click an empty slot to place it. Cards in the bottom strip are unplaced — drag them onto the grid.</p>
+      </div>
+      <div class="flex gap-2">
+        <button id="editor-toggle-skin" class="px-3 py-1.5 text-xs rounded border border-slate-300 hover:bg-slate-100">EduPage skin</button>
+        <button id="editor-perspective" class="px-3 py-1.5 text-xs rounded bg-slate-100 hover:bg-slate-200">By Class</button>
+      </div>
+    </div>
+
+    <div id="editor-banner" class="mb-3 px-3 py-2 rounded bg-amber-50 border-l-4 border-amber-400 text-xs text-amber-900 hidden">
+      <strong>Tip:</strong> <span id="editor-banner-text"></span>
+    </div>
+
+    <!-- The actual editor mounts here. CSS keeps editor-root taller; pending-strip-root sticks below. -->
+    <div id="editor-root" class="bg-white border border-slate-200 rounded shadow-sm overflow-x-auto" style="min-height:500px"></div>
+
+    <div class="mt-3">
+      <h3 class="text-sm font-semibold text-slate-700 mb-1">📥 Pending cards <span class="text-xs text-slate-500" id="pending-count">(— unplaced)</span></h3>
+      <div id="pending-strip-root" class="bg-slate-50 border border-slate-200 rounded p-2" style="min-height:80px"></div>
+    </div>
   </section>
 
   <!-- STEP 2 — School Info -->
@@ -147,7 +196,7 @@
 
 <!-- ─────────────────────── SCRIPTS ─────────────────────── -->
 <!-- Bump APP_VER on every deploy so the browser refetches the JS bundle -->
-<script>window.APP_VER = "20260518-e2";</script>
+<script>window.APP_VER = "20260518-e3";</script>
 <!-- Backend URL — leave empty to force "Run on this computer". Override at deploy time. -->
 <script>window.CHRONEXA_BACKEND_URL = window.CHRONEXA_BACKEND_URL || "";</script>
 <script>
@@ -186,6 +235,9 @@
     ["ui","solver_ui/result_panel"],
     ["ui","solver_ui/verification_panel"],
     ["ui","solver_ui/test_dialog"],
+    // ─── Wizard + Editor activator ────────────────────────────
+    ["ui","wizard/create_new"],
+    ["ui","editor/activator"],
     // ─── Editor (Agent E) ─────────────────────────────────────
     ["ui","editor/grid_canvas"],
     ["ui","editor/pending_strip"],

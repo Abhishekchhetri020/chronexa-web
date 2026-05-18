@@ -1,0 +1,108 @@
+/* Teacher / subject color propagation.
+   Every card in the editor + the grid views gets:
+   - Background = subject color (light tint)
+   - Left border = teacher color (4px solid)
+   - Text adapts to luminance for contrast.
+
+   Cards use inline style="--subj-color:#…; --tch-color:#…"
+   set by grid_canvas.js, grid_view.js, and pending_strip.js.
+*/
+
+.chrx-vkarta,
+.chrx-card,
+.chrx-pending-card,
+.tt-card {
+  background: color-mix(in srgb, var(--subj-color, #cbd5e1) 35%, white);
+  border-left: 4px solid var(--tch-color, #94a3b8);
+  border-right: 1px solid color-mix(in srgb, var(--tch-color, #94a3b8) 40%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--tch-color, #94a3b8) 40%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--tch-color, #94a3b8) 40%, transparent);
+  border-radius: 3px;
+  padding: 2px 4px;
+  font-size: 11px;
+  line-height: 1.2;
+  color: #0f172a;
+  cursor: grab;
+  user-select: none;
+  transition: transform 80ms, box-shadow 80ms;
+}
+
+.chrx-vkarta:hover,
+.chrx-card:hover,
+.chrx-pending-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.18);
+  z-index: 5;
+}
+
+.chrx-vkarta:active,
+.chrx-card:active,
+.chrx-pending-card:active {
+  cursor: grabbing;
+}
+
+/* Bold thick left stripe matches EduPage's "this card belongs to teacher X" cue */
+.chrx-vkarta::before,
+.chrx-card::before {
+  content: "";
+  display: none;
+}
+
+/* Teacher swatch dot for the Teachers dialog list view + ribbon Me menu */
+.chrx-teacher-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--tch-color, #94a3b8);
+  margin-right: 6px;
+  vertical-align: middle;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+/* Subject swatch dot */
+.chrx-subject-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background: var(--subj-color, #94a3b8);
+  margin-right: 6px;
+  vertical-align: middle;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+/* Class swatch (square, rounded corners) */
+.chrx-class-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--cls-color, #94a3b8);
+  margin-right: 6px;
+  vertical-align: middle;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+/* Color legend that appears at top of editor when colors are assigned */
+.chrx-color-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 4px;
+  font-size: 11px;
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 4px;
+  margin-bottom: 6px;
+}
+
+.chrx-color-legend .legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  white-space: nowrap;
+}

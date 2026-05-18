@@ -24,18 +24,24 @@
   // ----- Step navigation ----------------------------------------------------
   function showStep(n) {
     window.APP.step = n;
-    for (let i = 1; i <= 5; i++) {
+    for (let i = 1; i <= 6; i++) {
       document.getElementById("step-" + i)?.classList.toggle("hidden", i !== n);
     }
     document.querySelectorAll(".step-btn").forEach(b => {
       const active = parseInt(b.dataset.step, 10) === n;
-      b.classList.toggle("bg-blue-700", active);
-      b.classList.toggle("text-white",  active);
-      b.classList.toggle("bg-slate-200", !active);
-      b.classList.toggle("text-slate-700", !active);
+      // step 6 has its own emerald primary; don't paint it blue when active
+      const isEditor = parseInt(b.dataset.step, 10) === 6;
+      if (!isEditor) {
+        b.classList.toggle("bg-blue-700", active);
+        b.classList.toggle("text-white",  active);
+        b.classList.toggle("bg-slate-200", !active);
+        b.classList.toggle("text-slate-700", !active);
+      }
       b.setAttribute("aria-current", active ? "step" : "false");
     });
     renderActiveStep();
+    // notify the editor activator + other listeners
+    document.dispatchEvent(new CustomEvent("step:changed", { detail: { step: n } }));
   }
   function renderActiveStep() {
     switch (window.APP.step) {
@@ -43,6 +49,7 @@
       case 3: ClassGrid.render(document.getElementById("step-3-body")); break;
       case 4: TeacherGrid.render(document.getElementById("step-4-body")); break;
       case 5: RoomGrid.render(document.getElementById("step-5-body")); break;
+      // case 6 is handled by EditorActivator listening to step:changed
     }
   }
 
@@ -122,8 +129,12 @@
             <span class="text-slate-400 ml-1">(${dt} ms)</span>
           </span>`;
         document.querySelectorAll(".needs-school").forEach(b => b.disabled = false);
-        // Auto-advance to School Info
-        setTimeout(() => showStep(2), 250);
+        // Auto-color anything without a color (Agent A's parser doesn't always set them)
+        if (window.CreateNew && window.CreateNew.ensureColors) window.CreateNew.ensureColors();
+        // Fire school-loaded event so EditorActivator can hook
+        document.dispatchEvent(new CustomEvent("app:school-loaded", { detail: { source: "upload-xml" } }));
+        // Auto-advance to the Editor (was School Info; users want the grid first)
+        setTimeout(() => showStep(6), 250);
       } catch (err) {
         console.error(err);
         status.innerHTML = `<span class="text-rose-700 font-semibold">${escapeHtml(t("parseFail"))} ${escapeHtml(err.message || "")}</span>`;
@@ -137,13 +148,79 @@
       b.onclick = () => {
         const n = parseInt(b.dataset.step, 10);
         if (n > 1 && !window.APP.school) {
-          // Gate steps 2-5 behind a parsed XML
-          showError(t("needXml"), new Error(""));
+          // Gate steps 2-6 behind a parsed-or-created school
+          showError(t("needXml") || "Build or load a timetable first.", new Error(""));
           return;
         }
         showStep(n);
       };
     });
+
+    // ─── CTA: Build New Timetable ────────────────────────────
+    const buildBtn = document.getElementById("cta-build-new");
+    if (buildBtn) {
+      buildBtn.onclick = () => {
+        if (window.APP.school && (window.APP.school.teachers.length || window.APP.school.cards.length)) {
+          if (!confirm("A timetable is already loaded. Replace it with a blank one?")) return;
+        }
+        if (window.CreateNew && window.CreateNew.createBlank) {
+          window.CreateNew.createBlank();
+          document.querySelectorAll(".needs-school").forEach(b => b.disabled = false);
+          // jump to editor
+          showStep(6);
+        }
+      };
+    }
+
+    // ─── CTA: Load Demo Seed ─────────────────────────────────
+    const demoBtn = document.getElementById("cta-load-demo");
+    if (demoBtn) {
+      demoBtn.onclick = () => {
+        if (window.CreateNew && window.CreateNew.createDemoSeed) {
+          window.CreateNew.createDemoSeed();
+          document.querySelectorAll(".needs-school").forEach(b => b.disabled = false);
+          showStep(6);
+        }
+      };
+    }
+
+    // ─── Listen for nav:goto-step events (fired by activators / wizards) ──
+    document.addEventListener("nav:goto-step", e => {
+      const n = e.detail && e.detail.step;
+      if (n) showStep(n);
+    });
+
+    // ─── EduPage skin toggle in editor header ──────────────────
+    const skinBtn = document.getElementById("editor-toggle-skin");
+    if (skinBtn) {
+      skinBtn.onclick = () => {
+        const html = document.documentElement;
+        if (html.getAttribute("data-skin") === "edupage") {
+          html.removeAttribute("data-skin");
+          skinBtn.classList.remove("bg-amber-100", "border-amber-500");
+        } else {
+          html.setAttribute("data-skin", "edupage");
+          skinBtn.classList.add("bg-amber-100", "border-amber-500");
+        }
+      };
+    }
+
+    // ─── Perspective rotator in editor header ──────────────────
+    const persBtn = document.getElementById("editor-perspective");
+    if (persBtn) {
+      const PERS = ["class", "teacher", "room"];
+      const LABEL = { class: "By Class", teacher: "By Teacher", room: "By Room" };
+      persBtn.onclick = () => {
+        const cur = (window.APP.editor && window.APP.editor.perspective) || "class";
+        const next = PERS[(PERS.indexOf(cur) + 1) % PERS.length];
+        window.APP.editor = window.APP.editor || {};
+        window.APP.editor.perspective = next;
+        persBtn.textContent = LABEL[next];
+        // Re-render
+        if (window.EditorActivator) window.EditorActivator.activate();
+      };
+    }
+
     wireSearch();
     wireLang();
     wireXmlUpload();
