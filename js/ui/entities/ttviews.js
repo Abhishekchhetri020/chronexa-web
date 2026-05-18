@@ -1,0 +1,119 @@
+/* TTViews CRUD dialog. window.EntityTTViews.open()
+ * Timetable perspectives — named grid views with icon + type. Fields:
+ * name, icon, typ, texttables (bool), colortables (bool). */
+(function (global) {
+  "use strict";
+  const D = window.EntityDialog;
+  if (!D) return;
+
+  function ensure() {
+    const s = window.APP.school = window.APP.school || {};
+    if (!Array.isArray(s.ttviews)) s.ttviews = [];
+    return s.ttviews;
+  }
+
+  function rows() {
+    return ensure().map(v => ({
+      id: v.id, name: v.name || "(unnamed)",
+      icon: v.icon || "",
+      typ: v.typ || "",
+      text: v.texttables ? "✔" : "—",
+      color: v.colortables ? "✔" : "—",
+      _ref: v,
+    }));
+  }
+
+  function columns() { return [
+    { key:"name",  label:"Name" },
+    { key:"icon",  label:"Icon" },
+    { key:"typ",   label:"Type" },
+    { key:"text",  label:"Text tables" },
+    { key:"color", label:"Color tables" },
+  ]; }
+
+  function openEdit(r) {
+    const isNew = !r;
+    const ref = r ? r._ref : null;
+    const draft = isNew
+      ? { name:"", icon:"", typ:"class", texttables:false, colortables:true }
+      : { name:ref.name || "", icon:ref.icon || "",
+          typ:ref.typ || "class",
+          texttables:!!ref.texttables, colortables:!!ref.colortables };
+
+    const fName = D.el("input", { type:"text", value:draft.name, required:"required",
+      maxlength:"40", oninput:(e)=>draft.name = e.target.value });
+    const fIcon = D.el("input", { type:"text", value:draft.icon, maxlength:"40",
+      placeholder:"e.g. table-grid", oninput:(e)=>draft.icon = e.target.value });
+    const fTyp = D.el("select", null,
+      ...["class","teacher","classroom","subject","grade"].map(t => {
+        const opt = D.el("option", { value:t }, t);
+        if (t === draft.typ) opt.selected = true;
+        return opt;
+      }));
+    fTyp.addEventListener("change", e => draft.typ = e.target.value);
+    const fText = D.el("input", { type:"checkbox",
+      checked: draft.texttables ? "checked" : null,
+      onchange:(e)=>draft.texttables = e.target.checked });
+    const fColor = D.el("input", { type:"checkbox",
+      checked: draft.colortables ? "checked" : null,
+      onchange:(e)=>draft.colortables = e.target.checked });
+
+    D.buildEditSheet({
+      title: isNew ? "New view" : `Edit view — ${draft.name}`,
+      fields:[
+        { label:"Name",         control:fName },
+        { label:"Icon",         control:fIcon },
+        { label:"Type",         control:fTyp },
+        { label:"Text tables",  control:fText },
+        { label:"Color tables", control:fColor },
+      ],
+      onSave:()=>{
+        if (!draft.name.trim()) { fName.focus(); return; }
+        const all = ensure();
+        const payload = {
+          name: draft.name.trim(),
+          icon: draft.icon.trim() || undefined,
+          typ: draft.typ || undefined,
+          texttables: !!draft.texttables,
+          colortables: !!draft.colortables,
+        };
+        if (!isNew) {
+          const before = { ...ref };
+          Object.assign(ref, payload);
+          window.APP.audit.append({ entity:"ttviews", op:"update",
+            before, after:{...ref} });
+        } else {
+          if (all.some(x => x.name === payload.name)) { fName.focus(); return; }
+          payload.id = D.uid("vw");
+          all.push(payload);
+          window.APP.audit.append({ entity:"ttviews", op:"add", after:{...payload} });
+        }
+        D.closeSheet(); D.refresh(rows());
+      },
+    });
+  }
+
+  function open() {
+    ensure();
+    D.open({
+      entity:"ttviews", title:"Timetable views",
+      columns:columns(), rows:rows(),
+      onAction:(cmd, row) => {
+        if (cmd === "new") return openEdit(null);
+        if (cmd === "edit" && row) return openEdit(row);
+        if (cmd === "delete" && row) {
+          const all = ensure();
+          const i = all.findIndex(x => x.id === row._ref.id);
+          if (i >= 0) {
+            const removed = all.splice(i,1)[0];
+            window.APP.audit.append({ entity:"ttviews", op:"remove",
+              before:{...removed} });
+            D.refresh(rows());
+          }
+        }
+      },
+    });
+  }
+
+  global.EntityTTViews = { open };
+})(window);

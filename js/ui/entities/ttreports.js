@@ -1,0 +1,135 @@
+/* TTReports CRUD dialog. window.EntityTTReports.open()
+ * Print-report templates — each row defines layout for printed
+ * timetables. Fields: name, typ, fitwidth, fitheight, hideempty
+ * (multi-toggle matrix of cell-types to suppress when empty). */
+(function (global) {
+  "use strict";
+  const D = window.EntityDialog;
+  if (!D) return;
+
+  const HIDE_KEYS = ["lessons","breaks","supervisions","gaps"];
+
+  function ensure() {
+    const s = window.APP.school = window.APP.school || {};
+    if (!Array.isArray(s.ttreports)) s.ttreports = [];
+    return s.ttreports;
+  }
+
+  function rows() {
+    return ensure().map(r => ({
+      id: r.id, name: r.name || "(unnamed)",
+      typ: r.typ || "",
+      fitwidth: r.fitwidth || "",
+      fitheight: r.fitheight || "",
+      hide: hideSummary(r.hideempty),
+      _ref: r,
+    }));
+  }
+
+  function hideSummary(h) {
+    if (!h) return "—";
+    const on = HIDE_KEYS.filter(k => h[k]);
+    return on.length ? on.join(",") : "—";
+  }
+
+  function columns() { return [
+    { key:"name",      label:"Name" },
+    { key:"typ",       label:"Type" },
+    { key:"fitwidth",  label:"Fit W" },
+    { key:"fitheight", label:"Fit H" },
+    { key:"hide",      label:"Hide empty" },
+  ]; }
+
+  function openEdit(r) {
+    const isNew = !r;
+    const ref = r ? r._ref : null;
+    const draft = isNew
+      ? { name:"", typ:"class", fitwidth:"", fitheight:"",
+          hideempty:{ lessons:false, breaks:false, supervisions:false, gaps:false } }
+      : { name:ref.name || "", typ:ref.typ || "class",
+          fitwidth:ref.fitwidth || "", fitheight:ref.fitheight || "",
+          hideempty:Object.assign({ lessons:false, breaks:false,
+            supervisions:false, gaps:false }, ref.hideempty || {}) };
+
+    const fName = D.el("input", { type:"text", value:draft.name, required:"required",
+      maxlength:"40", oninput:(e)=>draft.name = e.target.value });
+    const fTyp = D.el("select", null,
+      ...["class","teacher","classroom","summary","subject"].map(t => {
+        const opt = D.el("option", { value:t }, t);
+        if (t === draft.typ) opt.selected = true;
+        return opt;
+      }));
+    fTyp.addEventListener("change", e => draft.typ = e.target.value);
+    const fFw = D.el("input", { type:"number", min:"0", value:draft.fitwidth,
+      oninput:(e)=>draft.fitwidth = e.target.value });
+    const fFh = D.el("input", { type:"number", min:"0", value:draft.fitheight,
+      oninput:(e)=>draft.fitheight = e.target.value });
+
+    const hideWrap = D.el("div", { class:"chrx-ent-printflags" });
+    HIDE_KEYS.forEach(k => {
+      const c = D.el("input", { type:"checkbox",
+        checked: draft.hideempty[k] ? "checked" : null,
+        onchange:(e)=>draft.hideempty[k] = e.target.checked });
+      hideWrap.appendChild(D.el("label", { class:"chrx-ent-inline" }, c,
+        D.el("span", null, " " + k)));
+    });
+
+    D.buildEditSheet({
+      title: isNew ? "New report template" : `Edit report — ${draft.name}`,
+      fields:[
+        { label:"Name",       control:fName },
+        { label:"Type",       control:fTyp },
+        { label:"Fit width",  control:fFw },
+        { label:"Fit height", control:fFh },
+        { label:"Hide empty", control:hideWrap },
+      ],
+      onSave:()=>{
+        if (!draft.name.trim()) { fName.focus(); return; }
+        const all = ensure();
+        const payload = {
+          name: draft.name.trim(),
+          typ: draft.typ || undefined,
+          fitwidth: draft.fitwidth ? parseFloat(draft.fitwidth) : undefined,
+          fitheight: draft.fitheight ? parseFloat(draft.fitheight) : undefined,
+          hideempty: Object.assign({}, draft.hideempty),
+        };
+        if (!isNew) {
+          const before = { ...ref };
+          Object.assign(ref, payload);
+          window.APP.audit.append({ entity:"ttreports", op:"update",
+            before, after:{...ref} });
+        } else {
+          if (all.some(x => x.name === payload.name)) { fName.focus(); return; }
+          payload.id = D.uid("rep");
+          all.push(payload);
+          window.APP.audit.append({ entity:"ttreports", op:"add", after:{...payload} });
+        }
+        D.closeSheet(); D.refresh(rows());
+      },
+    });
+  }
+
+  function open() {
+    ensure();
+    D.open({
+      entity:"ttreports", title:"Print report templates",
+      columns:columns(), rows:rows(),
+      onAction:(cmd, row) => {
+        if (cmd === "new") return openEdit(null);
+        if (cmd === "edit" && row) return openEdit(row);
+        if (cmd === "delete" && row) {
+          const all = ensure();
+          const i = all.findIndex(x => x.id === row._ref.id);
+          if (i >= 0) {
+            const removed = all.splice(i,1)[0];
+            window.APP.audit.append({ entity:"ttreports", op:"remove",
+              before:{...removed} });
+            D.refresh(rows());
+          }
+        }
+      },
+    });
+  }
+
+  global.EntityTTReports = { open };
+})(window);
