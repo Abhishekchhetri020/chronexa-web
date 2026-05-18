@@ -1,0 +1,76 @@
+/* Daily attendance sheet — one A4 portrait per class per day.
+ *
+ * For schools that mark attendance on a paper sheet kept on the teacher's
+ * desk: each period gets a checkbox column; the bottom carries a sign-off
+ * row. Compact enough that a whole week (6 days) fits as 6 print pages.
+ */
+(function () {
+  "use strict";
+  const U = window.APP.printTemplateUtils;
+  if (!U) return;
+  const { el, page, header, footer, emptyPage, DAYS, cardAtFor, subjectLabel, teacherList } = U;
+
+  function render(school /*, cards */) {
+    if (!school || !school.classes || !school.classes.length) return [emptyPage("No classes")];
+    const periods = school.bell?.periods || [];
+    const byClass = school._idx?.cardsByClass || {};
+    const pages = [];
+
+    for (const c of school.classes) {
+      const list = byClass[c.id] || [];
+      for (let d = 0; d < DAYS.length; d++) {
+        const p = page(false);
+        p.appendChild(header(c.name + " — " + DAYS[d] + " daily attendance",
+          (school.schoolName || "") + " · " + new Date().toLocaleDateString()));
+
+        // Period strip
+        const tbl = el("table", { style: U.tableCSS() });
+        const tr0 = el("tr");
+        tr0.appendChild(el("th", { style: U.thCSS() }, "Period"));
+        tr0.appendChild(el("th", { style: U.thCSS() }, "Subject / Teacher"));
+        tr0.appendChild(el("th", { style: U.thCSS() }, "Room"));
+        tr0.appendChild(el("th", { style: U.thCSS() }, "Present"));
+        tr0.appendChild(el("th", { style: U.thCSS() }, "Absent"));
+        tr0.appendChild(el("th", { style: U.thCSS() }, "Signature"));
+        tbl.appendChild(el("thead", null, tr0));
+
+        const tbody = el("tbody");
+        for (const per of periods) {
+          const card = cardAtFor(list, d, per.index);
+          const tr = el("tr");
+          tr.appendChild(el("td", { style: U.tdCSS() + ";text-align:center;font-weight:600" },
+            "P" + per.index, el("div", { style: "font-weight:400;font-size:8.5px;color:#666" }, per.label || "")));
+          if (card) {
+            tr.appendChild(el("td", { style: U.tdCSS() },
+              el("div", { style: "font-weight:600" }, subjectLabel(card)),
+              el("div", { style: "font-size:8.5px;color:#666" }, teacherList(card))));
+            tr.appendChild(el("td", { style: U.tdCSS() }, card.classroom || ""));
+          } else {
+            tr.appendChild(el("td", { style: U.tdCSS() + ";color:#bbb;text-align:center" }, "—"));
+            tr.appendChild(el("td", { style: U.tdCSS() }, ""));
+          }
+          tr.appendChild(el("td", { style: U.tdCSS() + ";min-width:50px" }, ""));
+          tr.appendChild(el("td", { style: U.tdCSS() + ";min-width:50px" }, ""));
+          tr.appendChild(el("td", { style: U.tdCSS() + ";min-width:80px" }, ""));
+          tbody.appendChild(tr);
+        }
+        tbl.appendChild(tbody);
+        p.appendChild(tbl);
+
+        // Sign-off
+        p.appendChild(el("div", { style: "display:flex;justify-content:space-between;margin-top:18px;font-size:10px" },
+          el("div", null, "Class teacher signature: ___________________________"),
+          el("div", null, "HM signature: ___________________________")));
+
+        p.appendChild(footer());
+        pages.push(p);
+      }
+    }
+    return pages;
+  }
+
+  window.APP.printTemplates.register("daily_attendance", {
+    name: "Daily attendance sheet",
+    render,
+  });
+})();

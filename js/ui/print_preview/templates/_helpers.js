@@ -1,0 +1,83 @@
+/* Shared helpers for Agent M's print templates. Loaded before any template
+ * module. Mirrors the el() / pageHeader() / gridTable() shape inside Agent
+ * H's print_preview.js so the visual style stays uniform.
+ */
+(function () {
+  "use strict";
+  const APP = (window.APP = window.APP || {});
+  const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      if (k === "class") n.className = attrs[k];
+      else if (k === "html") n.innerHTML = attrs[k];
+      else if (k.startsWith("on") && typeof attrs[k] === "function") n.addEventListener(k.slice(2), attrs[k]);
+      else if (attrs[k] != null) n.setAttribute(k, attrs[k]);
+    }
+    for (const c of kids) {
+      if (c == null) continue;
+      n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    }
+    return n;
+  }
+
+  function page(landscape) {
+    return el("div", {
+      class: "chrx-preview-page",
+      style: landscape
+        ? "width:297mm;min-height:210mm;padding:10mm 12mm;background:#fff"
+        : "background:#fff",
+    });
+  }
+
+  function header(title, subtitle) {
+    return el("div", {
+      style: "display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid #333;padding-bottom:4px;margin-bottom:8px",
+    },
+      el("h2", { style: "margin:0;font-size:14px" }, title || ""),
+      el("div", { style: "font-size:9.5px;color:#555" }, subtitle || ""));
+  }
+
+  function footer() {
+    return el("div", { style: "font-size:9px;color:#999;text-align:right;margin-top:8px" },
+      "Chronexa · " + new Date().toLocaleDateString());
+  }
+
+  function emptyPage(msg) {
+    const p = page();
+    p.appendChild(header(msg || "No data", ""));
+    return p;
+  }
+
+  function cardAtFor(list, day, period) {
+    return (list || []).find(c => c.day === day && c.period === period) || null;
+  }
+
+  function subjectLabel(card) {
+    if (!card) return "";
+    return card.subjectAbbr || card.subject || "";
+  }
+
+  function teacherList(card) {
+    return (card && card.teachers) ? card.teachers.join(", ") : "";
+  }
+
+  // Style block used by tables across templates (kept tiny so each template
+  // can rely on identical look without redefining).
+  function tableCSS() {
+    return "border-collapse:collapse;width:100%;font-size:9.5px";
+  }
+  function thCSS() {
+    return "border:1px solid #888;background:#f0f0f0;padding:3px 5px;font-weight:600;text-align:left";
+  }
+  function tdCSS() {
+    return "border:1px solid #bbb;padding:3px 5px;vertical-align:top";
+  }
+
+  APP.printTemplateUtils = {
+    DAYS, el, page, header, footer, emptyPage,
+    cardAtFor, subjectLabel, teacherList,
+    tableCSS, thCSS, tdCSS,
+  };
+})();

@@ -1,0 +1,61 @@
+/* Summary of students — single A4 landscape with one row per class (acting as
+ * the student-group container) showing weekly period counts grouped by
+ * subject. Useful for parents to see workload distribution at a glance.
+ */
+(function () {
+  "use strict";
+  const U = window.APP.printTemplateUtils;
+  if (!U) return;
+  const { el, page, header, footer, emptyPage } = U;
+
+  function render(school /*, cards */) {
+    if (!school || !school.classes || !school.classes.length) return [emptyPage("No classes")];
+
+    const subjects = school.subjects || [];
+    const subjectById = Object.fromEntries(subjects.map(s => [s.id, s]));
+    const cardsByClass = school._idx?.cardsByClass || {};
+
+    const p = page(true);
+    p.appendChild(header("Summary of students", school.schoolName || ""));
+
+    const tbl = el("table", { style: U.tableCSS() });
+    const thead = el("thead");
+    const tr0 = el("tr");
+    tr0.appendChild(el("th", { style: U.thCSS() }, "Class"));
+    tr0.appendChild(el("th", { style: U.thCSS() }, "Total"));
+    subjects.forEach(s => tr0.appendChild(el("th", { style: U.thCSS() }, s.abbr || s.name)));
+    thead.appendChild(tr0);
+    tbl.appendChild(thead);
+
+    const tbody = el("tbody");
+    for (const c of school.classes) {
+      const list = cardsByClass[c.id] || [];
+      const tr = el("tr");
+      tr.appendChild(el("th", { style: U.thCSS() }, c.name));
+      tr.appendChild(el("td", { style: U.tdCSS() + ";text-align:right;font-weight:600" }, String(list.length)));
+
+      const tally = {};
+      for (const card of list) {
+        const sid = card.subjectId || card.subject || "?";
+        tally[sid] = (tally[sid] || 0) + 1;
+      }
+      for (const s of subjects) {
+        const n = tally[s.id] || tally[s.name] || 0;
+        tr.appendChild(el("td", { style: U.tdCSS() + ";text-align:right;" + (n ? "" : "color:#ccc") }, n ? String(n) : "·"));
+      }
+      tbody.appendChild(tr);
+    }
+    tbl.appendChild(tbody);
+    p.appendChild(tbl);
+
+    p.appendChild(el("div", { style: "margin-top:10px;font-size:9px;color:#666" },
+      "Rows: " + school.classes.length + "  ·  Subjects: " + subjects.length));
+    p.appendChild(footer());
+    return [p];
+  }
+
+  window.APP.printTemplates.register("summary_of_students", {
+    name: "Summary of students",
+    render,
+  });
+})();

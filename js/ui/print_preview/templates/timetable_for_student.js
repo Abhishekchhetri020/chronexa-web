@@ -1,0 +1,67 @@
+/* Timetable for each student (section) — one A4 portrait page per section.
+ *
+ * EduPage equivalent: "Timetable for each student". When the school doesn't
+ * define explicit sections, we fall back to one page per class (a class IS
+ * a section in single-section schools — common in CBSE primaries).
+ */
+(function () {
+  "use strict";
+  const U = window.APP.printTemplateUtils;
+  if (!U) { console.warn("[timetable_for_student] helpers missing"); return; }
+  const { el, page, header, footer, emptyPage, DAYS, cardAtFor, subjectLabel, teacherList } = U;
+
+  function render(school /*, cards */) {
+    if (!school || !school.classes || !school.classes.length) return [emptyPage("No classes")];
+    const periods = school.bell?.periods || [];
+    const byClass = school._idx?.cardsByClass || {};
+    const pages = [];
+
+    for (const c of school.classes) {
+      const sections = (c.sections && c.sections.length) ? c.sections : [{ id: c.id, name: c.name }];
+      for (const sec of sections) {
+        const list = byClass[c.id] || [];
+        const p = page(false);
+        p.appendChild(header(
+          sec.name + " — Student timetable",
+          (school.schoolName || "") + " · " + DAYS.length + " days × " + periods.length + " periods"));
+
+        const tbl = el("table", { style: U.tableCSS() });
+        const thead = el("thead");
+        const tr0 = el("tr");
+        tr0.appendChild(el("th", { style: U.thCSS() }, "Day"));
+        periods.forEach(per => tr0.appendChild(el("th", { style: U.thCSS() },
+          "P" + per.index, el("div", { style: "font-weight:400;font-size:8.5px;color:#666" }, per.label || ""))));
+        thead.appendChild(tr0);
+        tbl.appendChild(thead);
+
+        const tbody = el("tbody");
+        for (let d = 0; d < DAYS.length; d++) {
+          const tr = el("tr");
+          tr.appendChild(el("th", { style: U.thCSS() }, DAYS[d]));
+          for (const per of periods) {
+            const card = cardAtFor(list, d, per.index);
+            if (!card) {
+              tr.appendChild(el("td", { style: U.tdCSS() + ";color:#bbb;text-align:center" }, "—"));
+            } else {
+              tr.appendChild(el("td", { style: U.tdCSS() },
+                el("div", { style: "font-weight:600" }, subjectLabel(card)),
+                el("div", { style: "font-size:8.5px;color:#666" }, teacherList(card)),
+                el("div", { style: "font-size:8.5px;color:#888" }, card.classroom || "")));
+            }
+          }
+          tbody.appendChild(tr);
+        }
+        tbl.appendChild(tbody);
+        p.appendChild(tbl);
+        p.appendChild(footer());
+        pages.push(p);
+      }
+    }
+    return pages;
+  }
+
+  window.APP.printTemplates.register("timetable_for_student", {
+    name: "Timetable for each student",
+    render,
+  });
+})();

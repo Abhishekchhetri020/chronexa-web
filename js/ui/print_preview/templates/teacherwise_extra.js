@@ -1,0 +1,67 @@
+/* Teacher-wise — extra columns variant.
+ *
+ * Adds gap-count, free-period count, and load fairness columns next to the
+ * core grid. Useful for principals reviewing weekly fairness across staff.
+ * One A4 landscape page lists all teachers in a single table.
+ */
+(function () {
+  "use strict";
+  const U = window.APP.printTemplateUtils;
+  if (!U) return;
+  const { el, page, header, footer, emptyPage, DAYS } = U;
+
+  function render(school /*, cards */) {
+    if (!school || !school.teachers || !school.teachers.length) return [emptyPage("No teachers")];
+    const periods = school.bell?.periods || [];
+    const byTeacher = school._idx?.cardsByTeacher || {};
+    const totalSlots = DAYS.length * periods.length;
+
+    const p = page(true);
+    p.appendChild(header("Teacher-wise — extra columns", school.schoolName || ""));
+
+    const tbl = el("table", { style: U.tableCSS() });
+    const head = el("tr");
+    ["Teacher", "Abbr", "Periods", "Free", "Gaps", "Max consec.", "Util %"]
+      .forEach(h => head.appendChild(el("th", { style: U.thCSS() }, h)));
+    tbl.appendChild(el("thead", null, head));
+    const body = el("tbody");
+
+    for (const t of school.teachers) {
+      const list = byTeacher[t.id] || [];
+      let gaps = 0, maxRun = 0;
+      for (let d = 0; d < DAYS.length; d++) {
+        const dayList = list.filter(x => x.day === d).map(x => x.period).sort((a, b) => a - b);
+        if (!dayList.length) continue;
+        let run = 1;
+        for (let i = 1; i < dayList.length; i++) {
+          if (dayList[i] === dayList[i - 1] + 1) run += 1;
+          else { gaps += (dayList[i] - dayList[i - 1] - 1); maxRun = Math.max(maxRun, run); run = 1; }
+        }
+        maxRun = Math.max(maxRun, run);
+      }
+      const util = totalSlots ? Math.round(100 * list.length / totalSlots) : 0;
+
+      const tr = el("tr");
+      tr.appendChild(el("td", { style: U.tdCSS() }, t.name));
+      tr.appendChild(el("td", { style: U.tdCSS() }, t.abbr || ""));
+      tr.appendChild(el("td", { style: U.tdCSS() + ";text-align:right" }, String(list.length)));
+      tr.appendChild(el("td", { style: U.tdCSS() + ";text-align:right;color:#666" }, String(totalSlots - list.length)));
+      tr.appendChild(el("td", { style: U.tdCSS() + ";text-align:right;" + (gaps > 4 ? "color:#a00" : "") }, String(gaps)));
+      tr.appendChild(el("td", { style: U.tdCSS() + ";text-align:right" }, String(maxRun)));
+      tr.appendChild(el("td", { style: U.tdCSS() + ";text-align:right" }, util + "%"));
+      body.appendChild(tr);
+    }
+    tbl.appendChild(body);
+    p.appendChild(tbl);
+
+    p.appendChild(el("div", { style: "margin-top:8px;font-size:9px;color:#666" },
+      "Total weekly slots = " + totalSlots + ". Gaps > 4 highlighted."));
+    p.appendChild(footer());
+    return [p];
+  }
+
+  window.APP.printTemplates.register("teacherwise_extra", {
+    name: "Teacher-wise (extra columns)",
+    render,
+  });
+})();

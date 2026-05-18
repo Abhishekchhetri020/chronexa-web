@@ -1,0 +1,56 @@
+/* Print template registry — sidecar that Agent H's print_preview.js can
+ * consume to populate the "Select your report" dropdown with all 20+
+ * templates (Agent H's 5 built-ins + the 15 added by Agent M's
+ * /templates/*.js modules).
+ *
+ * Each template module self-registers via:
+ *   window.APP.printTemplates.register("my_id", { name, render })
+ *
+ * print_preview.js can do:
+ *   for (const t of window.APP.printTemplates.list()) sel.appendChild(option…)
+ *   const tpl = window.APP.printTemplates.get(id);
+ *   tpl.render(school, periods)  // returns Array<Node> (one per A4 page)
+ */
+(function () {
+  "use strict";
+  const APP = (window.APP = window.APP || {});
+
+  const reg = new Map();
+
+  // Pre-register Agent H's 5 built-ins (id, label) — keeps the dropdown
+  // ordering stable when print_preview.js iterates list().
+  const BUILTINS = [
+    ["class",   "Timetable for each class"],
+    ["teacher", "Timetable for each teacher"],
+    ["room",    "Timetable for each room"],
+    ["summary", "Summary of classes"],
+    ["poster",  "Wall poster (landscape)"],
+  ];
+
+  function register(id, def) {
+    if (!id || !def || typeof def.render !== "function") {
+      console.warn("[print templates] bad registration:", id);
+      return;
+    }
+    reg.set(id, { id, name: def.name || id, render: def.render, builtin: !!def.builtin });
+  }
+
+  function get(id) { return reg.get(id); }
+
+  function list() {
+    // Stable order: built-ins first (their declared order), then registrations
+    // in insertion order.
+    const out = [];
+    for (const [id, name] of BUILTINS) {
+      const e = reg.get(id);
+      if (e) out.push(e);
+      else out.push({ id, name, builtin: true });
+    }
+    for (const [id, e] of reg.entries()) {
+      if (!BUILTINS.find(b => b[0] === id)) out.push(e);
+    }
+    return out;
+  }
+
+  APP.printTemplates = { register, get, list };
+})();
