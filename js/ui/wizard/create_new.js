@@ -45,6 +45,44 @@
 
   const PALETTE_24 = makePalette(24);
 
+  /** Build the _idx index that the editor + pending strip rely on. */
+  function buildIndex(school) {
+    const teacherById = {};   for (const t of school.teachers || [])   teacherById[t.id]   = t;
+    const subjectById = {};   for (const s of school.subjects || [])   subjectById[s.id]   = s;
+    const classById = {};     for (const c of school.classes || [])    classById[c.id]     = c;
+    const classroomById = {}; for (const r of school.classrooms || []) classroomById[r.id] = r;
+    const lessonById = {};    for (const l of school.lessons || [])    lessonById[l.id]    = l;
+
+    const cardsByClass = {};
+    const cardsByTeacher = {};
+    const cardsByRoom = {};
+    for (const card of (school.cards || [])) {
+      const lesson = lessonById[card.lessonId];
+      if (!lesson) continue;
+      for (const cid of (lesson.classIds || [])) {
+        (cardsByClass[cid] = cardsByClass[cid] || []).push(card);
+      }
+      for (const tid of (lesson.teacherIds || [])) {
+        (cardsByTeacher[tid] = cardsByTeacher[tid] || []).push(card);
+      }
+      if (card.classroomId) {
+        (cardsByRoom[card.classroomId] = cardsByRoom[card.classroomId] || []).push(card);
+      }
+    }
+
+    return {
+      teacherById, subjectById, classById, classroomById, lessonById,
+      cardsByClass, cardsByTeacher, cardsByRoom,
+      days: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+    };
+  }
+
+  function refreshIndex() {
+    const APP = global.APP || {};
+    if (!APP.school) return;
+    APP.school._idx = buildIndex(APP.school);
+  }
+
   /**
    * Initialize an empty school. The user fills it in via the entity dialogs.
    */
@@ -60,12 +98,12 @@
       lessons: [],
       cards: [],
     };
+    APP.school._idx = buildIndex(APP.school);
     APP.editor = APP.editor || {};
     APP.editor.perspective = "class";
     APP.editor.cardInHand = null;
     APP.audit = APP.audit || { _log: [] };
     APP.audit._log.push({ ts: Date.now(), op: "create-new-blank", schoolName: APP.school.schoolName });
-    // Dispatch state-change event so other modules can rerender
     document.dispatchEvent(new CustomEvent("app:school-loaded", { detail: { source: "create-new" } }));
   }
 
@@ -107,6 +145,7 @@
       { id: "L5", subjectId: "S2", teacherIds: ["T4"], classIds: ["C2"], periodsPerWeek: 3 },
       { id: "L6", subjectId: "S1", teacherIds: ["T1"], classIds: ["C3"], periodsPerWeek: 5 },
     ];
+    S._idx = buildIndex(S);
     document.dispatchEvent(new CustomEvent("app:school-loaded", { detail: { source: "create-demo" } }));
   }
 
@@ -132,5 +171,5 @@
     assign(S.classes);
   }
 
-  global.CreateNew = { createBlank, createDemoSeed, ensureColors, PALETTE_24 };
+  global.CreateNew = { createBlank, createDemoSeed, ensureColors, refreshIndex, buildIndex, PALETTE_24 };
 })(window);
