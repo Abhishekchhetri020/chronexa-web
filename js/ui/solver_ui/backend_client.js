@@ -14,20 +14,26 @@
  *   }
  *
  *   Handler events:
- *     { type: "progress", iter, softScore, hardConflicts, durationMs }
+ *     { type: "progress", iter, softScore, hardConflicts, backtracks?, durationMs }
  *     { type: "done",     result: SolveResponse }
  *     { type: "error",    message }
  *
- * Cloud path: POST `${CHRONEXA_BACKEND_URL}/solve` with the SolveRequest
- * payload; while awaiting, synthesize heartbeat progress every 750 ms so the
- * modal stays alive. The backend exposes a synchronous /solve only (see
- * docs/DEPLOY.md) — when Agent B adds /solve/status/:id we'll switch to true
- * polling without changing this surface.
+ * Cloud path (wave-3):
+ *   1. POST `${CHRONEXA_BACKEND_URL}/solve/start` → { jobId }
+ *   2. setInterval(1000) → GET `/solve/status/:jobId` → { state, progress, result?, error? }
+ *      state ∈ "queued" | "running" | "done" | "cancelled" | "error"
+ *   3. cancel() → POST `/solve/cancel/:jobId`
+ *
+ * Backward compat:
+ *   If `/solve/start` returns 404 (older backend, sync-only), we fall back to
+ *   the legacy `POST /solve` + 750ms synthesized heartbeat path. The Source
+ *   contract is identical either way.
  */
 (function (global) {
   "use strict";
 
   const HEARTBEAT_MS = 750;
+  const POLL_MS = 1000;
   const DEFAULT_TIMEOUT_MS = 90_000;
 
   // Capture this script's URL at load time so the Worker URL resolves
@@ -88,21 +94,18 @@
   }
 
   // -------- cloud (HTTP) source -------------------------------------------
-  function runCloud(school, options, onFallback) {
-    const sub = makeSubscribable();
-    const baseUrl = (global.CHRONEXA_BACKEND_URL || "").replace(/\/+$/, "");
-    if (!baseUrl) {
-      if (onFallback) try { onFallback("CHRONEXA_BACKEND_URL not set"); } catch {}
-      return runBrowser(school, options);
-    }
 
+  /**
+   * Legacy sync /solve + 750ms synthesized heartbeat path. Used when the
+   * backend doesn't yet expose /solve/start (we get a 404 on first attempt).
+   */
+  function runCloudSyncFallback(baseUrl, school, options, sub, t0) {
     const ctl = new AbortController();
-    const t0 = performance.now();
-    const timeLimitMs = Math.max(1000, (options && options.timeLimitSec ? options.timeLimitSec : 60) * 1000);
-    let lastIter = 0;
     let cancelled = false;
     let paused = false;
     let pausedSnap = null;
+    let lastIter = 0;
+    const timeLimitMs = Math.max(1000, (options && options.timeLimitSec ? options.timeLimitSec : 60) * 1000);
 
     const heartbeat = setInterval(() => {
       if (cancelled) return;
@@ -124,7 +127,7 @@
       try { ctl.abort(); } catch {}
     }, DEFAULT_TIMEOUT_MS + timeLimitMs);
 
-    fetch(baseUrl + "/solve", {
+    const finished = fetch(baseUrl + "/solve", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ school, options }),
@@ -138,22 +141,14 @@
       .catch(err => {
         if (cancelled) return;
         const msg = (err && err.name === "AbortError") ? "timeout" : ((err && err.message) || String(err));
-        // Soft fallback: if the cloud endpoint refused or timed out, hand off to
-        // the browser worker so the user still gets a result.
-        if (onFallback) try { onFallback("cloud failed: " + msg); } catch {}
-        const local = runBrowser(school, options);
-        local.subscribe(sub.emit);
-        // Caller's source object delegates cancel/pause to the local worker now.
-        Object.assign(src, local);
+        sub.emit({ type: "error", message: msg });
       })
       .finally(() => {
         clearInterval(heartbeat);
         clearTimeout(timeout);
       });
 
-    const src = {
-      mode: "cloud",
-      subscribe: sub.subscribe,
+    return {
       cancel() {
         cancelled = true;
         try { ctl.abort(); } catch {}
@@ -163,7 +158,147 @@
       },
       pause()  { paused = true; },
       resume() { paused = false; if (pausedSnap) { sub.emit(pausedSnap); pausedSnap = null; } },
+      _done: finished,
     };
+  }
+
+  /** Async /solve/start + /solve/status polling. */
+  function runCloudAsync(baseUrl, school, options, sub, t0) {
+    let cancelled = false;
+    let paused = false;
+    let pausedSnap = null;
+    let jobId = null;
+    let pollTimer = null;
+    let cancelInFlight = false;
+
+    function clearPoll() {
+      if (pollTimer != null) { clearInterval(pollTimer); pollTimer = null; }
+    }
+
+    function poll() {
+      if (!jobId || cancelled) return;
+      fetch(`${baseUrl}/solve/status/${encodeURIComponent(jobId)}`, { method: "GET" })
+        .then(r => {
+          if (r.status === 404) throw new Error("status-404");
+          if (!r.ok) return r.text().then(t => Promise.reject(new Error(t || ("HTTP " + r.status))));
+          return r.json();
+        })
+        .then(snap => {
+          if (cancelled) return;
+          const p = snap.progress || {};
+          const ev = {
+            type: "progress",
+            iter: p.iter | 0,
+            softScore: p.softScore | 0,
+            hardConflicts: p.hardConflicts | 0,
+            backtracks: (p.backtracks | 0) || undefined,
+            durationMs: p.durationMs | 0,
+          };
+          if (paused) { pausedSnap = ev; }
+          else { sub.emit(ev); }
+          if (snap.state === "done") {
+            clearPoll();
+            sub.emit({ type: "done", result: snap.result });
+          } else if (snap.state === "error") {
+            clearPoll();
+            sub.emit({ type: "error", message: snap.error || "backend error" });
+          } else if (snap.state === "cancelled") {
+            clearPoll();
+            // Don't double-emit cancelled here; cancel() already did.
+          }
+        })
+        .catch(err => {
+          if (cancelled) return;
+          // Transient errors are tolerated; surface only on persistent failure.
+          // For simplicity, emit error and stop on any non-404 fault.
+          clearPoll();
+          sub.emit({ type: "error", message: (err && err.message) || String(err) });
+        });
+    }
+
+    return {
+      _started: fetch(baseUrl + "/solve/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ school, options }),
+      })
+        .then(r => {
+          if (r.status === 404) {
+            const err = new Error("start-404");
+            err.fallback = true;
+            throw err;
+          }
+          if (!r.ok) return r.text().then(t => Promise.reject(new Error(t || ("HTTP " + r.status))));
+          return r.json();
+        })
+        .then(j => {
+          jobId = j && j.jobId;
+          if (!jobId) throw new Error("missing jobId in /solve/start response");
+          pollTimer = setInterval(poll, POLL_MS);
+          // Kick off an immediate poll so first progress arrives fast.
+          poll();
+        }),
+      cancel() {
+        cancelled = true;
+        clearPoll();
+        if (jobId && !cancelInFlight) {
+          cancelInFlight = true;
+          fetch(`${baseUrl}/solve/cancel/${encodeURIComponent(jobId)}`, { method: "POST" })
+            .catch(() => {});
+        }
+        sub.emit({ type: "cancelled" });
+      },
+      pause()  { paused = true; },
+      resume() { paused = false; if (pausedSnap) { sub.emit(pausedSnap); pausedSnap = null; } },
+      get jobId() { return jobId; },
+    };
+  }
+
+  function runCloud(school, options, onFallback) {
+    const sub = makeSubscribable();
+    const baseUrl = (global.CHRONEXA_BACKEND_URL || "").replace(/\/+$/, "");
+    if (!baseUrl) {
+      if (onFallback) try { onFallback("CHRONEXA_BACKEND_URL not set"); } catch {}
+      return runBrowser(school, options);
+    }
+
+    const t0 = performance.now();
+    const src = {
+      mode: "cloud",
+      subscribe: sub.subscribe,
+      cancel() {}, pause() {}, resume() {},
+    };
+
+    // Prefer the async /solve/start path; on 404 → legacy /solve fallback.
+    const asyncImpl = runCloudAsync(baseUrl, school, options, sub, t0);
+    asyncImpl._started
+      .then(() => {
+        Object.assign(src, {
+          cancel: asyncImpl.cancel,
+          pause:  asyncImpl.pause,
+          resume: asyncImpl.resume,
+        });
+      })
+      .catch(err => {
+        if (err && err.fallback) {
+          // Backend doesn't have /solve/start — gracefully fall back to legacy.
+          if (onFallback) try { onFallback("backend has no /solve/start, using sync /solve"); } catch {}
+          const sync = runCloudSyncFallback(baseUrl, school, options, sub, t0);
+          Object.assign(src, {
+            cancel: sync.cancel,
+            pause:  sync.pause,
+            resume: sync.resume,
+          });
+          return;
+        }
+        // Soft fallback to browser worker on cloud failure.
+        const msg = (err && err.message) || String(err);
+        if (onFallback) try { onFallback("cloud failed: " + msg); } catch {}
+        const local = runBrowser(school, options);
+        local.subscribe(sub.emit);
+        Object.assign(src, local);
+      });
+
     return src;
   }
 
