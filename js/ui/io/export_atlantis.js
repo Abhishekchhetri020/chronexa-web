@@ -1,0 +1,72 @@
+/* Atlantis STDPLAN exporter.
+ * CSV-like (semicolon-separated, German-locale convention).
+ * One header row + one row per card:
+ *   Class;Subject;Teacher;Room;Day;Period;StartTime;EndTime
+ */
+(function () {
+  "use strict";
+  const APP = window.APP;
+  const notify = window._chrxNotify || console.log;
+  const DAYS = ["Mo","Di","Mi","Do","Fr","Sa"];
+
+  function esc(v) {
+    if (v == null) return "";
+    const s = String(v);
+    return /[;\r\n"]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+  function minToTime(m) {
+    if (m == null) return "";
+    const h = Math.floor(m / 60), mm = m % 60;
+    return String(h).padStart(2, "0") + ":" + String(mm).padStart(2, "0");
+  }
+
+  function build(school) {
+    const teachers = {}, subjects = {}, classes = {}, rooms = {};
+    (school.teachers || []).forEach(t => teachers[t.id] = t);
+    (school.subjects || []).forEach(s => subjects[s.id] = s);
+    (school.classes  || []).forEach(c => classes[c.id]  = c);
+    (school.classrooms || []).forEach(r => rooms[r.id]  = r);
+    const lessons = {};
+    (school.lessons || []).forEach(l => lessons[l.id] = l);
+    const periods = {};
+    (school.bell?.periods || []).forEach(p => periods[p.index] = p);
+
+    const out = [];
+    out.push("Class;Subject;Teacher;Room;Day;Period;StartTime;EndTime");
+    for (const c of (school.cards || [])) {
+      const l = lessons[c.lessonId] || {};
+      const cls = (l.classIds || []).map(id => classes[id]?.name || id).join("/");
+      const sub = subjects[l.subjectId]?.name || l.subjectId || "";
+      const tch = (l.teacherIds || []).map(id => teachers[id]?.name || id).join("/");
+      const room = rooms[c.classroomId]?.name || c.classroomId || "";
+      const p = periods[c.period];
+      out.push([
+        esc(cls), esc(sub), esc(tch), esc(room),
+        DAYS[c.day] || "?", c.period,
+        minToTime(p?.startMin), minToTime(p?.endMin),
+      ].join(";"));
+    }
+    return out.join("\r\n") + "\r\n";
+  }
+
+  function download(text, fname) {
+    const blob = new Blob(["﻿" + text], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = fname;
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  }
+
+  function run(school) {
+    school = school || APP.school;
+    if (!school) { notify("Open a timetable first.", "error"); return; }
+    const csv = build(school);
+    const base = (school._meta?.sourceFilename || school.schoolName || "chronexa").replace(/\.\w+$/, "");
+    download(csv, base + "-stdplan.csv");
+    notify("Exported " + base + "-stdplan.csv");
+  }
+
+  window.ExportAtlantis = { run, build };
+  window.addEventListener("app:export-atlantis", () => run());
+})();
