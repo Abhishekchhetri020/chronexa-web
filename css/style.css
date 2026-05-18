@@ -1,0 +1,28 @@
+/* GDGPSD Examination Sitting Planner — extra styles */
+
+.step-panel { animation: fadein .2s ease-out; }
+@keyframes fadein { from {opacity:0;transform:translateY(8px);} to {opacity:1;transform:translateY(0);} }
+
+.step-btn.active { background-color: #1d4ed8; color: white; }
+
+.room-grid { display: grid; gap: 6px; }
+.bench-cell {
+  background: white; border: 1px solid #cbd5e1; border-radius: 4px;
+  padding: 4px 6px; font-size: 11px; line-height: 1.25;
+}
+.bench-cell .label { font-weight: 700; color: #1e40af; font-size: 10px; }
+.bench-cell .seat { display:flex; justify-content: space-between; gap: 4px; }
+.bench-cell .seat .left, .bench-cell .seat .right {
+  flex: 1; padding: 2px 4px; border-radius: 2px; background: #f1f5f9;
+}
+.bench-cell.warning { background: #fef3c7; }
+.bench-cell.same-section { background: #fee2e2; border-color: #f87171; }
+
+table.preview { border-collapse: collapse; font-size: 12px; }
+table.preview th, table.preview td { border: 1px solid #cbd5e1; padding: 4px 8px; }
+table.preview th { background: #1e3a8a; color: white; font-weight: 600; }
+table.preview tr:nth-child(even) { background: #f8fafc; }
+
+.warn { color: #b91c1c; }
+.ok { color: #047857; }
+.muted { color: #64748b; }
