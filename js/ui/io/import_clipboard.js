@@ -1,0 +1,109 @@
+/* Clipboard importer — reads navigator.clipboard text, auto-detects TSV/CSV,
+ * peeks at headers to guess if rows are teachers / classes / lessons,
+ * and shows a preview confirm() before merging into APP.school.
+ */
+(function () {
+  "use strict";
+  const APP = window.APP;
+  const notify = window._chrxNotify || console.log;
+
+  function splitTSV(text) {
+    const lines = text.split(/\r?\n/).filter(l => l.trim().length);
+    if (!lines.length) return { headers: [], rows: [] };
+    const sep = lines[0].indexOf("\t") >= 0 ? "\t" : (lines[0].indexOf(";") >= 0 ? ";" : ",");
+    const split = l => l.split(sep).map(c => c.replace(/^"|"$/g, "").trim());
+    const headers = split(lines[0]).map(h => h.toLowerCase());
+    const rows = lines.slice(1).map(split);
+    return { headers, rows };
+  }
+
+  function classify(headers) {
+    const h = headers.join(" ");
+    if (/teacher|name|abbr|short/.test(h) && !/class|subject|lesson/.test(h)) return "teachers";
+    if (/class|grade|section/.test(h) && !/teacher|subject|periods/.test(h)) return "classes";
+    if (/(teacher|subject).*class|class.*subject|periods|lesson/.test(h)) return "lessons";
+    if (/subject/.test(h)) return "subjects";
+    if (/room|capacity/.test(h)) return "classrooms";
+    return "unknown";
+  }
+
+  function col(headers, ...names) {
+    for (const n of names) {
+      const i = headers.indexOf(n.toLowerCase());
+      if (i >= 0) return i;
+    }
+    return -1;
+  }
+
+  function buildTeachers(h, rows) {
+    const nC = col(h, "name", "teacher", "fullname");
+    const aC = col(h, "abbr", "short", "shortcut");
+    return rows.map((r, i) => ({
+      id: "T" + (i + 1),
+      name: (nC >= 0 ? r[nC] : r[0]) || ("Teacher " + (i + 1)),
+      abbr: aC >= 0 ? r[aC] : "",
+    })).filter(t => t.name);
+  }
+  function buildClasses(h, rows) {
+    const nC = col(h, "name", "class", "section");
+    return rows.map((r, i) => ({
+      id: "C" + (i + 1),
+      name: (nC >= 0 ? r[nC] : r[0]) || ("Class " + (i + 1)),
+    })).filter(c => c.name);
+  }
+  function buildSubjects(h, rows) {
+    const nC = col(h, "name", "subject");
+    const aC = col(h, "abbr", "short");
+    return rows.map((r, i) => ({
+      id: "S" + (i + 1),
+      name: (nC >= 0 ? r[nC] : r[0]) || ("Subject " + (i + 1)),
+      abbr: aC >= 0 ? r[aC] : "",
+    })).filter(s => s.name);
+  }
+  function buildRooms(h, rows) {
+    const nC = col(h, "name", "room");
+    const cC = col(h, "capacity");
+    return rows.map((r, i) => ({
+      id: "R" + (i + 1),
+      name: (nC >= 0 ? r[nC] : r[0]) || ("Room " + (i + 1)),
+      capacity: cC >= 0 ? Number(r[cC]) || undefined : undefined,
+    })).filter(r => r.name);
+  }
+
+  async function run(text) {
+    try {
+      if (!text) {
+        if (!navigator.clipboard?.readText) throw new Error("Clipboard API unavailable");
+        text = await navigator.clipboard.readText();
+      }
+      if (!text || !text.trim()) { notify("Clipboard is empty", "error"); return; }
+      const { headers, rows } = splitTSV(text);
+      if (!rows.length) { notify("No data rows detected", "error"); return; }
+      const kind = classify(headers);
+      const preview = `Detected: ${kind}\nColumns: ${headers.join(", ")}\nRows: ${rows.length}\n\nFirst row: ${rows[0].join(" | ")}\n\nMerge into current school?`;
+      if (!confirm(preview)) { notify("Clipboard import cancelled"); return; }
+
+      const s = APP.school || {
+        schoolName: "", bell: { periods: [] },
+        teachers: [], classes: [], subjects: [], classrooms: [], lessons: [], cards: [],
+      };
+      let n = 0;
+      if (kind === "teachers")   { s.teachers   = buildTeachers(headers, rows); n = s.teachers.length; }
+      else if (kind === "classes") { s.classes  = buildClasses(headers, rows);  n = s.classes.length; }
+      else if (kind === "subjects"){ s.subjects = buildSubjects(headers, rows); n = s.subjects.length; }
+      else if (kind === "classrooms"){ s.classrooms = buildRooms(headers, rows); n = s.classrooms.length; }
+      else { notify("Unsupported clipboard layout: " + kind, "error"); return; }
+
+      APP.school = s;
+      document.querySelectorAll(".needs-school").forEach(b => b.disabled = false);
+      window.dispatchEvent(new CustomEvent("app:school-loaded", { detail: { school: s } }));
+      notify(`Clipboard merged · ${n} ${kind}`);
+    } catch (e) {
+      notify("Clipboard import failed: " + e.message, "error");
+      console.error(e);
+    }
+  }
+
+  window.ImportClipboard = { run, classify, splitTSV };
+  window.addEventListener("app:import-clipboard", () => run());
+})();
