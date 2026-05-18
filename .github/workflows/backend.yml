@@ -15,20 +15,65 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
       - name: Build image
         run: |
           cd backend
           docker build -t chronexa-web-backend:ci .
-      - name: Run container + health check
+
+      - name: Start container
         run: |
-          docker run --rm -d --name chrx -p 8001:8001 chronexa-web-backend:ci
-          sleep 5
-          for i in 1 2 3 4 5; do
-            if curl -sf http://localhost:8001/health; then
-              echo ""; echo "HEALTH OK"; docker stop chrx; exit 0
+          docker run -d --name chrx -p 8001:8001 chronexa-web-backend:ci
+
+      - name: Wait for /health
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8001/health; then
+              echo "HEALTH OK on attempt $i"
+              exit 0
             fi
-            sleep 2
+            sleep 1
           done
-          docker logs chrx; docker stop chrx; exit 1
+          echo "Container never became healthy. Logs:"
+          docker logs chrx
+          exit 1
+
+      - name: Smoke test /solve
+        run: |
+          cat > /tmp/fixture.json <<'JSON'
+          {
+            "school": {
+              "schoolName": "CI",
+              "bell": {"periods": [
+                {"index": 1, "label": "P1", "startMin": 0, "endMin": 40, "isTeaching": true},
+                {"index": 2, "label": "P2", "startMin": 40, "endMin": 80, "isTeaching": true}
+              ]},
+              "teachers": [{"id": "T1", "name": "A"}],
+              "classes": [{"id": "C1", "name": "VI"}],
+              "classrooms": [{"id": "R1", "name": "R"}],
+              "subjects": [{"id": "S1", "name": "Math"}],
+              "lessons": [{
+                "id": "L1", "classIds": ["C1"], "teacherIds": ["T1"],
+                "subjectId": "S1", "periodsPerWeek": 2
+              }]
+            },
+            "options": {"timeLimitSec": 5, "seed": 1}
+          }
+          JSON
+          RESP=$(curl -fsS -X POST http://127.0.0.1:8001/solve \
+                  -H 'Content-Type: application/json' \
+                  --data @/tmp/fixture.json)
+          echo "$RESP"
+          echo "$RESP" | grep -q '"status":"OPTIMAL"'
+          echo "$RESP" | grep -q '"placed":2'
+
+      - name: Print logs on failure
+        if: failure()
+        run: docker logs chrx || true
+
+      - name: Stop container
+        if: always()
+        run: docker stop chrx || true
