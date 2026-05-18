@@ -811,10 +811,31 @@ function addToUnassigned(arr, count, value) { arr[count] = value; return count +
 // Backtracking search
 // ---------------------------------------------------------------------------
 
+function maybeEmitProgress(ctx, state, unassignedCount0, initiallyInfeasibleCount, t0) {
+  if (!ctx.onProgress) return;
+  const now = performance.now();
+  const iterDelta = ctx.nodesVisited - ctx.progressLastIter;
+  const timeDelta = now - ctx.progressLastMs;
+  if (iterDelta < 500 && timeDelta < 500) return;
+  ctx.progressLastIter = ctx.nodesVisited;
+  ctx.progressLastMs = now;
+  try {
+    ctx.onProgress({
+      iter: ctx.nodesVisited,
+      softScore: state.bestSoftScore === -Number.MAX_SAFE_INTEGER ? 0 : state.bestSoftScore,
+      hardConflicts: (state.bestHardCount === Number.MAX_SAFE_INTEGER ? unassignedCount0 : state.bestHardCount) + initiallyInfeasibleCount,
+      backtracks: ctx.backtracks,
+      durationMs: Math.round(now - t0),
+    });
+  } catch {}
+}
+
 function backtrack(model, state, unassigned, unassignedCount, ctx) {
   if (ctx.timedOut) return;
   if (performance.now() >= ctx.deadlineMs) { ctx.timedOut = true; return; }
   ctx.nodesVisited += 1;
+  // Emit progress every 500 iterations or every 500ms (whichever first).
+  maybeEmitProgress(ctx, state, ctx.unassignedCount0, ctx.initiallyInfeasibleCount, ctx.t0);
 
   if (unassignedCount === 0) {
     const score = -softScore(model, state);
@@ -945,22 +966,37 @@ export function solve(school, options = {}) {
       backtracks: 0,
       deadlineMs,
       timedOut: false,
+      // Progress emission state — inline in the search loop. See backtrack().
+      onProgress,
+      progressLastIter: 0,
+      progressLastMs: performance.now(),
+      t0,
+      unassignedCount0,
+      initiallyInfeasibleCount: initiallyInfeasible.length,
     };
 
-    // Progress hook — emit every ~250ms via setInterval in worker context.
+    // Wall-clock safety net: even if the search never reaches a `backtrack`
+    // tick within 500ms (huge candidate sets, slow expansions), still emit at
+    // ~500ms via setInterval. The inline path is the primary source.
     const tickInterval = setIntervalShim(() => {
-      if (!onProgress) return;
-      onProgress({
-        iter: ctx.nodesVisited,
-        softScore: state.bestSoftScore === -Number.MAX_SAFE_INTEGER ? 0 : state.bestSoftScore,
-        hardConflicts: (state.bestHardCount === Number.MAX_SAFE_INTEGER ? unassignedCount0 : state.bestHardCount) + initiallyInfeasible.length,
-        durationMs: Math.round(performance.now() - t0),
-      });
-    }, 250);
+      maybeEmitProgress(ctx, state, unassignedCount0, initiallyInfeasible.length, t0);
+    }, 500);
     try {
       backtrack(model, state, unassigned, unassignedCount0, ctx);
     } finally {
       clearIntervalShim(tickInterval);
+    }
+    // Final flush at branch end so callers see the last state.
+    if (onProgress) {
+      try {
+        onProgress({
+          iter: ctx.nodesVisited,
+          softScore: state.bestSoftScore === -Number.MAX_SAFE_INTEGER ? 0 : state.bestSoftScore,
+          hardConflicts: (state.bestHardCount === Number.MAX_SAFE_INTEGER ? unassignedCount0 : state.bestHardCount) + initiallyInfeasible.length,
+          backtracks: ctx.backtracks,
+          durationMs: Math.round(performance.now() - t0),
+        });
+      } catch {}
     }
 
     totalNodes += ctx.nodesVisited;
