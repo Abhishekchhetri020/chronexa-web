@@ -1,0 +1,190 @@
+/* Chronexa Web design tokens.
+ * Ported from ChronexaTheme.swift + 17 chronexa-designs/ mockups.
+ * --chrx-* prefix avoids host (Tailwind) collisions.
+ * Dark: @media prefers-color-scheme OR <html data-theme="dark">.
+ * Pin light: <html data-theme="light">.
+ * Contrast (AA): fg/canvas 15:1 (AAA); accent/canvas 4.51:1 (AA). */
+
+:root {
+  /* Typography */
+  --chrx-font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text",
+    "SF Pro Display", "Helvetica Neue", "Segoe UI", system-ui, sans-serif;
+  --chrx-font-mono: "SF Mono", "JetBrains Mono", ui-monospace,
+    Menlo, Consolas, "Courier New", monospace;
+
+  --chrx-font-stat-big: 28px;
+  --chrx-font-sheet-title: 17px;
+  --chrx-font-section: 13px;
+  --chrx-font-body: 12.5px;
+  --chrx-font-small: 11.5px;
+  --chrx-font-eye: 10.5px;
+  --chrx-font-cell-s: 10px;
+  --chrx-font-cell-m: 9px;
+
+  --chrx-fw-regular: 400;
+  --chrx-fw-medium: 500;
+  --chrx-fw-semibold: 600;
+  --chrx-fw-bold: 700;
+
+  /* Spacing (4-pt) */
+  --chrx-space-0: 0; --chrx-space-1: 4px; --chrx-space-2: 8px;
+  --chrx-space-3: 12px; --chrx-space-4: 16px; --chrx-space-5: 20px;
+  --chrx-space-6: 24px; --chrx-space-8: 32px; --chrx-space-10: 40px;
+
+  /* Radius */
+  --chrx-radius-xs: 3px; --chrx-radius-sm: 4px; --chrx-radius-md: 6px;
+  --chrx-radius-lg: 8px;   /* matches Swift tileCornerRadius */
+  --chrx-radius-xl: 12px;  /* matches Swift sheetCornerRadius */
+  --chrx-radius-pill: 999px;
+
+  /* Motion */
+  --chrx-ease: cubic-bezier(.22,.61,.36,1);
+  --chrx-duration-fast: 120ms;
+  --chrx-duration-base: 180ms;
+  --chrx-duration-slow: 280ms;
+
+  /* Z-stack */
+  --chrx-z-grid: 1; --chrx-z-drawer: 50; --chrx-z-sheet: 80;
+  --chrx-z-palette: 90; --chrx-z-toast: 100;
+
+  /* Subject hues */
+  --chrx-hue-math: 220; --chrx-hue-eng: 12;  --chrx-hue-hin: 32;
+  --chrx-hue-sci: 150;  --chrx-hue-sst: 50;  --chrx-hue-mus: 285;
+  --chrx-hue-art: 330;  --chrx-hue-pe: 110;  --chrx-hue-it: 250;
+  --chrx-hue-lib: 200;
+
+  /* ---- LIGHT ---- */
+  --chrx-bg-window:    #eef0f3;
+  --chrx-bg-canvas:    #f5f6f8;
+  --chrx-bg-sheet:     rgba(248,247,248,0.86);
+  --chrx-bg-panel:     rgba(244,244,246,0.92);
+  --chrx-bg-tile:      rgba(255,255,255,0.85);
+  --chrx-bg-tile-thin: rgba(255,255,255,0.62);
+  --chrx-bg-input:     rgba(255,255,255,0.95);
+  --chrx-bg-elev:      #ffffff;
+  --chrx-bg-modal:     rgba(248,247,248,0.72);
+  --chrx-bg-drawer:    rgba(248,247,248,0.82);
+  --chrx-bg-grid-line: rgba(0,0,0,0.07);
+
+  --chrx-fg:           rgba(0,0,0,0.88);
+  --chrx-fg-secondary: rgba(0,0,0,0.55);
+  --chrx-fg-tertiary:  rgba(0,0,0,0.40);
+  --chrx-fg-faint:     rgba(0,0,0,0.25);
+
+  --chrx-line:      rgba(0,0,0,0.10);
+  --chrx-line-soft: rgba(0,0,0,0.06);
+
+  --chrx-accent:           #007AFF;
+  --chrx-accent-bg:        rgba(0,100,224,0.16);
+  --chrx-accent-bg-strong: rgba(0,100,224,0.22);
+
+  --chrx-green:        #34C759;
+  --chrx-green-bg:     rgba(52,199,89,0.18);
+  --chrx-green-border: rgba(52,199,89,0.45);
+  --chrx-red:          #FF3B30;
+  --chrx-red-bg:       rgba(255,59,48,0.18);
+  --chrx-red-border:   rgba(255,59,48,0.45);
+  --chrx-orange:       #FF9F0A;
+  --chrx-orange-bg:    rgba(255,159,10,0.18);
+  --chrx-yellow:       #FFD60A;
+  --chrx-yellow-bg:    rgba(255,214,10,0.20);
+  --chrx-purple:       #BF5AF2;
+  --chrx-purple-bg:    rgba(191,90,242,0.16);
+  --chrx-blue:         #007AFF;
+  --chrx-blue-bg:      rgba(0,122,255,0.18);
+  --chrx-blue-border:  rgba(0,122,255,0.45);
+  --chrx-focus-purple: #8A3FC7;
+
+  --chrx-kbd-bg: rgba(0,0,0,0.06);
+  --chrx-kbd-fg: rgba(0,0,0,0.55);
+
+  --chrx-scrim: rgba(0,0,0,0.32);
+  --chrx-shadow-sheet:
+    0 32px 80px rgba(0,0,0,0.28),
+    0 8px 22px rgba(0,0,0,0.16),
+    0 0 0 0.5px rgba(0,0,0,0.10);
+  --chrx-shadow-tile:
+    0 1px 2px rgba(0,0,0,0.04),
+    0 0 0 0.5px rgba(0,0,0,0.06);
+  --chrx-shadow-drawer:
+    0 -16px 48px rgba(0,0,0,0.12),
+    0 -4px 12px rgba(0,0,0,0.06),
+    0 -0.5px 0 rgba(0,0,0,0.10);
+
+  color-scheme: light;
+}
+
+/* DARK -- system OR <html data-theme="dark"> */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --chrx-bg-window:#1a1a1c;--chrx-bg-canvas:#1a1a1c;
+    --chrx-bg-sheet:rgba(36,36,38,0.82);--chrx-bg-panel:rgba(36,36,38,0.92);
+    --chrx-bg-tile:rgba(58,58,60,0.55);--chrx-bg-tile-thin:rgba(58,58,60,0.45);
+    --chrx-bg-input:rgba(28,28,30,0.85);--chrx-bg-elev:#2c2c2e;
+    --chrx-bg-modal:rgba(36,36,38,0.66);--chrx-bg-drawer:rgba(36,36,38,0.78);
+    --chrx-bg-grid-line:rgba(255,255,255,0.06);
+    --chrx-fg:rgba(255,255,255,0.96);--chrx-fg-secondary:rgba(255,255,255,0.60);
+    --chrx-fg-tertiary:rgba(255,255,255,0.40);--chrx-fg-faint:rgba(255,255,255,0.25);
+    --chrx-line:rgba(255,255,255,0.10);--chrx-line-soft:rgba(255,255,255,0.05);
+    --chrx-accent:#0A84FF;
+    --chrx-accent-bg:rgba(10,132,255,0.22);--chrx-accent-bg-strong:rgba(10,132,255,0.30);
+    --chrx-green:#30D158;--chrx-green-bg:rgba(48,209,88,0.20);--chrx-green-border:rgba(48,209,88,0.50);
+    --chrx-red:#FF453A;--chrx-red-bg:rgba(255,69,58,0.22);--chrx-red-border:rgba(255,69,58,0.50);
+    --chrx-orange-bg:rgba(255,159,10,0.22);
+    --chrx-yellow:#FFD84A;--chrx-yellow-bg:rgba(255,216,74,0.22);
+    --chrx-purple-bg:rgba(191,90,242,0.22);
+    --chrx-blue:#0A84FF;--chrx-blue-bg:rgba(10,132,255,0.22);--chrx-blue-border:rgba(10,132,255,0.50);
+    --chrx-focus-purple:#C190FF;
+    --chrx-kbd-bg:rgba(255,255,255,0.10);--chrx-kbd-fg:rgba(255,255,255,0.65);
+    --chrx-scrim:rgba(0,0,0,0.55);
+    --chrx-shadow-sheet:0 32px 80px rgba(0,0,0,0.55),0 8px 22px rgba(0,0,0,0.40),0 0 0 0.5px rgba(255,255,255,0.10);
+    --chrx-shadow-tile:0 1px 2px rgba(0,0,0,0.30),0 0 0 0.5px rgba(255,255,255,0.06);
+    --chrx-shadow-drawer:0 -16px 48px rgba(0,0,0,0.55),0 -4px 12px rgba(0,0,0,0.30),0 -0.5px 0 rgba(255,255,255,0.10);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --chrx-bg-window:#1a1a1c;--chrx-bg-canvas:#1a1a1c;
+  --chrx-bg-sheet:rgba(36,36,38,0.82);--chrx-bg-panel:rgba(36,36,38,0.92);
+  --chrx-bg-tile:rgba(58,58,60,0.55);--chrx-bg-tile-thin:rgba(58,58,60,0.45);
+  --chrx-bg-input:rgba(28,28,30,0.85);--chrx-bg-elev:#2c2c2e;
+  --chrx-bg-modal:rgba(36,36,38,0.66);--chrx-bg-drawer:rgba(36,36,38,0.78);
+  --chrx-bg-grid-line:rgba(255,255,255,0.06);
+  --chrx-fg:rgba(255,255,255,0.96);--chrx-fg-secondary:rgba(255,255,255,0.60);
+  --chrx-fg-tertiary:rgba(255,255,255,0.40);--chrx-fg-faint:rgba(255,255,255,0.25);
+  --chrx-line:rgba(255,255,255,0.10);--chrx-line-soft:rgba(255,255,255,0.05);
+  --chrx-accent:#0A84FF;
+  --chrx-accent-bg:rgba(10,132,255,0.22);--chrx-accent-bg-strong:rgba(10,132,255,0.30);
+  --chrx-green:#30D158;--chrx-green-bg:rgba(48,209,88,0.20);--chrx-green-border:rgba(48,209,88,0.50);
+  --chrx-red:#FF453A;--chrx-red-bg:rgba(255,69,58,0.22);--chrx-red-border:rgba(255,69,58,0.50);
+  --chrx-orange-bg:rgba(255,159,10,0.22);
+  --chrx-yellow:#FFD84A;--chrx-yellow-bg:rgba(255,216,74,0.22);
+  --chrx-purple-bg:rgba(191,90,242,0.22);
+  --chrx-blue:#0A84FF;--chrx-blue-bg:rgba(10,132,255,0.22);--chrx-blue-border:rgba(10,132,255,0.50);
+  --chrx-focus-purple:#C190FF;
+  --chrx-kbd-bg:rgba(255,255,255,0.10);--chrx-kbd-fg:rgba(255,255,255,0.65);
+  --chrx-scrim:rgba(0,0,0,0.55);
+  --chrx-shadow-sheet:0 32px 80px rgba(0,0,0,0.55),0 8px 22px rgba(0,0,0,0.40),0 0 0 0.5px rgba(255,255,255,0.10);
+  --chrx-shadow-tile:0 1px 2px rgba(0,0,0,0.30),0 0 0 0.5px rgba(255,255,255,0.06);
+  --chrx-shadow-drawer:0 -16px 48px rgba(0,0,0,0.55),0 -4px 12px rgba(0,0,0,0.30),0 -0.5px 0 rgba(255,255,255,0.10);
+}
+
+/* helpers */
+.chrx-sr-only {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+}
+.chrx-focus-ring:focus-visible {
+  outline: 2px solid var(--chrx-accent);
+  outline-offset: 2px;
+  border-radius: var(--chrx-radius-sm);
+}
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --chrx-duration-fast: 0ms;
+    --chrx-duration-base: 0ms;
+    --chrx-duration-slow: 0ms;
+  }
+}
