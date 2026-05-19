@@ -75,10 +75,13 @@
         maxConsec = Math.max(maxConsec, run);
         if (sorted[sorted.length - 1] === periods - 1) maxLast++;
       });
+      const maxPossible = days * periods;
+      const exhaustionPct = maxPossible ? Math.round(100 * totalTeaching / maxPossible) : 0;
       return {
         id: t.id, name: t.name || t.lastName || "—",
         color: t.color || "#94a3b8",
         teaching: totalTeaching, gaps: totalGaps, maxConsec, lastPeriodDays: maxLast,
+        exhaustion: exhaustionPct,
       };
     });
 
@@ -189,6 +192,11 @@
           el("span", { class: "chrx-stats-dot", style: `background:${r.color}` }),
           " " + r.name) },
       { key: "teaching", label: "Periods", align: "right" },
+      { key: "exhaustion", label: "Exhaustion %",
+        render: r => {
+          const c = r.exhaustion > 75 ? "#ef4444" : r.exhaustion > 50 ? "#f59e0b" : "#10b981";
+          return el("span", { style: `color:${c};font-weight:600` }, r.exhaustion + "%");
+        }, align: "right" },
       { key: "gaps", label: "Gaps", align: "right" },
       { key: "maxConsec", label: "Max consec.", align: "right" },
       { key: "lastPeriodDays", label: "Last-period days", align: "right" },
