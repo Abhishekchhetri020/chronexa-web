@@ -17,7 +17,12 @@
     "terms":     () => window.EntityTerms     && window.EntityTerms.open(),
     "buildings": () => window.EntityBuildings && window.EntityBuildings.open(),
     "holidays":  () => window.EntityHolidays && window.EntityHolidays.open(),
-    "school":    () => window.SchoolSettings && window.SchoolSettings.open(),
+    "school":    () => {
+      // School settings now live in the multi-pane School Hub on Step 2.
+      // The legacy SchoolSettings.open() relied on EntityDialog's host which
+      // isn't initialized here, so it threw appendChild on null. Route to the hub.
+      document.dispatchEvent(new CustomEvent("nav:goto-step", { detail: { step: 2 } }));
+    },
 
     // Edit menu (Subjects/Teachers/Classes/Classrooms/Lessons/Relations/Supervisions)
     "subjects":    () => window.EntitySubjects    && window.EntitySubjects.open(),
