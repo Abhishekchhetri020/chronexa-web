@@ -20,6 +20,26 @@
   const audit = APP.audit = APP.audit || {};
   audit.undoStack = [];
   audit.redoStack = [];
+  audit._log = audit._log || [];
+
+  /* append(record) — used by entity dialogs to log changes.
+   * Also dispatches `entity:changed` so the editor/UI can re-render.
+   * Without this, subjects.js / teachers.js / classes.js / etc. all
+   * crashed on save because `audit.append` was undefined. */
+  audit.append = function (record) {
+    if (!record) return;
+    record.ts = record.ts || Date.now();
+    audit._log.push(record);
+    if (audit._log.length > 500) audit._log.shift();
+    try {
+      window.dispatchEvent(new CustomEvent("entity:changed", { detail: record }));
+      document.dispatchEvent(new CustomEvent("entity:changed", { detail: record }));
+    } catch (e) { /* old browsers */ }
+    // Also refresh the index so cards/lessons stay in sync
+    if (window.CreateNew && typeof window.CreateNew.refreshIndex === "function") {
+      try { window.CreateNew.refreshIndex(); } catch (_) {}
+    }
+  };
 
   audit.commit = function (cmd) {
     if (!cmd || typeof cmd.do !== "function" || typeof cmd.undo !== "function") return;

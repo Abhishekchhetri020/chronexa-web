@@ -27,6 +27,15 @@
     editorRoot.hidden = false;
     pendingRoot.hidden = false;
 
+    // ─── Empty-school coaching: instead of a blank grid, show "Get started" ─
+    if (isEmptySchool(APP.school)) {
+      renderEmptyHero(editorRoot);
+      pendingRoot.innerHTML = `<div class="p-3 text-sm text-slate-500 text-center">Cards will appear here once you add lessons.</div>`;
+      activated = true;
+      updatePendingCount();
+      return;
+    }
+
     // Render the grid (Agent E's grid_canvas exports window.Editor)
     if (global.Editor && typeof global.Editor.render === "function") {
       try { global.Editor.render(editorRoot); }
@@ -43,6 +52,52 @@
     activated = true;
     updatePendingCount();
     setBannerOnce();
+  }
+
+  function isEmptySchool(school) {
+    if (!school) return true;
+    const counts = ["subjects", "teachers", "classes", "classrooms", "lessons"]
+      .map(k => (school[k] || []).length);
+    return counts.every(n => n === 0);
+  }
+
+  function renderEmptyHero(root) {
+    const fire = (kind) => () => window.dispatchEvent(new CustomEvent("app:open-entity", { detail: { kind } }));
+    const tile = (icon, title, sub, kind, color) => `
+      <button data-kind="${kind}" class="text-left bg-white border-2 border-${color}-200 hover:border-${color}-500 rounded-xl p-4 transition-colors group">
+        <div class="text-3xl mb-2">${icon}</div>
+        <div class="font-semibold text-${color}-700 group-hover:text-${color}-800">${title}</div>
+        <div class="text-xs text-slate-500 mt-1">${sub}</div>
+      </button>`;
+    root.innerHTML = `
+      <div class="p-6 sm:p-10">
+        <div class="max-w-3xl mx-auto text-center mb-6">
+          <h3 class="text-2xl font-bold text-slate-800">🎯 Let's build your timetable</h3>
+          <p class="text-sm text-slate-600 mt-2">Pick a starting point. We recommend going in this order — but you can do them in any order.</p>
+        </div>
+        <div class="max-w-4xl mx-auto grid sm:grid-cols-3 gap-3">
+          ${tile("📚", "1. Subjects", "Maths, Science, English, …", "subjects", "emerald")}
+          ${tile("👨‍🏫", "2. Teachers", "Names, abbreviations, colors", "teachers", "blue")}
+          ${tile("👥", "3. Classes", "I-A, I-B, VIII-C …", "classes", "violet")}
+          ${tile("🚪", "4. Classrooms", "Lab, Library, Music Room …", "classrooms", "amber")}
+          ${tile("📝", "5. Lessons", "Who teaches what, how often", "lessons", "rose")}
+          ${tile("⚡", "6. Generate", "Auto-place all cards", "_generate", "slate")}
+        </div>
+        <div class="max-w-3xl mx-auto text-center mt-6 text-xs text-slate-500">
+          Tip: every tile opens the same dialog as <em>Specification</em> → <em>(entity)…</em> in the ribbon. Use whichever feels natural.
+        </div>
+      </div>`;
+    root.querySelectorAll("[data-kind]").forEach(btn => {
+      btn.onclick = () => {
+        const k = btn.dataset.kind;
+        if (k === "_generate") {
+          const gen = document.getElementById("cta-generate");
+          if (gen) gen.click();
+          return;
+        }
+        fire(k)();
+      };
+    });
   }
 
   function deactivate() {
@@ -103,6 +158,13 @@
   // Re-render pending count on every place/pickup
   document.addEventListener("editor:place", updatePendingCount);
   document.addEventListener("editor:pickup", updatePendingCount);
+
+  // Re-render the editor whenever an entity changes (so the hero card swaps to grid)
+  document.addEventListener("entity:changed", () => {
+    if (document.getElementById("step-6") && !document.getElementById("step-6").classList.contains("hidden")) {
+      activate();
+    }
+  });
 
   global.EditorActivator = { activate, deactivate, updatePendingCount };
 })(window);

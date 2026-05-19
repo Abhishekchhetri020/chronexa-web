@@ -16,7 +16,32 @@ window.RoomGrid = (function () {
       host.innerHTML = `<div class="text-sm text-slate-500">${I18N.t("needXml")}</div>`;
       return;
     }
-    GridView.render(host, {
+    // Header bar with CRUD entry point
+    host.innerHTML = "";
+    const bar = document.createElement("div");
+    bar.className = "flex items-center justify-between mb-3 gap-2 flex-wrap";
+    bar.innerHTML = `
+      <div class="text-sm text-slate-600">${(S.classrooms || []).length} room(s).</div>
+      <div class="flex gap-2">
+        <button data-act="manage" class="px-3 py-1.5 rounded bg-blue-700 text-white text-sm font-semibold hover:bg-blue-800">📋 Manage rooms…</button>
+        <button data-act="add" class="px-3 py-1.5 rounded bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700">+ Add room</button>
+      </div>`;
+    host.appendChild(bar);
+    bar.querySelector('[data-act="manage"]').onclick = () => window.dispatchEvent(new CustomEvent("app:open-entity", { detail: { kind: "classrooms" } }));
+    bar.querySelector('[data-act="add"]').onclick = () => {
+      window.dispatchEvent(new CustomEvent("app:open-entity", { detail: { kind: "classrooms" } }));
+      setTimeout(() => { const newBtn = document.querySelector('.chrx-entity-dialog [data-act="new"], .chrx-entity-dialog button[title="New"]'); if (newBtn) newBtn.click(); }, 120);
+    };
+    const gridHost = document.createElement("div");
+    host.appendChild(gridHost);
+    if (!(S.classrooms || []).length) {
+      gridHost.innerHTML = `<div class="bg-slate-50 border border-dashed border-slate-300 rounded-lg p-8 text-center text-slate-500">
+        <div class="text-3xl mb-2">📭</div>
+        <div class="text-sm">No rooms yet. Click <strong>+ Add room</strong> above to create your first one.</div>
+      </div>`;
+      return;
+    }
+    GridView.render(gridHost, {
       viewId: "room",
       rowHeader: I18N.t("statRooms"),
       rows: S.classrooms.map(r => ({ id: r.id, label: r.name })),

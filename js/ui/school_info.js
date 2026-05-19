@@ -5,6 +5,19 @@ window.SchoolInfo = (function () {
   "use strict";
   const t = (k) => I18N.t(k);
 
+  function liveCounts(S) {
+    const m = (S._meta && S._meta.counts) || {};
+    return {
+      teachers:   m.teachers   != null ? m.teachers   : (S.teachers   || []).length,
+      classes:    m.classes    != null ? m.classes    : (S.classes    || []).length,
+      subjects:   m.subjects   != null ? m.subjects   : (S.subjects   || []).length,
+      classrooms: m.classrooms != null ? m.classrooms : (S.classrooms || []).length,
+      lessons:    m.lessons    != null ? m.lessons    : (S.lessons    || []).length,
+      cards:      m.cards      != null ? m.cards      : (S.cards      || []).length,
+      periods:    m.periods    != null ? m.periods    : (S.bell && S.bell.periods ? S.bell.periods.length : 0),
+    };
+  }
+
   function render(host) {
     const S = window.APP.school;
     host.innerHTML = "";
@@ -12,16 +25,17 @@ window.SchoolInfo = (function () {
       host.innerHTML = `<div class="text-sm text-slate-500">${t("needXml")}</div>`;
       return;
     }
+    const c = liveCounts(S);
 
     const stats = [
       [t("statSchool"),  S.schoolName || "—"],
-      [t("statTeachers"),  S._meta.counts.teachers],
-      [t("statClasses"),   S._meta.counts.classes],
-      [t("statSubjects"),  S._meta.counts.subjects],
-      [t("statRooms"),     S._meta.counts.classrooms],
-      [t("statLessons"),   S._meta.counts.lessons],
-      [t("statCards"),     S._meta.counts.cards],
-      [t("statPeriods"),   S._meta.counts.periods],
+      [t("statTeachers"),  c.teachers],
+      [t("statClasses"),   c.classes],
+      [t("statSubjects"),  c.subjects],
+      [t("statRooms"),     c.classrooms],
+      [t("statLessons"),   c.lessons],
+      [t("statCards"),     c.cards],
+      [t("statPeriods"),   c.periods],
     ];
 
     const cards = stats.map(([k, v]) => `
@@ -30,7 +44,8 @@ window.SchoolInfo = (function () {
         <div class="text-lg font-semibold text-slate-900 mt-1 truncate" title="${escapeHtml(String(v))}">${escapeHtml(String(v))}</div>
       </div>`).join("");
 
-    const periodRows = S.bell.periods.map(p => `
+    const periods = (S.bell && S.bell.periods) || [];
+    const periodRows = periods.map(p => `
       <tr>
         <td class="px-3 py-1.5 font-medium">${escapeHtml(p.label)}</td>
         <td class="px-3 py-1.5 text-right tabular-nums">${fmtTime(p.startMin)}</td>
