@@ -1,0 +1,92 @@
+/* Chronexa motion utilities. Tokens from chronexa-theme.css.
+ *
+ * One curve, three speeds. Every state change uses ease-out so the UI
+ * feels like it's settling into place rather than bouncing.
+ *
+ *   .chrx-fade-in    — opacity 0 → 1 (200ms)
+ *   .chrx-rise       — translateY(8px) + opacity 0 → 1 (220ms)
+ *   .chrx-pop        — scale(0.96) + opacity 0 → 1 (180ms)
+ *   .chrx-slide-down — translateY(-8px) + opacity 0 → 1 (180ms)
+ *   .chrx-press      — active scale(0.98)  (utility, not an animation)
+ *   .chrx-lift       — hover translateY(-2px) + soft shadow
+ *
+ * Apply via class hook from JS. Respects prefers-reduced-motion. */
+
+:root {
+  --chrx-ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --chrx-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes chrx-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes chrx-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes chrx-pop {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes chrx-slide-down {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.chrx-fade-in    { animation: chrx-fade-in    200ms var(--chrx-ease-out) both; }
+.chrx-rise       { animation: chrx-rise       220ms var(--chrx-ease-out) both; }
+.chrx-pop        { animation: chrx-pop        180ms var(--chrx-ease-out) both; }
+.chrx-slide-down { animation: chrx-slide-down 180ms var(--chrx-ease-out) both; }
+
+/* Stagger helpers — apply to siblings inside a .chrx-rise container. */
+.chrx-rise-stagger > *           { opacity: 0; animation: chrx-rise 240ms var(--chrx-ease-out) both; }
+.chrx-rise-stagger > *:nth-child(1) { animation-delay:  30ms; }
+.chrx-rise-stagger > *:nth-child(2) { animation-delay:  60ms; }
+.chrx-rise-stagger > *:nth-child(3) { animation-delay:  90ms; }
+.chrx-rise-stagger > *:nth-child(4) { animation-delay: 120ms; }
+.chrx-rise-stagger > *:nth-child(5) { animation-delay: 150ms; }
+.chrx-rise-stagger > *:nth-child(6) { animation-delay: 180ms; }
+.chrx-rise-stagger > *:nth-child(7) { animation-delay: 210ms; }
+.chrx-rise-stagger > *:nth-child(8) { animation-delay: 240ms; }
+
+/* .chrx-press — tactile pressback on buttons / interactive cards. */
+.chrx-press {
+  transition: transform 80ms var(--chrx-ease-out),
+              box-shadow 120ms var(--chrx-ease-out);
+}
+.chrx-press:active { transform: scale(0.98); }
+
+/* .chrx-lift — hover affordance for cards/tiles. */
+.chrx-lift {
+  transition: transform 180ms var(--chrx-ease-out),
+              box-shadow 180ms var(--chrx-ease-out),
+              border-color 180ms var(--chrx-ease-out);
+  will-change: transform;
+}
+.chrx-lift:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 12px 28px -10px rgba(15, 23, 42, 0.18),
+    0 4px 10px -6px rgba(15, 23, 42, 0.12),
+    0 0 0 0.5px var(--chrx-line);
+}
+:root[data-theme="dark"] .chrx-lift:hover,
+:root:not([data-theme="light"]) .chrx-lift:hover {
+  box-shadow:
+    0 12px 28px -10px rgba(0, 0, 0, 0.55),
+    0 4px 10px -6px rgba(0, 0, 0, 0.40),
+    0 0 0 0.5px rgba(255, 255, 255, 0.10);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chrx-fade-in,
+  .chrx-rise,
+  .chrx-pop,
+  .chrx-slide-down,
+  .chrx-rise-stagger > * { animation: none !important; }
+  .chrx-press,
+  .chrx-lift { transition: none !important; }
+  .chrx-press:active,
+  .chrx-lift:hover { transform: none !important; }
+}

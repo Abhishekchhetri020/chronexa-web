@@ -1,0 +1,128 @@
+/**
+ * Onboarding wiring — glues all the onboarding pieces together.
+ *
+ * This is the LAST onboarding script in index.html. It runs after
+ * data_library, school_templates, bulk_add_wizard, tour and smart_defaults
+ * are all loaded, so every API it needs is guaranteed to exist.
+ *
+ * Responsibilities:
+ *  1. Hijack the "Create new timetable" CTA (#cta-build-new) so it opens
+ *     the school-type picker instead of jumping straight to a blank school.
+ *  2. After the user picks a template, show the "sample data loaded"
+ *     banner above the editor.
+ *  3. Open the 5-step walkthrough wizard immediately on top of the editor
+ *     so the user knows where to fill in their real data.
+ *  4. Surface the onboarding tour on the first visit (the parallel-agent
+ *     Tour module auto-runs maybeStart() on DOMContentLoaded; we leave
+ *     that alone but expose a Help-menu trigger via window.OnboardingTour).
+ */
+(function (global) {
+  "use strict";
+
+  // ─── 1. CTA hijack ──────────────────────────────────────────────────────
+  function wireBuildNewCTA() {
+    const btn = document.getElementById("cta-build-new");
+    if (!btn) return;
+
+    // Replace the handler installed by main.js. We keep the same "data
+    // already loaded — replace?" confirm guard.
+    btn.onclick = (ev) => {
+      try {
+        const S = global.APP && global.APP.school;
+        const hasData = S && ((S.teachers && S.teachers.length) || (S.cards && S.cards.length));
+        if (hasData && !confirm("A timetable is already loaded. Replace it with a fresh start?")) return;
+      } catch (e) { /* non-fatal */ }
+
+      if (!global.SchoolTemplates || !global.SchoolTemplates.showPicker) {
+        console.warn("[onboarding] SchoolTemplates missing — falling back to blank.");
+        if (global.CreateNew && global.CreateNew.createBlank) global.CreateNew.createBlank();
+        return;
+      }
+      global.SchoolTemplates.showPicker((id, result) => onTemplatePicked(id, result));
+    };
+  }
+
+  // ─── 2. Banner + 3. Wizard kickoff ──────────────────────────────────────
+  function onTemplatePicked(id, result) {
+    if (!result || result.error) {
+      console.warn("[onboarding] template apply failed:", result);
+      return;
+    }
+    // Enable the "needs-school" buttons.
+    document.querySelectorAll(".needs-school").forEach(b => b.disabled = false);
+    // Mark step 6 enabled (activator listens to app:school-loaded but the
+    // template applyChoice already called createBlank which fires that
+    // event — so the activator should have done this. Belt + braces.)
+    document.querySelectorAll("[data-step='6']").forEach(b => b.removeAttribute("disabled"));
+
+    // Jump to the editor.
+    document.dispatchEvent(new CustomEvent("nav:goto-step", { detail: { step: 6 } }));
+
+    // Show the sample-data banner unless the user picked the blank template.
+    if (id !== "blank") showSampleBanner(id, result);
+
+    // Open the 5-step walkthrough. Slight delay so the editor step transition
+    // settles first; the WizardWalkthrough overlay sits on top.
+    setTimeout(() => {
+      if (global.WizardWalkthrough && global.WizardWalkthrough.start) {
+        global.WizardWalkthrough.start();
+      }
+    }, 250);
+  }
+
+  function showSampleBanner(templateId, result) {
+    const banner = document.getElementById("editor-banner");
+    const text   = document.getElementById("editor-banner-text");
+    if (!banner || !text) return;
+    banner.classList.remove("hidden");
+    banner.hidden = false;
+    const counts = result && result.counts;
+    const summary = counts
+      ? counts.subjects + " subjects · " + counts.classes + " sample classes · " + counts.teachers + " sample teacher · " + counts.rooms + " rooms"
+      : "sample data loaded";
+    text.innerHTML =
+      '<strong>Sample data loaded</strong> (' + escapeHtml(summary) + '). ' +
+      'Open <em>Specification → Teachers / Classes / Lessons</em> from the ribbon to replace the placeholders with your real data. ' +
+      '<button id="chrx-banner-clear-sample" style="margin-left:8px;text-decoration:underline;font-weight:600;background:none;border:0;color:inherit;cursor:pointer">Remove sample data</button>';
+    const clearBtn = document.getElementById("chrx-banner-clear-sample");
+    if (clearBtn) clearBtn.onclick = clearSampleData;
+  }
+
+  function clearSampleData() {
+    const S = global.APP && global.APP.school;
+    if (!S) return;
+    function isSample(name) { return /sample|replace with real/i.test(name || ""); }
+    S.teachers   = (S.teachers   || []).filter(t => !isSample(t.name));
+    S.classes    = (S.classes    || []).filter(c => !isSample(c.name));
+    S.classrooms = (S.classrooms || []).filter(r => !isSample(r.name));
+    if (global.CreateNew && global.CreateNew.refreshIndex) global.CreateNew.refreshIndex();
+    const banner = document.getElementById("editor-banner");
+    if (banner) banner.hidden = true;
+    document.dispatchEvent(new CustomEvent("entity:changed"));
+  }
+
+  // ─── 4. Tour helper alias ───────────────────────────────────────────────
+  // The Tour module auto-starts via maybeStart() on first visit. We expose
+  // a small alias so callers expecting `OnboardingTour` don't fail.
+  if (!global.OnboardingTour && global.Tour) {
+    global.OnboardingTour = {
+      start: global.Tour.start,
+      startIfFirstVisit: global.Tour.maybeStart,
+      reset: global.Tour.reset,
+      STORAGE_KEY: "chronexa.tour.seen.v1",
+    };
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", wireBuildNewCTA);
+  } else {
+    wireBuildNewCTA();
+  }
+
+  global.OnboardingWiring = { wireBuildNewCTA, onTemplatePicked, showSampleBanner, clearSampleData };
+})(window);
