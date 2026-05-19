@@ -1,0 +1,192 @@
+/* Approbation matrix editor — teacher × subject qualification grid.
+ *
+ * Ports Swift's `SoftConstraint.approbationMismatch` data model (weight 10).
+ * Each teacher has a `qualifiedSubjectIds[]` of subjects they're approved
+ * to teach. The solver soft-penalises lessons that violate this.
+ *
+ * UI: cross-grid where rows = teachers, columns = subjects, cells =
+ * checkbox. Bulk operations: "Tick all in row", "Tick all in column",
+ * "Tick diagonal" (each teacher gets one specific subject).
+ *
+ * Triggered by app:approbation-matrix. Specification menu wires entry.
+ */
+(function (global) {
+  "use strict";
+
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      const v = attrs[k]; if (v == null) continue;
+      if (k === "class") n.className = v;
+      else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v);
+    }
+    for (const c of kids) if (c != null && c !== false)
+      n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    return n;
+  }
+
+  function open(school) {
+    school = school || (window.APP && window.APP.school);
+    if (!school) { (window._chrxNotify || console.log)("Open a timetable first.", "error"); return; }
+    ensureStyles();
+
+    const teachers = school.teachers || [];
+    const subjects = school.subjects || [];
+    if (!teachers.length || !subjects.length) {
+      (window._chrxNotify || console.log)("Add teachers and subjects first.", "warn"); return;
+    }
+
+    const root = el("div", { class: "chrx-appro-root",
+      onclick: e => { if (e.target === root) root.remove(); } });
+    const panel = el("div", { class: "chrx-appro-panel" });
+
+    panel.appendChild(el("header", null,
+      el("h2", null, "🎓 Teacher qualifications (approbation)"),
+      el("button", { class: "chrx-appro-close", "aria-label": "Close", onclick: () => root.remove() }, "×"),
+    ));
+    panel.appendChild(el("div", { class: "chrx-appro-hint" },
+      "Tick subjects each teacher is qualified to teach. The solver will penalise lessons that violate these."));
+
+    const wrap = el("div", { class: "chrx-appro-wrap" });
+    const tbl = el("table", { class: "chrx-appro-table" });
+    const headRow = el("tr");
+    headRow.appendChild(el("th", { class: "chrx-appro-corner" }, "Teacher \\ Subject"));
+    subjects.forEach(s => {
+      const th = el("th", { class: "chrx-appro-subhead",
+        style: s.color ? `border-bottom:3px solid ${s.color}` : "" }, s.short || s.name?.slice(0, 6) || "?");
+      th.title = s.name;
+      headRow.appendChild(th);
+    });
+    headRow.appendChild(el("th", { class: "chrx-appro-rowtotal" }, "Σ"));
+    tbl.appendChild(el("thead", null, headRow));
+
+    const tbody = el("tbody");
+    const cellMap = new Map();
+    teachers.forEach(t => {
+      const tr = el("tr");
+      const head = el("td", { class: "chrx-appro-tchhead",
+        style: t.color ? `border-left:4px solid ${t.color}` : "" }, t.name || t.short || "?");
+      head.title = `Tick row · ${t.name}`;
+      head.onclick = () => toggleRow(t.id);
+      tr.appendChild(head);
+      const qualified = new Set(t.qualifiedSubjectIds || []);
+      subjects.forEach(s => {
+        const input = el("input", { type: "checkbox",
+          checked: qualified.has(s.id) ? "checked" : null,
+          onchange: () => updateRowTotal(t.id) });
+        cellMap.set(t.id + "_" + s.id, input);
+        tr.appendChild(el("td", { class: "chrx-appro-cell" }, input));
+      });
+      tr.appendChild(el("td", { class: "chrx-appro-rowtotal", "data-tch": t.id }, "0"));
+      tbody.appendChild(tr);
+    });
+    tbl.appendChild(tbody);
+    wrap.appendChild(tbl);
+    panel.appendChild(wrap);
+
+    panel.appendChild(el("footer", null,
+      el("button", { class: "chrx-appro-bulk", onclick: () => bulk("tick-all") }, "Tick all"),
+      el("button", { class: "chrx-appro-bulk", onclick: () => bulk("untick-all") }, "Untick all"),
+      el("button", { class: "chrx-appro-bulk", onclick: () => bulk("diagonal") }, "Diagonal seed"),
+      el("button", { class: "chrx-appro-save", onclick: save }, "💾 Save"),
+      el("button", { class: "chrx-appro-cancel", onclick: () => root.remove() }, "Cancel"),
+    ));
+
+    root.appendChild(panel);
+    document.body.appendChild(root);
+
+    teachers.forEach(t => updateRowTotal(t.id));
+
+    function toggleRow(tid) {
+      const tchSubjects = subjects.map(s => cellMap.get(tid + "_" + s.id));
+      const allOn = tchSubjects.every(c => c.checked);
+      tchSubjects.forEach(c => c.checked = !allOn);
+      updateRowTotal(tid);
+    }
+    function updateRowTotal(tid) {
+      let n = 0;
+      subjects.forEach(s => { if (cellMap.get(tid + "_" + s.id).checked) n++; });
+      const cell = panel.querySelector(`[data-tch="${tid}"]`);
+      if (cell) cell.textContent = String(n);
+    }
+    function bulk(mode) {
+      teachers.forEach((t, i) => subjects.forEach((s, j) => {
+        const cb = cellMap.get(t.id + "_" + s.id);
+        if (mode === "tick-all") cb.checked = true;
+        else if (mode === "untick-all") cb.checked = false;
+        else if (mode === "diagonal") cb.checked = (i === j);
+      }));
+      teachers.forEach(t => updateRowTotal(t.id));
+    }
+    function save() {
+      let changed = 0;
+      teachers.forEach(t => {
+        const newQual = subjects.filter(s => cellMap.get(t.id + "_" + s.id).checked).map(s => s.id);
+        const before = (t.qualifiedSubjectIds || []).slice().sort().join();
+        const after = newQual.slice().sort().join();
+        if (before !== after) { t.qualifiedSubjectIds = newQual; changed++; }
+      });
+      if (window.APP?.audit?.append) {
+        window.APP.audit.append({ entity: "teachers", op: "approbation-save", changed });
+      }
+      (window._chrxNotify || console.log)(`🎓 Updated qualifications for ${changed} teacher(s).`);
+      root.remove();
+    }
+  }
+
+  /* Solver-side helper: returns true if teacher t is qualified for subject s */
+  function isQualified(teacher, subjectId) {
+    if (!teacher) return true;
+    if (!teacher.qualifiedSubjectIds || !teacher.qualifiedSubjectIds.length) return true; // unset = all
+    return teacher.qualifiedSubjectIds.includes(subjectId);
+  }
+
+  /* Solver-side helper: returns array of mismatched teacher names for a lesson */
+  function checkLesson(school, lesson) {
+    if (!lesson || !school) return [];
+    const subjectId = lesson.subjectId;
+    const tById = (school._idx && school._idx.teacherById) ||
+      Object.fromEntries((school.teachers || []).map(t => [t.id, t]));
+    const out = [];
+    for (const tid of (lesson.teacherIds || [])) {
+      const t = tById[tid];
+      if (t && !isQualified(t, subjectId)) {
+        out.push(t.name || t.short || tid);
+      }
+    }
+    return out;
+  }
+
+  function ensureStyles() {
+    if (document.getElementById("chrx-appro-styles")) return;
+    const s = document.createElement("style");
+    s.id = "chrx-appro-styles";
+    s.textContent = `
+.chrx-appro-root{position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:flex-start;justify-content:center;padding:18px;z-index:1000;overflow:auto}
+.chrx-appro-panel{background:#fff;border-radius:12px;width:min(1200px,98vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3);font-family:-apple-system,BlinkMacSystemFont,sans-serif;color:#0f172a}
+.chrx-appro-panel header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid #e2e8f0}
+.chrx-appro-panel h2{margin:0;font-size:16px;color:#1e3a8a}
+.chrx-appro-close{background:none;border:0;font-size:22px;cursor:pointer;color:#64748b}
+.chrx-appro-hint{padding:6px 16px;background:#dbeafe;color:#1e3a8a;font-size:12px;border-bottom:1px solid #93c5fd}
+.chrx-appro-wrap{flex:1;overflow:auto;padding:0 12px 12px}
+.chrx-appro-table{border-collapse:collapse;font-size:11px}
+.chrx-appro-table th,.chrx-appro-table td{border:1px solid #e2e8f0;padding:0;text-align:center}
+.chrx-appro-corner{position:sticky;left:0;top:0;z-index:3;background:#1e3a8a;color:#fff;font-weight:600;padding:6px 10px;min-width:140px;text-align:left}
+.chrx-appro-subhead{position:sticky;top:0;z-index:2;background:#f1f5f9;color:#1e3a8a;font-weight:600;padding:6px 4px;writing-mode:vertical-rl;text-orientation:mixed;min-width:24px;height:80px}
+.chrx-appro-tchhead{position:sticky;left:0;z-index:1;background:#f8fafc;font-weight:600;padding:4px 10px;text-align:left;white-space:nowrap;min-width:140px;cursor:pointer}
+.chrx-appro-tchhead:hover{background:#dbeafe}
+.chrx-appro-cell input{accent-color:#10b981}
+.chrx-appro-rowtotal{background:#f1f5f9;font-weight:600;color:#475569;padding:4px 8px;font-size:11px;min-width:24px}
+.chrx-appro-panel footer{display:flex;justify-content:flex-end;gap:8px;padding:10px 16px;border-top:1px solid #e2e8f0}
+.chrx-appro-bulk{background:#fff;border:1px solid #cbd5e1;color:#0f172a;padding:5px 12px;border-radius:5px;cursor:pointer;font-size:12px}
+.chrx-appro-save{background:#10b981;color:#fff;border:0;padding:6px 16px;border-radius:6px;font-weight:600;cursor:pointer}
+.chrx-appro-cancel{background:#fff;color:#0f172a;border:1px solid #cbd5e1;padding:6px 16px;border-radius:6px;cursor:pointer}
+    `;
+    document.head.appendChild(s);
+  }
+
+  window.addEventListener("app:approbation-matrix", () => open());
+
+  global.ApprobationMatrix = { open, isQualified, checkLesson };
+})(window);
