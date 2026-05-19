@@ -1479,7 +1479,18 @@ export function solve(school, options = {}) {
   // closes the gap from 28% → 80%+ on dense fixtures; backtracking alone is
   // the constructor that gives repair something to work with.
   const useIterativeRepair = options.useIterativeRepair !== false;
-  const btShare = useIterativeRepair ? 0.30 : 1.0;
+  // Scale backtracking budget with school size. Tiny schools converge fast and
+  // benefit from repair; large schools (1000+ solver-lessons after expansion)
+  // need more initial placement time before repair makes sense, otherwise
+  // backtracking ends with most lessons still unassigned and repair can't
+  // recover. Empirical: 1338-lesson XML placed only 12% with btShare=0.3.
+  let btShare = useIterativeRepair ? 0.30 : 1.0;
+  if (useIterativeRepair) {
+    // school.lessons.length is the raw count; expanded count comes later.
+    const raw = (school.lessons || []).length;
+    if (raw >= 400) btShare = 0.60;
+    else if (raw >= 200) btShare = 0.45;
+  }
   const btDeadlineMs = t0 + timeLimitSec * 1000 * btShare;
   const deadlineMs = btDeadlineMs; // legacy alias used inside the BT branch loop
   const seed = options.seed ?? 9881;
@@ -1504,9 +1515,14 @@ export function solve(school, options = {}) {
     if (model.lessonCandidateCount[i] === 0) initiallyInfeasible.push(i);
   }
 
-  // The driver: 4 sequential root-shuffle branches; keep the best.
+  // The driver: sequential root-shuffle branches; keep the best.
+  // More branches = more diverse initial orderings → better chance of escaping
+  // local dead-ends. Scaled with school size; capped by the per-branch
+  // time budget downstream (each branch shares the total backtracking budget).
   let branches = 4;
-  if (model.lessonCount <= 6) branches = 1; // tiny fixtures need only 1 pass
+  if (model.lessonCount <= 6) branches = 1;
+  else if (model.lessonCount >= 1000) branches = 8;
+  else if (model.lessonCount >= 500) branches = 6;
   let globalBest = null;
 
   const unassigned0 = new Int32Array(model.lessonCount);

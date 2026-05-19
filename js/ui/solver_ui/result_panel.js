@@ -154,7 +154,7 @@
     return out;
   }
 
-  function doApply() {
+  function applyImmediately() {
     if (!state) return;
     const newCards = assignmentToCards(state.result.assignment);
     if (state.school && !state.snapshot) {
@@ -168,6 +168,43 @@
     refs.status.textContent = "Applied to timetable.";
     refs.status.style.color = "var(--chrx-green)";
     if (state.onApply) try { state.onApply(newCards); } catch (e) { console.error(e); }
+  }
+  function isDestructiveApply() {
+    if (!state || !state.school) return false;
+    const have = (state.school.cards && state.school.cards.length) || 0;
+    const newLen = (state.result && state.result.assignment && state.result.assignment.length) || 0;
+    return have > 0 && newLen < have;
+  }
+  function confirmDestructiveApply() {
+    if (document.getElementById("chrx-apply-confirm")) return;
+    const have = state.school.cards.length;
+    const newLen = state.result.assignment.length;
+    const lost = have - newLen;
+    const hard = (state.result.stats && state.result.stats.hardConflicts) || 0;
+    const overlay = document.createElement("div");
+    overlay.id = "chrx-apply-confirm";
+    overlay.style.cssText = "position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;z-index:10001;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;";
+    overlay.innerHTML = ''
+      + '<div role="alertdialog" aria-modal="true" style="background:#fff;border-radius:14px;box-shadow:0 24px 64px rgba(15,23,42,.30);padding:24px 26px;max-width:480px;width:calc(100% - 32px);">'
+      +   '<div style="font-size:32px;line-height:1;margin-bottom:8px;">⚠️</div>'
+      +   '<h2 style="font-size:18px;font-weight:700;color:#9f1239;margin:0 0 8px;">Replace your timetable?</h2>'
+      +   `<p style="font-size:13px;line-height:1.55;color:#475569;margin:0 0 16px;">This solver run produced <strong>${newLen}</strong> placements, but your timetable currently has <strong>${have}</strong> placed cards. Applying will lose <strong>${lost}</strong> existing card${lost === 1 ? '' : 's'}` + (hard > 0 ? ` and the new layout has <strong>${hard} hard conflict${hard === 1 ? '' : 's'}</strong>` : '') + `.</p>`
+      +   '<p style="font-size:13px;line-height:1.55;color:#475569;margin:0 0 18px;">Click Discard to keep your original timetable, or confirm to replace it anyway.</p>'
+      +   '<div style="display:flex;gap:8px;justify-content:flex-end;">'
+      +     '<button type="button" data-cancel style="background:#fff;border:1px solid #cbd5e1;color:#0f172a;padding:8px 14px;border-radius:7px;cursor:pointer;font-size:13px;font-weight:500;">Cancel</button>'
+      +     '<button type="button" data-confirm style="background:#be123c;border:0;color:#fff;padding:8px 16px;border-radius:7px;cursor:pointer;font-size:13px;font-weight:600;">Replace anyway</button>'
+      +   '</div>'
+      + '</div>';
+    document.body.appendChild(overlay);
+    overlay.querySelector("[data-cancel]").focus();
+    overlay.addEventListener("click", e => { if (e.target === overlay) overlay.remove(); });
+    overlay.querySelector("[data-cancel]").onclick = () => overlay.remove();
+    overlay.querySelector("[data-confirm]").onclick = () => { overlay.remove(); applyImmediately(); };
+  }
+  function doApply() {
+    if (!state) return;
+    if (isDestructiveApply()) { confirmDestructiveApply(); return; }
+    applyImmediately();
   }
   function doDiscard() {
     if (!state) return;
@@ -249,9 +286,26 @@
     renderHero(state.result, totalLessons);
     renderPerSlotGrid(state.result, state.school);
 
+    // De-emphasize Apply when the run is destructive (TIMEOUT, hard conflicts,
+    // or strictly fewer cards than the current school). The confirmation
+    // dialog catches actual clicks; visual styling helps prevent the click.
+    const hardN = (state.result.stats && state.result.stats.hardConflicts) || 0;
+    const bad = (status === "TIMEOUT" || status === "INFEASIBLE" || hardN > 0 || isDestructiveApply());
+    if (refs.apply) {
+      refs.apply.classList.toggle("is-warning", bad);
+      refs.apply.style.background = bad ? "#fff" : "";
+      refs.apply.style.color      = bad ? "#9f1239" : "";
+      refs.apply.style.border     = bad ? "1px solid #f43f5e" : "";
+    }
+
     host.classList.add("is-open");
     host.setAttribute("aria-hidden", "false");
-    requestAnimationFrame(() => refs.close.focus());
+    // Default focus to Close on dangerous results (Discard is disabled until
+    // something is applied). For clean runs, focus Apply so Enter ships it.
+    requestAnimationFrame(() => {
+      const target = bad ? refs.close : (refs.apply && !refs.apply.disabled ? refs.apply : refs.close);
+      if (target && typeof target.focus === "function") target.focus();
+    });
   }
   function close() {
     if (!host) return;
