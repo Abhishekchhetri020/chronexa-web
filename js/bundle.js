@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-19T18:26:20Z
+/* Chronexa bundle — generated 2026-05-19T18:49:08Z
  *      135 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -283,6 +283,24 @@ window.parseTimetableXml = (function () {
     classes.sort(classOrder);
 
     // --- Lessons --------------------------------------------------------------
+    // --- Groups (class subdivisions: Boys/Girls, Group 1/Group 2, Entire) ----
+    // Without parsing these the solver treats split-group lessons as
+    // whole-class conflicts and refuses to schedule simultaneous classes.
+    const groups = [];
+    const groupById = Object.create(null);
+    xml.querySelectorAll("groups > group").forEach(g => {
+      const obj = {
+        id: attr(g, "id"),
+        name: attr(g, "name") || "",
+        classId: attr(g, "classid") || "",
+        entireClass: attr(g, "entireclass") === "1",
+        divisionTag: parseInt(attr(g, "divisiontag"), 10) || 0,
+      };
+      if (!obj.id) return;
+      groups.push(obj);
+      groupById[obj.id] = obj;
+    });
+
     const lessons = [];
     const lessonById = Object.create(null);
     xml.querySelectorAll("lessons > lesson").forEach(l => {
@@ -294,12 +312,15 @@ window.parseTimetableXml = (function () {
         .filter(id => teacherById[id]);
       const subjectId  = attr(l, "subjectid");
       const roomIds    = (attr(l, "classroomids") || "").split(",").filter(Boolean);
+      const groupIds   = (attr(l, "groupids") || "").split(",").filter(Boolean)
+        .filter(id => groupById[id]);
 
       const obj = {
         id: attr(l, "id"),
         classIds: realClassIds,
         teacherIds,
         subjectId,
+        groupIds,
         periodsPerWeek: parseFloat(attr(l, "periodsperweek")) || 0,
         requiredRoomType: undefined,
         preferredRoomId: roomIds[0] || undefined,
@@ -376,6 +397,7 @@ window.parseTimetableXml = (function () {
       classIds: l.classIds,
       teacherIds: l.teacherIds,
       subjectId: l.subjectId,
+      groupIds: l.groupIds || [],
       periodsPerWeek: l.periodsPerWeek,
       requiredRoomType: l.requiredRoomType,
       preferredRoomId: l.preferredRoomId,
@@ -396,6 +418,7 @@ window.parseTimetableXml = (function () {
       classrooms,
       subjects,
       lessons: cleanLessons,
+      groups,
       cards,
       _meta: {
         sourceFilename: sourceName,
@@ -409,10 +432,11 @@ window.parseTimetableXml = (function () {
           lessons: cleanLessons.length,
           cards: cards.length,
           periods: periods.length,
+          groups: groups.length,
         },
       },
       _idx: {
-        teacherById, classById, classroomById, subjectById, lessonById,
+        teacherById, classById, classroomById, subjectById, lessonById, groupById,
         cardsByClass, cardsByTeacher, cardsByRoom,
         days: DAYS_EN,
       },

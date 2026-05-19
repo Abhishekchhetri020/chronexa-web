@@ -117,6 +117,37 @@ function buildModel(school) {
   }
   const lessonCount = expanded.length;
 
+  // Groups (per-class subdivisions). Without this, the solver treats every
+  // class-shared lesson as a whole-class conflict and refuses to place
+  // simultaneous group lessons (e.g. Boys-PE + Girls-Music).
+  // Per class: assign each group a bit index 0..31. Cap at 32 groups per
+  // class — schools in practice use <16. Group with entireClass=true gets
+  // a sentinel that we expand to "all bits set" when computing lesson masks.
+  const classGroups = []; // classGroups[c] = [{id, isEntire}, …]
+  for (let c = 0; c < classIds.length; c++) classGroups.push([]);
+  const groupBitByGroupId = Object.create(null); // groupId → { classIdx, bit, isEntire }
+  if (Array.isArray(school.groups)) {
+    for (const g of school.groups) {
+      const c = classIdx.get(g.classId);
+      if (c == null) continue;
+      const bucket = classGroups[c];
+      if (bucket.length >= 32) continue; // mask is uint32
+      const bit = bucket.length;
+      bucket.push({ id: g.id, isEntire: !!g.entireClass });
+      groupBitByGroupId[g.id] = { classIdx: c, bit, isEntire: !!g.entireClass };
+    }
+  }
+  const classGroupCount = new Int32Array(classIds.length);
+  const classFullGroupMask = new Uint32Array(classIds.length);
+  for (let c = 0; c < classIds.length; c++) {
+    const n = classGroups[c].length;
+    classGroupCount[c] = n;
+    classFullGroupMask[c] = n >= 32 ? 0xffffffff : ((1 << n) - 1) >>> 0;
+    // Classes with no <group> definitions still need a sentinel so the
+    // "whole-class" lesson can occupy something. Reserve bit 0 as default.
+    if (n === 0) classFullGroupMask[c] = 1;
+  }
+
   // Build flat layouts.
   const lessonClassStart = new Int32Array(lessonCount);
   const lessonClassCount = new Int32Array(lessonCount);
@@ -127,6 +158,7 @@ function buildModel(school) {
   const lessonFixedSlot = new Int32Array(lessonCount).fill(-1);
 
   const lessonClassFlat = [];
+  const lessonClassGroupMask = []; // parallel to lessonClassFlat
   const lessonTeacherFlat = [];
 
   for (let i = 0; i < lessonCount; i++) {
@@ -136,6 +168,21 @@ function buildModel(school) {
       const ix = classIdx.get(cid);
       if (ix == null) throw new Error(`Unknown classId in lesson ${l.id}: ${cid}`);
       lessonClassFlat.push(ix);
+      // Group mask for this class entry: OR of bits for the lesson's groupIds
+      // that belong to this class. If any of them is "entire class", expand
+      // to the full class mask. If the lesson has no groupIds at all (older
+      // template school), default to whole-class so it conflicts with everything.
+      let mask = 0;
+      let sawEntire = false;
+      const lgIds = l.groupIds || [];
+      for (const gid of lgIds) {
+        const bb = groupBitByGroupId[gid];
+        if (!bb || bb.classIdx !== ix) continue;
+        if (bb.isEntire) { sawEntire = true; break; }
+        mask = (mask | (1 << bb.bit)) >>> 0;
+      }
+      if (sawEntire || mask === 0) mask = classFullGroupMask[ix];
+      lessonClassGroupMask.push(mask >>> 0);
     }
     lessonClassCount[i] = l.classIds.length;
 
@@ -337,6 +384,8 @@ function buildModel(school) {
     teacherIds, classIds, roomIds, subjectIds,
     lessons: expanded,
     lessonClassStart, lessonClassCount, lessonClassFlat: Int32Array.from(lessonClassFlat),
+    lessonClassGroupMask: Uint32Array.from(lessonClassGroupMask),
+    classGroupCount, classFullGroupMask,
     lessonTeacherStart, lessonTeacherCount, lessonTeacherFlat: Int32Array.from(lessonTeacherFlat),
     lessonSubject, lessonLabDouble, lessonFixedSlot,
     lessonCandidateStart, lessonCandidateCount,
@@ -398,11 +447,16 @@ function sharesClass(i, j, starts, counts, flat) {
 // ---------------------------------------------------------------------------
 
 function makeState(model) {
-  const { days, totalSlots, teacherCount, classCount, roomCount, lessonCount, subjectCount } = model;
+  const { days, totalSlots, teacherCount, classCount, roomCount, lessonCount, subjectCount, periodsPerDay } = model;
   return {
     // Bitmask occupancy: one uint32 per (entity, day). Bit p set iff busy.
     teacherOcc: new Uint32Array(teacherCount * days),
     classOcc: new Uint32Array(classCount * days),
+    // Per (class, day, period): bitmask of group bits occupied at that slot.
+    // Two lessons may co-occupy the same (class, period) iff their group masks
+    // don't intersect (e.g. Boys-PE + Girls-Music). Without this every shared
+    // class is a conflict, which makes most real-world XML unsolvable.
+    classGroupOcc: new Uint32Array(classCount * days * periodsPerDay),
     roomOcc: new Uint32Array(roomCount * days),
     // Day-load counters
     teacherDayLoad: new Int32Array(teacherCount * days),
@@ -482,7 +536,11 @@ function canPlace(model, state, lessonIdx, slot, roomIdx) {
   for (let k = 0; k < classCount; k++) {
     const c = model.lessonClassFlat[classStart + k];
     const cd = c * model.days + d;
-    if ((state.classOcc[cd] & bit) !== 0) return FAIL.CLASS_CONFLICT;
+    // Group-aware conflict: two lessons sharing a class at the same (day,
+    // period) conflict only if their group bitmasks intersect.
+    const gMask = model.lessonClassGroupMask[classStart + k];
+    const occMask = state.classGroupOcc[(cd) * model.periodsPerDay + p];
+    if ((occMask & gMask) !== 0) return FAIL.CLASS_CONFLICT;
     const maxDay = model.classMaxPerDay[c];
     if (maxDay >= 0 && state.classDayLoad[cd] >= maxDay) return FAIL.CLASS_MAX_PER_DAY;
     const subjectKey = ((c * model.subjectCount) + subject) * model.days + d;
@@ -536,7 +594,9 @@ function canPlaceSecond(model, state, lessonIdx, slot, roomIdx) {
   for (let k = 0; k < classCount; k++) {
     const c = model.lessonClassFlat[classStart + k];
     const cd = c * model.days + d;
-    if ((state.classOcc[cd] & bit) !== 0) return FAIL.CLASS_CONFLICT;
+    const gMask = model.lessonClassGroupMask[classStart + k];
+    const occMask = state.classGroupOcc[(cd) * model.periodsPerDay + p];
+    if ((occMask & gMask) !== 0) return FAIL.CLASS_CONFLICT;
   }
   if (roomIdx >= 0) {
     const rd = roomIdx * model.days + d;
@@ -674,6 +734,9 @@ function applySingle(model, state, lessonIdx, slot, roomIdx) {
     const c = model.lessonClassFlat[classStart + k];
     const cd = c * model.days + d;
     state.classOcc[cd] = (state.classOcc[cd] | bit) >>> 0;
+    const gMask = model.lessonClassGroupMask[classStart + k];
+    state.classGroupOcc[(cd) * model.periodsPerDay + p] =
+      (state.classGroupOcc[(cd) * model.periodsPerDay + p] | gMask) >>> 0;
     state.classDayLoad[cd] += 1;
     const subjectKey = ((c * model.subjectCount) + subject) * model.days + d;
     state.classSubjectDayCount[subjectKey] += 1;
@@ -727,7 +790,14 @@ function removeSingle(model, state, lessonIdx, slot, roomIdx) {
   for (let k = 0; k < classCount; k++) {
     const c = model.lessonClassFlat[classStart + k];
     const cd = c * model.days + d;
-    state.classOcc[cd] = (state.classOcc[cd] & ~bit) >>> 0;
+    // Clear this lesson's group bits first; only clear the classOcc bit
+    // if no other lesson's groups still occupy the slot.
+    const gMask = model.lessonClassGroupMask[classStart + k];
+    const slotKey = (cd) * model.periodsPerDay + p;
+    state.classGroupOcc[slotKey] = (state.classGroupOcc[slotKey] & ~gMask) >>> 0;
+    if (state.classGroupOcc[slotKey] === 0) {
+      state.classOcc[cd] = (state.classOcc[cd] & ~bit) >>> 0;
+    }
     state.classDayLoad[cd] -= 1;
     const subjectKey = ((c * model.subjectCount) + subject) * model.days + d;
     state.classSubjectDayCount[subjectKey] -= 1;
@@ -987,6 +1057,7 @@ function materializeBestIntoState(model, state) {
   // Clear live state — bestLessonAssigned is the new ground truth.
   state.teacherOcc.fill(0);
   state.classOcc.fill(0);
+  if (state.classGroupOcc) state.classGroupOcc.fill(0);
   state.roomOcc.fill(0);
   state.teacherDayLoad.fill(0);
   state.classDayLoad.fill(0);
