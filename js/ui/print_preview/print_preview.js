@@ -67,7 +67,15 @@
     const sizeBtn    = el("button", { class: "chrx-tb-btn", type: "button",
       onclick: () => notify("Sizes/widths — coming soon") }, "📐 Sizes");
     const designBtn  = el("button", { class: "chrx-tb-btn", type: "button",
-      onclick: () => notify("Design — coming soon") }, "🎨 Design");
+      title: "Cell style — anchor, fields, font, colors",
+      onclick: () => {
+        if (!window.CellStyleDialog) { notify("Cell-style dialog not loaded", "error"); return; }
+        const cur = (APP.printCellStyles || {})[currentTemplate];
+        window.CellStyleDialog.open(currentTemplate, cur, () => {
+          // Re-render the active template so the new style takes effect.
+          render(currentTemplate);
+        });
+      } }, "🎨 Cell style…");
     const colorBtn   = el("button", { class: "chrx-tb-btn", type: "button",
       onclick: () => notify("Colors — coming soon") }, "🌈 Colors");
     const structBtn  = el("button", { class: "chrx-tb-btn", type: "button",
@@ -178,10 +186,34 @@
 
   function cellFromCard(card) {
     if (!card) return el("td", { class: "pp-cell-empty" }, "—");
-    return el("td", null,
-      el("div", { class: "pp-cell-subj" }, card.subjectAbbr || card.subject || ""),
-      el("div", { class: "pp-cell-meta" }, (card.teachers || []).join(", ")),
-      el("div", { class: "pp-cell-meta" }, card.classroom || ""));
+    const style = (APP.printCellStyles || {})[currentTemplate];
+    if (!style) {
+      // Default rendering — preserves legacy look.
+      return el("td", null,
+        el("div", { class: "pp-cell-subj" }, card.subjectAbbr || card.subject || ""),
+        el("div", { class: "pp-cell-meta" }, (card.teachers || []).join(", ")),
+        el("div", { class: "pp-cell-meta" }, card.classroom || ""));
+    }
+    // Styled rendering — apply anchor, card-types, font, colors.
+    const [v, h] = style.anchor.split("-");
+    const items = v === "top" ? "flex-start" : v === "bottom" ? "flex-end" : "center";
+    const just  = h === "left" ? "flex-start" : h === "right" ? "flex-end" : "center";
+    const ta    = h === "left" ? "left" : h === "right" ? "right" : "center";
+    const td = el("td", {
+      style: `background:${style.colors.bg};color:${style.colors.fg};` +
+        `font-family:${style.font.family};font-size:${style.font.size}px;vertical-align:top` });
+    const box = el("div", {
+      style: `display:flex;flex-direction:column;justify-content:${items};align-items:${just};text-align:${ta};height:100%;gap:1px` });
+    const ct = style.cardTypes || {};
+    if (ct.subject)   box.appendChild(el("div", { style:"font-weight:600" }, card.subjectAbbr || card.subject || ""));
+    if (ct.teacher)   box.appendChild(el("div", null, (card.teachers || []).join(", ")));
+    if (ct.class)     box.appendChild(el("div", null, (card.classes  || card.class || []).toString()));
+    if (ct.group)     box.appendChild(el("div", null, (card.groups   || card.group || []).toString()));
+    if (ct.classroom) box.appendChild(el("div", { style:"opacity:.75" }, card.classroom || ""));
+    if (ct.count)     box.appendChild(el("div", { style:"opacity:.6;font-size:0.9em" }, String(card.count || "")));
+    if (ct.bellTimes) box.appendChild(el("div", { style:"opacity:.6;font-size:0.9em" }, card.bellTimes || ""));
+    td.appendChild(box);
+    return td;
   }
 
   function perEntityPages(school, kind, periods, entities, byIdx) {

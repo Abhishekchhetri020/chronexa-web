@@ -201,7 +201,7 @@
 
 <!-- ─────────────────────── SCRIPTS ─────────────────────── -->
 <!-- Bump APP_VER on every deploy so the browser refetches the JS bundle -->
-<script>window.APP_VER = "20260519-p2-w6";</script>
+<script>window.APP_VER = "20260519-p3-w9";</script>
 <!-- Backend URL — leave empty to force "Run on this computer". Override at deploy time. -->
 <script>window.CHRONEXA_BACKEND_URL = window.CHRONEXA_BACKEND_URL || "";</script>
 <script>
@@ -219,6 +219,7 @@
     ["ui","components/time_off_matrix"],
     ["ui","components/class_constraints_dialog"],
     ["ui","components/teacher_constraints_dialog"],
+    ["ui","components/divisions_tree"],
     ["ui","entities/subjects"],
     ["ui","entities/classes"],
     ["ui","entities/classrooms"],
@@ -229,8 +230,10 @@
     ["ui","entities/breaks"],
     ["ui","entities/classroomsupervisions"],
     ["ui","entities/coursegroups"],
+    ["ui","entities/buildings"],
     ["ui","entities/divisions"],
     ["ui","entities/groups"],
+    ["ui","entities/days"],
     ["ui","entities/terms"],
     ["ui","entities/weeks"],
     ["ui","entities/ttreports"],
@@ -284,6 +287,7 @@
     ["ui","io/export_atlantis"],
     ["ui","io/export_powerschool"],
     ["ui","io/export_excel_class_register"],
+    ["ui","print_preview/cell_style_dialog"],
     ["ui","print_preview/print_preview"],
     ["ui","ribbon/bootstrap"],
     // ─── Substitution (Agent K) ───────────────────────────────

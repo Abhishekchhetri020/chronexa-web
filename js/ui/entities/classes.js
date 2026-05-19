@@ -145,9 +145,10 @@
       onDuplicate: () => {
         const all = window.APP.school.classes;
         const copy = { ...srcRef, id:D.uid("c"), name:(srcRef.name || "") + " (copy)" };
-        if (Array.isArray(srcRef.timeOff)) copy.timeOff = srcRef.timeOff.map(row => row.slice());
-        if (srcRef.constraints) copy.constraints = { ...srcRef.constraints };
-        if (Array.isArray(srcRef.classroomIds)) copy.classroomIds = srcRef.classroomIds.slice();
+        if (srcRef.timeOff != null)     copy.timeOff = deepClone(srcRef.timeOff);
+        if (srcRef.constraints)          copy.constraints = deepClone(srcRef.constraints);
+        if (srcRef.classroomIds != null) copy.classroomIds = deepClone(srcRef.classroomIds);
+        if (srcRef.divisions != null)    copy.divisions = deepClone(srcRef.divisions);
         all.push(copy);
         if (window.APP.school._idx) window.APP.school._idx.classById[copy.id] = copy;
         window.APP.audit.append({ entity:"classes", op:"add", after:{...copy} });
@@ -224,77 +225,38 @@
     const ref = r._ref;
     // before snapshot reflects the current persisted state (may be empty).
     const before = cloneDivisions(ref.divisions || []);
+
+    // Tree component required — load order is enforced by index.html. If
+    // missing, fall back to a tiny inline message so the dialog doesn't
+    // open empty.
+    if (!window.DivisionsTree) {
+      D.openSheet(D.el("div", null,
+        D.el("p", null, "Divisions tree component is not loaded."),
+        D.el("div", { class:"chrx-ent-form__foot" },
+          D.el("button", { type:"button", class:"chrx-btn",
+            onclick:()=>D.closeSheet() }, "Close"))),
+        { title: `Divisions — ${ref.name}` });
+      return;
+    }
+
     // Local draft — committed only on Save. Seed default when class has none
     // so the user immediately sees the "Entire class" baseline; if they hit
     // Cancel, ref.divisions stays untouched.
     const draft = (Array.isArray(ref.divisions) && ref.divisions.length)
       ? cloneDivisions(ref.divisions)
-      : defaultDivisions();
+      : window.DivisionsTree.defaultDivisions();
+
+    const lessons = window.APP.school?.lessons || [];
 
     const wrap = D.el("div", { class:"chrx-ent-divisions" });
-    const list = D.el("div", { class:"chrx-ent-list" });
-
-    function renderGroupRow(div, g, gi) {
-      const fName = D.el("input", { type:"text", value:g.name || "",
-        maxlength:"30", placeholder:"Group name",
-        oninput:(e)=>{ g.name = e.target.value; } });
-      const fCount = D.el("input", { type:"number", min:"0", max:"200",
-        value: g.studentsCount == null ? "" : g.studentsCount,
-        placeholder:"#",
-        style:"width:64px",
-        oninput:(e)=>{ const v = e.target.value;
-          g.studentsCount = v === "" ? null : (parseInt(v, 10) || 0); } });
-      const del = D.el("button", { type:"button", class:"chrx-btn chrx-btn--danger",
-        title:"Delete group",
-        onclick:()=>{ div.groups.splice(gi, 1); render(); } }, "×");
-      return D.el("div", { class:"chrx-ent-row",
-        style:"display:flex;gap:8px;margin:4px 0 4px 16px;align-items:center" },
-        D.el("span", { style:"opacity:.6;font-size:12px" }, `Group ${gi+1}`),
-        fName, fCount, del);
-    }
-
-    function renderDivisionCard(div, i) {
-      const card = D.el("div", { class:"chrx-ent-div-card",
-        style:"border:1px solid var(--chrx-border, #e5e7eb);border-radius:8px;padding:10px;margin-bottom:10px" });
-
-      const fName = D.el("input", { type:"text", value:div.name || "",
-        maxlength:"30", placeholder:"Division name (e.g. Math/PE split)",
-        style:"flex:1",
-        oninput:(e)=>{ div.name = e.target.value; } });
-      const delDiv = D.el("button", { type:"button", class:"chrx-btn chrx-btn--danger",
-        title:"Delete division",
-        onclick:()=>{ draft.splice(i, 1); render(); } }, "Delete");
-      card.appendChild(D.el("div", { class:"chrx-ent-row",
-        style:"display:flex;gap:8px;align-items:center;margin-bottom:6px" },
-        D.el("span", { style:"opacity:.6;font-size:12px" }, `#${i+1}`),
-        fName, delDiv));
-
-      (div.groups || []).forEach((g, gi) => card.appendChild(renderGroupRow(div, g, gi)));
-
-      const addGroupBtn = D.el("button", { type:"button", class:"chrx-btn",
-        style:"margin:6px 0 0 16px",
-        onclick:()=>{
-          div.groups = div.groups || [];
-          div.groups.push({ id:D.uid("g"),
-            name:`Group ${div.groups.length + 1}`, studentsCount:null });
-          render();
-        } }, "+ Group");
-      card.appendChild(addGroupBtn);
-      return card;
-    }
-
-    function render() {
-      list.innerHTML = "";
-      if (!draft.length) {
-        list.appendChild(D.el("p", { style:"opacity:.6;margin:8px 0" },
-          "No divisions yet. Add one below."));
-      } else {
-        draft.forEach((d, i) => list.appendChild(renderDivisionCard(d, i)));
-      }
-    }
-    render();
+    const treeHost = D.el("div", { class:"chrx-ent-divtree-host" });
+    window.DivisionsTree.mount(treeHost, ref, draft, lessons);
+    wrap.appendChild(treeHost);
 
     // Add-row controls: name input + "Add" + "Quick-add (Boys, Girls)"
+    function rerender() {
+      window.DivisionsTree.render(treeHost, draft, lessons);
+    }
     const fAddName = D.el("input", { type:"text",
       placeholder:"New division name (e.g. Math/PE split)", maxlength:"30",
       style:"flex:1" });
@@ -311,8 +273,8 @@
             { id:D.uid("g"), name:"Group 1", studentsCount:null },
             { id:D.uid("g"), name:"Group 2", studentsCount:null },
           ] });
-        fAddName.value = ""; render();
-      } }, "Add division");
+        fAddName.value = ""; rerender();
+      } }, "+ Division");
 
     const quickBtn = D.el("button", { type:"button", class:"chrx-btn",
       onclick:()=>{
@@ -324,12 +286,11 @@
           name: parts.join("/"),
           groups: parts.map(p => ({ id:D.uid("g"),
             name:p, studentsCount:null })) });
-        fQuick.value = ""; render();
+        fQuick.value = ""; rerender();
       } }, "Quick-add");
 
-    wrap.appendChild(list);
     wrap.appendChild(D.el("div", { class:"chrx-ent-row",
-      style:"display:flex;gap:8px;margin-top:8px" }, fAddName, addBtn));
+      style:"display:flex;gap:8px;margin-top:12px" }, fAddName, addBtn));
     wrap.appendChild(D.el("div", { class:"chrx-ent-row",
       style:"display:flex;gap:8px;margin-top:8px" }, fQuick, quickBtn));
     wrap.appendChild(D.el("p", { style:"opacity:.55;font-size:12px;margin:8px 0 0" },
@@ -341,20 +302,8 @@
           onclick:()=>{ D.closeSheet(); } }, "Cancel"),
         D.el("button", { type:"button", class:"chrx-btn chrx-btn--primary",
           onclick:()=>{
-            // Validate: each division has ≥1 group, every group has a name.
-            for (const d of draft) {
-              if (!d.name || !d.name.trim()) {
-                alert("Each division needs a name."); return;
-              }
-              if (!d.groups || !d.groups.length) {
-                alert(`Division "${d.name}" has no groups.`); return;
-              }
-              for (const g of d.groups) {
-                if (!g.name || !g.name.trim()) {
-                  alert(`A group in division "${d.name}" has no name.`); return;
-                }
-              }
-            }
+            const err = window.DivisionsTree.validate(draft);
+            if (err) { alert(err); return; }
             ref.divisions = draft;
             window.APP.audit.append({ entity:"classes", op:"divisions",
               id:ref.id, before, after:cloneDivisions(draft) });

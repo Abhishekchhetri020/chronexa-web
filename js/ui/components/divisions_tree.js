@@ -1,0 +1,196 @@
+/* Divisions tree component.
+ *
+ *   window.DivisionsTree.mount(host, classRef, lessons, onChange)
+ *
+ * Renders a 3-level tree:
+ *   Root      — the class itself
+ *     Division — e.g. "Lab split", "Boys/Girls", "Language tracks"
+ *       Group   — e.g. "Group A", "Group B"
+ *
+ * Each node supports inline add/edit/delete. Each group shows its student
+ * count and the lessons assigned to it (read from
+ *   lessons.filter(l => l.divisionGroupIds?.includes(group.id))
+ * ).
+ *
+ * The component mutates `classRef.divisions` directly on every edit and
+ * calls `onChange()` so the host dialog can mark the draft dirty.
+ *
+ * Single-use component for the embedded divisions editor in
+ * js/ui/entities/classes.js — kept deliberately minimal per CLAUDE.md
+ * simplicity rule. NOT a general-purpose tree widget.
+ */
+(function (global) {
+  "use strict";
+  const D = window.EntityDialog;
+  if (!D) return;
+
+  function uid(p) { return p + "_" + Math.random().toString(36).slice(2, 9); }
+
+  function defaultDivisions() {
+    return [{ id:"d_full", name:"Entire class",
+      groups:[{ id:"g_full", name:"Entire class", studentsCount:null }] }];
+  }
+
+  function lessonsForGroup(lessons, groupId) {
+    if (!groupId || !Array.isArray(lessons)) return [];
+    return lessons.filter(l =>
+      Array.isArray(l.divisionGroupIds) && l.divisionGroupIds.includes(groupId));
+  }
+
+  function subjectLabel(lesson) {
+    const idx = window.APP?.school?._idx?.subjectById || {};
+    const sub = idx[lesson.subjectId];
+    return sub ? (sub.abbr || sub.name) : (lesson.subjectId || "?");
+  }
+
+  // Render the tree into `host`. Idempotent — safe to call repeatedly.
+  function render(host, draft, lessons, onChange) {
+    host.innerHTML = "";
+    const className = host._classRef?.name || "Class";
+
+    // Root
+    const root = D.el("div", { class:"chrx-divtree-node chrx-divtree-root",
+      style:"font-weight:600;padding:6px 8px;background:#f3f4f6;border-radius:6px;margin-bottom:6px" },
+      D.el("span", { style:"margin-right:6px" }, "📚"),
+      D.el("span", null, className),
+      D.el("span", { style:"opacity:.55;font-weight:400;font-size:12px;margin-left:8px" },
+        `${draft.length} division${draft.length === 1 ? "" : "s"}`));
+    host.appendChild(root);
+
+    if (!draft.length) {
+      host.appendChild(D.el("p",
+        { style:"opacity:.6;margin:8px 0 8px 24px;font-size:13px" },
+        "No divisions yet. Click + Division below."));
+    }
+
+    draft.forEach((div, di) => {
+      host.appendChild(renderDivision(div, di, draft, lessons, () => {
+        render(host, draft, lessons, onChange); onChange && onChange();
+      }));
+    });
+  }
+
+  function renderDivision(div, di, draft, lessons, redraw) {
+    const wrap = D.el("div", { class:"chrx-divtree-div",
+      style:"margin:6px 0 6px 16px;border-left:2px solid #d1d5db;padding-left:10px" });
+
+    // Division header: name input, delete button, "+ Group" button.
+    const nameInput = D.el("input", { type:"text",
+      value:div.name || "", maxlength:"40",
+      placeholder:"Division name (e.g. Math/PE split)",
+      style:"flex:1;min-width:0;padding:3px 6px;font-size:13px",
+      oninput:(e)=>{ div.name = e.target.value; } });
+    const delBtn = D.el("button", { type:"button",
+      class:"chrx-btn chrx-btn--danger",
+      style:"padding:2px 8px;font-size:12px",
+      title:"Delete this division",
+      onclick:()=>{ draft.splice(di, 1); redraw(); } }, "×");
+    const addGroupBtn = D.el("button", { type:"button", class:"chrx-btn",
+      style:"padding:2px 8px;font-size:12px",
+      onclick:()=>{
+        div.groups = div.groups || [];
+        div.groups.push({ id:uid("g"),
+          name:`Group ${div.groups.length + 1}`, studentsCount:null });
+        redraw();
+      } }, "+ Group");
+
+    wrap.appendChild(D.el("div", {
+      style:"display:flex;gap:6px;align-items:center;padding:4px 0" },
+      D.el("span", { style:"opacity:.55;font-size:12px;min-width:40px" },
+        `D${di + 1}`),
+      D.el("span", { style:"margin-right:4px" }, "📂"),
+      nameInput, addGroupBtn, delBtn));
+
+    // Groups
+    (div.groups || []).forEach((g, gi) => {
+      wrap.appendChild(renderGroup(g, gi, div, lessons, redraw));
+    });
+
+    if (!(div.groups || []).length) {
+      wrap.appendChild(D.el("p",
+        { style:"opacity:.6;margin:4px 0 4px 24px;font-size:12px" },
+        "No groups yet."));
+    }
+    return wrap;
+  }
+
+  function renderGroup(g, gi, div, lessons, redraw) {
+    const row = D.el("div", { class:"chrx-divtree-group",
+      style:"margin:4px 0 4px 24px;border-left:2px dashed #e5e7eb;padding-left:10px" });
+
+    const nameInput = D.el("input", { type:"text",
+      value:g.name || "", maxlength:"30", placeholder:"Group name",
+      style:"flex:1;min-width:0;padding:3px 6px;font-size:13px",
+      oninput:(e)=>{ g.name = e.target.value; } });
+    const countInput = D.el("input", { type:"number", min:"0", max:"200",
+      value: g.studentsCount == null ? "" : g.studentsCount,
+      placeholder:"#",
+      style:"width:56px;padding:3px 6px;font-size:13px",
+      title:"Students in this group",
+      oninput:(e)=>{ const v = e.target.value;
+        g.studentsCount = v === "" ? null : (parseInt(v, 10) || 0); } });
+    const delBtn = D.el("button", { type:"button",
+      class:"chrx-btn chrx-btn--danger",
+      style:"padding:2px 8px;font-size:12px",
+      title:"Delete this group",
+      onclick:()=>{ div.groups.splice(gi, 1); redraw(); } }, "×");
+
+    row.appendChild(D.el("div", {
+      style:"display:flex;gap:6px;align-items:center;padding:2px 0" },
+      D.el("span", { style:"opacity:.55;font-size:12px;min-width:40px" },
+        `G${gi + 1}`),
+      D.el("span", { style:"margin-right:4px" }, "👥"),
+      nameInput,
+      D.el("span", { style:"opacity:.55;font-size:11px" }, "students"),
+      countInput, delBtn));
+
+    // Lessons assigned to this group
+    const assignedLessons = lessonsForGroup(lessons, g.id);
+    if (assignedLessons.length) {
+      const ul = D.el("div", {
+        style:"margin:2px 0 2px 56px;font-size:11px;opacity:.7;display:flex;flex-wrap:wrap;gap:4px" },
+        D.el("span", { style:"opacity:.7" }, "Lessons:"));
+      assignedLessons.forEach(l => {
+        ul.appendChild(D.el("span", {
+          style:"background:#eef2ff;color:#3730a3;padding:1px 6px;border-radius:10px",
+          title:`Lesson ${l.id}` }, subjectLabel(l)));
+      });
+      row.appendChild(ul);
+    } else {
+      row.appendChild(D.el("div", {
+        style:"margin:2px 0 2px 56px;font-size:11px;opacity:.45" },
+        "No lessons assigned to this group."));
+    }
+    return row;
+  }
+
+  // Validate. Returns the first error message, or null if OK.
+  function validate(draft) {
+    for (const d of draft) {
+      if (!d.name || !d.name.trim()) return "Each division needs a name.";
+      if (!d.groups || !d.groups.length)
+        return `Division "${d.name}" has no groups.`;
+      for (const g of d.groups) {
+        if (!g.name || !g.name.trim())
+          return `A group in division "${d.name}" has no name.`;
+      }
+    }
+    return null;
+  }
+
+  // Mount the tree against an in-memory draft array (caller controls commit).
+  //   host:     DOM node to render into
+  //   classRef: the class object (used for the root label only)
+  //   draft:    the in-memory divisions array we mutate in place
+  //   lessons:  the project's lessons (used to show per-group assignments)
+  //   onChange: optional callback fired on every edit
+  function mount(host, classRef, draft, lessons, onChange) {
+    if (!host || !classRef || !Array.isArray(draft)) return;
+    host._classRef = classRef;
+    render(host, draft, lessons, onChange);
+  }
+
+  global.DivisionsTree = {
+    mount, render, validate, defaultDivisions,
+  };
+})(window);

@@ -33,6 +33,17 @@
     const idxT = s._idx?.teacherById || {};
     const idxC = s._idx?.classById   || {};
     const idxR = s._idx?.classroomById || {};
+
+    // Look up day/week/term pattern names by id. Falls back to the
+    // legacy free-text l.term / l.week / l.fixedDay shape if no defId
+    // is set, so pre-bitmask lessons keep showing something useful.
+    const days  = (s.days  || []);
+    const weeks = (s.weeks || []);
+    const terms = (s.terms || []);
+    const dayById  = Object.create(null); days.forEach (d => dayById[d.id]  = d);
+    const wkById   = Object.create(null); weeks.forEach(w => wkById[w.id]   = w);
+    const termById = Object.create(null); terms.forEach(t => termById[t.id] = t);
+
     return (s.lessons || []).map(l => ({
       id: l.id,
       subject: idxS[l.subjectId]?.name || l.subjectId,
@@ -41,9 +52,15 @@
       count: l.periodsPerWeek || 0,
       duration: l.isLabDouble ? "Double" : "Single",
       classroom: classroomDisplay(l, idxR),
-      term: l.term || "",
-      week: l.week || "",
-      days: l.fixedDay != null ? `Day ${l.fixedDay + 1}` : "Any",
+      term: l.termsDefId
+        ? (termById[l.termsDefId]?.name || l.termsDefId)
+        : (l.term || ""),
+      week: l.weeksDefId
+        ? (wkById[l.weeksDefId]?.name || l.weeksDefId)
+        : (l.week || ""),
+      days: l.daysDefId
+        ? (dayById[l.daysDefId]?.name || l.daysDefId)
+        : (l.fixedDay != null ? `Day ${l.fixedDay + 1}` : "Any"),
       _ref: l,
     }));
   }
@@ -122,11 +139,23 @@
   function openEdit(r) {
     const isNew = !r;
     const s = window.APP.school;
+
+    // Ensure days/weeks/terms arrays + defaults exist so the dropdowns
+    // always have at least one entry to select.
+    const defDay  = window.EntityDays  && window.EntityDays.defaultId  && window.EntityDays.defaultId()  || "";
+    const defWk   = window.EntityWeeks && window.EntityWeeks.defaultId && window.EntityWeeks.defaultId() || "";
+    const defTerm = window.EntityTerms && window.EntityTerms.defaultId && window.EntityTerms.defaultId() || "";
+
     const draft = isNew
       ? { subjectId:"", classIds:[], teacherIds:[], periodsPerWeek:1,
           isLabDouble:false, preferredRoomId:"",
           classroomIdsByCard:null,         // null = use single preferredRoomId
           classroomIdsExpansion:null,      // null|"home"|"shared"|"teacher"|"subject"
+          wildcardTeacher:false,           // ASC '??' — solver picks any teacher
+          wildcardRoom:false,              // ASC '??' — solver picks any room
+          daysDefId: defDay,
+          weeksDefId: defWk,
+          termsDefId: defTerm,
           fixedDay:"", fixedPeriod:"" }
       : { subjectId:r._ref.subjectId, classIds:r._ref.classIds.slice(),
           teacherIds:r._ref.teacherIds.slice(),
@@ -137,6 +166,11 @@
             ? r._ref.classroomIdsByCard.map(a => (a || []).slice())
             : null,
           classroomIdsExpansion: r._ref.classroomIdsExpansion || null,
+          wildcardTeacher: !!r._ref.wildcardTeacher,
+          wildcardRoom: !!r._ref.wildcardRoom,
+          daysDefId: r._ref.daysDefId || defDay,
+          weeksDefId: r._ref.weeksDefId || defWk,
+          termsDefId: r._ref.termsDefId || defTerm,
           fixedDay: r._ref.fixedDay != null ? r._ref.fixedDay : "",
           fixedPeriod: r._ref.fixedPeriod != null ? r._ref.fixedPeriod : "" };
 
@@ -148,6 +182,37 @@
     const fTeach = makeMulti(s.teachers, draft.teacherIds,
       x => x.name + (x.abbr ? ` (${x.abbr})` : ""),
       v => { draft.teacherIds = v; refreshRoomBlock(); }, 5);
+
+    // ── Wildcard toggles (ASC "??" semantics) ─────────────────────────
+    // When checked, the teacher/room picker is disabled and the solver
+    // is free to pick ANY teacher / room that satisfies feasibility.
+    // TODO(solver): treat lesson.wildcardTeacher === true as candidate
+    // set = all teachers; same for wildcardRoom.
+    function applyTeacherDisabled() {
+      fTeach.disabled = !!draft.wildcardTeacher;
+      fTeach.style.opacity = draft.wildcardTeacher ? "0.4" : "";
+    }
+    function applyRoomDisabled() {
+      const dis = !!draft.wildcardRoom;
+      roomBlock.style.opacity = dis ? "0.4" : "";
+      roomBlock.style.pointerEvents = dis ? "none" : "";
+    }
+    const fWildTeach = D.el("input", { type:"checkbox",
+      checked: draft.wildcardTeacher ? "checked" : null,
+      onchange:(e)=>{ draft.wildcardTeacher = e.target.checked;
+        applyTeacherDisabled(); } });
+    const fWildRoom = D.el("input", { type:"checkbox",
+      checked: draft.wildcardRoom ? "checked" : null,
+      onchange:(e)=>{ draft.wildcardRoom = e.target.checked;
+        applyRoomDisabled(); } });
+    const fWildTeachLabel = D.el("label", {
+      style:"display:inline-flex;gap:6px;align-items:center;cursor:pointer",
+      title:"If checked, the solver assigns any teacher (ASC '??' pattern)" },
+      fWildTeach, D.el("span", null, "Wildcard teacher (?)"));
+    const fWildRoomLabel = D.el("label", {
+      style:"display:inline-flex;gap:6px;align-items:center;cursor:pointer",
+      title:"If checked, the solver assigns any room (ASC '??' pattern)" },
+      fWildRoom, D.el("span", null, "Wildcard room (?)"));
     const fCount = D.el("input", { type:"number", min:"1", max:"20",
       value:draft.periodsPerWeek,
       oninput:(e)=>{
@@ -292,6 +357,24 @@
       }
     }
     refreshRoomBlock();
+    applyTeacherDisabled();
+    applyRoomDisabled();
+
+    // ── Day / Week / Term dropdowns (split-schedule + multi-term support) ─
+    // These reference EntityDays/Weeks/Terms patterns; defaults are seeded
+    // by the respective ensure() calls so the lists are never empty.
+    const dayPatterns  = (window.EntityDays  && window.EntityDays.ensure()  || s.days  || []);
+    const weekPatterns = (window.EntityWeeks && window.EntityWeeks.ensure() || s.weeks || []);
+    const termPatterns = (window.EntityTerms && window.EntityTerms.ensure() || s.terms || []);
+    const fDaysDef  = makeSelect(dayPatterns,  draft.daysDefId,
+      d => d.name + (d.short ? ` (${d.short})` : ""),
+      v => { draft.daysDefId = v || ""; }, false);
+    const fWeeksDef = makeSelect(weekPatterns, draft.weeksDefId,
+      w => w.name + (w.short ? ` (${w.short})` : ""),
+      v => { draft.weeksDefId = v || ""; }, false);
+    const fTermsDef = makeSelect(termPatterns, draft.termsDefId,
+      t => t.name + (t.short ? ` (${t.short})` : ""),
+      v => { draft.termsDefId = v || ""; }, false);
 
     D.buildEditSheet({
       title: isNew ? "New lesson" : "Edit lesson",
@@ -299,9 +382,14 @@
         { label:"Subject", control:fSubj },
         { label:"Classes (multi)", control:fClasses },
         { label:"Teachers (multi)", control:fTeach },
+        { label:null, control:fWildTeachLabel },
         { label:"Periods/week",     control:fCount },
         { label:"Double-period",    control:fLab },
         { label:"Classroom",        control:roomBlock },
+        { label:null, control:fWildRoomLabel },
+        { label:"Day pattern",      control:fDaysDef },
+        { label:"Week pattern",     control:fWeeksDef },
+        { label:"Term",             control:fTermsDef },
         { label:"Fixed day (0–5)",  control:fDay },
         { label:"Fixed period",     control:fPeriod },
       ],
@@ -339,6 +427,11 @@
           l.classroomIdsByCard = roomFields.classroomIdsByCard;
           l.classroomIdsExpansion = roomFields.classroomIdsExpansion;
           l.classroomIdsExpanded = roomFields.classroomIdsExpanded;
+          l.wildcardTeacher = draft.wildcardTeacher ? true : undefined;
+          l.wildcardRoom = draft.wildcardRoom ? true : undefined;
+          l.daysDefId = draft.daysDefId || undefined;
+          l.weeksDefId = draft.weeksDefId || undefined;
+          l.termsDefId = draft.termsDefId || undefined;
           l.fixedDay = draft.fixedDay !== "" ? parseInt(draft.fixedDay, 10) : undefined;
           l.fixedPeriod = draft.fixedPeriod !== "" ? parseInt(draft.fixedPeriod, 10) : undefined;
           window.APP.audit.append({ entity:"lessons", op:"update", before, after:{...l} });
@@ -352,6 +445,11 @@
             classroomIdsByCard: roomFields.classroomIdsByCard,
             classroomIdsExpansion: roomFields.classroomIdsExpansion,
             classroomIdsExpanded: roomFields.classroomIdsExpanded,
+            wildcardTeacher: draft.wildcardTeacher ? true : undefined,
+            wildcardRoom: draft.wildcardRoom ? true : undefined,
+            daysDefId: draft.daysDefId || undefined,
+            weeksDefId: draft.weeksDefId || undefined,
+            termsDefId: draft.termsDefId || undefined,
             fixedDay: draft.fixedDay !== "" ? parseInt(draft.fixedDay, 10) : undefined,
             fixedPeriod: draft.fixedPeriod !== "" ? parseInt(draft.fixedPeriod, 10) : undefined };
           all.push(nl);
