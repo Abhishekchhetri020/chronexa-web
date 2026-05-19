@@ -55,11 +55,17 @@
 
     const sel = el("select", { class: "chrx-tb-btn", "aria-label": "Report template",
       onchange: (e) => render(e.target.value) });
-    [["class","Timetable for each class"],
-     ["teacher","Timetable for each teacher"],
-     ["room","Timetable for each room"],
-     ["summary","Summary of classes"],
-     ["poster","Wall poster (landscape)"]].forEach(([v,l]) => sel.appendChild(el("option", { value: v }, l)));
+    // Pull the full template list from the registry if it loaded; fall back
+    // to the legacy 5-template hardcoded list otherwise.
+    const reg = APP.printTemplates;
+    const templates = reg ? reg.list() : [
+      { id: "class",   name: "Timetable for each class" },
+      { id: "teacher", name: "Timetable for each teacher" },
+      { id: "room",    name: "Timetable for each room" },
+      { id: "summary", name: "Summary of classes" },
+      { id: "poster",  name: "Wall poster (landscape)" },
+    ];
+    templates.forEach(t => sel.appendChild(el("option", { value: t.id }, t.name)));
     sel.value = currentTemplate;
 
     const filterBtn  = el("button", { class: "chrx-tb-btn", type: "button",
@@ -157,6 +163,24 @@
     else if (template === "room")    pages = perEntityPages(s, "room",    periods, s.classrooms, s._idx?.cardsByRoom);
     else if (template === "summary") pages = [summaryPage(s, periods)];
     else if (template === "poster")  pages = [posterPage(s, periods)];
+    else {
+      // Registry-delegated render. Modules return Array<Node> (one node per
+      // A4 page). If render throws or returns non-array, show a fallback page.
+      const reg = APP.printTemplates;
+      const def = reg ? reg.get(template) : null;
+      if (def && typeof def.render === "function") {
+        try {
+          const out = def.render(s);
+          if (Array.isArray(out))      pages = out.filter(Boolean);
+          else if (out instanceof Node) pages = [out];
+        } catch (err) {
+          console.error("[print_preview] template", template, "threw:", err);
+          pages = [el("div", { class: "chrx-preview-page" },
+            el("h2", null, "Template error"),
+            el("pre", { style: "white-space:pre-wrap;color:#900;font-size:11px" }, String(err && err.message || err)))];
+        }
+      }
+    }
 
     if (!pages.length) pages = [el("div", { class: "chrx-preview-page" }, el("h2", null, "No data"))];
     showPage(0);

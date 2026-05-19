@@ -1,0 +1,59 @@
+/* Summary of classrooms — single A4 landscape with one row per classroom.
+ *
+ * EduPage parity: "Summary timetable of classrooms". Per-day period count
+ * across the week + total + utilisation. Lets the facilities lead see room
+ * dead-time at a glance.
+ */
+(function () {
+  "use strict";
+  const U = window.APP.printTemplateUtils;
+  if (!U) return;
+  const { el, page, header, footer, emptyPage, DAYS } = U;
+
+  function render(school) {
+    if (!school || !school.classrooms || !school.classrooms.length) return [emptyPage("No classrooms")];
+    const periods = school.bell?.periods || [];
+    const byRoom  = school._idx?.cardsByRoom || {};
+    const totalSlots = DAYS.length * periods.length;
+
+    const p = page(true);
+    p.appendChild(header("Summary of classrooms", school.schoolName || ""));
+
+    const tbl = el("table", { style: U.tableCSS() });
+    const tr0 = el("tr");
+    tr0.appendChild(el("th", { style: U.thCSS() }, "Room"));
+    DAYS.forEach(d => tr0.appendChild(el("th", { style: U.thCSS() + ";text-align:right" }, d)));
+    tr0.appendChild(el("th", { style: U.thCSS() + ";text-align:right" }, "Total"));
+    tr0.appendChild(el("th", { style: U.thCSS() + ";text-align:right" }, "Util %"));
+    tbl.appendChild(el("thead", null, tr0));
+
+    const tbody = el("tbody");
+    for (const r of school.classrooms) {
+      const list = byRoom[r.id] || [];
+      const perDay = DAYS.map((_, d) => list.filter(x => x.day === d).length);
+      const total = perDay.reduce((a, b) => a + b, 0);
+      const util = totalSlots ? Math.round(100 * total / totalSlots) : 0;
+
+      const tr = el("tr");
+      tr.appendChild(el("td", { style: U.tdCSS() }, r.name));
+      perDay.forEach(n => tr.appendChild(el("td",
+        { style: U.tdCSS() + ";text-align:right;" + (n ? "" : "color:#ccc") },
+        n ? String(n) : "·")));
+      tr.appendChild(el("td", { style: U.tdCSS() + ";text-align:right;font-weight:600" }, String(total)));
+      tr.appendChild(el("td", { style: U.tdCSS() + ";text-align:right;" + (util > 85 ? "color:#a00" : util < 20 ? "color:#888" : "") }, util + "%"));
+      tbody.appendChild(tr);
+    }
+    tbl.appendChild(tbody);
+    p.appendChild(tbl);
+
+    p.appendChild(el("div", { style: "margin-top:8px;font-size:9px;color:#666" },
+      "Rooms: " + school.classrooms.length + "  ·  Weekly slots/room: " + totalSlots + "  ·  Util < 20% may be over-provisioned."));
+    p.appendChild(footer());
+    return [p];
+  }
+
+  window.APP.printTemplates.register("summary_of_classrooms", {
+    name: "Summary of classrooms",
+    render,
+  });
+})();
