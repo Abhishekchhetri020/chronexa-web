@@ -16,8 +16,8 @@
     "weeks":     () => window.EntityWeeks     && window.EntityWeeks.open(),
     "terms":     () => window.EntityTerms     && window.EntityTerms.open(),
     "buildings": () => window.EntityBuildings && window.EntityBuildings.open(),
-    "holidays":  () => openStub("Holidays", "Holidays dialog coming in P1. Today, mark `timeOff` cells in the bell schedule."),
-    "school":    () => openStub("School settings", "School settings dialog coming in P1. Today, edit school name via the Step 2 'School Info' page."),
+    "holidays":  () => window.EntityHolidays && window.EntityHolidays.open(),
+    "school":    () => window.SchoolSettings && window.SchoolSettings.open(),
 
     // Edit menu (Subjects/Teachers/Classes/Classrooms/Lessons/Relations/Supervisions)
     "subjects":    () => window.EntitySubjects    && window.EntitySubjects.open(),
