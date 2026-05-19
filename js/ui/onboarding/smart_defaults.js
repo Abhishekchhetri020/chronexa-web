@@ -52,5 +52,138 @@
     return "Room " + (101 + existingRooms.length);
   }
 
-  global.SmartDefaults = { suggestClassName, suggestRoomName, decorateNewEntity };
+  // ─── Friendly empty states for entity dialogs ──────────────────────────
+  // The entity dialogs in js/ui/entities/* are frozen for this work item.
+  // We decorate them from outside via a MutationObserver that watches for
+  // `.chrx-ent-dialog` insertions. When the dialog mounts with zero rows we
+  // slot in a hero callout; we always slot a "+ Bulk-add" link below the
+  // sidebar so the user can pop the BulkAddWizard from any entity screen.
+
+  const TITLE_TO_KIND = {
+    teachers: "teachers", teacher: "teachers",
+    classes: "classes", class: "classes",
+    subjects: "subjects", subject: "subjects",
+    classrooms: "classrooms", classroom: "classrooms",
+    rooms: "classrooms", room: "classrooms",
+  };
+  const HERO_LABELS = {
+    teachers:   { plural: "teachers",   single: "teacher",   color: "#1d4ed8", bg: "#dbeafe", icon: "T" },
+    classes:    { plural: "classes",    single: "class",     color: "#7c3aed", bg: "#ede9fe", icon: "C" },
+    subjects:   { plural: "subjects",   single: "subject",   color: "#047857", bg: "#d1fae5", icon: "S" },
+    classrooms: { plural: "classrooms", single: "classroom", color: "#b45309", bg: "#fef3c7", icon: "R" },
+  };
+
+  function inferKind(dialogEl) {
+    const h2 = dialogEl.querySelector(".chrx-ent-head h2");
+    if (!h2) return null;
+    const t = (h2.textContent || "").trim().toLowerCase();
+    for (const k of Object.keys(TITLE_TO_KIND)) {
+      if (t === k || t.startsWith(k + " ") || t.startsWith(k + ":") ||
+          t.startsWith(k + "—") || t.startsWith(k + "-")) {
+        return TITLE_TO_KIND[k];
+      }
+    }
+    for (const k of Object.keys(TITLE_TO_KIND)) if (t.includes(k)) return TITLE_TO_KIND[k];
+    return null;
+  }
+
+  function rowCount(dialogEl) {
+    return dialogEl.querySelectorAll(".chrx-ent-rows > tr").length;
+  }
+
+  function openBulk(kind) {
+    if (global.BulkAddWizard && global.BulkAddWizard.open) {
+      global.BulkAddWizard.open(kind, global.APP && global.APP.school);
+    }
+  }
+
+  function injectEmptyHero(dialogEl, kind) {
+    if (dialogEl.querySelector(".chrx-ent-empty-hero")) return;
+    const tableWrap = dialogEl.querySelector(".chrx-ent-table-wrap");
+    if (!tableWrap || !tableWrap.parentNode) return;
+    const l = HERO_LABELS[kind]; if (!l) return;
+
+    const hero = document.createElement("div");
+    hero.className = "chrx-ent-empty-hero";
+    hero.style.cssText =
+      "border:2px dashed #cbd5e1;border-radius:14px;padding:24px 20px;margin:12px;background:#f8fafc;" +
+      "display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center";
+    hero.innerHTML =
+      '<div style="width:48px;height:48px;border-radius:12px;background:' + l.bg +
+      ';color:' + l.color + ';display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px;letter-spacing:.5px">' + l.icon + '</div>' +
+      '<div style="font-size:15px;font-weight:600;color:#0f172a">No ' + l.plural + ' yet</div>' +
+      '<div style="font-size:13px;color:#64748b;max-width:360px">Click <strong>New</strong> on the right to add your first ' + l.single +
+      ', or paste a list from your spreadsheet.</div>' +
+      '<div style="display:flex;gap:8px;margin-top:6px">' +
+        '<button type="button" class="chrx-ent-empty-add" style="background:' + l.color + ';color:white;border:0;padding:8px 16px;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer">+ Add your first ' + l.single + '</button>' +
+        '<button type="button" class="chrx-ent-empty-bulk" style="background:white;color:' + l.color + ';border:1px solid ' + l.color + ';padding:8px 16px;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer">Bulk-add from list</button>' +
+      '</div>';
+    tableWrap.parentNode.insertBefore(hero, tableWrap);
+
+    const addBtn  = hero.querySelector(".chrx-ent-empty-add");
+    const bulkBtn = hero.querySelector(".chrx-ent-empty-bulk");
+    if (addBtn) addBtn.onclick = () => {
+      const newBtn = Array.from(dialogEl.querySelectorAll("button"))
+        .find(b => (b.textContent || "").trim() === "New");
+      if (newBtn) newBtn.click();
+    };
+    if (bulkBtn) bulkBtn.onclick = () => openBulk(kind);
+  }
+
+  function injectBulkLinkIntoSidebar(dialogEl, kind) {
+    if (dialogEl.querySelector(".chrx-ent-bulk-link")) return;
+    const sidebar = dialogEl.querySelector(".chrx-ent-sidebar")
+                 || dialogEl.querySelector(".chrx-ent-side")
+                 || dialogEl.querySelector(".chrx-ent-side-buttons");
+    if (!sidebar) return;
+    const link = document.createElement("button");
+    link.type = "button";
+    link.className = "chrx-ent-bulk-link";
+    link.textContent = "+ Bulk-add";
+    link.title = "Add many " + kind + " at once";
+    link.style.cssText =
+      "background:transparent;border:1px dashed #94a3b8;color:#475569;padding:6px 10px;border-radius:6px;" +
+      "font-size:12px;font-weight:600;cursor:pointer;margin-top:8px;display:block;width:100%";
+    link.onclick = () => openBulk(kind);
+    sidebar.appendChild(link);
+  }
+
+  function decorateDialog(dialogEl) {
+    const kind = inferKind(dialogEl);
+    if (!kind) return;
+    requestAnimationFrame(() => {
+      if (rowCount(dialogEl) === 0) injectEmptyHero(dialogEl, kind);
+      injectBulkLinkIntoSidebar(dialogEl, kind);
+    });
+  }
+
+  function startObserver() {
+    if (global.__chronexaSmartDefaultsObserver) return;
+    const obs = new MutationObserver((muts) => {
+      for (const m of muts) {
+        for (const node of m.addedNodes) {
+          if (!node || node.nodeType !== 1) continue;
+          if (node.classList && node.classList.contains("chrx-ent-dialog")) {
+            decorateDialog(node);
+          } else if (node.querySelector) {
+            const dlg = node.querySelector(".chrx-ent-dialog");
+            if (dlg) decorateDialog(dlg);
+          }
+        }
+      }
+    });
+    obs.observe(document.body, { childList: true });
+    global.__chronexaSmartDefaultsObserver = obs;
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", startObserver);
+  } else {
+    startObserver();
+  }
+
+  global.SmartDefaults = {
+    suggestClassName, suggestRoomName, decorateNewEntity,
+    decorateDialog, startObserver,
+  };
 })(window);
