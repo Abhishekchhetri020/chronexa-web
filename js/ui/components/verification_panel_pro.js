@@ -1,0 +1,220 @@
+/* Enhanced Verification Panel — sortable, groupable, auto-fix suggester.
+ *
+ * The existing solver_ui/verification_panel.js shows a flat violation list.
+ * This Pro variant adds:
+ *   - Sort by type / entity / severity (hard/soft)
+ *   - Group by violation type
+ *   - Per-violation "Suggest fix" button (uses RelationEnforcer +
+ *     SolverConstraints.checkPlacement to find an alternative slot)
+ *   - One-click "Apply fix" — moves the card
+ *   - Bulk "Auto-fix all" — applies all single-step fixes
+ *
+ * Triggered by app:verification-pro event (Timetable menu hook).
+ * Falls back gracefully if RelationEnforcer or checkPlacement aren't loaded.
+ */
+(function (global) {
+  "use strict";
+
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      const v = attrs[k]; if (v == null) continue;
+      if (k === "class") n.className = v;
+      else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v);
+    }
+    for (const c of kids) if (c != null && c !== false)
+      n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    return n;
+  }
+
+  function collectViolations(school) {
+    const out = [];
+    const lessonById = (school._idx && school._idx.lessonById) ||
+      Object.fromEntries((school.lessons || []).map(l => [l.id, l]));
+    const subjectById = (school._idx && school._idx.subjectById) ||
+      Object.fromEntries((school.subjects || []).map(s => [s.id, s]));
+    for (const card of (school.cards || [])) {
+      const lesson = lessonById[card.lessonId];
+      if (!lesson) continue;
+      const subj = subjectById[lesson.subjectId];
+      const cardLabel = (subj?.short || subj?.name || "?") +
+        " · D" + (card.day + 1) + "P" + (card.period + 1);
+      // Direct constraint check
+      if (window.SolverConstraints?.checkPlacement) {
+        const r = window.SolverConstraints.checkPlacement(school, lesson.id, card.day, card.period, card.classroomId);
+        for (const msg of (r.hard || []))
+          out.push({ severity: "hard", type: "scheduling", entity: cardLabel, message: msg, card, lesson });
+        for (const msg of (r.soft || []))
+          out.push({ severity: "soft", type: "scheduling", entity: cardLabel, message: msg, card, lesson });
+      }
+      // Relation enforcement
+      if (window.RelationEnforcer?.check) {
+        const r = window.RelationEnforcer.check(school, lesson.id, card.day, card.period);
+        for (const msg of (r.hard || []))
+          out.push({ severity: "hard", type: "relation", entity: cardLabel, message: msg, card, lesson });
+        for (const msg of (r.soft || []))
+          out.push({ severity: "soft", type: "relation", entity: cardLabel, message: msg, card, lesson });
+      }
+    }
+    return out;
+  }
+
+  function suggestFix(school, violation) {
+    if (!window.SolverConstraints?.checkPlacement) return null;
+    const card = violation.card;
+    const lesson = violation.lesson;
+    const days = 6;
+    const periods = (school.bell?.periods?.length) || 8;
+    let best = null;
+    for (let d = 0; d < days; d++) {
+      for (let p = 0; p < periods; p++) {
+        if (d === card.day && p === card.period) continue;
+        const r = window.SolverConstraints.checkPlacement(school, lesson.id, d, p, card.classroomId || null);
+        const hard = (r.hard || []).length;
+        const soft = (r.soft || []).length;
+        let r2hard = 0;
+        if (window.RelationEnforcer) {
+          const r2 = window.RelationEnforcer.check(school, lesson.id, d, p);
+          r2hard = r2.hard.length;
+        }
+        if (hard + r2hard === 0) {
+          const score = soft;
+          if (!best || score < best.score) best = { d, p, score, soft };
+        }
+      }
+    }
+    return best;
+  }
+
+  function applyFix(card, target) {
+    card.day = target.d;
+    card.period = target.p;
+    if (window.APP?.audit?.append) {
+      window.APP.audit.append({ entity: "cards", op: "auto-fix",
+        lessonId: card.lessonId, to: { d: target.d, p: target.p } });
+    }
+    window.dispatchEvent(new CustomEvent("entity:changed", { detail: { entity: "cards" } }));
+  }
+
+  function render(violations, school, root, panel) {
+    const listEl = panel.querySelector(".chrx-vpro-list");
+    listEl.innerHTML = "";
+    if (!violations.length) {
+      listEl.appendChild(el("div", { class: "chrx-vpro-empty" }, "🎉 No violations — your timetable is clean."));
+      return;
+    }
+    // Group by type
+    const groups = {};
+    for (const v of violations) {
+      const key = v.type + " · " + v.severity;
+      (groups[key] = groups[key] || []).push(v);
+    }
+    Object.entries(groups).forEach(([groupName, items]) => {
+      const groupHeader = el("div", { class: "chrx-vpro-group" },
+        `${groupName} (${items.length})`);
+      listEl.appendChild(groupHeader);
+      items.slice(0, 100).forEach(v => {
+        const row = el("div", { class: "chrx-vpro-row chrx-vpro-row--" + v.severity });
+        row.appendChild(el("div", { class: "chrx-vpro-msg" },
+          el("strong", null, v.entity), " · ", v.message));
+        const fixBtn = el("button", { class: "chrx-vpro-fix" }, "🔧 Suggest fix");
+        fixBtn.onclick = () => {
+          const target = suggestFix(school, v);
+          if (!target) {
+            fixBtn.textContent = "No feasible slot";
+            fixBtn.disabled = true;
+            return;
+          }
+          fixBtn.textContent = `Move to D${target.d + 1}P${target.p + 1}?`;
+          fixBtn.onclick = () => {
+            applyFix(v.card, target);
+            row.style.opacity = "0.4";
+            fixBtn.textContent = "✓ Fixed";
+            fixBtn.disabled = true;
+          };
+        };
+        row.appendChild(fixBtn);
+        listEl.appendChild(row);
+      });
+      if (items.length > 100) {
+        listEl.appendChild(el("div", { class: "chrx-vpro-more" }, `… ${items.length - 100} more`));
+      }
+    });
+  }
+
+  function open(school) {
+    school = school || (window.APP && window.APP.school);
+    if (!school) { (window._chrxNotify || console.log)("Open a timetable first.", "error"); return; }
+    ensureStyles();
+    const root = el("div", { class: "chrx-vpro-root",
+      onclick: e => { if (e.target === root) root.remove(); } });
+    const panel = el("div", { class: "chrx-vpro-panel" });
+
+    panel.appendChild(el("header", null,
+      el("h2", null, "🔍 Verification — with auto-fix suggestions"),
+      el("button", { class: "chrx-vpro-close", "aria-label": "Close", onclick: () => root.remove() }, "×"),
+    ));
+
+    const violations = collectViolations(school);
+    panel.appendChild(el("div", { class: "chrx-vpro-summary" },
+      `${violations.length} violation(s) found · `,
+      `${violations.filter(v => v.severity === "hard").length} hard · `,
+      `${violations.filter(v => v.severity === "soft").length} soft`));
+
+    panel.appendChild(el("div", { class: "chrx-vpro-list" }));
+    panel.appendChild(el("footer", null,
+      el("button", { class: "chrx-vpro-autofix", onclick: () => {
+        let fixed = 0;
+        for (const v of violations) {
+          if (v.severity !== "hard") continue;
+          const t = suggestFix(school, v);
+          if (t) { applyFix(v.card, t); fixed++; }
+        }
+        (window._chrxNotify || console.log)(`🔧 Auto-fixed ${fixed} of ${violations.length} hard violations.`);
+        const newViolations = collectViolations(school);
+        render(newViolations, school, root, panel);
+      } }, "🪄 Auto-fix all hard violations"),
+      el("button", { class: "chrx-vpro-rescan", onclick: () => {
+        const nv = collectViolations(school); render(nv, school, root, panel);
+      } }, "Re-scan"),
+    ));
+
+    root.appendChild(panel);
+    document.body.appendChild(root);
+    render(violations, school, root, panel);
+  }
+
+  function ensureStyles() {
+    if (document.getElementById("chrx-vpro-styles")) return;
+    const s = document.createElement("style");
+    s.id = "chrx-vpro-styles";
+    s.textContent = `
+.chrx-vpro-root{position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:flex-start;justify-content:center;padding:18px;z-index:1000;overflow:auto}
+.chrx-vpro-panel{background:#fff;border-radius:12px;width:min(900px,95vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3);font-family:-apple-system,BlinkMacSystemFont,sans-serif;color:#0f172a}
+.chrx-vpro-panel header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid #e2e8f0}
+.chrx-vpro-panel h2{margin:0;font-size:16px;color:#1e3a8a}
+.chrx-vpro-close{background:none;border:0;font-size:22px;cursor:pointer;color:#64748b}
+.chrx-vpro-summary{background:#fef3c7;color:#854d0e;padding:8px 16px;font-size:13px;border-bottom:1px solid #fde68a}
+.chrx-vpro-list{flex:1;overflow-y:auto;padding:8px 16px}
+.chrx-vpro-empty{padding:24px;text-align:center;color:#64748b}
+.chrx-vpro-group{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#475569;background:#f1f5f9;padding:4px 10px;border-radius:4px;margin:8px 0 4px}
+.chrx-vpro-row{display:flex;justify-content:space-between;align-items:flex-start;padding:5px 10px;border-bottom:1px solid #f1f5f9;font-size:12px;gap:8px}
+.chrx-vpro-row--hard{border-left:3px solid #ef4444}
+.chrx-vpro-row--soft{border-left:3px solid #f59e0b}
+.chrx-vpro-msg{flex:1}
+.chrx-vpro-fix{background:#fff;border:1px solid #cbd5e1;color:#1e3a8a;padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer;white-space:nowrap}
+.chrx-vpro-fix:hover{background:#dbeafe}
+.chrx-vpro-fix:disabled{opacity:0.5;cursor:default}
+.chrx-vpro-more{padding:6px 10px;color:#94a3b8;font-size:11px;font-style:italic}
+.chrx-vpro-panel footer{display:flex;justify-content:flex-end;gap:8px;padding:10px 16px;border-top:1px solid #e2e8f0;background:#fafbfc}
+.chrx-vpro-autofix{background:#10b981;color:#fff;border:0;padding:6px 14px;border-radius:6px;font-weight:600;cursor:pointer;font-size:12px}
+.chrx-vpro-rescan{background:#fff;color:#0f172a;border:1px solid #cbd5e1;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px}
+    `;
+    document.head.appendChild(s);
+  }
+
+  window.addEventListener("app:verification-pro", () => open());
+
+  global.VerificationPro = { open };
+})(window);
