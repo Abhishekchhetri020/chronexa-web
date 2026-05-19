@@ -204,7 +204,7 @@
 
 <!-- ─────────────────────── SCRIPTS ─────────────────────── -->
 <!-- Bump APP_VER on every deploy so the browser refetches the JS bundle -->
-<script>window.APP_VER = "20260519-p10-sanitized";</script>
+<script>window.APP_VER = "20260519-p10-defer";</script>
 <!-- Backend URL — leave empty to force "Run on this computer". Override at deploy time. -->
 <script>window.CHRONEXA_BACKEND_URL = window.CHRONEXA_BACKEND_URL || "";</script>
 <script>
@@ -365,7 +365,7 @@
     // Must load after all ribbon/menus/* so APP.ribbon.menus is populated.
     ["ui","editor/focus_mode"],
     ["ui","components/command_palette"],
-  ].map(([d, n]) => '<script src="js/' + d + '/' + n + '.js?v=' + window.APP_VER + '"><\/script>').join(""));
+  ].map(([d, n]) => '<script defer src="js/' + d + '/' + n + '.js?v=' + window.APP_VER + '"><\/script>').join(""));
 </script>
 <script>
   // Wire the header CTAs once the DOM is parsed.
