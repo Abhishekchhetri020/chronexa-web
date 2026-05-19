@@ -89,25 +89,74 @@
     });
   }
 
+  function setForMoreField(srcRow, fieldKey, getValueNow) {
+    const others = ((window.APP.school && window.APP.school.teachers) || [])
+      .filter(t => t.id !== srcRow.id);
+    if (!others.length) {
+      alert("No other teachers to apply this to.");
+      return;
+    }
+    const nameOf = (t) => t.name
+      || `${t.firstName || ""} ${t.lastName || ""}`.trim()
+      || t.id;
+    const items = others.map(t => ({ id:t.id, label:nameOf(t), _ref:t }));
+    window.EntityDialog.openPickEntitiesPopover({
+      title: `Apply ${fieldKey} to other teachers`,
+      help: `The current value of "${fieldKey}" will overwrite the same field on every selected teacher.`,
+      items, multi: true,
+      confirmLabel: "Apply",
+      onConfirm: (ids) => {
+        if (!ids.length) return;
+        const val = getValueNow();
+        ids.forEach(id => {
+          const target = others.find(t => t.id === id);
+          if (!target) return;
+          const before = target.constraints ? { ...target.constraints } : undefined;
+          const next = Object.assign(defaultConstraints(), target.constraints || {});
+          next[fieldKey] = val;
+          target.constraints = next;
+          window.APP.audit.append({
+            entity:"teachers", op:"constraints-setformore", field: fieldKey,
+            id, before, after: { ...next },
+          });
+        });
+      },
+    });
+  }
+
+  function withSetForMore(control, srcRow, fieldKey, getValueNow) {
+    if (!srcRow || !srcRow.id) return control;
+    const link = window.EntityDialog.buildSetForMoreLink(
+      () => setForMoreField(srcRow, fieldKey, getValueNow),
+      { title: "Apply this value to other teachers" }
+    );
+    return el("div", { class: "chrx-ent-row--withlink" }, control, link);
+  }
+
   function open(teacherRow, onSave) {
     if (!teacherRow) return;
     const c = Object.assign(defaultConstraints(), teacherRow.constraints || {});
 
+    const sfm = (control, fieldKey) =>
+      withSetForMore(control, teacherRow, fieldKey, () => c[fieldKey]);
+
     const fields = [
       { label: "Max gaps per week",
-        control: intOrEnum(c.teachers_maxgapsweek, v => c.teachers_maxgapsweek = v) },
+        control: sfm(intOrEnum(c.teachers_maxgapsweek, v => c.teachers_maxgapsweek = v), "teachers_maxgapsweek") },
       { label: "Max gaps per day",
-        control: intOrEnum(c.teachers_maxgapsday, v => c.teachers_maxgapsday = v) },
+        control: sfm(intOrEnum(c.teachers_maxgapsday, v => c.teachers_maxgapsday = v), "teachers_maxgapsday") },
       { label: "Max consecutive periods",
-        control: intOrEnum(c.teachers_maxconsecutiveperiods, v => c.teachers_maxconsecutiveperiods = v) },
+        control: sfm(intOrEnum(c.teachers_maxconsecutiveperiods, v => c.teachers_maxconsecutiveperiods = v), "teachers_maxconsecutiveperiods") },
       { label: "Max. on the question marked",
-        control: intOrEnum(c.maxOnConditional, v => c.maxOnConditional = v) },
+        control: sfm(intOrEnum(c.maxOnConditional, v => c.maxOnConditional = v), "maxOnConditional") },
       { label: "Number of lessons per day — From",
-        control: intOrEnum(c.lessonsPerDayMin, v => c.lessonsPerDayMin = v) },
+        control: sfm(intOrEnum(c.lessonsPerDayMin, v => c.lessonsPerDayMin = v), "lessonsPerDayMin") },
       { label: "Number of lessons per day — Till",
-        control: intOrEnum(c.lessonsPerDayMax, v => c.lessonsPerDayMax = v) },
+        control: sfm(intOrEnum(c.lessonsPerDayMax, v => c.lessonsPerDayMax = v), "lessonsPerDayMax") },
       { label: "Max days per week",
-        control: intOrEnum(c.maxDaysPerWeek, v => c.maxDaysPerWeek = v) },
+        control: sfm(intOrEnum(c.maxDaysPerWeek, v => c.maxDaysPerWeek = v), "maxDaysPerWeek") },
+      // Supervisions block intentionally lacks "Set for more" (matches
+      // EDUPAGE_FEATURE_MAP_WIZARD_6_8_R6.md §6.3 — supervisions excluded).
       { label: "Supervisions: Min Count",
         control: plainInt(c.supervisionMinCount, v => c.supervisionMinCount = v) },
       { label: "Supervisions: Max Count",

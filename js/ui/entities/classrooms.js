@@ -5,11 +5,15 @@
   if (!D) return;
 
   function rows() {
+    const idxS = window.APP.school?._idx?.subjectById || {};
     return ((window.APP.school?.classrooms) || []).map(rm => ({
       id: rm.id, name: rm.name || "", short: rm.abbr || rm.short || "",
       building: rm.building || "", capacity: rm.capacity != null ? rm.capacity : "",
       color: rm.color || "",
       needsSupervision: rm.needsSupervision ? "Yes" : "",
+      isShared: rm.isShared ? "Yes" : "",
+      subjectsFor: (rm.allowedSubjectIds || [])
+        .map(id => idxS[id]?.abbr || idxS[id]?.name).filter(Boolean).join(", "),
       bell: rm.bell || "default", _ref: rm,
     }));
   }
@@ -23,6 +27,8 @@
       render:(r)=>D.el("span", { class:"chrx-ent-swatch-dot",
         style:`background:${r.color || "transparent"}` }) },
     { key:"needsSupervision", label:"Supervised" },
+    { key:"isShared", label:"Shared" },
+    { key:"subjectsFor", label:"For subjects" },
     { key:"bell", label:"Bell" },
   ]; }
 
@@ -30,10 +36,14 @@
     const isNew = !r;
     const draft = isNew
       ? { name:"", short:"", building:"", capacity:"", color:"",
-          needsSupervision:false, bell:"" }
+          needsSupervision:false, isShared:false,
+          allowedSubjectIds:[], bell:"" }
       : { name:r.name, short:r.short, building:r.building,
           capacity:r.capacity, color:r.color,
-          needsSupervision: !!r._ref.needsSupervision, bell:r.bell === "default" ? "" : r.bell };
+          needsSupervision: !!r._ref.needsSupervision,
+          isShared: !!r._ref.isShared,
+          allowedSubjectIds: (r._ref.allowedSubjectIds || []).slice(),
+          bell:r.bell === "default" ? "" : r.bell };
 
     const fName = D.el("input", { type:"text", value:draft.name, required:"required",
       maxlength:"40", oninput:(e)=>draft.name = e.target.value });
@@ -47,8 +57,56 @@
     const fSup = D.el("input", { type:"checkbox",
       checked: draft.needsSupervision ? "checked" : null,
       onchange:(e)=>draft.needsSupervision = e.target.checked });
+    const fShared = D.el("input", { type:"checkbox",
+      checked: draft.isShared ? "checked" : null,
+      onchange:(e)=>draft.isShared = e.target.checked });
+    // Subjects this room is intended for (Lab → Science, Music Room → Music, etc.)
+    const fSubjects = D.el("select", { multiple:"multiple", size:"4" });
+    ((window.APP.school?.subjects) || []).forEach(sub => {
+      const opt = D.el("option", { value:sub.id }, sub.name + (sub.abbr ? ` (${sub.abbr})` : ""));
+      if (draft.allowedSubjectIds.includes(sub.id)) opt.selected = true;
+      fSubjects.appendChild(opt);
+    });
+    fSubjects.addEventListener("change", () => {
+      draft.allowedSubjectIds = Array.from(fSubjects.selectedOptions).map(o => o.value);
+    });
     const fBell = D.el("input", { type:"text", value:draft.bell, placeholder:"default",
       oninput:(e)=>draft.bell = e.target.value });
+
+    function save() {
+      if (!draft.name.trim()) { fName.focus(); return false; }
+      const all = window.APP.school.classrooms;
+      if (!isNew) {
+        const rm = r._ref;
+        const before = { ...rm };
+        rm.name = draft.name.trim();
+        rm.abbr = draft.short.trim() || undefined;
+        rm.building = draft.building.trim() || undefined;
+        rm.capacity = draft.capacity ? parseInt(draft.capacity, 10) : undefined;
+        rm.color = draft.color || undefined;
+        rm.needsSupervision = !!draft.needsSupervision;
+        rm.isShared = !!draft.isShared;
+        rm.allowedSubjectIds = draft.allowedSubjectIds.slice();
+        rm.bell = draft.bell || undefined;
+        window.APP.audit.append({ entity:"classrooms", op:"update", before, after:{...rm} });
+      } else {
+        const nr = { id:D.uid("r"), name:draft.name.trim(),
+          abbr:draft.short.trim() || undefined,
+          building:draft.building.trim() || undefined,
+          capacity:draft.capacity ? parseInt(draft.capacity, 10) : undefined,
+          color:draft.color || undefined,
+          needsSupervision: !!draft.needsSupervision,
+          isShared: !!draft.isShared,
+          allowedSubjectIds: draft.allowedSubjectIds.slice(),
+          bell:draft.bell || undefined };
+        if (all.some(x => x.name === nr.name)) { fName.focus(); return false; }
+        all.push(nr);
+        if (window.APP.school._idx) window.APP.school._idx.classroomById[nr.id] = nr;
+        window.APP.audit.append({ entity:"classrooms", op:"add", after:{...nr} });
+      }
+      D.closeSheet(); D.refresh(rows());
+      return true;
+    }
 
     D.buildEditSheet({
       title: isNew ? "New classroom" : `Edit classroom — ${r.name}`,
@@ -59,36 +117,93 @@
         { label:"Capacity", control:fCap },
         { label:"Color", control:fColor },
         { label:"Needs supervision", control:fSup },
+        { label:"Shared room", control:fShared },
+        { label:"For subjects", control:fSubjects },
         { label:"Bell", control:fBell },
       ],
-      onSave:()=>{
-        if (!draft.name.trim()) { fName.focus(); return; }
-        const all = window.APP.school.classrooms;
-        if (!isNew) {
-          const rm = r._ref;
-          const before = { ...rm };
-          rm.name = draft.name.trim();
-          rm.abbr = draft.short.trim() || undefined;
-          rm.building = draft.building.trim() || undefined;
-          rm.capacity = draft.capacity ? parseInt(draft.capacity, 10) : undefined;
-          rm.color = draft.color || undefined;
-          rm.needsSupervision = !!draft.needsSupervision;
-          rm.bell = draft.bell || undefined;
-          window.APP.audit.append({ entity:"classrooms", op:"update", before, after:{...rm} });
-        } else {
-          const nr = { id:D.uid("r"), name:draft.name.trim(),
-            abbr:draft.short.trim() || undefined,
-            building:draft.building.trim() || undefined,
-            capacity:draft.capacity ? parseInt(draft.capacity, 10) : undefined,
-            color:draft.color || undefined,
-            needsSupervision: !!draft.needsSupervision,
-            bell:draft.bell || undefined };
-          if (all.some(x => x.name === nr.name)) { fName.focus(); return; }
-          all.push(nr);
-          if (window.APP.school._idx) window.APP.school._idx.classroomById[nr.id] = nr;
-          window.APP.audit.append({ entity:"classrooms", op:"add", after:{...nr} });
-        }
-        D.closeSheet(); D.refresh(rows());
+      onSave: save,
+      siblingRows: isNew ? null : rows(),
+      currentRowId: isNew ? null : r.id,
+      onNavigate: openEdit,
+    });
+  }
+
+  // Copy entry (P2#10)
+  const COPYABLE_KEYS = ["color", "timeOff", "constraints", "bell",
+    "needsSupervision", "capacity", "building"];
+  function deepClone(v) {
+    if (Array.isArray(v)) return v.map(deepClone);
+    if (v && typeof v === "object") {
+      const out = {}; for (const k in v) out[k] = deepClone(v[k]); return out;
+    }
+    return v;
+  }
+  function openCopy(r) {
+    if (!r) return;
+    const srcRef = r._ref;
+    const srcSnapshot = { ...srcRef };
+    function applySettings(targetRef) {
+      const before = { ...targetRef };
+      COPYABLE_KEYS.forEach(k => {
+        if (srcSnapshot[k] !== undefined) targetRef[k] = deepClone(srcSnapshot[k]);
+      });
+      window.APP.audit.append({ entity:"classrooms", op:"copy", id:targetRef.id, before, after:{...targetRef} });
+    }
+    const all = rows();
+    const others = all.filter(x => x.id !== r.id).map(x => ({
+      id:x.id, name:x.name || x.id, _ref:x._ref,
+    }));
+    D.openCopyChooser({
+      title: `Copy — ${r.name}`,
+      source: srcRef, others,
+      onDuplicate: () => {
+        const list = window.APP.school.classrooms;
+        const copy = { ...srcRef, id:D.uid("r"), name:(srcRef.name || "") + " (copy)" };
+        if (Array.isArray(srcRef.timeOff)) copy.timeOff = srcRef.timeOff.map(row => row.slice());
+        if (srcRef.constraints) copy.constraints = { ...srcRef.constraints };
+        if (Array.isArray(srcRef.allowedSubjectIds))
+          copy.allowedSubjectIds = srcRef.allowedSubjectIds.slice();
+        list.push(copy);
+        if (window.APP.school._idx) window.APP.school._idx.classroomById[copy.id] = copy;
+        window.APP.audit.append({ entity:"classrooms", op:"add", after:{...copy} });
+        D.refresh(rows());
+      },
+      onCopyToOne: (targetRef) => { applySettings(targetRef); D.refresh(rows()); },
+      onCopyToMany: (targetRefs) => { targetRefs.forEach(applySettings); D.refresh(rows()); },
+    });
+  }
+
+  // Batch edit (P2#11)
+  function openBatch() {
+    const all = rows();
+    D.openBatchEditSheet({
+      title: "Batch edit — Classrooms",
+      rows: all.map(r => ({ id:r.id, name:r.name, _ref:r._ref })),
+      fields: [
+        { id:"color", label:"Color",
+          build:(onChange) => D.buildSwatchPicker("", v => onChange(v || "")) },
+        { id:"building", label:"Building",
+          build:(onChange) => D.el("input", { type:"text",
+            oninput:(e)=>onChange(e.target.value) }) },
+        { id:"capacity", label:"Capacity",
+          build:(onChange) => D.el("input", { type:"number", min:"0",
+            oninput:(e)=>onChange(parseInt(e.target.value, 10) || 0) }) },
+        { id:"needsSupervision", label:"Needs supervision",
+          build:(onChange) => D.el("input", { type:"checkbox",
+            onchange:(e)=>onChange(!!e.target.checked) }) },
+      ],
+      onApply: (fieldId, value, ids) => {
+        const byId = {}; all.forEach(r => byId[r.id] = r._ref);
+        ids.forEach(id => {
+          const ref = byId[id]; if (!ref) return;
+          const before = { ...ref };
+          if (fieldId === "color")            ref.color = value || undefined;
+          else if (fieldId === "building")    ref.building = value || undefined;
+          else if (fieldId === "capacity")    ref.capacity = value;
+          else if (fieldId === "needsSupervision") ref.needsSupervision = !!value;
+          window.APP.audit.append({ entity:"classrooms", op:"batch", field:fieldId, id, before, after:{...ref} });
+        });
+        D.refresh(rows());
       },
     });
   }
@@ -121,6 +236,8 @@
       extras:[
         { id:"timeoff",     label:"Time off" },
         { id:"constraints", label:"Constraints" },
+        { id:"copy",        label:"Copy" },
+        { id:"batch",       label:"Batch edit", needRow:false },
       ],
       onAction:(cmd, row) => {
         if (cmd === "new")  return openEdit(null);
@@ -146,6 +263,8 @@
           });
         }
         if (cmd === "constraints" && row) return openConstraints(row);
+        if (cmd === "copy" && row)         return openCopy(row);
+        if (cmd === "batch")               return openBatch();
       },
     });
   }

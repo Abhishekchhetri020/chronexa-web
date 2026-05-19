@@ -72,6 +72,19 @@
     return out;
   }
 
+  function listForKind(kind) {
+    const s = window.APP && window.APP.school;
+    if (!s) return [];
+    if (kind === "subjects")   return s.subjects   || [];
+    if (kind === "classes")    return s.classes    || [];
+    if (kind === "classrooms") return s.classrooms || [];
+    if (kind === "teachers")   return s.teachers   || [];
+    return [];
+  }
+  function nameOf(e) {
+    return e.name || (e.lastName && e.firstName ? `${e.firstName} ${e.lastName}` : "") || e.lastName || e.id;
+  }
+
   function open(entity, kind, onSave) {
     const days = getDays();
     const nDays = days.length;
@@ -145,9 +158,37 @@
       buildGrid();
     }
 
+    // "Set for more" — apply current matrix to N other entities of same kind.
+    function openSetForMore() {
+      const others = listForKind(kind).filter(e => e.id !== (entity && entity.id));
+      if (!others.length) {
+        alert(`No other ${noun}s to apply this matrix to.`);
+        return;
+      }
+      const items = others.map(e => ({ id:e.id, label:nameOf(e), _ref:e }));
+      window.EntityDialog.openPickEntitiesPopover({
+        title: `Apply this matrix to other ${noun}s`,
+        help: `The selected ${noun}s will have their entire time-off matrix replaced with the current one.`,
+        items, multi: true,
+        confirmLabel: "Apply matrix",
+        onConfirm: (ids) => {
+          if (!ids.length) return;
+          const snapshot = state.map(row => row.slice());
+          ids.forEach(id => {
+            const target = others.find(e => e.id === id);
+            if (!target) return;
+            const before = target.timeOff;
+            target.timeOff = snapshot.map(row => row.slice());
+            window.APP.audit.append({ entity: kind, op:"timeoff", id, before, after:target.timeOff });
+          });
+        },
+      });
+    }
+
     const actions = el("div", { class: "chrx-ent-tomatrix__actions" },
       el("button", { type: "button", class: "chrx-btn", onclick: resetAll }, "Reset all"),
       el("button", { type: "button", class: "chrx-btn", onclick: blockWeekend }, "Block weekend"),
+      el("button", { type: "button", class: "chrx-btn", onclick: openSetForMore }, "Set for more…"),
     );
 
     // ---- body + footer ----

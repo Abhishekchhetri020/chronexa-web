@@ -156,6 +156,54 @@
     return wrap;
   }
 
+  // "Set for more" — write ONE constraint field's current value to N other
+  // classes. Each affected class gets its own audit entry. Mutation is in-place.
+  function setForMoreField(srcRow, fieldKey, getValueNow) {
+    const others = ((window.APP.school && window.APP.school.classes) || [])
+      .filter(c => c.id !== srcRow.id);
+    if (!others.length) {
+      alert("No other classes to apply this to.");
+      return;
+    }
+    const items = others.map(c => ({ id:c.id, label:c.name || c.id, _ref:c }));
+    window.EntityDialog.openPickEntitiesPopover({
+      title: `Apply ${fieldKey} to other classes`,
+      help: `The current value of "${fieldKey}" will overwrite the same field on every selected class.`,
+      items, multi: true,
+      confirmLabel: "Apply",
+      onConfirm: (ids) => {
+        if (!ids.length) return;
+        const val = getValueNow();
+        ids.forEach(id => {
+          const target = others.find(c => c.id === id);
+          if (!target) return;
+          const before = target.constraints ? { ...target.constraints } : undefined;
+          const next = Object.assign(defaultConstraints(), target.constraints || {});
+          // Deep-copy 3D ctpos arrays so mutation can't leak.
+          if (fieldKey === "classTeacherPos" && Array.isArray(val)) {
+            next.classTeacherPos = val.map(t => t.map(w => w.slice()));
+          } else {
+            next[fieldKey] = val;
+          }
+          target.constraints = next;
+          window.APP.audit.append({
+            entity:"classes", op:"constraints-setformore", field: fieldKey,
+            id, before, after: { ...next },
+          });
+        });
+      },
+    });
+  }
+
+  function withSetForMore(control, srcRow, fieldKey, getValueNow) {
+    if (!srcRow || !srcRow.id) return control;
+    const link = window.EntityDialog.buildSetForMoreLink(
+      () => setForMoreField(srcRow, fieldKey, getValueNow),
+      { title: "Apply this value to other classes" }
+    );
+    return el("div", { class: "chrx-ent-row--withlink" }, control, link);
+  }
+
   function open(classRow, onSave) {
     if (!classRow) return;
     const c = Object.assign(defaultConstraints(), classRow.constraints || {});
@@ -193,21 +241,38 @@
 
     const fPrep = intOrEnum(c.maxneedspreparation, v => c.maxneedspreparation = v);
 
+    const sfm = (control, fieldKey, get) =>
+      withSetForMore(control, classRow, fieldKey, get);
+
     const fields = [
-      { label: "Class teacher must teach this class in specific time every day", control: ctposBox },
-      { label: "Max. on the question marked", control: fMaxQ },
-      { label: "Education block", control: fManual },
-      { label: "Education block - min - from", control: fMinFrom },
-      { label: "Education block - min - till", control: fMinTill },
-      { label: "Education block - max - from", control: fMaxFrom },
-      { label: "Education block - max - till", control: fMaxTill },
-      { label: "Allow arrival on second lesson.", control: fDruhe },
-      { label: "The groups of students have to finish the day in the same time.", control: fKoncit },
-      { label: "Min periods per day", control: fMinDay },
-      { label: "Max periods per day", control: fMaxDay },
-      { label: "Lunch - from", control: fLunchFrom },
-      { label: "Lunch - till", control: fLunchTill },
-      { label: "Max. number of lessons per day requiring preparation", control: fPrep },
+      { label: "Class teacher must teach this class in specific time every day",
+        control: sfm(ctposBox, "classTeacherPos", () => gridToCtpos(ctposGrid)) },
+      { label: "Max. on the question marked",
+        control: sfm(fMaxQ, "maxQuestionMarked", () => c.maxQuestionMarked) },
+      { label: "Education block",
+        control: sfm(fManual, "m_nManualnyBlok", () => c.m_nManualnyBlok) },
+      { label: "Education block - min - from",
+        control: sfm(fMinFrom, "m_nMinBlokOd", () => c.m_nMinBlokOd) },
+      { label: "Education block - min - till",
+        control: sfm(fMinTill, "m_nMinBlokDo", () => c.m_nMinBlokDo) },
+      { label: "Education block - max - from",
+        control: sfm(fMaxFrom, "m_nMaxVyucOd", () => c.m_nMaxVyucOd) },
+      { label: "Education block - max - till",
+        control: sfm(fMaxTill, "m_nMaxVyucDo", () => c.m_nMaxVyucDo) },
+      { label: "Allow arrival on second lesson.",
+        control: sfm(fDruhe, "m_bDruheHodiny", () => !!c.m_bDruheHodiny) },
+      { label: "The groups of students have to finish the day in the same time.",
+        control: sfm(fKoncit, "m_bKoncitNaraz", () => !!c.m_bKoncitNaraz) },
+      { label: "Min periods per day",
+        control: sfm(fMinDay, "minperiodsday", () => c.minperiodsday) },
+      { label: "Max periods per day",
+        control: sfm(fMaxDay, "maxperiodsday", () => c.maxperiodsday) },
+      { label: "Lunch - from",
+        control: sfm(fLunchFrom, "lunch_periodfrom", () => c.lunch_periodfrom) },
+      { label: "Lunch - till",
+        control: sfm(fLunchTill, "lunch_periodto", () => c.lunch_periodto) },
+      { label: "Max. number of lessons per day requiring preparation",
+        control: sfm(fPrep, "maxneedspreparation", () => c.maxneedspreparation) },
     ];
 
     D.buildEditSheet({

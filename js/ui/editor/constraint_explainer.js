@@ -31,12 +31,12 @@ window.ConstraintExplainer = (function () {
   let hideTimer = null;
   let currentTarget = null;
 
-  /** Public: explain why one (lessonId, day, period) is flagged. */
+  /** Public: explain why one (cardId, day, period) is flagged. */
   function explainCell(cardId, day, period) {
     const out = { severity: "ok", reasons: [] };
     const S = window.APP && window.APP.school;
     if (!S) return out;
-    const lessonId = lessonIdFromCardId(cardId, S);
+    const lessonId = lessonIdFromCardId(cardId);
     if (!lessonId) return out;
     const card = (S.cards || []).find(c =>
       c.lessonId === lessonId && c.day === day && c.period === period
@@ -111,21 +111,20 @@ window.ConstraintExplainer = (function () {
   }
 
   /** Card-id is `placed_${lessonId}_${day}_${period}`; parse out the lessonId. */
-  function lessonIdFromCardId(cardId, S) {
+  function lessonIdFromCardId(cardId /* , S */) {
     if (!cardId) return null;
     if (cardId.indexOf("placed_") !== 0) return cardId;
     // lessonId may itself contain underscores — strip the "placed_" prefix
-    // and the trailing "_<day>_<period>" suffix.
+    // and the trailing "_<day>_<period>" suffix. We use the vk dataset
+    // (data-lesson-id) instead in practice via the caller, but support the
+    // legacy cardId-only path for backward compat with explainCell()'s API.
     const rest = cardId.slice("placed_".length);
     const lastUnderscore = rest.lastIndexOf("_");
     if (lastUnderscore <= 0) return rest;
     const middle = rest.slice(0, lastUnderscore);
     const lastUnderscore2 = middle.lastIndexOf("_");
     if (lastUnderscore2 <= 0) return middle;
-    const candidate = middle.slice(0, lastUnderscore2);
-    // Verify the lessonId actually exists; if not, fall back to direct.
-    if (S && S._idx && S._idx.lessonById[candidate]) return candidate;
-    return candidate;
+    return middle.slice(0, lastUnderscore2);
   }
 
   /** Public: wire hover handlers to all .chrx-vkarta cells inside root. */
@@ -214,7 +213,10 @@ window.ConstraintExplainer = (function () {
   function showFor(vk, mouseX, mouseY) {
     if (!vk || !document.body.contains(vk)) { hideTooltip(); return; }
     ensureTooltipEl();
-    const cardId = vk.dataset.cardId;
+    // The cell carries the canonical lessonId on data-lesson-id; the cardId
+    // (data-card-id, e.g. "placed_l1_0_3") is kept as the public API arg for
+    // explainCell so external callers can still reason about a card by id.
+    const cardId = vk.dataset.cardId || `placed_${vk.dataset.lessonId}_${vk.dataset.day}_${vk.dataset.period}`;
     const day = parseInt(vk.dataset.day, 10);
     const period = parseInt(vk.dataset.period, 10);
     const data = explainCell(cardId, day, period);

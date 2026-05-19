@@ -73,6 +73,39 @@
     const fConsec = D.el("input", { type:"number", min:"0", value:draft.maxConsecutivePeriods,
       oninput:(e)=>draft.maxConsecutivePeriods = e.target.value });
 
+    function save() {
+      if (!draft.lastName.trim()) { fLast.focus(); return false; }
+      const all = window.APP.school.teachers;
+      const fullName = `${draft.firstName.trim()} ${draft.lastName.trim()}`.trim();
+      if (!isNew) {
+        const t = r._ref;
+        const before = { ...t };
+        t.firstName = draft.firstName.trim() || undefined;
+        t.lastName  = draft.lastName.trim();
+        t.name = fullName;
+        t.abbr = draft.abbr.trim() || undefined;
+        t.color = draft.color || undefined;
+        t.maxGapsPerDay = draft.maxGapsPerDay !== "" ? parseInt(draft.maxGapsPerDay, 10) : undefined;
+        t.maxConsecutivePeriods = draft.maxConsecutivePeriods !== "" ? parseInt(draft.maxConsecutivePeriods, 10) : undefined;
+        window.APP.audit.append({ entity:"teachers", op:"update", before, after:{...t} });
+      } else {
+        const nt = { id:D.uid("t"),
+          firstName:draft.firstName.trim() || undefined,
+          lastName:draft.lastName.trim(),
+          name: fullName,
+          abbr:draft.abbr.trim() || undefined,
+          color:draft.color || undefined,
+          maxGapsPerDay: draft.maxGapsPerDay !== "" ? parseInt(draft.maxGapsPerDay, 10) : undefined,
+          maxConsecutivePeriods: draft.maxConsecutivePeriods !== "" ? parseInt(draft.maxConsecutivePeriods, 10) : undefined };
+        if (all.some(x => x.name === nt.name)) { fLast.focus(); return false; }
+        all.push(nt);
+        if (window.APP.school._idx) window.APP.school._idx.teacherById[nt.id] = nt;
+        window.APP.audit.append({ entity:"teachers", op:"add", after:{...nt} });
+      }
+      D.closeSheet(); D.refresh(rows());
+      return true;
+    }
+
     D.buildEditSheet({
       title: isNew ? "New teacher" : `Edit teacher — ${r.lastName}`,
       fields:[
@@ -83,36 +116,87 @@
         { label:"Max gaps/day", control:fGaps },
         { label:"Max consecutive periods", control:fConsec },
       ],
-      onSave:()=>{
-        if (!draft.lastName.trim()) { fLast.focus(); return; }
-        const all = window.APP.school.teachers;
-        const fullName = `${draft.firstName.trim()} ${draft.lastName.trim()}`.trim();
-        if (!isNew) {
-          const t = r._ref;
-          const before = { ...t };
-          t.firstName = draft.firstName.trim() || undefined;
-          t.lastName  = draft.lastName.trim();
-          t.name = fullName;
-          t.abbr = draft.abbr.trim() || undefined;
-          t.color = draft.color || undefined;
-          t.maxGapsPerDay = draft.maxGapsPerDay !== "" ? parseInt(draft.maxGapsPerDay, 10) : undefined;
-          t.maxConsecutivePeriods = draft.maxConsecutivePeriods !== "" ? parseInt(draft.maxConsecutivePeriods, 10) : undefined;
-          window.APP.audit.append({ entity:"teachers", op:"update", before, after:{...t} });
-        } else {
-          const nt = { id:D.uid("t"),
-            firstName:draft.firstName.trim() || undefined,
-            lastName:draft.lastName.trim(),
-            name: fullName,
-            abbr:draft.abbr.trim() || undefined,
-            color:draft.color || undefined,
-            maxGapsPerDay: draft.maxGapsPerDay !== "" ? parseInt(draft.maxGapsPerDay, 10) : undefined,
-            maxConsecutivePeriods: draft.maxConsecutivePeriods !== "" ? parseInt(draft.maxConsecutivePeriods, 10) : undefined };
-          if (all.some(x => x.name === nt.name)) { fLast.focus(); return; }
-          all.push(nt);
-          if (window.APP.school._idx) window.APP.school._idx.teacherById[nt.id] = nt;
-          window.APP.audit.append({ entity:"teachers", op:"add", after:{...nt} });
-        }
-        D.closeSheet(); D.refresh(rows());
+      onSave: save,
+      siblingRows: isNew ? null : rows(),
+      currentRowId: isNew ? null : r.id,
+      onNavigate: openEdit,
+    });
+  }
+
+  // Copy entry (P2#10)
+  const COPYABLE_KEYS = ["color", "timeOff", "constraints",
+    "maxGapsPerDay", "maxConsecutivePeriods"];
+  function deepClone(v) {
+    if (Array.isArray(v)) return v.map(deepClone);
+    if (v && typeof v === "object") {
+      const out = {}; for (const k in v) out[k] = deepClone(v[k]); return out;
+    }
+    return v;
+  }
+  function openCopy(r) {
+    if (!r) return;
+    const srcRef = r._ref;
+    const srcSnapshot = { ...srcRef };
+    function applySettings(targetRef) {
+      const before = { ...targetRef };
+      COPYABLE_KEYS.forEach(k => {
+        if (srcSnapshot[k] !== undefined) targetRef[k] = deepClone(srcSnapshot[k]);
+      });
+      window.APP.audit.append({ entity:"teachers", op:"copy", id:targetRef.id, before, after:{...targetRef} });
+    }
+    const all = rows();
+    const others = all.filter(x => x.id !== r.id).map(x => ({
+      id:x.id, name:x._ref.name || `${x.firstName} ${x.lastName}`.trim() || x.id, _ref:x._ref,
+    }));
+    D.openCopyChooser({
+      title: `Copy — ${r._ref.name || r.lastName}`,
+      source: srcRef, others,
+      onDuplicate: () => {
+        const list = window.APP.school.teachers;
+        const copy = { ...srcRef, id:D.uid("t"),
+          name: (srcRef.name || "") + " (copy)",
+          lastName: (srcRef.lastName || "") + " (copy)" };
+        if (Array.isArray(srcRef.timeOff)) copy.timeOff = srcRef.timeOff.map(row => row.slice());
+        if (srcRef.constraints) copy.constraints = { ...srcRef.constraints };
+        list.push(copy);
+        if (window.APP.school._idx) window.APP.school._idx.teacherById[copy.id] = copy;
+        window.APP.audit.append({ entity:"teachers", op:"add", after:{...copy} });
+        D.refresh(rows());
+      },
+      onCopyToOne: (targetRef) => { applySettings(targetRef); D.refresh(rows()); },
+      onCopyToMany: (targetRefs) => { targetRefs.forEach(applySettings); D.refresh(rows()); },
+    });
+  }
+
+  // Batch edit (P2#11)
+  function openBatch() {
+    const all = rows();
+    D.openBatchEditSheet({
+      title: "Batch edit — Teachers",
+      rows: all.map(r => ({ id:r.id,
+        name:r._ref.name || `${r.firstName} ${r.lastName}`.trim() || r.id,
+        _ref:r._ref })),
+      fields: [
+        { id:"color", label:"Color",
+          build:(onChange) => D.buildSwatchPicker("", v => onChange(v || "")) },
+        { id:"maxGapsPerDay", label:"Max gaps/day",
+          build:(onChange) => D.el("input", { type:"number", min:"0",
+            oninput:(e)=>onChange(parseInt(e.target.value, 10) || 0) }) },
+        { id:"maxConsecutivePeriods", label:"Max consecutive periods",
+          build:(onChange) => D.el("input", { type:"number", min:"0",
+            oninput:(e)=>onChange(parseInt(e.target.value, 10) || 0) }) },
+      ],
+      onApply: (fieldId, value, ids) => {
+        const byId = {}; all.forEach(r => byId[r.id] = r._ref);
+        ids.forEach(id => {
+          const ref = byId[id]; if (!ref) return;
+          const before = { ...ref };
+          if (fieldId === "color") ref.color = value || undefined;
+          else if (fieldId === "maxGapsPerDay") ref.maxGapsPerDay = value;
+          else if (fieldId === "maxConsecutivePeriods") ref.maxConsecutivePeriods = value;
+          window.APP.audit.append({ entity:"teachers", op:"batch", field:fieldId, id, before, after:{...ref} });
+        });
+        D.refresh(rows());
       },
     });
   }
@@ -162,6 +246,8 @@
         { id:"lessons",     label:"Lessons" },
         { id:"timeoff",     label:"Time off" },
         { id:"constraints", label:"Constraints" },
+        { id:"copy",        label:"Copy" },
+        { id:"batch",       label:"Batch edit", needRow:false },
       ],
       onAction:(cmd, row) => {
         if (cmd === "new")  return openEdit(null);
@@ -178,7 +264,9 @@
         }
         if (cmd === "timeoff" && row)     return openTimeOff(row);
         if (cmd === "constraints" && row) return openConstraints(row);
-        if (cmd === "lessons" && row) return openLessonsOf(row);
+        if (cmd === "lessons" && row)     return openLessonsOf(row);
+        if (cmd === "copy" && row)        return openCopy(row);
+        if (cmd === "batch")              return openBatch();
       },
     });
   }

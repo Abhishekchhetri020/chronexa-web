@@ -124,8 +124,10 @@
   }
 
   function columns() { return [
-    { key:"disabled",   label:"" },
+    // typ first so dialog_shell's default sort (columns[0].key) honours
+    // the spec's "Sort by type by default" rule.
     { key:"typ",        label:"Typ" },
+    { key:"disabled",   label:"" },
     { key:"label",      label:"Description" },
     { key:"subjects",   label:"Subjects" },
     { key:"classes",    label:"Classes" },
@@ -527,6 +529,26 @@
     const scope = buildScopePanel(draft);
     const meta  = buildMetaPanel(draft);
 
+    function save() {
+      if (!draft.subjectids.length) { alert("Pick at least one subject."); return false; }
+      if (NEEDS_SUBJECT2.has(draft.typ) && !draft.subject2ids.length) {
+        alert("Pick at least one subject in 'Subject B'."); return false;
+      }
+      if (!draft.classids.length) { alert("Pick at least one class."); return false; }
+      const next = packPayload(draft);
+      // typ is immutable in edit mode — guard against accidental change.
+      next.typ = ref.typ;
+      // Wipe stale optional keys so the in-memory shape matches packPayload.
+      for (const k of Object.keys(ref)) {
+        if (k !== "id" && !(k in next)) delete ref[k];
+      }
+      Object.assign(ref, next);
+      window.APP.audit.append({ entity:"relations", op:"update", before, after:{...ref} });
+      D.closeSheet();
+      D.refresh(rowsOf());
+      return true;
+    }
+
     D.buildEditSheet({
       title: `Edit relation — ${typInfo.code}`,
       fields: [
@@ -534,22 +556,95 @@
         { label: null, control: scope.node },
         { label: null, control: meta },
       ],
-      onSave: () => {
-        if (!draft.subjectids.length) { alert("Pick at least one subject."); return; }
-        if (NEEDS_SUBJECT2.has(draft.typ) && !draft.subject2ids.length) {
-          alert("Pick at least one subject in 'Subject B'."); return;
-        }
-        if (!draft.classids.length) { alert("Pick at least one class."); return; }
-        const next = packPayload(draft);
-        // typ is immutable in edit mode — guard against accidental change.
-        next.typ = ref.typ;
-        // Wipe stale optional keys so the in-memory shape matches packPayload.
-        for (const k of Object.keys(ref)) {
-          if (k !== "id" && !(k in next)) delete ref[k];
-        }
-        Object.assign(ref, next);
-        window.APP.audit.append({ entity:"relations", op:"update", before, after:{...ref} });
-        D.closeSheet();
+      onSave: save,
+      siblingRows: rowsOf(),
+      currentRowId: row.id,
+      onNavigate: openEdit,
+    });
+  }
+
+  // ---------- Copy + Batch (P2#10, P2#11) ----------
+  function deepCloneRel(v) {
+    if (Array.isArray(v)) return v.map(deepCloneRel);
+    if (v && typeof v === "object") {
+      const out = {}; for (const k in v) out[k] = deepCloneRel(v[k]); return out;
+    }
+    return v;
+  }
+
+  function openCopy(row) {
+    if (!row) return;
+    const srcRef = row._ref;
+    const all = ensureRelations();
+    // For relations, "To another" / "Apply to multiple" only makes sense
+    // between same-typ rows — copy scope (subjects/classes/importance) onto
+    // peers of the same typ. Greying out otherwise keeps semantics safe.
+    const sameTypOthers = ensureRelations()
+      .filter(x => x.id !== srcRef.id && x.typ === srcRef.typ)
+      .map(x => {
+        const r = summaryRow(x);
+        const cls = r.classes ? ` · ${r.classes}` : "";
+        return { id:x.id, name:`${r.label}${cls}`, _ref:x };
+      });
+    const hasPeers = sameTypOthers.length > 0;
+
+    function applyOnto(targetRef) {
+      const before = { ...targetRef };
+      // Build a draft-like shape from srcRef, then packPayload to canonicalize.
+      const sourceDraft = draftFromRef(srcRef);
+      const next = packPayload(sourceDraft);
+      // typ on target stays the same; everything else is overwritten.
+      next.typ = targetRef.typ;
+      for (const k of Object.keys(targetRef)) {
+        if (k !== "id" && !(k in next)) delete targetRef[k];
+      }
+      Object.assign(targetRef, next);
+      window.APP.audit.append({ entity:"relations", op:"copy", id:targetRef.id, before, after:{...targetRef} });
+    }
+
+    D.openCopyChooser({
+      title: `Copy — ${TYP_BY_CODE[srcRef.typ]?.label || srcRef.typ}`,
+      source: { id: srcRef.id, name: TYP_BY_CODE[srcRef.typ]?.label || srcRef.typ },
+      others: sameTypOthers,
+      onDuplicate: () => {
+        const copy = { ...packPayload(draftFromRef(srcRef)), id: D.uid("rel") };
+        all.push(copy);
+        window.APP.audit.append({ entity:"relations", op:"add", after:{...copy} });
+        D.refresh(rowsOf());
+      },
+      onCopyToOne: hasPeers ? (targetRef) => { applyOnto(targetRef); D.refresh(rowsOf()); } : null,
+      onCopyToMany: hasPeers ? (targetRefs) => { targetRefs.forEach(applyOnto); D.refresh(rowsOf()); } : null,
+    });
+  }
+
+  function openBatch() {
+    const all = rowsOf();
+    D.openBatchEditSheet({
+      title: "Batch edit — Relations",
+      rows: all.map(r => ({ id:r.id,
+        name: `${TYP_BY_CODE[r.typ]?.label || r.typ}${r.classes ? " · " + r.classes : ""}`,
+        _ref: r._ref })),
+      fields: [
+        { id:"importance", label:"Importance",
+          build:(onChange) => {
+            const sel = D.el("select", null,
+              ...IMPORTANCE_LEVELS.map(v => D.el("option", { value:v }, v)));
+            sel.addEventListener("change", e => onChange(e.target.value));
+            return sel;
+          } },
+        { id:"disabled", label:"Disabled",
+          build:(onChange) => D.el("input", { type:"checkbox",
+            onchange:(e)=>onChange(!!e.target.checked) }) },
+      ],
+      onApply: (fieldId, value, ids) => {
+        const byId = {}; all.forEach(r => byId[r.id] = r._ref);
+        ids.forEach(id => {
+          const ref = byId[id]; if (!ref) return;
+          const before = { ...ref };
+          if (fieldId === "importance") ref.importance = value;
+          else if (fieldId === "disabled") ref.disabled = !!value;
+          window.APP.audit.append({ entity:"relations", op:"batch", field:fieldId, id, before, after:{...ref} });
+        });
         D.refresh(rowsOf());
       },
     });
@@ -561,6 +656,10 @@
     D.open({
       entity:"relations", title:"Card relationships",
       columns: columns(), rows: rowsOf(),
+      extras: [
+        { id:"copy",  label:"Copy" },
+        { id:"batch", label:"Batch edit", needRow:false },
+      ],
       onAction: (cmd, row) => {
         if (cmd === "new") return openWizard();
         if (cmd === "edit" && row) return openEdit(row);
@@ -572,7 +671,10 @@
             window.APP.audit.append({ entity:"relations", op:"remove", before:{...removed} });
             D.refresh(rowsOf());
           }
+          return;
         }
+        if (cmd === "copy" && row)  return openCopy(row);
+        if (cmd === "batch")        return openBatch();
       },
     });
   }

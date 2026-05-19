@@ -315,6 +315,75 @@
   border-color: var(--chrx-blue-border);
 }
 
+/* ---------- Sub-sheet (Set-for-more picker over a Constraints sheet) ---------- */
+.chrx-ent-subsheet-scrim { z-index: 9; }
+
+/* ---------- Cycle arrows in sheet header ---------- */
+.chrx-ent-sheet__nav {
+  display: inline-flex; gap: 4px; margin-left: 10px;
+}
+.chrx-ent-sheet__navbtn {
+  width: 28px; height: 28px;
+  background: var(--chrx-bg-input);
+  color: var(--chrx-fg);
+  border: 1px solid var(--chrx-line);
+  border-radius: var(--chrx-radius-md);
+  font-size: 18px; line-height: 1;
+  cursor: pointer; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.chrx-ent-sheet__navbtn:hover:not(:disabled) { background: var(--chrx-line-soft); }
+.chrx-ent-sheet__navbtn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* ---------- "Set for more" inline link ---------- */
+.chrx-ent-setformore {
+  margin-left: 8px;
+  background: transparent;
+  border: 0; padding: 0;
+  color: var(--chrx-accent);
+  font: var(--chrx-fw-medium) var(--chrx-font-small)/1 var(--chrx-font-sans);
+  cursor: pointer;
+}
+.chrx-ent-setformore:hover { text-decoration: underline; }
+
+/* When a label has its set-for-more link below the control, wrap row */
+.chrx-ent-row--withlink { display: flex; align-items: center; gap: 8px; }
+.chrx-ent-row--withlink > :first-child { flex: 1; }
+
+/* ---------- Multi-select picker ---------- */
+.chrx-ent-picker__list {
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--chrx-line);
+  border-radius: var(--chrx-radius-md);
+  background: var(--chrx-bg-input);
+  padding: 4px;
+}
+.chrx-ent-picker__row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--chrx-radius-sm);
+  cursor: pointer;
+}
+.chrx-ent-picker__row:hover { background: var(--chrx-line-soft); }
+.chrx-ent-picker__row input[type=checkbox],
+.chrx-ent-picker__row input[type=radio] { margin: 0; }
+.chrx-ent-picker__bar { display: flex; gap: 6px; margin: 8px 0 4px; }
+
+/* ---------- Copy chooser ---------- */
+.chrx-ent-copybtns { display: flex; flex-direction: column; gap: 10px; }
+.chrx-ent-copybtns .chrx-btn {
+  text-align: left; height: auto; padding: 12px 14px;
+  display: block;
+}
+.chrx-ent-copybtns small {
+  display: block;
+  margin-top: 4px;
+  color: var(--chrx-fg-secondary);
+  font-weight: var(--chrx-fw-regular);
+  font-size: var(--chrx-font-small);
+}
+
 /* ---------- Relations dual-pattern matcher ---------- */
 .chrx-ent-rels {
   display: grid; grid-template-columns: 1fr 40px 1fr; gap: 10px;
