@@ -44,34 +44,43 @@ window.SchoolInfo = (function () {
         <div class="text-lg font-semibold text-slate-900 mt-1 truncate" title="${escapeHtml(String(v))}">${escapeHtml(String(v))}</div>
       </div>`).join("");
 
-    const periods = (S.bell && S.bell.periods) || [];
-    const periodRows = periods.map(p => `
-      <tr>
-        <td class="px-3 py-1.5 font-medium">${escapeHtml(p.label)}</td>
-        <td class="px-3 py-1.5 text-right tabular-nums">${fmtTime(p.startMin)}</td>
-        <td class="px-3 py-1.5 text-right tabular-nums">${fmtTime(p.endMin)}</td>
-        <td class="px-3 py-1.5 text-right tabular-nums">${(p.endMin - p.startMin)} min</td>
-      </tr>`).join("");
-
     host.innerHTML = `
       <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">${cards}</div>
-      <div class="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
-        <div class="px-4 py-2 bg-slate-100 border-b border-slate-200 text-sm font-semibold text-slate-700">
-          Bell schedule (from XML)
-        </div>
-        <table class="w-full text-sm">
-          <thead>
-            <tr class="text-slate-500 text-xs uppercase">
-              <th class="px-3 py-2 text-left">Period</th>
-              <th class="px-3 py-2 text-right">Start</th>
-              <th class="px-3 py-2 text-right">End</th>
-              <th class="px-3 py-2 text-right">Duration</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-slate-100">${periodRows}</tbody>
-        </table>
-      </div>
+      <div id="school-hub-mount"></div>
     `;
+
+    // Mount the multi-pane School Hub. Defensive: if the script hasn't loaded
+    // (script-order regression) fall back to the old bell-schedule preview.
+    const mount = host.querySelector("#school-hub-mount");
+    if (window.SchoolHub && typeof window.SchoolHub.render === "function") {
+      window.SchoolHub.render(mount);
+    } else {
+      const periods = (S.bell && S.bell.periods) || [];
+      const periodRows = periods.map(p => `
+        <tr>
+          <td class="px-3 py-1.5 font-medium">${escapeHtml(p.label)}</td>
+          <td class="px-3 py-1.5 text-right tabular-nums">${fmtTime(p.startMin)}</td>
+          <td class="px-3 py-1.5 text-right tabular-nums">${fmtTime(p.endMin)}</td>
+          <td class="px-3 py-1.5 text-right tabular-nums">${(p.endMin - p.startMin)} min</td>
+        </tr>`).join("");
+      mount.innerHTML = `
+        <div class="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
+          <div class="px-4 py-2 bg-slate-100 border-b border-slate-200 text-sm font-semibold text-slate-700">
+            Bell schedule (from XML)
+          </div>
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="text-slate-500 text-xs uppercase">
+                <th class="px-3 py-2 text-left">Period</th>
+                <th class="px-3 py-2 text-right">Start</th>
+                <th class="px-3 py-2 text-right">End</th>
+                <th class="px-3 py-2 text-right">Duration</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">${periodRows}</tbody>
+          </table>
+        </div>`;
+    }
   }
 
   function fmtTime(min) {
