@@ -1,0 +1,221 @@
+/* Master Solver Wizard — one-click "make it work" pipeline.
+ *
+ * Runs the full solver chain in sequence on the user's device:
+ *   1. Generate from scratch (W7's iterative-repair-enabled solver)
+ *   2. Improve via swap-based local search (ImproveMode)
+ *   3. Auto-fix any remaining hard violations (VerificationPro auto-fixer)
+ *   4. Verify final state + report
+ *
+ * Each phase respects timeBudget; progress is streamed to a modal that
+ * shows live status. Triggered by app:master-solve or Timetable → Solve all.
+ *
+ * Why this matters: the user said "the solver should work and use the
+ * computing power of the user's device". This is the one-click button
+ * that delivers that promise.
+ */
+(function (global) {
+  "use strict";
+
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      const v = attrs[k]; if (v == null) continue;
+      if (k === "class") n.className = v;
+      else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v);
+    }
+    for (const c of kids) if (c != null && c !== false)
+      n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    return n;
+  }
+
+  function openProgressModal() {
+    const root = el("div", { class: "chrx-master-root" });
+    const panel = el("div", { class: "chrx-master-panel" });
+    panel.appendChild(el("h2", null, "⚙️ Master solver — building your timetable"));
+    panel.appendChild(el("p", { class: "chrx-master-sub" },
+      "Running 4-phase pipeline on your device's CPU. No server involved."));
+    const phases = [
+      { id: "p1", label: "Phase 1 · Generate (CSP backtrack + Min-Conflicts repair)" },
+      { id: "p2", label: "Phase 2 · Improve (swap-based local search)" },
+      { id: "p3", label: "Phase 3 · Auto-fix remaining hard violations" },
+      { id: "p4", label: "Phase 4 · Verify final state" },
+    ];
+    const phaseEls = {};
+    phases.forEach(p => {
+      const row = el("div", { class: "chrx-master-phase" },
+        el("span", { class: "chrx-master-status", "data-phase": p.id }, "⋯"),
+        el("span", null, p.label),
+        el("span", { class: "chrx-master-result", "data-phase-result": p.id }, ""),
+      );
+      phaseEls[p.id] = row;
+      panel.appendChild(row);
+    });
+    const log = el("div", { class: "chrx-master-log" });
+    panel.appendChild(log);
+    const closeBtn = el("button", { class: "chrx-master-close", onclick: () => root.remove() }, "Close");
+    closeBtn.disabled = true;
+    panel.appendChild(closeBtn);
+    root.appendChild(panel);
+    document.body.appendChild(root);
+    ensureStyles();
+
+    return {
+      setPhase: (id, status, result) => {
+        const stEl = panel.querySelector(`[data-phase="${id}"]`);
+        const resEl = panel.querySelector(`[data-phase-result="${id}"]`);
+        if (stEl) stEl.textContent = status === "ok" ? "✓" : status === "fail" ? "✗" : status === "run" ? "⏳" : "⋯";
+        if (resEl) resEl.textContent = result || "";
+      },
+      logLine: (text) => {
+        log.appendChild(el("div", null, text));
+        log.scrollTop = log.scrollHeight;
+      },
+      done: () => { closeBtn.disabled = false; closeBtn.textContent = "Done"; },
+    };
+  }
+
+  async function runPipeline(school, opts) {
+    opts = opts || {};
+    const totalBudget = opts.timeLimitSec || 90;
+    const ui = openProgressModal();
+
+    // Phase 1: Generate
+    ui.setPhase("p1", "run");
+    ui.logLine(`▶ Phase 1: Generate (budget ${Math.round(totalBudget * 0.5)}s)…`);
+    if (!window.SolverUI?.run) { ui.setPhase("p1", "fail", "SolverUI missing"); ui.done(); return; }
+    const t0 = performance.now();
+    school.cards = []; // start fresh
+    const source = window.SolverUI.run({
+      school, options: { timeLimitSec: Math.round(totalBudget * 0.5), verbose: false },
+      algorithm: "browser",
+    });
+    let result = null;
+    await new Promise(resolve => {
+      if (source.onResult) source.onResult = r => { result = r; resolve(); };
+      if (source.subscribe) source.subscribe(e => { if (e.type === "done" || e.result) { result = e.result || e.data || result; resolve(); }});
+      setTimeout(resolve, totalBudget * 600); // safety
+    });
+    if (result?.assignment) {
+      school.cards = result.assignment.map(a => ({
+        lessonId: a.lessonId, day: a.day, period: a.period, classroomId: a.classroomId || null,
+      }));
+    }
+    if (window.CreateNew?.refreshIndex) window.CreateNew.refreshIndex();
+    const p1Cards = school.cards.length;
+    const p1Total = (school.lessons || []).reduce((s, l) => s + (l.periodsPerWeek || 0), 0);
+    const p1Pct = p1Total ? Math.round(100 * p1Cards / p1Total) : 0;
+    ui.setPhase("p1", "ok", `${p1Cards}/${p1Total} (${p1Pct}%) in ${Math.round((performance.now() - t0) / 1000)}s`);
+    ui.logLine(`✓ Phase 1 done: ${p1Cards}/${p1Total} cards placed.`);
+
+    // Phase 2: Improve (only if placement >= 50%)
+    if (p1Pct >= 50 && window.ImproveMode) {
+      ui.setPhase("p2", "run");
+      ui.logLine(`▶ Phase 2: Improve (budget ${Math.round(totalBudget * 0.25)}s)…`);
+      const imp = window.ImproveMode.run(school, { timeLimitSec: Math.round(totalBudget * 0.25) });
+      ui.setPhase("p2", "ok", `${imp.swaps} swaps · improved ${imp.improved}`);
+      ui.logLine(`✓ Phase 2 done: ${imp.status}, ${imp.swaps} swaps, score Δ ${imp.improved}.`);
+    } else {
+      ui.setPhase("p2", "ok", p1Pct < 50 ? "skipped — placement <50%" : "skipped — ImproveMode unavailable");
+    }
+
+    // Phase 3: Auto-fix hard violations
+    if (window.SolverConstraints?.checkPlacement) {
+      ui.setPhase("p3", "run");
+      ui.logLine(`▶ Phase 3: Auto-fix hard violations…`);
+      let fixed = 0, scanned = 0;
+      const lessonById = (school._idx?.lessonById) || Object.fromEntries((school.lessons || []).map(l => [l.id, l]));
+      for (const card of (school.cards || [])) {
+        scanned++;
+        const lesson = lessonById[card.lessonId];
+        if (!lesson) continue;
+        const r = window.SolverConstraints.checkPlacement(school, lesson.id, card.day, card.period, card.classroomId || null);
+        if ((r.hard || []).length === 0) continue;
+        // Try to find a clean slot
+        const days = 6, periods = school.bell?.periods?.length || 8;
+        let placed = false;
+        for (let d = 0; d < days && !placed; d++) {
+          for (let p = 0; p < periods && !placed; p++) {
+            const r2 = window.SolverConstraints.checkPlacement(school, lesson.id, d, p, card.classroomId || null);
+            if ((r2.hard || []).length === 0) {
+              card.day = d; card.period = p; fixed++; placed = true;
+            }
+          }
+        }
+      }
+      ui.setPhase("p3", "ok", `${fixed} fixed of ${scanned} scanned`);
+      ui.logLine(`✓ Phase 3 done: auto-fixed ${fixed} hard violations.`);
+    } else {
+      ui.setPhase("p3", "ok", "skipped — SolverConstraints unavailable");
+    }
+
+    // Phase 4: Verify
+    ui.setPhase("p4", "run");
+    ui.logLine(`▶ Phase 4: Verify final state…`);
+    let totalHard = 0, totalSoft = 0;
+    if (window.SolverConstraints?.checkPlacement) {
+      const lessonById = (school._idx?.lessonById) || Object.fromEntries((school.lessons || []).map(l => [l.id, l]));
+      for (const card of (school.cards || [])) {
+        const lesson = lessonById[card.lessonId];
+        if (!lesson) continue;
+        const r = window.SolverConstraints.checkPlacement(school, lesson.id, card.day, card.period, card.classroomId || null);
+        totalHard += (r.hard || []).length;
+        totalSoft += (r.soft || []).length;
+        if (window.RelationEnforcer?.check) {
+          const r2 = window.RelationEnforcer.check(school, lesson.id, card.day, card.period);
+          totalHard += r2.hard.length;
+          totalSoft += r2.soft.length;
+        }
+      }
+    }
+    const finalPct = p1Total ? Math.round(100 * school.cards.length / p1Total) : 0;
+    ui.setPhase("p4", "ok", `${school.cards.length}/${p1Total} (${finalPct}%) · ${totalHard}H ${totalSoft}S`);
+    ui.logLine(`✓ Phase 4 done: ${totalHard} hard + ${totalSoft} soft remaining.`);
+
+    // Refresh editor
+    window.dispatchEvent(new CustomEvent("entity:changed", { detail: { entity: "cards" } }));
+    if (window.APP?.audit?.append) {
+      window.APP.audit.append({ entity: "school", op: "master-solve",
+        placed: school.cards.length, total: p1Total, pct: finalPct,
+        hardRemaining: totalHard, softRemaining: totalSoft });
+    }
+
+    ui.logLine(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+    ui.logLine(`Result: ${school.cards.length} cards placed (${finalPct}%) on your device's CPU. ${totalHard} hard violations remain — open Verification Pro for auto-fix suggestions.`);
+    ui.done();
+  }
+
+  function open(opts) {
+    const school = (opts && opts.school) || window.APP?.school;
+    if (!school) { (window._chrxNotify || console.log)("Open a timetable first.", "error"); return; }
+    // Pre-check: school needs lessons
+    if (!school.lessons || !school.lessons.length) {
+      (window._chrxNotify || console.log)("Add some lessons first.", "warn"); return;
+    }
+    const totalBudget = parseInt(prompt("Time budget (seconds, default 90):", "90"), 10) || 90;
+    runPipeline(school, { timeLimitSec: totalBudget });
+  }
+
+  function ensureStyles() {
+    if (document.getElementById("chrx-master-styles")) return;
+    const s = document.createElement("style");
+    s.id = "chrx-master-styles";
+    s.textContent = `
+.chrx-master-root{position:fixed;inset:0;background:rgba(15,23,42,.6);display:flex;align-items:center;justify-content:center;z-index:1500;padding:18px}
+.chrx-master-panel{background:#fff;border-radius:12px;width:min(640px,95vw);padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.4);font-family:-apple-system,sans-serif;color:#0f172a}
+.chrx-master-panel h2{margin:0 0 6px;color:#1e3a8a;font-size:18px}
+.chrx-master-sub{margin:0 0 14px;color:#64748b;font-size:13px}
+.chrx-master-phase{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f1f5f9;font-size:13px}
+.chrx-master-status{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;background:#f1f5f9;border-radius:50%;font-weight:600;color:#475569}
+.chrx-master-result{margin-left:auto;color:#0f172a;font-size:12px;font-variant-numeric:tabular-nums;color:#10b981;font-weight:600}
+.chrx-master-log{margin-top:14px;padding:10px;background:#0f172a;color:#cbd5e1;font-family:Menlo,Monaco,monospace;font-size:11px;line-height:1.5;max-height:200px;overflow-y:auto;border-radius:6px}
+.chrx-master-close{margin-top:14px;background:#10b981;color:#fff;border:0;padding:8px 20px;border-radius:6px;font-weight:600;cursor:pointer}
+.chrx-master-close:disabled{background:#cbd5e1;cursor:not-allowed}
+    `;
+    document.head.appendChild(s);
+  }
+
+  window.addEventListener("app:master-solve", () => open());
+
+  global.MasterSolverWizard = { open, runPipeline };
+})(window);
