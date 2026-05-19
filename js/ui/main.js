@@ -180,14 +180,35 @@
       };
     }
 
-    // ─── CTA: Load Demo Seed ─────────────────────────────────
+    // ─── CTA: Load Demo Seed (bundled GD Goenka asctt2012.xml) ──
     const demoBtn = document.getElementById("cta-load-demo");
     if (demoBtn) {
-      demoBtn.onclick = () => {
-        if (window.CreateNew && window.CreateNew.createDemoSeed) {
-          window.CreateNew.createDemoSeed();
+      demoBtn.onclick = async () => {
+        const status = document.getElementById("xml-status");
+        if (status) status.innerHTML = `<span class="text-slate-500">Loading bundled sample…</span>`;
+        try {
+          const r = await fetch("./asctt2012.xml");
+          if (!r.ok) throw new Error("HTTP " + r.status);
+          const xmlText = await r.text();
+          // Use the same parse pipeline as <input type="file">
+          const blob = new Blob([xmlText], { type: "application/xml" });
+          const file = new File([blob], "asctt2012.xml", { type: "application/xml" });
+          const school = await parseAscXml.parseFile(file);
+          window.APP.school = school;
+          if (window.CreateNew && window.CreateNew.ensureColors) window.CreateNew.ensureColors();
+          const c = school._meta.counts;
+          if (status) status.innerHTML = `<span class="text-emerald-700 font-semibold">Loaded.</span> <span class="text-slate-600">${c.teachers} teachers · ${c.classes} classes · ${c.subjects} subjects · ${c.classrooms} rooms · ${c.lessons} lessons · ${c.cards} cards</span>`;
           document.querySelectorAll(".needs-school").forEach(b => b.disabled = false);
-          showStep(6);
+          document.dispatchEvent(new CustomEvent("app:school-loaded", { detail: { source: "demo-xml" } }));
+          setTimeout(() => showStep(6), 250);
+        } catch (e) {
+          console.warn("[demo] bundled XML fetch failed, falling back to 22-card seed:", e);
+          if (status) status.innerHTML = `<span class="text-amber-700">Bundled file unavailable, using 22-card demo instead.</span>`;
+          if (window.CreateNew && window.CreateNew.createDemoSeed) {
+            window.CreateNew.createDemoSeed();
+            document.querySelectorAll(".needs-school").forEach(b => b.disabled = false);
+            showStep(6);
+          }
         }
       };
     }
