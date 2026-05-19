@@ -58,6 +58,26 @@ window.parseAscXml = (function () {
     const root = xml.querySelector("timetable");
     const schoolName = root ? (root.getAttribute("displayname") || "") : "";
 
+    // --- Days per week (inferred from daysdefs, mirrors Swift port) ------------
+    // ASC's daysdefs has one entry per logical day (Mon, Tue, …) plus aggregate
+    // entries ("Any day", "Every day"). A SINGLE-DAY entry has exactly one "1"
+    // in its `days` bitmask. We count those to set school.daysPerWeek so the
+    // solver's `inferDays()` doesn't fall back to 5 when no cards exist.
+    // GD Goenka has 6 single-day entries (Mon-Sat) → 6 × 7 = 42 slots/class
+    // and we hit the Swift-port 92%+ placement baseline. Without this, the
+    // solver was misreading the school as Mon-Fri and capping at ~75%.
+    let daysPerWeek = 0;
+    xml.querySelectorAll("daysdefs > daysdef").forEach(d => {
+      const days = (d.getAttribute("days") || "").trim();
+      // Single-day = no commas (aggregates use comma-separated bitmasks) and
+      // exactly one "1" in the bitmask.
+      if (days && !days.includes(",")) {
+        const ones = (days.match(/1/g) || []).length;
+        if (ones === 1) daysPerWeek++;
+      }
+    });
+    if (daysPerWeek === 0) daysPerWeek = 5; // safety: never go below the inferDays default
+
     // --- Periods (bell schedule from XML, not from local memory) ---------------
     const periods = [];
     xml.querySelectorAll("periods > period").forEach(p => {
@@ -249,6 +269,7 @@ window.parseAscXml = (function () {
 
     return {
       schoolName,
+      daysPerWeek,
       bell: { periods },
       teachers,
       classes: cleanClasses,
