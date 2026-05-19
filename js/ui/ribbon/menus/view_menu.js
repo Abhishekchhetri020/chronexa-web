@@ -51,6 +51,10 @@
         { section: "Spotlight" },
         { icon: "🔦", label: "Focus mode…",
           run: () => { if (window.FocusMode) window.FocusMode.openPicker(); } },
+        { icon: "⚡", label: "Quick add lesson…",
+          run: () => fire("app:quick-add-lesson") },
+        { icon: "🔍", label: "Open command palette  (⌘K)",
+          run: () => { if (window.CommandPalette) window.CommandPalette.open(); } },
       ];
     },
   });

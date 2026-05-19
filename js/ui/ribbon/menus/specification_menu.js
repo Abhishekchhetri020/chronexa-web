@@ -24,7 +24,7 @@
           run: () => fire("app:open-entity", { kind: "classrooms" }) },
         { icon: "📝", label: "Lessons…",         disabled: !has(),
           run: () => fire("app:open-entity", { kind: "lessons" }) },
-        { icon: "🔗", label: "Relations…",       disabled: !has(),
+        { icon: "🔗", label: "Card relationships…", disabled: !has(),
           run: () => fire("app:open-entity", { kind: "relations" }) },
         { sep: true },
         { section: "Groups & roles" },
