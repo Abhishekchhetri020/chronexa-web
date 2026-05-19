@@ -70,6 +70,6 @@
     notify("ROZ binary export is partial — use 'Timetable XML' for full fidelity", "warn");
   }
 
-  window.ExportAscRoz = { run, buildHeader, buildPayload };
+  window.ExportLegacyRoz = { run, buildHeader, buildPayload };
   window.addEventListener("app:export-legacy-roz", () => run());
 })();

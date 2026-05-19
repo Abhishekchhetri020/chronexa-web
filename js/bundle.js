@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-19T09:02:31Z
+/* Chronexa bundle — generated 2026-05-19T09:09:00Z
  *      134 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -15604,7 +15604,7 @@ window.ConstraintExplainer = (function () {
     notify("ROZ binary export is partial — use 'Timetable XML' for full fidelity", "warn");
   }
 
-  window.ExportAscRoz = { run, buildHeader, buildPayload };
+  window.ExportLegacyRoz = { run, buildHeader, buildPayload };
   window.addEventListener("app:export-legacy-roz", () => run());
 })();
 
