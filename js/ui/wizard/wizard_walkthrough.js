@@ -188,13 +188,34 @@
     countLabel.textContent = n === 0
       ? "No " + step.title.toLowerCase() + " yet."
       : n + " " + step.title.toLowerCase().replace(/s$/, n === 1 ? "" : "s") + " added.";
+    const ctaWrap = document.createElement("div");
+    ctaWrap.className = "flex items-center gap-2";
+
     const addBtn = document.createElement("button");
     addBtn.type = "button";
     addBtn.className = "px-3 py-1.5 rounded-lg bg-" + step.color + "-600 text-white text-sm font-semibold hover:bg-" + step.color + "-700";
     addBtn.textContent = "+ Add " + step.title.toLowerCase().replace(/s$/, "");
     addBtn.addEventListener("click", () => { step.open(); });
+    ctaWrap.appendChild(addBtn);
+
+    // Bulk-add CTA — only for kinds the BulkAddWizard supports.
+    const bulkSupported = ["subjects", "teachers", "classes", "classrooms"].includes(step.key);
+    if (bulkSupported && window.BulkAddWizard && typeof window.BulkAddWizard.open === "function") {
+      const bulkBtn = document.createElement("button");
+      bulkBtn.type = "button";
+      bulkBtn.className = "px-3 py-1.5 rounded-lg border border-" + step.color + "-300 text-" + step.color + "-700 text-sm font-semibold hover:bg-" + step.color + "-50";
+      bulkBtn.textContent = "+ Bulk-add";
+      bulkBtn.title = "Add many " + step.title.toLowerCase() + " at once — paste a list, type one per line, or import from spreadsheet";
+      bulkBtn.addEventListener("click", () => {
+        // BulkAddWizard.open(kind, school?) — pass current school explicitly
+        // so the wizard never tries to re-load it.
+        window.BulkAddWizard.open(step.key, window.APP && window.APP.school);
+      });
+      ctaWrap.appendChild(bulkBtn);
+    }
+
     countBar.appendChild(countLabel);
-    countBar.appendChild(addBtn);
+    countBar.appendChild(ctaWrap);
     body.appendChild(countBar);
 
     if (n === 0) {

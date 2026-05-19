@@ -1,28 +1,322 @@
-/* GDGPSD Examination Sitting Planner — extra styles */
+/* Chronexa — overrides + light extras layered on top of the theme system.
+ * Order matters: this file is loaded BEFORE chronexa-theme.css in index.html
+ * so the theme tokens still apply, but the Tailwind utility classes used in
+ * index.html get overridden by the more-specific selectors below. */
 
-.step-panel { animation: fadein .2s ease-out; }
-@keyframes fadein { from {opacity:0;transform:translateY(8px);} to {opacity:1;transform:translateY(0);} }
+/* ───────────────────────────────────────────────────────────────
+ * 1. Header — replace the raw `bg-gradient-to-r from-slate-900 to-blue-900`
+ *    + amber italic tagline with a calmer surface that lets the accent
+ *    color do the talking.
+ * ─────────────────────────────────────────────────────────────── */
+body > header.bg-gradient-to-r {
+  background-image: none !important;
+  background-color: var(--chrx-bg-elev, #ffffff);
+  color: var(--chrx-fg, #0f172a);
+  box-shadow: 0 1px 0 var(--chrx-line, rgba(0,0,0,0.08));
+  border-bottom: 1px solid var(--chrx-line, rgba(0,0,0,0.08));
+}
+body > header.bg-gradient-to-r h1 {
+  color: var(--chrx-fg);
+  letter-spacing: -0.015em;
+  font-weight: 700;
+}
+body > header.bg-gradient-to-r .text-amber-200 {
+  color: var(--chrx-fg-secondary) !important;
+  font-style: normal;
+  font-weight: 500;
+}
+body > header.bg-gradient-to-r #search-input {
+  background: var(--chrx-bg-input);
+  color: var(--chrx-fg);
+  border: 1px solid var(--chrx-line);
+  border-radius: 8px;
+  transition: border-color 160ms cubic-bezier(0.2,0.8,0.2,1),
+              box-shadow 160ms cubic-bezier(0.2,0.8,0.2,1);
+}
+body > header.bg-gradient-to-r #search-input:focus {
+  border-color: var(--chrx-accent);
+  box-shadow: 0 0 0 3px var(--chrx-accent-bg);
+  outline: none;
+}
+body > header.bg-gradient-to-r #lang-en,
+body > header.bg-gradient-to-r #lang-hi {
+  border: 1px solid var(--chrx-line);
+  font-weight: 600;
+  font-size: 11px;
+}
+body > header.bg-gradient-to-r #lang-en {
+  background: var(--chrx-accent);
+  color: #fff;
+  border-color: var(--chrx-accent);
+}
+body > header.bg-gradient-to-r #lang-hi {
+  background: var(--chrx-bg-input);
+  color: var(--chrx-fg);
+}
+body > header.bg-gradient-to-r .border-white\/40 {
+  border-color: transparent !important;
+}
+body > header.bg-gradient-to-r #cta-generate,
+body > header.bg-gradient-to-r #cta-test {
+  border-radius: 8px;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  transition: transform 120ms cubic-bezier(0.2,0.8,0.2,1),
+              box-shadow 160ms cubic-bezier(0.2,0.8,0.2,1),
+              filter 160ms cubic-bezier(0.2,0.8,0.2,1);
+}
+body > header.bg-gradient-to-r #cta-generate {
+  background: var(--chrx-accent) !important;
+  color: #fff !important;
+}
+body > header.bg-gradient-to-r #cta-generate:hover:not(:disabled) {
+  filter: brightness(1.06);
+  box-shadow: 0 4px 10px -2px rgba(0, 122, 255, 0.30);
+}
+body > header.bg-gradient-to-r #cta-test {
+  background: var(--chrx-bg-input) !important;
+  color: var(--chrx-fg) !important;
+  border: 1px solid var(--chrx-line);
+}
+body > header.bg-gradient-to-r #cta-test:hover:not(:disabled) {
+  background: var(--chrx-line-soft) !important;
+}
+body > header.bg-gradient-to-r #cta-generate:active,
+body > header.bg-gradient-to-r #cta-test:active { transform: scale(0.98); }
 
-.step-btn.active { background-color: #1d4ed8; color: white; }
+/* Body background — calmer warm white instead of slate-50 */
+body.bg-slate-50 {
+  background-color: var(--chrx-bg-window) !important;
+  color: var(--chrx-fg) !important;
+}
+
+/* ───────────────────────────────────────────────────────────────
+ * 2. Step nav — the row of pill buttons under the header.
+ *    Replace raw `bg-blue-700` / `bg-emerald-600` / `bg-slate-200`
+ *    with a quieter palette: theme accent for active, surface for inactive,
+ *    soft border, generous hit area.
+ * ─────────────────────────────────────────────────────────────── */
+nav.bg-white.shadow-sm {
+  background-color: var(--chrx-bg-elev) !important;
+  border-bottom-color: var(--chrx-line) !important;
+}
+.step-btn {
+  background-color: var(--chrx-bg-input) !important;
+  color: var(--chrx-fg-secondary) !important;
+  border: 1px solid var(--chrx-line);
+  font-weight: 500 !important;
+  font-size: 12.5px !important;
+  padding: 6px 12px !important;
+  border-radius: 8px !important;
+  transition: background-color 160ms cubic-bezier(0.2,0.8,0.2,1),
+              color 160ms cubic-bezier(0.2,0.8,0.2,1),
+              transform 100ms cubic-bezier(0.2,0.8,0.2,1),
+              box-shadow 160ms cubic-bezier(0.2,0.8,0.2,1);
+}
+.step-btn:hover:not(:disabled) {
+  background-color: var(--chrx-line-soft) !important;
+  color: var(--chrx-fg) !important;
+}
+.step-btn:active:not(:disabled) { transform: scale(0.97); }
+/* The "Start" button is always active on load — give it the accent treatment */
+.step-btn.bg-blue-700,
+.step-btn.bg-emerald-600,
+.step-btn.active {
+  background-color: var(--chrx-accent) !important;
+  color: #fff !important;
+  border-color: var(--chrx-accent);
+  box-shadow: 0 1px 2px rgba(0, 122, 255, 0.20),
+              0 2px 8px -2px rgba(0, 122, 255, 0.28);
+  font-weight: 600 !important;
+}
+.step-btn.bg-emerald-600 {
+  /* Editor pill stays accent, not green — single-color principle */
+  background-color: var(--chrx-accent) !important;
+  border-color: var(--chrx-accent);
+}
+.step-btn:disabled { opacity: 0.55; }
+.step-btn.bg-slate-200 {
+  background-color: var(--chrx-bg-input) !important;
+  color: var(--chrx-fg-secondary) !important;
+  border-color: var(--chrx-line);
+}
+
+/* ───────────────────────────────────────────────────────────────
+ * 3. Step-1 hero (Start panel) — two cards "Build new" / "Load existing".
+ *    Replace raw emerald + slate borders with theme surfaces.
+ * ─────────────────────────────────────────────────────────────── */
+#step-1 h2.text-blue-900 { color: var(--chrx-fg) !important; letter-spacing: -0.015em; }
+#step-1 .border-emerald-500,
+#step-1 .border-slate-300 {
+  background: var(--chrx-bg-elev) !important;
+  border: 1px solid var(--chrx-line) !important;
+  border-radius: 14px !important;
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 0 0 0.5px rgba(15, 23, 42, 0.04);
+  transition: transform 200ms cubic-bezier(0.2,0.8,0.2,1),
+              box-shadow 200ms cubic-bezier(0.2,0.8,0.2,1),
+              border-color 200ms cubic-bezier(0.2,0.8,0.2,1);
+}
+#step-1 .border-emerald-500:hover,
+#step-1 .border-slate-300:hover {
+  transform: translateY(-2px);
+  border-color: var(--chrx-accent) !important;
+  box-shadow:
+    0 12px 28px -10px rgba(15, 23, 42, 0.18),
+    0 4px 10px -6px rgba(15, 23, 42, 0.12);
+}
+#step-1 .text-emerald-700 { color: var(--chrx-fg) !important; }
+#step-1 .text-slate-700 { color: var(--chrx-fg) !important; }
+#cta-build-new {
+  background: var(--chrx-accent) !important;
+  border-radius: 10px !important;
+  font-weight: 600 !important;
+  box-shadow: 0 1px 2px rgba(0, 122, 255, 0.22),
+              0 4px 12px -4px rgba(0, 122, 255, 0.30);
+  transition: filter 160ms cubic-bezier(0.2,0.8,0.2,1),
+              transform 100ms cubic-bezier(0.2,0.8,0.2,1);
+}
+#cta-build-new:hover { filter: brightness(1.06); }
+#cta-build-new:active { transform: scale(0.985); }
+#step-1 #cta-load-demo { color: var(--chrx-accent) !important; font-weight: 600; }
+
+/* Step heading rest of the steps */
+.step-panel h2.text-blue-900 { color: var(--chrx-fg); letter-spacing: -0.015em; }
+
+/* ───────────────────────────────────────────────────────────────
+ * 4. Step-panel mount animation — replace the snappy translate-on-show
+ *    with a softer rise+fade.
+ * ─────────────────────────────────────────────────────────────── */
+.step-panel { animation: chrx-step-rise 240ms cubic-bezier(0.2,0.8,0.2,1); }
+@keyframes chrx-step-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ───────────────────────────────────────────────────────────────
+ * 4b. Editor section (step-6) — soften the raw-Tailwind boxes
+ * ─────────────────────────────────────────────────────────────── */
+#step-6 h2.text-blue-900 { color: var(--chrx-fg); letter-spacing: -0.015em; }
+#step-6 #editor-toggle-skin,
+#step-6 #editor-perspective {
+  background: var(--chrx-bg-input) !important;
+  color: var(--chrx-fg) !important;
+  border: 1px solid var(--chrx-line) !important;
+  border-radius: 8px !important;
+  transition: background-color 160ms cubic-bezier(0.2,0.8,0.2,1),
+              border-color 160ms cubic-bezier(0.2,0.8,0.2,1);
+}
+#step-6 #editor-toggle-skin:hover,
+#step-6 #editor-perspective:hover {
+  background: var(--chrx-line-soft) !important;
+}
+#editor-banner.bg-amber-50 {
+  background: var(--chrx-accent-bg) !important;
+  border-left-color: var(--chrx-accent) !important;
+  color: var(--chrx-fg) !important;
+  border-radius: 8px !important;
+}
+#editor-root.bg-white {
+  background: var(--chrx-bg-canvas) !important;
+  border: 1px solid var(--chrx-line) !important;
+  border-radius: var(--chrx-radius-xl) !important;
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 0 0 0.5px rgba(15, 23, 42, 0.03) !important;
+}
+#pending-strip-root.bg-slate-50 {
+  background: var(--chrx-bg-tile) !important;
+  border: 1px solid var(--chrx-line) !important;
+  border-radius: var(--chrx-radius-lg) !important;
+}
+
+/* ───────────────────────────────────────────────────────────────
+ * 5. Footer — small softening
+ * ─────────────────────────────────────────────────────────────── */
+footer.bg-slate-100 {
+  background-color: var(--chrx-bg-elev) !important;
+  color: var(--chrx-fg-tertiary) !important;
+  border-top: 1px solid var(--chrx-line);
+}
+
+/* ───────────────────────────────────────────────────────────────
+ * 6. Sitting-planner legacy bits (unchanged from before)
+ * ─────────────────────────────────────────────────────────────── */
+.step-btn.active { background-color: var(--chrx-accent); color: white; }
 
 .room-grid { display: grid; gap: 6px; }
 .bench-cell {
-  background: white; border: 1px solid #cbd5e1; border-radius: 4px;
+  background: var(--chrx-bg-elev); border: 1px solid var(--chrx-line); border-radius: 6px;
   padding: 4px 6px; font-size: 11px; line-height: 1.25;
 }
-.bench-cell .label { font-weight: 700; color: #1e40af; font-size: 10px; }
+.bench-cell .label { font-weight: 700; color: var(--chrx-accent); font-size: 10px; }
 .bench-cell .seat { display:flex; justify-content: space-between; gap: 4px; }
 .bench-cell .seat .left, .bench-cell .seat .right {
-  flex: 1; padding: 2px 4px; border-radius: 2px; background: #f1f5f9;
+  flex: 1; padding: 2px 4px; border-radius: 4px; background: var(--chrx-bg-tile);
 }
-.bench-cell.warning { background: #fef3c7; }
-.bench-cell.same-section { background: #fee2e2; border-color: #f87171; }
+.bench-cell.warning { background: var(--chrx-yellow-bg); }
+.bench-cell.same-section { background: var(--chrx-red-bg); border-color: var(--chrx-red-border); }
 
 table.preview { border-collapse: collapse; font-size: 12px; }
-table.preview th, table.preview td { border: 1px solid #cbd5e1; padding: 4px 8px; }
-table.preview th { background: #1e3a8a; color: white; font-weight: 600; }
-table.preview tr:nth-child(even) { background: #f8fafc; }
+table.preview th, table.preview td { border: 1px solid var(--chrx-line); padding: 4px 8px; }
+table.preview th { background: var(--chrx-accent); color: white; font-weight: 600; }
+table.preview tr:nth-child(even) { background: var(--chrx-bg-tile); }
 
-.warn { color: #b91c1c; }
-.ok { color: #047857; }
-.muted { color: #64748b; }
+.warn { color: var(--chrx-red); }
+.ok { color: var(--chrx-green); }
+.muted { color: var(--chrx-fg-tertiary); }
+
+/* ───────────────────────────────────────────────────────────────
+ * 7. Dark-mode polish — fix specifically the hot spots that the
+ *    half-built dark theme misses.
+ * ─────────────────────────────────────────────────────────────── */
+:root[data-theme="dark"] body.bg-slate-50,
+:root:not([data-theme="light"]) body.bg-slate-50 {
+  background-color: var(--chrx-bg-window) !important;
+  color: var(--chrx-fg) !important;
+}
+:root[data-theme="dark"] body > header.bg-gradient-to-r,
+:root:not([data-theme="light"]) body > header.bg-gradient-to-r {
+  background-color: var(--chrx-bg-elev) !important;
+  color: var(--chrx-fg) !important;
+  border-bottom-color: var(--chrx-line);
+}
+:root[data-theme="dark"] nav.bg-white.shadow-sm,
+:root:not([data-theme="light"]) nav.bg-white.shadow-sm {
+  background-color: var(--chrx-bg-elev) !important;
+}
+:root[data-theme="dark"] footer.bg-slate-100,
+:root:not([data-theme="light"]) footer.bg-slate-100 {
+  background-color: var(--chrx-bg-elev) !important;
+}
+:root[data-theme="dark"] #step-1 .border-emerald-500,
+:root[data-theme="dark"] #step-1 .border-slate-300,
+:root:not([data-theme="light"]) #step-1 .border-emerald-500,
+:root:not([data-theme="light"]) #step-1 .border-slate-300 {
+  background: var(--chrx-bg-elev) !important;
+  border-color: var(--chrx-line) !important;
+}
+:root[data-theme="dark"] .step-btn.bg-slate-200,
+:root:not([data-theme="light"]) .step-btn.bg-slate-200 {
+  background-color: var(--chrx-bg-input) !important;
+}
+/* Text helpers used by index.html that look bad in dark mode */
+:root[data-theme="dark"] .text-slate-600,
+:root[data-theme="dark"] .text-slate-500,
+:root[data-theme="dark"] .text-slate-700,
+:root[data-theme="dark"] .text-slate-800,
+:root:not([data-theme="light"]) .text-slate-600,
+:root:not([data-theme="light"]) .text-slate-500,
+:root:not([data-theme="light"]) .text-slate-700,
+:root:not([data-theme="light"]) .text-slate-800 { color: var(--chrx-fg-secondary) !important; }
+:root[data-theme="dark"] .bg-white,
+:root:not([data-theme="light"]) .bg-white {
+  background-color: var(--chrx-bg-elev) !important;
+}
+:root[data-theme="dark"] .bg-slate-50,
+:root[data-theme="dark"] .bg-slate-100,
+:root:not([data-theme="light"]) .bg-slate-50,
+:root:not([data-theme="light"]) .bg-slate-100 {
+  background-color: var(--chrx-bg-window) !important;
+}

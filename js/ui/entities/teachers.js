@@ -156,8 +156,8 @@
         const copy = { ...srcRef, id:D.uid("t"),
           name: (srcRef.name || "") + " (copy)",
           lastName: (srcRef.lastName || "") + " (copy)" };
-        if (Array.isArray(srcRef.timeOff)) copy.timeOff = srcRef.timeOff.map(row => row.slice());
-        if (srcRef.constraints) copy.constraints = { ...srcRef.constraints };
+        if (srcRef.timeOff != null)    copy.timeOff = deepClone(srcRef.timeOff);
+        if (srcRef.constraints)         copy.constraints = deepClone(srcRef.constraints);
         list.push(copy);
         if (window.APP.school._idx) window.APP.school._idx.teacherById[copy.id] = copy;
         window.APP.audit.append({ entity:"teachers", op:"add", after:{...copy} });

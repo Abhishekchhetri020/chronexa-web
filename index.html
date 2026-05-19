@@ -274,6 +274,18 @@
     // ─── Constraint-explanation tooltip (P1-w4 moat feature) ──
     ["ui","editor/constraint_explainer"],
     ["ui","main"],
+    // ─── Onboarding (fresh-start UX) ──────────────────────────
+    // Loaded after main.js so we can re-bind #cta-build-new to open the
+    // school-type template picker instead of jumping to a blank school.
+    // data_library.js ships the curated subject lists / bell schedules that
+    // school_templates consumes — must load first. wiring.js is the last
+    // script and binds everything to the page (CTA, tour first-visit hook).
+    ["ui","onboarding/data_library"],
+    ["ui","onboarding/school_templates"],
+    ["ui","onboarding/bulk_add_wizard"],
+    ["ui","onboarding/tour"],
+    ["ui","onboarding/smart_defaults"],
+    ["ui","onboarding/wiring"],
     // ─── Ribbon (Agent H) ─────────────────────────────────────
     ["ui","ribbon/topbar"],
     ["ui","ribbon/undo_redo"],

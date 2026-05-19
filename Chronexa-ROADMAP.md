@@ -50,7 +50,10 @@ blank school
  → export aSc XML → 3,630 bytes of valid `<?xml version="1.0"…><timetable…>`
 ```
 
-## 📝 Today's sprint (2026-05-19) — three waves shipped in one session
+## 📝 Today's sprint (2026-05-19) — three waves shipped + feature-gap audit
+
+**Wave 3 — gap audit against EduPage (~3 hours, reference only)**
+Wrote `Chronexa-MISSING-FEATURES-2026-05-19.md` — 147 features audited across 16 areas (File menu / Specification / Entities / Relations / Editor / Solver / Print / Snapshots / Collab / View / Options / Keyboard / Students / Divisions / Help-AI / Color). Top-30 leaderboard ranked by `severity × user-visibility × proximity-to-MVP`, with solver-side gaps weighted above UI-side gaps. Headline finding: the biggest "30 % done" trap is dialogs persisting data the solver never reads — `n_*` relations (15 typs all ignored), `classTeacherPos` 6×9 matrix, time-off `?` conditional state, per-card `classroomidss`, supervisions data flow. Next implementation wave should pick from the top-30.
 
 **Wave 0 — P0 audit blockers (6 surgical fixes, ~2 hours)**
 School Info no longer crashes for blank schools · 1 new `entity_router.js` listener unlocks all 13 decorative menu items · Subjects + Lessons + 16 other entities all wired into Specification → menu · Class/Teacher/Room grids gained "Manage" + "+ Add" CTAs · Editor renders 6-tile hero card when school is empty · `audit.append` polyfill fixes silent crash in 18 entity dialog saves.

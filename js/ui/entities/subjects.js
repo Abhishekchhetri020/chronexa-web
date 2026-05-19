@@ -157,8 +157,8 @@
       onDuplicate: () => {
         const all = window.APP.school.subjects;
         const copy = { ...srcRef, id: D.uid("s"), name: (srcRef.name || "") + " (copy)" };
-        if (Array.isArray(srcRef.timeOff)) copy.timeOff = srcRef.timeOff.map(row => row.slice());
-        if (srcRef.constraints) copy.constraints = { ...srcRef.constraints };
+        if (srcRef.timeOff != null)   copy.timeOff = deepClone(srcRef.timeOff);
+        if (srcRef.constraints)        copy.constraints = deepClone(srcRef.constraints);
         all.push(copy);
         if (window.APP.school._idx) window.APP.school._idx.subjectById[copy.id] = copy;
         window.APP.audit.append({ entity:"subjects", op:"add", after:{...copy} });

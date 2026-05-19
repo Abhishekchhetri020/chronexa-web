@@ -171,5 +171,17 @@
     assign(S.classes);
   }
 
-  global.CreateNew = { createBlank, createDemoSeed, ensureColors, refreshIndex, buildIndex, PALETTE_24 };
+  // Thin wrapper that forwards to SchoolTemplates.applyTemplate once it loads
+  // later in the script chain. The actual seed logic lives in
+  // `js/ui/onboarding/school_templates.js`; this stub lets other modules call
+  // `CreateNew.createFromTemplate(id)` without caring about load order.
+  function createFromTemplate(id) {
+    if (global.SchoolTemplates && global.SchoolTemplates.applyTemplate) {
+      return global.SchoolTemplates.applyTemplate(id);
+    }
+    console.warn("[CreateNew] SchoolTemplates not loaded yet — call after onboarding/school_templates.js");
+    return false;
+  }
+
+  global.CreateNew = { createBlank, createDemoSeed, ensureColors, refreshIndex, buildIndex, PALETTE_24, createFromTemplate };
 })(window);

@@ -20,6 +20,12 @@
     classrooms: "classroom",
     teachers:   "teacher",
   };
+  const KIND_PLURAL = {
+    subjects:   "subjects",
+    classes:    "classes",
+    classrooms: "classrooms",
+    teachers:   "teachers",
+  };
 
   function getDays() {
     const idx = window.APP && window.APP.school && window.APP.school._idx;
@@ -160,15 +166,16 @@
 
     // "Set for more" — apply current matrix to N other entities of same kind.
     function openSetForMore() {
+      const plural = KIND_PLURAL[kind] || (noun + "s");
       const others = listForKind(kind).filter(e => e.id !== (entity && entity.id));
       if (!others.length) {
-        alert(`No other ${noun}s to apply this matrix to.`);
+        alert(`No other ${plural} to apply this matrix to.`);
         return;
       }
       const items = others.map(e => ({ id:e.id, label:nameOf(e), _ref:e }));
       window.EntityDialog.openPickEntitiesPopover({
-        title: `Apply this matrix to other ${noun}s`,
-        help: `The selected ${noun}s will have their entire time-off matrix replaced with the current one.`,
+        title: `Apply this matrix to other ${plural}`,
+        help: `The selected ${plural} will have their entire time-off matrix replaced with the current one.`,
         items, multi: true,
         confirmLabel: "Apply matrix",
         onConfirm: (ids) => {

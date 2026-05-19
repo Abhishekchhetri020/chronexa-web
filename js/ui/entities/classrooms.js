@@ -159,10 +159,9 @@
       onDuplicate: () => {
         const list = window.APP.school.classrooms;
         const copy = { ...srcRef, id:D.uid("r"), name:(srcRef.name || "") + " (copy)" };
-        if (Array.isArray(srcRef.timeOff)) copy.timeOff = srcRef.timeOff.map(row => row.slice());
-        if (srcRef.constraints) copy.constraints = { ...srcRef.constraints };
-        if (Array.isArray(srcRef.allowedSubjectIds))
-          copy.allowedSubjectIds = srcRef.allowedSubjectIds.slice();
+        if (srcRef.timeOff != null)          copy.timeOff = deepClone(srcRef.timeOff);
+        if (srcRef.constraints)               copy.constraints = deepClone(srcRef.constraints);
+        if (srcRef.allowedSubjectIds != null) copy.allowedSubjectIds = deepClone(srcRef.allowedSubjectIds);
         list.push(copy);
         if (window.APP.school._idx) window.APP.school._idx.classroomById[copy.id] = copy;
         window.APP.audit.append({ entity:"classrooms", op:"add", after:{...copy} });

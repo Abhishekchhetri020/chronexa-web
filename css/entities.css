@@ -3,11 +3,20 @@
 /* ---------- Scrim + panel ---------- */
 .chrx-ent-dialog {
   position: fixed; inset: 0; z-index: 80;
-  background: var(--chrx-scrim);
+  /* Softer scrim with backdrop blur — feels less like a 1990s modal,
+   * more like a focused workspace. */
+  background: rgba(15, 23, 42, 0.40);
+  -webkit-backdrop-filter: blur(10px) saturate(1.2);
+  backdrop-filter: blur(10px) saturate(1.2);
   display: flex; align-items: center; justify-content: center;
   padding: 24px;
   font: var(--chrx-fw-regular) var(--chrx-font-body)/1.4 var(--chrx-font-sans);
   color: var(--chrx-fg);
+  animation: chrx-fade-in 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+:root[data-theme="dark"] .chrx-ent-dialog,
+:root:not([data-theme="light"]) .chrx-ent-dialog {
+  background: rgba(0, 0, 0, 0.60);
 }
 
 .chrx-ent-panel {
@@ -19,6 +28,11 @@
   height: min(820px, calc(100vh - 48px));
   display: flex; flex-direction: column;
   overflow: hidden;
+  animation: chrx-panel-rise 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes chrx-panel-rise {
+  from { opacity: 0; transform: translateY(12px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 .chrx-ent-head {
@@ -61,20 +75,45 @@
 }
 .chrx-ent-btn {
   display: flex; align-items: center; justify-content: space-between;
-  height: 36px; padding: 0 10px;
+  height: 38px; padding: 0 12px;
   background: var(--chrx-bg-input);
   color: var(--chrx-fg);
   border: 1px solid var(--chrx-line);
   border-radius: var(--chrx-radius-md);
   font: var(--chrx-fw-medium) var(--chrx-font-body)/1 var(--chrx-font-sans);
   cursor: pointer;
-  transition: background var(--chrx-duration-fast) var(--chrx-ease);
+  position: relative;
+  transition: background var(--chrx-duration-fast) var(--chrx-ease),
+              border-color var(--chrx-duration-fast) var(--chrx-ease),
+              transform 100ms var(--chrx-ease),
+              box-shadow var(--chrx-duration-fast) var(--chrx-ease);
 }
-.chrx-ent-btn:hover:not(:disabled) { background: var(--chrx-line-soft); }
+.chrx-ent-btn:hover:not(:disabled) {
+  background: var(--chrx-bg-elev);
+  border-color: var(--chrx-accent);
+  box-shadow: 0 0 0 3px var(--chrx-accent-bg);
+}
+.chrx-ent-btn:active:not(:disabled) { transform: scale(0.98); }
 .chrx-ent-btn:disabled, .chrx-ent-btn.is-disabled { opacity: 0.4; cursor: not-allowed; }
-.chrx-ent-btn--primary { background: var(--chrx-accent); color: #fff; border-color: transparent; font-weight: var(--chrx-fw-semibold); }
-.chrx-ent-btn--primary:hover:not(:disabled) { filter: brightness(1.06); background: var(--chrx-accent); }
+.chrx-ent-btn--primary {
+  background: var(--chrx-accent); color: #fff; border-color: var(--chrx-accent);
+  font-weight: var(--chrx-fw-semibold);
+  box-shadow: 0 1px 2px rgba(0, 122, 255, 0.20),
+              0 2px 6px -1px rgba(0, 122, 255, 0.24);
+}
+.chrx-ent-btn--primary:hover:not(:disabled) {
+  filter: brightness(1.06); background: var(--chrx-accent);
+  border-color: var(--chrx-accent);
+  box-shadow: 0 2px 4px rgba(0, 122, 255, 0.22),
+              0 6px 14px -3px rgba(0, 122, 255, 0.32);
+}
 .chrx-ent-btn--danger { color: var(--chrx-red); }
+.chrx-ent-btn--danger:hover:not(:disabled) {
+  background: var(--chrx-red-bg);
+  border-color: var(--chrx-red-border);
+  color: var(--chrx-red);
+  box-shadow: 0 0 0 3px var(--chrx-red-bg);
+}
 .chrx-ent-btn .chrx-kbd { background: rgba(255,255,255,0.18); color: inherit; }
 
 .chrx-ent-foot {
@@ -107,13 +146,18 @@
 .chrx-ent-th.is-sorted { color: var(--chrx-accent); }
 .chrx-ent-tr {
   cursor: pointer;
-  transition: background var(--chrx-duration-fast) var(--chrx-ease);
+  transition: background var(--chrx-duration-fast) var(--chrx-ease),
+              box-shadow var(--chrx-duration-fast) var(--chrx-ease);
 }
-.chrx-ent-tr:hover { background: var(--chrx-line-soft); }
-.chrx-ent-tr.is-selected { background: var(--chrx-accent-bg); }
+.chrx-ent-tr:hover { background: var(--chrx-bg-tile); }
+.chrx-ent-tr.is-selected {
+  background: var(--chrx-accent-bg);
+  /* Accent border-left without shifting the table layout */
+  box-shadow: inset 3px 0 0 var(--chrx-accent);
+}
 .chrx-ent-tr.is-selected:hover { background: var(--chrx-accent-bg-strong); }
 .chrx-ent-td {
-  padding: 7px 10px;
+  padding: 9px 12px;
   border-bottom: 1px solid var(--chrx-line-soft);
   vertical-align: middle;
   max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
