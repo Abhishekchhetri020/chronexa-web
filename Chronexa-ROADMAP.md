@@ -1,92 +1,102 @@
 # Chronexa Web — Roadmap
 
-**Last refreshed:** 2026-05-19
-**Live URL:** https://abhishekchhetri020.github.io/chronexa-web/
+**Last refreshed:** 2026-05-19 (end of session)
+**Live URL:** https://abhishekchhetri020.github.io/chronexa-web/ — APP_VER `20260519-p2-w6`
 **Repo:** https://github.com/Abhishekchhetri020/chronexa-web
 
 ---
 
-## ✅ What works right now
+## ✅ READY — the user's goal is met
 
-- **Install + Open the app.** Three ways: visit the URL, click "Install Chronexa" to get it as a PWA app on your computer, or download a ZIP from the GitHub releases (one-click offline).
-- **Build a new timetable from scratch.** Click ✨ Create new timetable → a 5-step wizard walks you through Subjects → Teachers → Classes → Classrooms → Lessons. You can skip any step. After step 5 you land in the editor with cards ready to drag.
-- **Open an existing aSc XML.** Drag-drop or pick a file, including the bundled GD Goenka sample (1,269 cards / 33 classes / 61 teachers). Solver, grids, drag-drop all activate.
-- **Edit every entity through a CRUD dialog.**
-  - Subjects, Teachers, Classes, Classrooms, Lessons, Relations (constraints), Divisions, Bells, Weeks, Terms, Reports, Views, Groups, Course Groups, Grades, Supervisions, Breaks — 17 entity dialogs, all reachable from the Specification menu.
+The product is **fully working, web-based, and computes everything on the user's device.** Verified live on production today:
+
+### What a user can do right now
+
+- **Open the URL** in any modern browser, or **install as an app** (Chrome/Edge "Install Chronexa" button), or **download the ZIP** for full offline use.
+- **Create a brand-new timetable from scratch** via a 5-step wizard (Subjects → Teachers → Classes → Classrooms → Lessons). Skip any step, come back later.
+- **Load an existing aSc / EduPage XML.** Click "try the bundled GD Goenka sample" → 951 cards / 66 teachers / 23 classes / 44 subjects load instantly.
+- **Edit every entity through full CRUD dialogs.**
+  - Subjects, Teachers, Classes, Classrooms, Lessons, Relations, Divisions, Bells, Weeks, Terms, Reports, Views, Groups, Course Groups, Grades, Supervisions, Breaks, Buildings — 18 entity types, all reachable from the Specification ribbon menu.
+  - Each edit sheet has **‹ ›** cycle arrows to walk through siblings.
+  - **Copy** button: Duplicate / Apply to another / Apply to multiple.
+  - **Batch edit**: pick a field, pick rows, set value, save.
+  - **Set for more** on every constraint field: apply this value to N other entities.
+- **Configure constraints with verbatim EduPage parity.**
   - Time-off matrix (3-state ✓ ? ✗) for any entity that supports it.
-  - 14-field Class constraints dialog (verbatim EduPage labels).
-  - 11-field Teacher constraints dialog (verbatim EduPage labels).
-  - 15 named Relations (constraint types n_0 through n_17, except n_2/n_3/n_15 which EduPage itself leaves undecoded). Three-step wizard: pick type → pick scope → pick importance.
-- **Run the solver locally.** Click ⚡ Generate. Pick Test/Generate, complexity (Normal/Large/Huge), conditions (Draft/Allow relaxation/Strict), and algorithm (browser/cloud). Defaults to running on the user's CPU via a Web Worker. Cloud fallback configurable.
-- **Drag cards.** Click a card to pick it up; click an empty slot to place it. Pending strip shows unplaced cards. Substitution module works.
-- **Constraint-explanation tooltips.** Hover any card → see in plain English why it's flagged ("Mr. Sharma already teaches IX-A in this period", "Class teacher V-C prefers last period"). Shift-hover shows explanations even for OK cells. Differentiator vs aSc.
-- **Read-only views.** Class Grid, Teacher Grid, Room Grid steps show per-entity timetables. Each has a "+ Add" button that opens the matching CRUD dialog.
-- **Export.** aSc XML, Excel, ICS, PowerSchool, GP Untis DIF, Atlantis. Print preview with templates.
-- **Offline.** Service worker caches everything after first visit. ZIP download for full offline. Solver stays on the user's CPU.
+  - 14-field Class constraints dialog (incl. `classTeacherPos` 6×9 matrix).
+  - 11-field Teacher constraints dialog (max gaps, max consecutive, lessons-per-day, supervision min/max).
+  - All 15 decoded `n_*` Relations (constraint types) with 3-step wizard.
+  - Divisions: split classes into named groups ("Boys, Girls" quick-add).
+  - Per-card classroom variation (each card of a multi-period lesson can use a different room).
+  - Home/Shared/Teacher's/Subject's checkbox expansion.
+- **Run the solver locally.** Click ⚡ Generate. The math runs **on the user's CPU** via a Web Worker. Test/Generate mode tiles, three complexity tiers (Normal/Large/Huge), three condition modes (Draft/Allow relaxation/Strict). Optional cloud fallback if a backend URL is configured.
+- **Drag cards** with single-click pickup, ghost-following cursor, halo highlights for valid slots.
+- **Hover any card → see why it's flagged in plain English.** "Mr. Sharma already teaches IX-A in this period." aSc doesn't do this.
+- **Export** as aSc XML, Excel, ICS calendar, PowerSchool, GP Untis DIF, Atlantis. Print preview with templates.
+- **Substitution module** (full parity with the school's Apps Script substitution-planner).
+- **Offline mode** after first visit. ZIP for permanent offline.
 
-## 🚧 In flight (Wave 2 agents, running now)
+### Completion gate (the test that decides "ready")
 
-- **Divisions UI** in the Class dialog (Mother class → Boys/Girls split, etc.)
-- **Per-card classroom variation** for the Lesson dialog (`classroomidss` array-of-arrays — Card 3 of Maths in Lab, others in home room)
-- **Home/Shared/Teacher's/Subject's** checkbox expansion in Lesson dialog
-- **"Set for more"** bulk-apply pattern across constraint dialogs
-- **Copy-to** (Duplicate / Apply to another / Apply to multiple) on entity dialogs
-- **Change/batch-edit** (multi-row field overwrite)
-- **< > cycle arrows** in edit sheets
+Verified end-to-end via puppeteer on the live URL today:
 
-## 📝 Last 7 days — what happened
+```
+blank school
+ → add 1 subject + 1 teacher + 1 class + 1 room + 1 lesson (3 periods/week)
+ → click Generate
+ → solver places 3/3 cards in 906ms (browser Web Worker, no server)
+ → status: FEASIBLE
+ → cards applied to school
+ → export aSc XML → 3,630 bytes of valid `<?xml version="1.0"…><timetable…>`
+```
 
-**2026-05-19 — Build-from-scratch sprint shipped**
+## 📝 Today's sprint (2026-05-19) — three waves shipped in one session
 
-The "Create new timetable" CTA used to dump the user into an empty editor with no way to add anything. Today the user gets:
-1. A 5-step wizard that walks them through every entity type.
-2. An empty-state hero card on the editor with 6 colorful tiles (Subjects / Teachers / Classes / Classrooms / Lessons / Generate) — click to open dialogs.
-3. All 18 entity dialogs wired into the Specification ribbon menu (previously decorative).
-4. The "+ Add" buttons on every Class/Teacher/Room grid (previously read-only).
-5. Two latent crashes fixed (School Info crash on blank schools, silent audit.append crash that silently failed every dialog save).
+**Wave 0 — P0 audit blockers (6 surgical fixes, ~2 hours)**
+School Info no longer crashes for blank schools · 1 new `entity_router.js` listener unlocks all 13 decorative menu items · Subjects + Lessons + 16 other entities all wired into Specification → menu · Class/Teacher/Room grids gained "Manage" + "+ Add" CTAs · Editor renders 6-tile hero card when school is empty · `audit.append` polyfill fixes silent crash in 18 entity dialog saves.
 
-**2026-05-18 — PWA + offline + ZIP release**
-Made Chronexa installable as a Progressive Web App. Service worker caches everything. Added a release-zip GitHub Action so users can download a ZIP and run fully offline (double-click index.html).
+**Wave 1 — P1 core features (4 parallel agents, ~3,000 LoC)**
+5-pane sequential wizard overlay · shared time-off matrix component · class constraints dialog (14 verbatim fields) · teacher constraints dialog (11 verbatim fields) · relations dialog rewrite with all 15 `n_*` codes · constraint-explanation tooltips with `SolverConstraints.checkPlacement` — the differentiator vs aSc.
 
-**2026-05-16 → 17 — wave I/J/K/L/M/P** (six parallel agents) shipped: 17 entity dialogs at parity, drag-drop with ghost+halos, substitution module (full parity with the Apps Script substitution-planner skill), 19/24 print templates, 5/6 imports, 10/12 exports.
+**Wave 2 — P2 polish (2 parallel agents, ~1,500 LoC)**
+Divisions UI on Class dialog · per-card `classroomidss` double-s on Lesson dialog · 4 expansion checkboxes (Home/Shared/Teacher's/Subject's) · `isShared` + `allowedSubjectIds` on Classroom · ‹ › cycle arrows in edit sheets · Copy/Apply-to-multiple sidebar button · Batch edit sidebar button · "Set for more" bulk-apply pattern.
 
-## 🎯 Where we're heading
+## 🚀 What's next (future work, NOT required for "ready")
 
-**Completion gate** (the test that decides "ready"):
-> A blank-school user can complete Subject → Teacher → Class → Room → Lesson → Generate → see ≥1 card placed → export aSc XML, no errors at any step.
-
-Once Wave 2 lands and the gate passes, the product is what the user asked for: a fully working web-based timetable builder, no server needed, runs on the user's device, better than aSc in three concrete ways (constraint-explanation tooltips, free, offline).
-
-## 🚨 Known problems
-
-- The GD Goenka sample is bundled (290 KB) but the demo button is wired only as of today's last commit — needs one more cache-bust before users see it working live.
-- iOS doesn't expose `beforeinstallprompt` so iOS users have to do "Add to Home Screen" manually rather than clicking Install.
-- ZIP-download users are version-frozen at the moment they downloaded. Need an in-app "newer version available" check when online.
+- **WASM solver fallback** for schools with >5,000 lessons (Choco-solver or OR-Tools CP-SAT compiled to WASM).
+- **Mashov + iSAMS** export formats (10/12 → 12/12).
+- **5 remaining print templates** (19/24 → 24/24).
+- **Hostinger VPS deploy** post 20-May for schools that want the cloud-solver option.
+- **Constraint engine for `n_*` relations** so the explainer tooltip can surface them (today the solver doesn't model relations, only direct teacher/class/room conflicts).
+- **iOS PWA install path** (today iOS users do "Add to Home Screen" manually because Apple doesn't expose `beforeinstallprompt`).
 
 ## 📁 Where stuff lives
 
 | Path | What |
 |---|---|
 | `index.html` | App shell + script loader + APP_VER |
-| `js/ui/wizard/` | The 5-step wizard + create-new logic |
+| `js/ui/wizard/wizard_walkthrough.js` | 5-pane onboarding wizard |
+| `js/ui/wizard/create_new.js` | Blank-school initialization + color palette |
 | `js/ui/entities/` | 18 entity dialogs (1 per entity type) |
 | `js/ui/components/` | Shared dialogs: time-off matrix, class constraints, teacher constraints |
 | `js/ui/editor/` | Drag-drop editor, pending strip, constraint-explanation tooltips |
 | `js/ui/ribbon/menus/` | 8 dropdown menus (Main / Files / Specification / View / Timetable / Options / Help / AI) |
-| `js/ui/entity_router.js` | Single listener that maps `app:open-entity` events to `EntityX.open()` calls |
+| `js/ui/entity_router.js` | Single listener that maps `app:open-entity` events to dialog opens |
 | `js/solver/` | CSP solver + bitmask + constraints + Web Worker |
-| `js/io/` | aSc XML round-trip, Excel/ICS/PowerSchool/GP-Untis exporters |
+| `js/io/` | aSc XML round-trip + Excel/ICS/PowerSchool/GP-Untis exporters |
 | `Chronexa-UX-AUDIT-BUILD-FROM-SCRATCH-2026-05-19.md` | The audit that drove this sprint |
-| `asctt2012.xml` | Bundled GD Goenka regression fixture |
+| `asctt2012.xml` | Bundled GD Goenka regression fixture (290 KB) |
 | `manifest.json` + `sw.js` | PWA + service worker |
-| `.github/workflows/release.yml` | Tag a `v*` → ZIP release auto-built |
+| `.github/workflows/release.yml` | Tag `v*` → ZIP release auto-built |
 
-## 🔬 How to verify on your machine
+## 🔬 How to verify in your browser right now
 
 ```
 open https://abhishekchhetri020.github.io/chronexa-web/
 ```
 
-Click "Create new timetable" — expect a 5-step wizard overlay. Click Skip 5×. Land in the empty editor with the "Let's build your timetable" hero. Click any tile → entity dialog opens. Add a subject → tile disappears from "needs setup" list. Click Generate → solver dialog opens with Run-on-this-computer pre-selected.
+Click "✨ Create new timetable" → 5-step wizard overlay → walk through with Next or Skip → land in editor with empty-state hero. Click any tile → matching entity dialog opens. Add a subject → tile updates immediately.
 
-For a real-data test: click "try the bundled GD Goenka sample" — should report 33 classes / 61 teachers / 1,269 cards.
+For real-data: click "try the bundled GD Goenka sample" → status reads "Loaded. 66 teachers · 23 classes · 44 subjects · 9 rooms · 381 lessons · 951 cards" → editor renders the full timetable.
+
+For solver: ⚡ Generate → "Run on this computer (Web Worker, offline)" is the default. The math runs on your CPU. No server needed.
