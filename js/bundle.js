@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-19T18:00:13Z
+/* Chronexa bundle — generated 2026-05-19T18:04:08Z
  *      135 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -9565,11 +9565,33 @@ ${body}
     }
   }
 
+  function suggestComplexity(school) {
+    if (!school) return null;
+    const lessons  = (school.lessons  && school.lessons.length)  || 0;
+    const teachers = (school.teachers && school.teachers.length) || 0;
+    const classes  = (school.classes  && school.classes.length)  || 0;
+    // Empirical: a 23-class / 66-teacher / 381-lesson school needs >60s.
+    // Auto-pick Huge for anything above the Large threshold so first-time
+    // Generate doesn't time out on real-world XML imports.
+    if (lessons > 200 || teachers > 50 || classes > 25) return "huge";
+    if (lessons > 80  || teachers > 25 || classes > 12) return "large";
+    return "normal";
+  }
+  function applySuggestedComplexity(school) {
+    if (!dialog) return;
+    const suggested = suggestComplexity(school);
+    if (!suggested) return;
+    const radios = dialog.querySelectorAll("input[name='complexity']");
+    radios.forEach(r => { r.checked = (r.value === suggested); });
+  }
+
   function open(opts) {
     current = opts || {};
     if (!host) build();
     setMode(current.defaultMode || "generate");
-    setSummary(current.school || (global.APP && global.APP.school) || null);
+    const targetSchool = current.school || (global.APP && global.APP.school) || null;
+    setSummary(targetSchool);
+    applySuggestedComplexity(targetSchool);
     host.classList.add("is-open");
     host.setAttribute("aria-hidden", "false");
     // Focus the start button after frame so screen readers track it.
@@ -11436,10 +11458,12 @@ window.Editor = (function () {
     const line3 = window.APP.editor.perspective === "class" ? roomShort
                 : window.APP.editor.perspective === "teacher" ? roomShort
                 : teacherShort;
+    const compact = window.APP.editor.density === "compact";
+    const densityClass = compact ? " chrx-vkarta--compact" : "";
 
     return `
       <div class="chrx-slot${mobileHidden}" data-day="${day}" data-period="${period}" data-row="${esc(rowKey)}">
-        <div class="chrx-vkarta${locked}"
+        <div class="chrx-vkarta${locked}${densityClass}"
              data-card-id="${cardId}"
              data-lesson-id="${esc(card.lessonId)}"
              data-day="${day}"
@@ -11447,8 +11471,8 @@ window.Editor = (function () {
              style="--chrx-card-hue:${hue}"
              title="${esc(subjShort + (teacherShort ? ' · ' + teacherShort : '') + (roomShort ? ' · ' + roomShort : ''))}">
           <div class="chrx-vk-line1">${esc(subjShort)}</div>
-          <div class="chrx-vk-line2">${esc(line2)}</div>
-          <div class="chrx-vk-line3">${esc(line3)}</div>
+          ${compact ? "" : `<div class="chrx-vk-line2">${esc(line2)}</div>`}
+          ${compact ? "" : `<div class="chrx-vk-line3">${esc(line3)}</div>`}
         </div>
       </div>
     `;
@@ -12906,6 +12930,25 @@ window.StartScreen = (function () {
         window.APP.editor.perspective = next;
         persBtn.textContent = LABEL[next];
         // Re-render
+        if (window.EditorActivator) window.EditorActivator.activate();
+      };
+    }
+
+    // ─── Card density toggle in editor header ──────────────────
+    const densBtn = document.getElementById("editor-density");
+    if (densBtn) {
+      // Restore from localStorage; default to compact.
+      let savedDens = "compact";
+      try { savedDens = localStorage.getItem("chronexa.editor.density") || "compact"; } catch {}
+      window.APP.editor = window.APP.editor || {};
+      window.APP.editor.density = savedDens;
+      densBtn.textContent = savedDens === "compact" ? "Compact" : "Comfortable";
+      densBtn.onclick = () => {
+        const cur = window.APP.editor.density || "compact";
+        const next = cur === "compact" ? "comfortable" : "compact";
+        window.APP.editor.density = next;
+        densBtn.textContent = next === "compact" ? "Compact" : "Comfortable";
+        try { localStorage.setItem("chronexa.editor.density", next); } catch {}
         if (window.EditorActivator) window.EditorActivator.activate();
       };
     }

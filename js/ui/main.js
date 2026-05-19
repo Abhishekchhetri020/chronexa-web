@@ -283,6 +283,25 @@
       };
     }
 
+    // ─── Card density toggle in editor header ──────────────────
+    const densBtn = document.getElementById("editor-density");
+    if (densBtn) {
+      // Restore from localStorage; default to compact.
+      let savedDens = "compact";
+      try { savedDens = localStorage.getItem("chronexa.editor.density") || "compact"; } catch {}
+      window.APP.editor = window.APP.editor || {};
+      window.APP.editor.density = savedDens;
+      densBtn.textContent = savedDens === "compact" ? "Compact" : "Comfortable";
+      densBtn.onclick = () => {
+        const cur = window.APP.editor.density || "compact";
+        const next = cur === "compact" ? "comfortable" : "compact";
+        window.APP.editor.density = next;
+        densBtn.textContent = next === "compact" ? "Compact" : "Comfortable";
+        try { localStorage.setItem("chronexa.editor.density", next); } catch {}
+        if (window.EditorActivator) window.EditorActivator.activate();
+      };
+    }
+
     wireSearch();
     wireLang();
     wireXmlUpload();

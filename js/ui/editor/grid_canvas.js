@@ -200,10 +200,12 @@ window.Editor = (function () {
     const line3 = window.APP.editor.perspective === "class" ? roomShort
                 : window.APP.editor.perspective === "teacher" ? roomShort
                 : teacherShort;
+    const compact = window.APP.editor.density === "compact";
+    const densityClass = compact ? " chrx-vkarta--compact" : "";
 
     return `
       <div class="chrx-slot${mobileHidden}" data-day="${day}" data-period="${period}" data-row="${esc(rowKey)}">
-        <div class="chrx-vkarta${locked}"
+        <div class="chrx-vkarta${locked}${densityClass}"
              data-card-id="${cardId}"
              data-lesson-id="${esc(card.lessonId)}"
              data-day="${day}"
@@ -211,8 +213,8 @@ window.Editor = (function () {
              style="--chrx-card-hue:${hue}"
              title="${esc(subjShort + (teacherShort ? ' · ' + teacherShort : '') + (roomShort ? ' · ' + roomShort : ''))}">
           <div class="chrx-vk-line1">${esc(subjShort)}</div>
-          <div class="chrx-vk-line2">${esc(line2)}</div>
-          <div class="chrx-vk-line3">${esc(line3)}</div>
+          ${compact ? "" : `<div class="chrx-vk-line2">${esc(line2)}</div>`}
+          ${compact ? "" : `<div class="chrx-vk-line3">${esc(line3)}</div>`}
         </div>
       </div>
     `;

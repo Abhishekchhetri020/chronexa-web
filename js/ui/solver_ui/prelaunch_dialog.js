@@ -211,11 +211,33 @@
     }
   }
 
+  function suggestComplexity(school) {
+    if (!school) return null;
+    const lessons  = (school.lessons  && school.lessons.length)  || 0;
+    const teachers = (school.teachers && school.teachers.length) || 0;
+    const classes  = (school.classes  && school.classes.length)  || 0;
+    // Empirical: a 23-class / 66-teacher / 381-lesson school needs >60s.
+    // Auto-pick Huge for anything above the Large threshold so first-time
+    // Generate doesn't time out on real-world XML imports.
+    if (lessons > 200 || teachers > 50 || classes > 25) return "huge";
+    if (lessons > 80  || teachers > 25 || classes > 12) return "large";
+    return "normal";
+  }
+  function applySuggestedComplexity(school) {
+    if (!dialog) return;
+    const suggested = suggestComplexity(school);
+    if (!suggested) return;
+    const radios = dialog.querySelectorAll("input[name='complexity']");
+    radios.forEach(r => { r.checked = (r.value === suggested); });
+  }
+
   function open(opts) {
     current = opts || {};
     if (!host) build();
     setMode(current.defaultMode || "generate");
-    setSummary(current.school || (global.APP && global.APP.school) || null);
+    const targetSchool = current.school || (global.APP && global.APP.school) || null;
+    setSummary(targetSchool);
+    applySuggestedComplexity(targetSchool);
     host.classList.add("is-open");
     host.setAttribute("aria-hidden", "false");
     // Focus the start button after frame so screen readers track it.

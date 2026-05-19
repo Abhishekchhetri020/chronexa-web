@@ -23,6 +23,9 @@ body.chrx-card-in-hand .chrx-slot.empty{outline:2px dashed var(--chrx-green);out
 .chrx-vkarta:active{cursor:grabbing}
 .chrx-vk-line1{font-weight:var(--chrx-fw-bold);font-size:var(--chrx-font-cell-s)}
 .chrx-vk-line2,.chrx-vk-line3{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.88}
+/* Compact card: subject-only, centered, taller font. Title tooltip still has full detail. */
+.chrx-vkarta--compact{align-items:center;justify-content:center;padding:2px 4px}
+.chrx-vkarta--compact .chrx-vk-line1{font-size:var(--chrx-font-cell-m);line-height:1.1;text-align:center;width:100%}
 .chrx-vkarta.locked{cursor:not-allowed;opacity:.85}
 .chrx-vkarta.locked::after{content:"🔒";position:absolute;top:0;right:2px;font-size:8px}
 .chrx-pending-strip{position:sticky;bottom:0;left:0;right:0;height:80px;display:flex;flex-direction:column;background:var(--chrx-bg-drawer);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-top:1px solid var(--chrx-line);box-shadow:var(--chrx-shadow-drawer);z-index:var(--chrx-z-drawer);font-family:var(--chrx-font-sans)}
