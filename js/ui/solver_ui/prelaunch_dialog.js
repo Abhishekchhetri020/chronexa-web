@@ -173,10 +173,15 @@
     const sum = dialog.querySelector("#csu-prelaunch-summary");
     if (!sum) return;
     if (!school) { sum.textContent = ""; sum.classList.remove("is-on"); return; }
+    // Prefer live arrays (set by templates / wizards) over _meta.counts which
+    // is only populated by the XML import path. Without this the dialog
+    // showed "0 teachers · 0 classes" on freshly-templated schools.
     const c = (school._meta && school._meta.counts) || {};
-    const lessons = c.lessons || (school.lessons ? school.lessons.length : 0);
-    const cards   = c.cards   || (school.cards   ? school.cards.length   : 0);
-    sum.textContent = `${school.schoolName || "(school)"} · ${c.teachers || 0} teachers · ${c.classes || 0} classes · ${lessons} lessons · ${cards} placed`;
+    const teachers = (school.teachers && school.teachers.length) || c.teachers || 0;
+    const classes  = (school.classes  && school.classes.length)  || c.classes  || 0;
+    const lessons  = (school.lessons  && school.lessons.length)  || c.lessons  || 0;
+    const cards    = (school.cards    && school.cards.length)    || c.cards    || 0;
+    sum.textContent = `${school.schoolName || "(school)"} · ${teachers} teachers · ${classes} classes · ${lessons} lessons · ${cards} placed`;
     sum.classList.add("is-on");
   }
 

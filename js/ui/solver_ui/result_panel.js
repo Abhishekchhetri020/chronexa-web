@@ -161,6 +161,8 @@
       state.snapshot = Array.isArray(state.school.cards) ? state.school.cards.slice() : [];
     }
     if (state.school) state.school.cards = newCards;
+    state.applied = true;
+    state.discarded = false;
     refs.apply.disabled = true;
     refs.disc.disabled = false;
     refs.status.textContent = "Applied to timetable.";
@@ -173,6 +175,7 @@
       state.school.cards = state.snapshot;
       state.snapshot = null;
     }
+    state.discarded = true;
     refs.apply.disabled = false;
     refs.disc.disabled = true;
     refs.status.textContent = "Discarded — your previous timetable is restored.";
@@ -182,10 +185,23 @@
   function doView() {
     if (!state) return;
     const v = (state.result && state.result.violations) || [];
+    // Auto-apply on view-violations too (same intent as close).
+    if (canAutoApply()) doApply();
     close();
     if (state.onViewViolations) try { state.onViewViolations(v); } catch (e) { console.error(e); }
   }
+  function canAutoApply() {
+    if (!state) return false;
+    if (state.mode === "test") return false;
+    if (state.applied || state.discarded) return false;
+    const a = state.result && state.result.assignment;
+    return Array.isArray(a) && a.length > 0;
+  }
   function doClose() {
+    // Implicit-apply: if the solver produced placements and the user
+    // didn't explicitly Discard, treat Close as "keep these cards" so
+    // a successful run isn't silently thrown away.
+    if (canAutoApply()) doApply();
     close();
     if (state && state.onClose) try { state.onClose(); } catch (e) { console.error(e); }
     state = null;

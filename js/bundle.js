@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-19T16:39:19Z
+/* Chronexa bundle — generated 2026-05-19T17:41:12Z
  *      135 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -9527,10 +9527,15 @@ ${body}
     const sum = dialog.querySelector("#csu-prelaunch-summary");
     if (!sum) return;
     if (!school) { sum.textContent = ""; sum.classList.remove("is-on"); return; }
+    // Prefer live arrays (set by templates / wizards) over _meta.counts which
+    // is only populated by the XML import path. Without this the dialog
+    // showed "0 teachers · 0 classes" on freshly-templated schools.
     const c = (school._meta && school._meta.counts) || {};
-    const lessons = c.lessons || (school.lessons ? school.lessons.length : 0);
-    const cards   = c.cards   || (school.cards   ? school.cards.length   : 0);
-    sum.textContent = `${school.schoolName || "(school)"} · ${c.teachers || 0} teachers · ${c.classes || 0} classes · ${lessons} lessons · ${cards} placed`;
+    const teachers = (school.teachers && school.teachers.length) || c.teachers || 0;
+    const classes  = (school.classes  && school.classes.length)  || c.classes  || 0;
+    const lessons  = (school.lessons  && school.lessons.length)  || c.lessons  || 0;
+    const cards    = (school.cards    && school.cards.length)    || c.cards    || 0;
+    sum.textContent = `${school.schoolName || "(school)"} · ${teachers} teachers · ${classes} classes · ${lessons} lessons · ${cards} placed`;
     sum.classList.add("is-on");
   }
 
@@ -10009,6 +10014,8 @@ ${body}
       state.snapshot = Array.isArray(state.school.cards) ? state.school.cards.slice() : [];
     }
     if (state.school) state.school.cards = newCards;
+    state.applied = true;
+    state.discarded = false;
     refs.apply.disabled = true;
     refs.disc.disabled = false;
     refs.status.textContent = "Applied to timetable.";
@@ -10021,6 +10028,7 @@ ${body}
       state.school.cards = state.snapshot;
       state.snapshot = null;
     }
+    state.discarded = true;
     refs.apply.disabled = false;
     refs.disc.disabled = true;
     refs.status.textContent = "Discarded — your previous timetable is restored.";
@@ -10030,10 +10038,23 @@ ${body}
   function doView() {
     if (!state) return;
     const v = (state.result && state.result.violations) || [];
+    // Auto-apply on view-violations too (same intent as close).
+    if (canAutoApply()) doApply();
     close();
     if (state.onViewViolations) try { state.onViewViolations(v); } catch (e) { console.error(e); }
   }
+  function canAutoApply() {
+    if (!state) return false;
+    if (state.mode === "test") return false;
+    if (state.applied || state.discarded) return false;
+    const a = state.result && state.result.assignment;
+    return Array.isArray(a) && a.length > 0;
+  }
   function doClose() {
+    // Implicit-apply: if the solver produced placements and the user
+    // didn't explicitly Discard, treat Close as "keep these cards" so
+    // a successful run isn't silently thrown away.
+    if (canAutoApply()) doApply();
     close();
     if (state && state.onClose) try { state.onClose(); } catch (e) { console.error(e); }
     state = null;
