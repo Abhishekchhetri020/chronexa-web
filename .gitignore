@@ -17,3 +17,6 @@ venv/
 dist/
 build/
 *.egg-info/
+
+# Mission director / Codex handoff scratch — local-only, may contain creds
+.mission/
