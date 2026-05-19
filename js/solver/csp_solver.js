@@ -1586,6 +1586,45 @@ export function solve(school, options = {}) {
     if (model.lessonCandidateCount[i] === 0) initiallyInfeasible.push(i);
   }
 
+  // Warm-start: when the school has cards already placed (XML import or a
+  // previous solver run that the user wants to keep), pre-populate each
+  // branch's initial state from those placements. The search then has only
+  // to fill gaps and optimise — it doesn't restart from zero, which on
+  // dense real-world XML deadlocks at ~92% no matter the seed.
+  // Computed once; replayed per-branch.
+  const warmStartMoves = [];
+  if (options.warmStart && Array.isArray(school.cards) && school.cards.length > 0) {
+    const cardsBySrc = Object.create(null);
+    for (const c of school.cards) {
+      if (!c || !c.lessonId) continue;
+      (cardsBySrc[c.lessonId] = cardsBySrc[c.lessonId] || []).push(c);
+    }
+    for (const sid in cardsBySrc) {
+      cardsBySrc[sid].sort((a, b) => (a.day - b.day) || (a.period - b.period));
+    }
+    const cursor = Object.create(null);
+    for (let i = 0; i < model.lessonCount; i++) {
+      const l = model.lessons[i];
+      const cards = cardsBySrc[l.srcId];
+      if (!cards) continue;
+      const ci = (cursor[l.srcId] || 0);
+      if (ci >= cards.length) continue;
+      const card = cards[ci];
+      cursor[l.srcId] = ci + 1;
+      const day = card.day | 0;
+      const period = ((card.period | 0) - 1);
+      if (day < 0 || day >= model.days || period < 0 || period >= model.periodsPerDay) continue;
+      const slot = day * model.periodsPerDay + period;
+      let roomIdx = -1;
+      if (card.classroomId) {
+        for (let r = 0; r < model.roomIds.length; r++) {
+          if (model.roomIds[r] === card.classroomId) { roomIdx = r; break; }
+        }
+      }
+      warmStartMoves.push({ lessonIdx: i, slot, roomIdx });
+    }
+  }
+
   // The driver: sequential root-shuffle branches; keep the best.
   // More branches = more diverse initial orderings → better chance of escaping
   // local dead-ends. Scaled with school size; capped by the per-branch
@@ -1613,8 +1652,36 @@ export function solve(school, options = {}) {
     state.bestSoftScore = -Number.MAX_SAFE_INTEGER;
     state.bestHardCount = Number.MAX_SAFE_INTEGER;
     state.bestAssignedEntries = 0;
+
+    // Replay warm-start moves into this branch's fresh state. Skips moves that
+    // violate constraints — those fall through to backtrack as normal.
+    let warmStarted = 0;
+    if (warmStartMoves.length > 0) {
+      for (const m of warmStartMoves) {
+        if (state.lessonAssigned[m.lessonIdx]) continue;
+        if (canPlace(model, state, m.lessonIdx, m.slot, m.roomIdx) === null) {
+          applyPlacement(model, state, m.lessonIdx, m.slot, m.roomIdx, null);
+          warmStarted++;
+        }
+      }
+      // Snapshot warm state as initial best so even a 0-iteration branch reports it.
+      if (warmStarted > 0) {
+        state.bestSoftScore = -softScore(model, state);
+        state.bestAssignedEntries = state.assignedLessonCount;
+        state.bestHardCount = unassignedCount0 - state.assignedLessonCount;
+        snapshotBest(state);
+      }
+    }
+
+    // Build the unassigned set excluding lessons already warm-started.
     const unassigned = new Int32Array(unassignedCount0);
-    unassigned.set(unassigned0.subarray(0, unassignedCount0));
+    let actualUnassigned = 0;
+    for (let k = 0; k < unassignedCount0; k++) {
+      const lessonIdx = unassigned0[k];
+      if (!state.lessonAssigned[lessonIdx]) {
+        unassigned[actualUnassigned++] = lessonIdx;
+      }
+    }
     const ctx = {
       branchSeed: seed + b * 17,
       depth: 0,
@@ -1640,7 +1707,7 @@ export function solve(school, options = {}) {
       maybeEmitProgress(ctx, state, unassignedCount0, initiallyInfeasible.length, t0);
     }, 500);
     try {
-      backtrack(model, state, unassigned, unassignedCount0, ctx);
+      backtrack(model, state, unassigned, actualUnassigned, ctx);
     } finally {
       clearIntervalShim(tickInterval);
     }
