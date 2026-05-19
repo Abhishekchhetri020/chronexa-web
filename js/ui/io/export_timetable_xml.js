@@ -1,16 +1,16 @@
-/* Round-trip aSc Timetables XML export.
+/* Round-trip Classic Timetable XML export.
  *
  * Strategy:
- *  1. If APP.school._meta.sourceText exists (set by import_asc_xml.js), we use
+ *  1. If APP.school._meta.sourceText exists (set by import_timetable_xml.js), we use
  *     it as the template and surgically replace the <cards> block with the
  *     current APP.school.cards. This preserves field order, IDs, daysdefs.
- *  2. If no source text, we synthesize a minimal aSc-shaped XML from the
+ *  2. If no source text, we synthesize a minimal Classic-shaped XML from the
  *     canonical SchoolData. Less faithful, but always works.
  *
  * Cards round-trip: parser emits {lessonId, day, period, classroomId?}.
- * Each ASC <card days="100000"> bit position maps to dayIdx 0..5
+ * Each CLASSIC <card days="100000"> bit position maps to dayIdx 0..5
  *   (0=Mon, 1=Tue, …, 5=Sat — same as DATA_SHAPES.md).
- * One ASC card with multi-bit days becomes N entries on parse; we collapse
+ * One CLASSIC card with multi-bit days becomes N entries on parse; we collapse
  * back here only when we have the original card lines (preserve identity);
  * otherwise we emit one <card days="bbbbbb"/> per (day,period) pair.
  */
@@ -168,7 +168,7 @@
     setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
   }
 
-  function exportAscXml() {
+  function exportTimetableXml() {
     const school = APP.school;
     if (!school) { notify("Open a timetable first.", "error"); return; }
     let xml;
@@ -182,9 +182,9 @@
     notify("Exported " + base + "-export.xml");
   }
 
-  window.addEventListener("app:export-asc-xml", exportAscXml);
+  window.addEventListener("app:export-timetable-xml", exportTimetableXml);
   APP.io = APP.io || {};
-  APP.io.exportAscXml         = exportAscXml;
+  APP.io.exportTimetableXml         = exportTimetableXml;
   APP.io.exportFromTemplate   = exportFromTemplate;
   APP.io.exportSynthesized    = exportSynthesized;
   APP.io.renderCardsBlock     = renderCardsBlock;

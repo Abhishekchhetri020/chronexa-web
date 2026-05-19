@@ -1,4 +1,4 @@
-/* EduPage "Bell times export" importer.
+/* Classic "Bell times export" importer.
  * Accepts JSON with period rows: [{ name, short, starttime, endtime, period }]
  * (or { periods:[...] } shape). Writes to APP.school.bell.periods using the
  * shape declared in docs/DATA_SHAPES.md:
@@ -72,13 +72,13 @@
       const periods = parse(text);
       if (!periods.length) throw new Error("No periods found in file");
       apply(periods);
-      notify(`EduPage Bell times imported · ${periods.length} periods`);
+      notify(`Classic Bell times imported · ${periods.length} periods`);
     } catch (e) {
-      notify("EduPage Bell import failed: " + e.message, "error");
+      notify("Classic Bell import failed: " + e.message, "error");
       console.error(e);
     }
   }
 
-  window.ImportEduPageBellTimes = { run, parse };
-  window.addEventListener("app:import-edupage-bell-times", () => run());
+  window.ImportBellTimes = { run, parse };
+  window.addEventListener("app:import-classic-bell-times", () => run());
 })();

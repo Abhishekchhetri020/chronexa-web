@@ -103,7 +103,7 @@
   }
 
   /* Compute the expanded classroom set for a given expansion mode.
-   * EduPage's `metaclassroomidss_expanded` semantics. */
+   * Classic's `metaclassroomidss_expanded` semantics. */
   function expandRooms(mode, draft) {
     const s = window.APP.school || {};
     const all = s.classrooms || [];
@@ -151,8 +151,8 @@
           isLabDouble:false, preferredRoomId:"",
           classroomIdsByCard:null,         // null = use single preferredRoomId
           classroomIdsExpansion:null,      // null|"home"|"shared"|"teacher"|"subject"
-          wildcardTeacher:false,           // ASC '??' — solver picks any teacher
-          wildcardRoom:false,              // ASC '??' — solver picks any room
+          wildcardTeacher:false,           // CLASSIC '??' — solver picks any teacher
+          wildcardRoom:false,              // CLASSIC '??' — solver picks any room
           daysDefId: defDay,
           weeksDefId: defWk,
           termsDefId: defTerm,
@@ -183,7 +183,7 @@
       x => x.name + (x.abbr ? ` (${x.abbr})` : ""),
       v => { draft.teacherIds = v; refreshRoomBlock(); }, 5);
 
-    // ── Wildcard toggles (ASC "??" semantics) ─────────────────────────
+    // ── Wildcard toggles (CLASSIC "??" semantics) ─────────────────────────
     // When checked, the teacher/room picker is disabled and the solver
     // is free to pick ANY teacher / room that satisfies feasibility.
     // TODO(solver): treat lesson.wildcardTeacher === true as candidate
@@ -207,11 +207,11 @@
         applyRoomDisabled(); } });
     const fWildTeachLabel = D.el("label", {
       style:"display:inline-flex;gap:6px;align-items:center;cursor:pointer",
-      title:"If checked, the solver assigns any teacher (ASC '??' pattern)" },
+      title:"If checked, the solver assigns any teacher (CLASSIC '??' pattern)" },
       fWildTeach, D.el("span", null, "Wildcard teacher (?)"));
     const fWildRoomLabel = D.el("label", {
       style:"display:inline-flex;gap:6px;align-items:center;cursor:pointer",
-      title:"If checked, the solver assigns any room (ASC '??' pattern)" },
+      title:"If checked, the solver assigns any room (CLASSIC '??' pattern)" },
       fWildRoom, D.el("span", null, "Wildcard room (?)"));
     const fCount = D.el("input", { type:"number", min:"1", max:"20",
       value:draft.periodsPerWeek,

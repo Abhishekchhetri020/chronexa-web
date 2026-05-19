@@ -1,7 +1,7 @@
-# Chronexa - EduPage Live Walk-Through (2026-05-19)
+# Chronexa - Classic Live Walk-Through (2026-05-19)
 
-**Method:** logged into `https://abhishekchhetri.edupage.org` via firecrawl persistent browser
-profile (`chronexa-edupage`), opened the live aSc Timetables editor on the "7th May"
+**Method:** logged into `https://abhishekchhetri.classic.org` via firecrawl persistent browser
+profile (`chronexa-classic`), opened the live Classic Timetable editor on the "7th May"
 timetable (ttgpid=18158989), and clicked through every menu tab + every entity
 dialog + the School wizard + Print preview. Every label/button text quoted in this
 doc is **verbatim from the live DOM** (extracted via Playwright `page.evaluate`)
@@ -9,7 +9,7 @@ not from offline cached HTML or marketing docs.
 
 **Screenshots:** 49 PNGs were captured to the firecrawl sandbox at `/tmp/edu/*.png`
 (13 MB tarball). The 8 highest-value screenshots are pulled to
-`docs/edupage-screenshots/` locally:
+`docs/classic-screenshots/` locally:
 - `S00_school_dialog.png` - Settings (School wizard) main dialog
 - `S01_bell_times.png` - Bell times sub-dialog with 8 periods + 2 breaks
 - `S02b_period_diff_bells_expanded.png` - Period detail dialog with
@@ -28,7 +28,7 @@ exceeded value). The DOM dumps embedded below are the load-bearing artifact.
 ## Top-30 gaps the offline docs missed (observed live)
 
 These are surface details I saw clicking through the live UI that are either
-absent from `docs/edupage-screenshots/EDUPAGE_FEATURE_MAP_2026-05-03.md`,
+absent from `docs/classic-screenshots/legacy-research`,
 `docs/ENTITY_DIALOGS.md`, or `docs/RIBBON.md`, OR are documented but with
 incorrect labels/behaviour.
 
@@ -37,12 +37,12 @@ incorrect labels/behaviour.
    warning is part of the button label, not a separate badge. The offline doc
    shows it as a plain "School" button.
 2. **School dialog title is literally "Settings"** — not "School" or "Wizard
-   step 1 — School". The aSc-Timetables-Online uses `Settings` as the heading
+   step 1 — School". The Classic-Timetables-Online uses `Settings` as the heading
    string in the dialog header.
 3. **School dialog has a "Custom fields" button in the button-pane** alongside
    OK and Cancel. This opens the user-defined-field editor that lets schools
    add arbitrary metadata to the timetable. Not mentioned anywhere offline.
-4. **Bell-times sub-dialog title is literally "Edupage"** (generic), not
+4. **Bell-times sub-dialog title is literally "Classic"** (generic), not
    "Bell times". The dialog content header is "Periods" + columns
    `Name / Abbreviation / Start / End / Length`.
 5. **Per-period dialog has exactly 5 checkboxes** (offline doc said 4):
@@ -59,7 +59,7 @@ incorrect labels/behaviour.
    - **Text for printouts** (free text)
    - **Double lessons cannot span this break.** (checkbox)
    - **Sufficient for the transition between buildings.** (checkbox)
-   These map to the aSc "break: chained-double-lesson" + "break: cross-building"
+   These map to the Classic "break: chained-double-lesson" + "break: cross-building"
    solver hints — offline doc only had the first two as a vague "duration field".
 8. **Add-break flow is gated by a confirm-dialog**:
    "Add break that will be printed between lessons / This break is before
@@ -88,8 +88,8 @@ incorrect labels/behaviour.
 14. **Top-tab "AI" has the same body as "Help"** ("Show demo files / Online
     help / Questions? Comments? Write to us. / Close") — meaning the AI panel
     is gated behind the AI-credit purchase modal seen separately at the
-    right-side `EduPageAI - How can I help you?` chat panel ("Your school has
-    less than €1 in EduPage AI credit"). The dedicated AI ribbon is a stub.
+    right-side `ClassicAI - How can I help you?` chat panel ("Your school has
+    less than €1 in Classic AI credit"). The dedicated AI ribbon is a stub.
 15. **`Specification` tab contains a hidden 8th entity: "Buildings"** (not
     surfaced in the Main tab). Building - New = Name / Abbreviation / Color
     only. Buildings dialog actions: New / Edit / Delete / Constraints / Close.
@@ -108,7 +108,7 @@ incorrect labels/behaviour.
 19. **`Files` tab is also where Save lives** as a peer of New/Open/Close/Show
     demo files. The main-tab Save button is a duplicate. Files = canonical.
 20. **Classes list columns include "Education block"** (default value =
-    "automatic (highly recommended)") — this is the aSc grade-block grouping
+    "automatic (highly recommended)") — this is the Classic grade-block grouping
     used to keep junior/senior classes apart in the solver. Offline doc had
     columns as just Name/Abbreviation/Count.
 21. **Class - New** has both a `Grade: -` dropdown AND a
@@ -164,8 +164,8 @@ incorrect labels/behaviour.
 
 ## Top-of-screen 8 menu tabs - full ribbon contents
 
-Captured by clicking each tab label and dumping every `.asc-ribbon-group >
-.asc-ribbon-button` inside. Group separators marked with `|`.
+Captured by clicking each tab label and dumping every `.classic-ribbon-group >
+.classic-ribbon-button` inside. Group separators marked with `|`.
 
 ### Main
 `Save | Classes Zoom | School ⚠️ | Subjects · Classes · Classrooms · Teachers · Lessons · Students / Seminars · Relations | Test · Generate · Generate in cloud · Verification | Print preview | Questions? Comments? Write to us. | Close`
@@ -190,7 +190,7 @@ Captured by clicking each tab label and dumping every `.asc-ribbon-group >
 
 ### AI
 `Back | Show demo files | Online help · Questions? Comments? Write to us. | Close`
-(Same content as Help — AI is gated behind right-side chat panel that requires EduPage AI credits.)
+(Same content as Help — AI is gated behind right-side chat panel that requires Classic AI credits.)
 
 ---
 
@@ -215,7 +215,7 @@ Plus 3 toggles:
 
 Button pane: `Custom fields · OK · Cancel`.
 
-### Bell times sub-dialog (title bar: `Edupage`)
+### Bell times sub-dialog (title bar: `Classic`)
 
 Verbatim table for the live "Bells 1" set:
 
@@ -282,7 +282,7 @@ Same fields as Period plus:
 
 Button pane: `OK · Cancel`
 
-### Rename days sub-dialog (title bar: `Edupage`)
+### Rename days sub-dialog (title bar: `Classic`)
 
 ```
 Days
@@ -311,7 +311,7 @@ Every day   E
 [Close]
 ```
 
-### Define terms sub-dialog (title bar: `Edupage`)
+### Define terms sub-dialog (title bar: `Classic`)
 
 ```
 Terms
@@ -532,13 +532,13 @@ Teachers with max windows: 3
 
 Per-teacher table columns: `Teacher | Windows | Exhaustion | Lessons per day Mo Tu We Th Fr Sa`
 
-**"Exhaustion"** is an aSc-specific scalar that combines windows + back-to-back
+**"Exhaustion"** is an Classic-specific scalar that combines windows + back-to-back
 hours + missed-break penalty. It does NOT appear in offline doc. Chronexa
 needs a teacher-load metric of the same shape for the same admin view.
 
 ---
 
-## Substitution module (admin-side, outside aSc editor)
+## Substitution module (admin-side, outside Classic editor)
 
 URL: `/substitution/`
 
@@ -613,10 +613,10 @@ This whole settings surface is missing from Chronexa's substitution module
 ## What I could NOT capture in this walk
 
 1. **Teacher Constraints dialog (11 fields per offline doc).** The `Constraints`
-   action button requires a selected row in the aSc data-grid, and the live
+   action button requires a selected row in the Classic data-grid, and the live
    data-grid uses a custom row class that my Playwright selector couldn't
    match. Needs a follow-up walk with a working row selector. (Try
-   `.asc-dt tbody > div`, `[data-rowindex="0"]`, or simulate a real click via
+   `.classic-dt tbody > div`, `[data-rowindex="0"]`, or simulate a real click via
    `editor.mouse.click(x, y)` on a row centroid.)
 2. **Verification dialog.** Clicking Verification in the Timetable ribbon
    produces no visible UI in 5 seconds — either it runs silently and reports
@@ -641,22 +641,22 @@ This whole settings surface is missing from Chronexa's substitution module
 
 ```bash
 # 1. Re-create firecrawl session
-mcp__firecrawl__firecrawl_browser_create profile={name:"chronexa-edupage", saveChanges:true}
+mcp__firecrawl__firecrawl_browser_create profile={name:"chronexa-classic", saveChanges:true}
 
 # 2. Cookies persist across sessions. If they don't, log in again:
-#    URL: https://abhishekchhetri.edupage.org/login/
+#    URL: https://abhishekchhetri.classic.org/login/
 #    Username: abhishekchhetri
 #    Password: Abhishek@1971
 
 # 3. Open editor
-agent-browser open "https://abhishekchhetri.edupage.org/timetable/online.php?ttgpid=18158989"
+agent-browser open "https://abhishekchhetri.classic.org/timetable/online.php?ttgpid=18158989"
 
 # 4. The editor opens in a NEW Playwright page (index 2). To work with it:
 #    editor = page.context.pages[2]
 #    await editor.bring_to_front()
 
 # 5. Menu labels live as: span.label (8 of them)
-#    Entity buttons:    .asc-ribbon-button containing the entity name
+#    Entity buttons:    .classic-ribbon-button containing the entity name
 #    Open dialogs:      .ui-dialog:not([style*="display: none"])
 #    Open dialog title: .ui-dialog-title
 ```
@@ -694,7 +694,7 @@ Highest-leverage gaps for Chronexa (in priority order):
 
 ## Files & artifacts
 
-- This document: `/Users/abhishekchhetri/Developer/chronexa_web/Chronexa-EDUPAGE-LIVE-WALK-2026-05-19.md`
+- This document: `/Users/abhishekchhetri/Developer/chronexa_web/Chronexa-CLASSIC-LIVE-WALK-2026-05-19.md`
 - Screenshots (49 PNGs, ~13 MB) and `menus.json` are on the firecrawl sandbox
   at `/tmp/edu/`. They can be retrieved by re-attaching to the session
   `019e3f1b-9afc-7131-9dd9-a06a47b9da6c` (expires 2026-05-19T08:20:34Z) and

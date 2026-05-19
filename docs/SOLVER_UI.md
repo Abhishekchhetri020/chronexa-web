@@ -73,13 +73,13 @@ This is what lets `progress_modal.js` be source-agnostic.
   progress contract to include `bestAssignment`, switch this to a real
   partial-extract.
 
-## Field mapping (EduPage names → our progress payload)
+## Field mapping (Classic names → our progress payload)
 
-The pre-launch dialog mirrors EduPage's `Test the timetable` / `Generate
+The pre-launch dialog mirrors Classic's `Test the timetable` / `Generate
 timetable` confirm. The progress modal's labels intentionally use plain
 English; for reference:
 
-| EduPage field      | Our field             | How we compute it |
+| Classic field      | Our field             | How we compute it |
 | ------------------ | --------------------- | ----------------- |
 | `p1` (overall)     | "Overall" bar         | `durationMs / (timeLimitSec*1000)`, clamped 0..1 |
 | `p2` (sub)         | "Current branch" bar  | `(iter % 1000) / 1000` (cosmetic; Agent C doesn't expose per-branch progress) |
@@ -108,7 +108,7 @@ agent's scope.
 ## Smoke check (real GDGPSD data)
 
 1. `python3 -m http.server 8080` in the repo root.
-2. Visit `http://localhost:8080/` and drop `asctt2012 (3).xml` into the
+2. Visit `http://localhost:8080/` and drop `sample-school (3).xml` into the
    upload zone.
 3. Click **Generate**, pick `Large` + `Allow relaxation` + `Run on this
    computer`, hit Start.

@@ -14,7 +14,7 @@
  */
 
 const CACHE_PREFIX = "chronexa-";
-const APP_VER = "20260519-p9-advisor";
+const APP_VER = "20260519-p10-sanitized";
 const CACHE_NAME = CACHE_PREFIX + APP_VER;
 
 // Minimal app shell — the rest is cached lazily on first fetch
@@ -28,7 +28,7 @@ const APP_SHELL = [
   "./css/editor.css",
   "./css/drag_ux.css",
   "./css/teacher_colors.css",
-  "./css/edupage-skin.css",
+  "./css/classic-skin.css",
   "./css/entities.css",
   "./css/ribbon.css",
   "./css/solver_ui.css",

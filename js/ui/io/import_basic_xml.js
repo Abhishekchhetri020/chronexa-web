@@ -1,9 +1,9 @@
-/* EduPage "Basic data export" importer.
+/* Classic "Basic data export" importer.
  * Accepts a JSON blob (file or pasted text) containing school identity,
  * teachers, classes, subjects, classrooms. Merges into APP.school
  * (best-effort — fills in what we can, leaves the rest untouched).
  *
- * EduPage's JSON varies by version. We accept either:
+ * Classic's JSON varies by version. We accept either:
  *   { school:{name}, teachers:[...], classes:[...], subjects:[...], classrooms:[...] }
  * or the flat top-level arrays.
  */
@@ -75,7 +75,7 @@
     if (parsed.subjects.length)   s.subjects   = parsed.subjects.map(normSubject);
     if (parsed.classrooms.length) s.classrooms = parsed.classrooms.map(normRoom);
     s._meta = s._meta || {};
-    s._meta.sourceFilename = "edupage-basic.json";
+    s._meta.sourceFilename = "classic-basic.json";
     APP.school = s;
     document.querySelectorAll(".needs-school").forEach(b => b.disabled = false);
     window.dispatchEvent(new CustomEvent("app:school-loaded", { detail: { school: s } }));
@@ -95,13 +95,13 @@
       }
       const parsed = parse(text);
       merge(parsed);
-      notify(`EduPage Basic imported · ${parsed.teachers.length} teachers · ${parsed.classes.length} classes`);
+      notify(`Classic Basic imported · ${parsed.teachers.length} teachers · ${parsed.classes.length} classes`);
     } catch (e) {
-      notify("EduPage Basic import failed: " + e.message, "error");
+      notify("Classic Basic import failed: " + e.message, "error");
       console.error(e);
     }
   }
 
-  window.ImportEduPageBasic = { run, parse };
-  window.addEventListener("app:import-edupage-basic", () => run());
+  window.ImportBasicXml = { run, parse };
+  window.addEventListener("app:import-classic-basic", () => run());
 })();

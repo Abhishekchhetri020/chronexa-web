@@ -1,12 +1,12 @@
 /* CardRelationships HAR Importer.
  *
- * EduPage stores constraint rows (`cardrelationships` table) on the server.
+ * Classic stores constraint rows (`cardrelationships` table) on the server.
  * To migrate to Chronexa Web, a school admin can export a HAR via Chrome
- * DevTools → Network → "Export HAR…" while their EduPage timetable is
+ * DevTools → Network → "Export HAR…" while their Classic timetable is
  * loaded. This module finds the `ttuidocDBIAccessor` response inside the
  * HAR that carries the `cardrelationships` rows and imports them.
  *
- * Triggered by `app:import-edupage-har`. The Files → Import menu wires
+ * Triggered by `app:import-classic-har`. The Files → Import menu wires
  * an entry. The importer:
  *   1. Reads the .har file as text (JSON)
  *   2. Walks `log.entries[]` for any POST to /timetable/app/server/ttdoc.js
@@ -41,7 +41,7 @@
       // Look for `cardrelationships` rows
       if (!/cardrelationships/i.test(body)) continue;
       try {
-        // EduPage encodes responses as `{"r":{...}}`
+        // Classic encodes responses as `{"r":{...}}`
         const decoded = body.startsWith("{") ? JSON.parse(body) : null;
         const tables = decoded?.r?.tables || decoded?.r?.data?.tables || [];
         for (const table of (Array.isArray(tables) ? tables : [tables])) {
@@ -59,7 +59,7 @@
   }
 
   function mapRowToRelation(row) {
-    // EduPage row → Chronexa relation
+    // Classic row → Chronexa relation
     return {
       id: row.id || ("har_" + Math.random().toString(36).slice(2, 8)),
       typ: row.typ || "",
@@ -92,7 +92,7 @@
     if (!rows.length) {
       notify(
         `No cardrelationships found in HAR. Detected entities: ${entitiesFound.join(", ") || "(none)"}. ` +
-        `Make sure you exported the HAR while EduPage's timetable customize view was open.`,
+        `Make sure you exported the HAR while Classic's timetable customize view was open.`,
         "warn"
       );
       return;

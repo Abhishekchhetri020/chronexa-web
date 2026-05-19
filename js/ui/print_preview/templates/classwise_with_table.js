@@ -2,7 +2,7 @@
  *
  * One A4 portrait per class: top half = the standard day × period grid,
  * bottom half = subject summary (subject → periods/week, teacher, room).
- * Matches the EduPage "Timetable with companion table" report variant.
+ * Matches the Classic "Timetable with companion table" report variant.
  */
 (function () {
   "use strict";

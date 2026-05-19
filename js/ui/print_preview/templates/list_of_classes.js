@@ -1,4 +1,4 @@
-/* "List of classes" report template — final missing EduPage parity item.
+/* "List of classes" report template — final missing Classic parity item.
  * Registers via window.APP.printTemplates.register(...).
  */
 (function () {

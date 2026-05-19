@@ -1,6 +1,6 @@
 # Entity Dialogs
 
-The six EduPage-parity CRUD dialogs that pop up from the ribbon. All live
+The six Classic-parity CRUD dialogs that pop up from the ribbon. All live
 under `js/ui/entities/` and share a single reusable shell. They edit
 `window.APP.school` in place; every save appends to `window.APP.audit`
 so the global Undo/Redo mechanism can replay the action history.
@@ -51,8 +51,8 @@ directly. See top of `dialog_shell.js` for the contract.
 
 ## Data sources
 
-All reads come from `window.APP.school` populated by `parseAscXml`
-(`js/xml/parse_asc_xml.js`). The parser currently emits:
+All reads come from `window.APP.school` populated by `parseTimetableXml`
+(`js/xml/parse_timetable_xml.js`). The parser currently emits:
 
 - `teachers`: `{id, name, abbr?}` — entity modules extend in place with
   `firstName/lastName/color/timeOff/constraints/maxGapsPerDay/maxConsecutivePeriods`
@@ -113,12 +113,12 @@ fallback for the rest. The dual-pattern matcher exposes:
 - **Pattern B**: Subjects + Classes (only enabled when typ is binary:
   `n_5`, `n_6`, `n_8`, `n_9`)
 
-Importance is the 6-value EduPage scale: `low / normal / high / strict /
+Importance is the 6-value Classic scale: `low / normal / high / strict /
 optimize / default`. Each row also carries a `note` and `disabled` flag.
 
 ## Verification (GD Goenka XML)
 
-`/Users/abhishekchhetri/Downloads/asctt2012 (3).xml` is the canonical test
+`/Users/abhishekchhetri/Downloads/sample-school (3).xml` is the canonical test
 fixture. On load it produces:
 
 | Entity | Rows |

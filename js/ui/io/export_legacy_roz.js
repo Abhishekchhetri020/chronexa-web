@@ -1,10 +1,10 @@
-/* aSc Timetables .roz binary exporter — PARTIAL.
+/* Classic Timetable .roz binary exporter — PARTIAL.
  *
- * The .roz format is aSc's proprietary binary container.  Full fidelity
- * requires the closed-source aSc writer.  This module emits a syntactically
- * valid header so the file opens in aSc without an immediate parser error,
+ * The .roz format is Classic's proprietary binary container.  Full fidelity
+ * requires the closed-source Classic writer.  This module emits a syntactically
+ * valid header so the file opens in Classic without an immediate parser error,
  * then writes a UTF-8 "FORMAT LIMITED" payload reminding the user to fall
- * back to aSc XML for round-trip work.
+ * back to Timetable XML for round-trip work.
  *
  * Header layout (16 bytes, little-endian):
  *   off  0   4  magic            = "aScR"            (0x61 0x53 0x63 0x52)
@@ -33,7 +33,7 @@
     const lines = [
       "CHRONEXA-ROZ-STUB v1",
       "FORMAT LIMITED — full .roz round-trip is unsupported.",
-      "Use 'Export aSc XML' for full fidelity.",
+      "Use 'Export Timetable XML' for full fidelity.",
       "",
       "school:    " + (school.schoolName || ""),
       "teachers:  " + (school.teachers   || []).length,
@@ -67,9 +67,9 @@
     out.set(payload, header.length);
     const base = (school._meta?.sourceFilename || school.schoolName || "chronexa").replace(/\.\w+$/, "");
     download(out, base + "-stub.roz");
-    notify("ROZ binary export is partial — use 'aSc XML' for full fidelity", "warn");
+    notify("ROZ binary export is partial — use 'Timetable XML' for full fidelity", "warn");
   }
 
   window.ExportAscRoz = { run, buildHeader, buildPayload };
-  window.addEventListener("app:export-asc-roz", () => run());
+  window.addEventListener("app:export-legacy-roz", () => run());
 })();

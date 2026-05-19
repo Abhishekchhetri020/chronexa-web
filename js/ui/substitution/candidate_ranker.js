@@ -11,7 +11,7 @@
  *   +5    free in the next period too (continuity bonus)
  *
  * Inputs:
- *   school        SchoolData (post parseAscXml)
+ *   school        SchoolData (post parseTimetableXml)
  *   absentIds[]   teacher IDs absent that day
  *   day           0..5 (Mon..Sat) — matches school._idx.cardsByTeacher day index
  *

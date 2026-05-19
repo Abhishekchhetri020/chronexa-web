@@ -1,6 +1,6 @@
 /* Wall poster — teachers (landscape).
  *
- * EduPage parity: "Wall poster of teachers". One A4 landscape with a big
+ * Classic parity: "Wall poster of teachers". One A4 landscape with a big
  * teacher × (day, period) grid showing the subject + class in each slot.
  * Doubles as the staff-room display board.
  */

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<timetable importtype="database" options="export:idprefix:%CHRID,import:idprefix:%TEMPID,groupstype1,decimalseparatordot,lessonsincludeclasseswithoutstudents,handlestudentsafterlessons" defaultexport="1" displayname="aSc Timetables 2012 XML" displaycountries="">
+<timetable importtype="database" options="export:idprefix:%CHRID,import:idprefix:%TEMPID,groupstype1,decimalseparatordot,lessonsincludeclasseswithoutstudents,handlestudentsafterlessons" defaultexport="1" displayname="Classic Timetable 2012 XML" displaycountries="">
   <periods options="canadd,export:silent" columns="period,name,short,starttime,endtime">
     <period name="1st" short="1st" period="1" starttime="8:00" endtime="8:50"/>
     <period name="2nd " short="2nd" period="2" starttime="8:50" endtime="9:35"/>

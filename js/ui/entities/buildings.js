@@ -5,7 +5,7 @@
  * honours teacher-building-change penalties (max N buildings/day, transition
  * time between buildings).
  *
- * Wire shape (EduPage): single column `color` per the cdef dump; we extend
+ * Wire shape (Classic): single column `color` per the cdef dump; we extend
  * with locally-meaningful fields (name, short, address, floors, notes) since
  * the wire format is permissive. Round-trip via XML preserves all fields.
  */

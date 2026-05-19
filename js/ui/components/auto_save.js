@@ -1,6 +1,6 @@
 /* Auto-save — silent localStorage snapshots every 60 seconds.
  *
- * aSc has a reputation for losing work when Windows crashes. Chronexa
+ * Classic has a reputation for losing work when Windows crashes. Chronexa
  * silently snapshots the entire school to localStorage on a 60-second
  * timer (plus on every entity change beyond a debounce window).
  *

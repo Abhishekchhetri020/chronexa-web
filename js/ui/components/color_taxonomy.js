@@ -1,6 +1,6 @@
 /* Color taxonomy — auto-assign + harmonize colors across entities.
  *
- * Ports the decision tree documented in EDUPAGE_E3_COLOR_TAXONOMY_2026-05-03.md:
+ * Ports the decision tree documented in legacy-research
  *
  *   Card color source priority:
  *     1. Subject.color (if set)

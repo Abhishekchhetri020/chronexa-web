@@ -2,7 +2,7 @@
  * window.EntitySupervisions.open()
  * Each row pre-occupies a teacher in a (classroom, day, week, term, period)
  * slot so the solver can't double-book them onto a lesson. Maps to the
- * EduPage 'classroomsupervisions' entity. */
+ * Classic 'classroomsupervisions' entity. */
 (function (global) {
   "use strict";
   const D = window.EntityDialog;

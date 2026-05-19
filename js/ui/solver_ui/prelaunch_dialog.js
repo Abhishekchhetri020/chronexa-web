@@ -1,7 +1,7 @@
 /* Chronexa Solver — Pre-launch dialog
  *
- * Mirrors EduPage's `Test the timetable` / `Generate timetable` pre-flight.
- * See docs/EDUPAGE_VS_CHRONEXA_GAP_MAP_2026-05-04.md §B and the gap-map's
+ * Mirrors Classic's `Test the timetable` / `Generate timetable` pre-flight.
+ * See docs/legacy-research §B and the gap-map's
  * Complexity / Conditions / Algorithm matrix.
  *
  * Public API:

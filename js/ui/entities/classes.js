@@ -209,7 +209,7 @@
   }
 
   /* Class divisions — embedded {id, name, groups:[{id,name,studentsCount}]}[].
-   * EduPage semantic: a lesson taught to one group splits the class hour.
+   * Classic semantic: a lesson taught to one group splits the class hour.
    * Default: single "Entire class" division containing one "Entire class" group. */
   function defaultDivisions() {
     return [{ id:"d_full", name:"Entire class",

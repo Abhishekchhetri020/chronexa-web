@@ -92,7 +92,7 @@ jobs:
               --notes "$(cat <<EOF
           ## Chronexa Web $TAG
 
-          Browser-based school timetable builder. Drag cards, run the solver, export to aSc XML / Excel / PDF.
+          Browser-based school timetable builder. Drag cards, run the solver, export to Timetable XML / Excel / PDF.
 
           ### How to use this release
 

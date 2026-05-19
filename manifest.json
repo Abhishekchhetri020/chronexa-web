@@ -1,7 +1,7 @@
 {
   "name": "Chronexa — Open Timetable",
   "short_name": "Chronexa",
-  "description": "Browser-based school timetable builder. Drag cards, run the solver, export to aSc XML / Excel / PDF. Everything runs on your computer — no upload, no tracking.",
+  "description": "Browser-based school timetable builder. Drag cards, run the solver, export to Timetable XML / Excel / PDF. Everything runs on your computer — no upload, no tracking.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
@@ -35,7 +35,7 @@
     {
       "name": "Open existing",
       "short_name": "Open",
-      "description": "Load an aSc XML file",
+      "description": "Load an Timetable XML file",
       "url": "./?action=open",
       "icons": [{ "src": "assets/icon-192.png", "sizes": "192x192" }]
     }

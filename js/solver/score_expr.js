@@ -16,7 +16,7 @@
  * Solver calls ScoreExpr.evalRule(rule, ctx) where ctx = {school, card, lesson, day, period, classroomId}.
  *
  * Why a custom DSL: hard-coded constraints can't capture every school's
- * preferences. EduPage's 84 a_* codes try; we go further with a tiny eval.
+ * preferences. Classic's 84 a_* codes try; we go further with a tiny eval.
  *
  * Safety: this is NOT eval()-based JS — pure data interpretation. No
  * arbitrary code execution.

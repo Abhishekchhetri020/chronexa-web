@@ -1,7 +1,7 @@
-/* Class constraints dialog — EduPage's 14-field classes.constraints subobject.
+/* Class constraints dialog — Classic's 14-field classes.constraints subobject.
  * window.ClassConstraintsDialog.open(classRow, onSave)
  *
- * Verbatim labels from EDUPAGE_FEATURE_MAP_WIZARD_2_5_R5.md §3b-constraints.
+ * Verbatim labels from legacy-research §3b-constraints.
  *
  * Fields written to classRow.constraints (created if absent):
  *   classTeacherPos      — 3-deep bitmap [[["001000000",...x6]]] (1 term × 1 week × 6 days × 9 periods)
@@ -46,7 +46,7 @@
   }
 
   function emptyCtposMatrix() {
-    // EduPage wire shape: [term][week][day] where day is a 9-char "0"/"1" string.
+    // Classic wire shape: [term][week][day] where day is a 9-char "0"/"1" string.
     const day = "0".repeat(CTPOS_PERIODS);
     const days = []; for (let d = 0; d < CTPOS_DAYS; d++) days.push(day);
     return [[days]];

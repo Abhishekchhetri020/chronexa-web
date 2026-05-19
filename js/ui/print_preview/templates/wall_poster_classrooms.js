@@ -2,7 +2,7 @@
  *
  * One A4 landscape page with a big classroom × (day, period) grid — what
  * room is in use, when, by whom. Doubles as the corridor-display poster
- * EduPage prints for invigilator orientation.
+ * Classic prints for invigilator orientation.
  */
 (function () {
   "use strict";

@@ -36,7 +36,7 @@ chronexa-web/
 ├── css/                   — Chronexa theme (translated from Swift ChronexaTheme)
 ├── js/
 │   ├── ui/                — Step wizards, grid views, editor
-│   ├── xml/               — Parse + serialize aSc XML (round-trip)
+│   ├── xml/               — Parse + serialize Timetable XML (round-trip)
 │   ├── solver/            — Browser CSP solver (TypeScript port of SmartCspSolver.kt)
 │   └── lib/               — vendored deps if any (mostly CDN)
 ├── backend/
@@ -46,7 +46,7 @@ chronexa-web/
 │   └── nginx/             — Nginx config + Let's Encrypt
 └── docs/
     ├── DEPLOY.md          — Hostinger VPS deploy steps
-    └── XML_SCHEMA.md      — aSc XML schema notes
+    └── XML_SCHEMA.md      — Timetable XML schema notes
 ```
 
 ## Quickstart (local dev)
@@ -72,4 +72,4 @@ See `docs/DEPLOY.md` for the full Hostinger checklist.
 
 - 2026-05-18 — Scaffold; 4 parallel agents building Phases 0-3.
 - 2026-05-20 — VPS deploy target.
-- See `Chronexa-WEB-ROADMAP-2026-05-18.md` (project root: `~/Downloads/Cloning ASC/`) for the full 5-phase plan.
+- See `Chronexa-WEB-ROADMAP-2026-05-18.md` (project root: `~/Downloads/Cloning CLASSIC/`) for the full 5-phase plan.

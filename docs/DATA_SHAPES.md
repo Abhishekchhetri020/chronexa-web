@@ -97,8 +97,8 @@ POST /solve
 
 ## Day / period indexing
 
-- `dayIdx`: 0 = Mon, 1 = Tue, …, 5 = Sat (matches ASC daysdefs bitmask)
-- `periodIdx`: 1-based to mirror ASC `<card period="N">`
+- `dayIdx`: 0 = Mon, 1 = Tue, …, 5 = Sat (matches CLASSIC daysdefs bitmask)
+- `periodIdx`: 1-based to mirror CLASSIC `<card period="N">`
 
 ## XML round-trip rule
 

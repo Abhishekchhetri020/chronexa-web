@@ -1,13 +1,13 @@
 /* Card-relationships dialog. window.EntityRelations.open()
  *
- * Full UI for the 15 decoded EduPage n_X typed constraints. Verbatim labels
- * from EDUPAGE_FEATURE_MAP_WIZARD_6_8_R6.md §10.2.
+ * Full UI for the 15 decoded Classic n_X typed constraints. Verbatim labels
+ * from legacy-research §10.2.
  *
  * New flow: 3-step wizard (typ → scope → importance/note).
  * Edit flow: single sheet — typ is fixed, only scope + importance/note editable.
  *
  * Storage: window.APP.school.relations[]
- * Field names follow EduPage wire shape (lowercase): subjectids, classids,
+ * Field names follow Classic wire shape (lowercase): subjectids, classids,
  * subject2ids, teacherids, classroomids, positions, positions2, param1, param2,
  * filter, filter2, applyto, importance, note, disabled, typ.
  */

@@ -1,5 +1,5 @@
 /**
- * CanvasGeometry — EduPage-faithful pixel geometry + Floor/FD overlay.
+ * CanvasGeometry — Classic-faithful pixel geometry + Floor/FD overlay.
  *
  * Exports geometry constants (period width, day gap, row heights, header)
  * and helpers (x_for_day_period, width_for_card, rowHeightFor).
@@ -7,7 +7,7 @@
  * Decorates the rendered editor with:
  *   - "Floor" supervision rows when perspective === "room"
  *   - "FD" (Free Duty) tags in empty slots when perspective === "class"
- * Both overlays are gated on `<html data-skin="edupage">` and are additive
+ * Both overlays are gated on `<html data-skin="classic">` and are additive
  * (no source file owned by Agent E is touched).
  *
  * Agent I — wave-3, chronexa-web.
@@ -57,7 +57,7 @@ window.CanvasGeometry = (function () {
   function decorate(rootEl) {
     if (!rootEl) return;
     rootEl.querySelectorAll(".chrx-floor-row, .chrx-fd-tag").forEach(n => n.remove());
-    if (document.documentElement.getAttribute("data-skin") !== "edupage") return;
+    if (document.documentElement.getAttribute("data-skin") !== "classic") return;
     const persp = (window.APP && window.APP.editor && window.APP.editor.perspective) || "class";
     if (persp === "room")  injectFloorRows(rootEl);
     if (persp === "class") injectFDTags(rootEl);

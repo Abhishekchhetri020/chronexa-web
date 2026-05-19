@@ -1,6 +1,6 @@
 /* Relation Enforcer — closes the #1 audit gap.
  *
- * The EduPage audit identified the "30% done" trap: dialogs persist data
+ * The Classic audit identified the "30% done" trap: dialogs persist data
  * the solver ignores. All 15 n_* relations have a 3-step wizard at
  * /js/ui/entities/relations.js, but solver/constraints.js enforces ZERO
  * of them. This module reads window.APP.school.relations and answers:
@@ -13,8 +13,8 @@
  * SolverConstraints.checkPlacement() so integration is one line.
  *
  * Implements all 15 decoded n_* codes from
- *   /Users/abhishekchhetri/Downloads/Cloning ASC/docs/ASC_CARDRELATIONSHIPS_DECODING_2026-04-20.md
- * Verbatim labels match EduPage's wire.
+ *   /Users/abhishekchhetri/Downloads/Cloning CLASSIC/docs/ASC_CARDRELATIONSHIPS_DECODING_2026-04-20.md
+ * Verbatim labels match Classic's wire.
  */
 (function (global) {
   "use strict";

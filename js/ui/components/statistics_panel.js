@@ -3,7 +3,7 @@
  * Ports Swift's StatisticsPanel.swift + TimetableStatistics struct. Exposes
  *   window.StatisticsPanel = { open(school?) }
  *
- * Surfaces per-entity metrics aSc/EduPage admins rely on:
+ * Surfaces per-entity metrics Classic/Classic admins rely on:
  *   • Teacher daily detail: teaching periods, gaps, free periods, max consec.
  *   • Class daily detail: occupancy, gap count, subject distribution.
  *   • Room utilization: % full, peak load period.

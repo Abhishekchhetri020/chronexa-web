@@ -1,8 +1,8 @@
-/* Compare-with-file — diff two aSc XML timetables side-by-side.
+/* Compare-with-file — diff two Timetable XML timetables side-by-side.
  *
  * Users often need to compare last year's timetable to this year's, or
  * compare two solver runs. This module loads a SECOND XML, parses it
- * with the existing parseAscXml pipeline, and computes a diff against
+ * with the existing parseTimetableXml pipeline, and computes a diff against
  * the currently-loaded school.
  *
  * Triggered by `app:compare-with-file`. Files menu wires an entry.
@@ -163,7 +163,7 @@
 
   async function trigger() {
     if (!APP || !APP.school) { notify("Open a timetable first.", "error"); return; }
-    if (!window.parseAscXml) { notify("XML parser not loaded.", "error"); return; }
+    if (!window.parseTimetableXml) { notify("XML parser not loaded.", "error"); return; }
 
     const input = document.createElement("input");
     input.type = "file";
@@ -174,7 +174,7 @@
       input.remove();
       if (!f) return;
       try {
-        const other = await window.parseAscXml.parseFile(f);
+        const other = await window.parseTimetableXml.parseFile(f);
         const d = diffSchools(APP.school, other);
         showDiff(d);
       } catch (err) {

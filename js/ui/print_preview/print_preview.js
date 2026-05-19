@@ -8,7 +8,7 @@
  *   summary  — Summary of all classes on one grid
  *   poster   — Wall poster (landscape, big cells)
  *
- * Defers the 19 other ASC templates.
+ * Defers the 19 other CLASSIC templates.
  */
 (function () {
   "use strict";

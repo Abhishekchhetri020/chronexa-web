@@ -23,7 +23,7 @@ Three new endpoints, layered on top of the existing synchronous `POST /solve`:
 | `/solve/cancel/{jobId}`       | POST   | `{ ok, jobId }`          | Request cancellation of a running job  |
 
 `SolveStatus.state` is one of `queued | running | done | cancelled | error`.
-`SolveStatus.progress` carries the EduPage-style `{p1, p2, iter,
+`SolveStatus.progress` carries the Classic-style `{p1, p2, iter,
 hardConflicts, softScore, durationMs}` payload. `SolveStatus.result` is the
 canonical `SolveResponse` once `state === "done"`.
 
@@ -46,7 +46,7 @@ Wave-3 changes:
   least 500 iterations** have passed since the last emission **or at least
   500ms wall-clock**, whichever comes first.
 - The payload now includes `backtracks` so the progress modal's "Stuck
-  counter" (EduPage `p_VykaslalSa`) tile can be lit up.
+  counter" (Classic `p_VykaslalSa`) tile can be lit up.
 - A wall-clock safety net `setIntervalShim` still ticks every 500ms in case
   the search itself is blocked inside a single tight loop (e.g. constructing
   the candidate scratch list for a giant `feasibleCount`).
@@ -104,7 +104,7 @@ returning `{violations: int, weight: int}`:
 | `CKritResty`                | 10      | Leftover / unplaced lesson count (substitution)    |
 | `CKritVhodneNaSpojenie`     | 150     | Parallel-lesson merge opportunity (room sharing)   |
 
-Weights mirror the original ASC Tabu Search penalty table per
+Weights mirror the original CLASSIC Tabu Search penalty table per
 `Chronexa-AUDIT-Master.md` (CKrit* family).
 
 All five functions take `(assignment, lessonsById, schoolData)`. They are

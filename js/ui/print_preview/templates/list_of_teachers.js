@@ -1,7 +1,7 @@
 /* List of teachers — directory page with name, abbreviation, periods/week,
  * subjects taught, and primary classes assigned.
  *
- * EduPage parity: "List of teachers". One A4 portrait, multi-page if the
+ * Classic parity: "List of teachers". One A4 portrait, multi-page if the
  * list is long (~30 rows/page). Useful as a back-cover roster for the
  * printed timetable booklet.
  */

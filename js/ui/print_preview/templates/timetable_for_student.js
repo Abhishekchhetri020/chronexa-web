@@ -1,6 +1,6 @@
 /* Timetable for each student (section) — one A4 portrait page per section.
  *
- * EduPage equivalent: "Timetable for each student". When the school doesn't
+ * Classic equivalent: "Timetable for each student". When the school doesn't
  * define explicit sections, we fall back to one page per class (a class IS
  * a section in single-section schools — common in CBSE primaries).
  */

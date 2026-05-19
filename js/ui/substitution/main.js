@@ -40,7 +40,7 @@
     return `${yyyy}-${mm}-${dd}`;
   }
 
-  // Mon=0..Sat=5 (matches parse_asc_xml day indexing). Sunday → -1.
+  // Mon=0..Sat=5 (matches parse_timetable_xml day indexing). Sunday → -1.
   function ymdToDay(ymd) {
     if (!ymd) return 0;
     const parts = ymd.split("-").map(Number);

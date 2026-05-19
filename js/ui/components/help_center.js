@@ -22,7 +22,7 @@
           <li>The 5-step wizard walks you through: <em>Subjects → Teachers → Classes → Classrooms → Lessons</em>. Skip any step you'll fill in later.</li>
           <li>When done, click <strong>⚡ Generate</strong> (top-right) or open <em>Timetable → 🚀 Master Solve</em> for the one-click pipeline.</li>
           <li>Drag any card to a different slot to fine-tune.</li>
-          <li>Export with <em>Files → Export → aSc XML</em> or print via <em>Files → Print preview</em>.</li>
+          <li>Export with <em>Files → Export → Timetable XML</em> or print via <em>Files → Print preview</em>.</li>
         </ol>`,
     },
     {
@@ -56,7 +56,7 @@
       keywords: ["constraint", "rule", "n_", "relation", "preference"],
       content: `
         <h3>Constraints, two layers</h3>
-        <p><strong>Hard relations</strong> (Specification → Relations…) — 15 EduPage-standard rules: "two subjects can't follow", "same period each day", "first or last", etc. Each rule has 3-step wizard.</p>
+        <p><strong>Hard relations</strong> (Specification → Relations…) — 15 Classic-standard rules: "two subjects can't follow", "same period each day", "first or last", etc. Each rule has 3-step wizard.</p>
         <p><strong>Soft scoring rules</strong> (Options → Constraints library…) — 12 friendly templates like "Teacher X prefers morning periods" or "Subject Y should be first or last". Each rule has a weight; higher = stronger preference.</p>
         <p><strong>Per-entity constraints</strong> — open any teacher / class / classroom / subject dialog and click <em>Time off</em> or <em>Constraints</em>. 14 fields per class, 11 per teacher.</p>`,
     },
@@ -87,13 +87,13 @@
     },
     {
       id: "import-export",
-      title: "Import / export aSc XML, Excel, ICS, PowerSchool",
-      keywords: ["export", "import", "xml", "asc", "excel", "ics", "powerschool", "untis"],
+      title: "Import / export Timetable XML, Excel, ICS, PowerSchool",
+      keywords: ["export", "import", "xml", "classic", "excel", "ics", "powerschool", "untis"],
       content: `
         <h3>File formats</h3>
-        <p><strong>Open / Import</strong>: <em>Files → Import</em> — aSc XML, EduPage Basic, GP Untis, clipboard TSV.</p>
-        <p><strong>Export</strong>: <em>Files → Export</em> — aSc XML, Excel (5 sheets), HTML standalone, PowerSchool, GP Untis DIF, Atlantis ROZ, ICS calendar.</p>
-        <p><strong>Migrate from EduPage</strong>: export a HAR from Chrome DevTools while your EduPage timetable is open, then <em>Files → Import → CardRelationships HAR</em> to bring your constraints over.</p>`,
+        <p><strong>Open / Import</strong>: <em>Files → Import</em> — Timetable XML, Classic Basic, GP Untis, clipboard TSV.</p>
+        <p><strong>Export</strong>: <em>Files → Export</em> — Timetable XML, Excel (5 sheets), HTML standalone, PowerSchool, GP Untis DIF, Atlantis ROZ, ICS calendar.</p>
+        <p><strong>Migrate from Classic</strong>: export a HAR from Chrome DevTools while your Classic timetable is open, then <em>Files → Import → CardRelationships HAR</em> to bring your constraints over.</p>`,
     },
     {
       id: "shortcuts",

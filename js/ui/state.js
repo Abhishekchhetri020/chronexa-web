@@ -3,7 +3,7 @@
  *
  *   APP.lang      : "en" | "hi"
  *   APP.step      : 1..5
- *   APP.school    : SchoolData | null   (output of parseAscXml)
+ *   APP.school    : SchoolData | null   (output of parseTimetableXml)
  *   APP.filter    : string               (search bar text, lowercased)
  *   APP.day       : 0..5                 (mobile single-day picker)
  *   APP.dirty     : Set<string>          (which views need re-render)

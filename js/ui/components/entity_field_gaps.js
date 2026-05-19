@@ -1,4 +1,4 @@
-/* Entity field gaps from the W15 live EduPage walk.
+/* Entity field gaps from the W15 live Classic walk.
  *
  * The live walk discovered concrete fields the offline docs missed.
  * Rather than reopening every frozen entity dialog file, this module

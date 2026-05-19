@@ -1,6 +1,6 @@
 /* Summary of classrooms — single A4 landscape with one row per classroom.
  *
- * EduPage parity: "Summary timetable of classrooms". Per-day period count
+ * Classic parity: "Summary timetable of classrooms". Per-day period count
  * across the week + total + utilisation. Lets the facilities lead see room
  * dead-time at a glance.
  */

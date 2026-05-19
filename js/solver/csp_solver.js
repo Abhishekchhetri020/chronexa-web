@@ -154,7 +154,7 @@ function buildModel(school) {
 
     if (l.fixedDay != null && l.fixedPeriod != null) {
       const d = (l.fixedDay | 0);
-      const p = (l.fixedPeriod | 0) - 1; // ASC fixedPeriod is 1-based
+      const p = (l.fixedPeriod | 0) - 1; // CLASSIC fixedPeriod is 1-based
       if (d >= 0 && d < days && p >= 0 && p < periodsPerDay) {
         lessonFixedSlot[i] = d * periodsPerDay + p;
       }
@@ -1298,7 +1298,7 @@ function tryPlaceViaRepair(model, state, lessonIdx, chainDepth, evictedThisChain
 /**
  * Outer iterative-repair driver. Materialises the best snapshot into the
  * live state, then loops over unplaced lessons trying repair-placement.
- * On stagnation, evicts K random placed lessons (ASC `improveByRandomRestart`
+ * On stagnation, evicts K random placed lessons (CLASSIC `improveByRandomRestart`
  * parity) to escape local minima, then resumes.
  *
  * Stops on:

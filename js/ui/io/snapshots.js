@@ -1,6 +1,6 @@
-/* Snapshot / Version history — ports EduPage's tt_snapshots flow.
+/* Snapshot / Version history — ports Classic's tt_snapshots flow.
  *
- * Two-mode pattern (per EDUPAGE_FEATURE_MAP_WIZARD_6_8_R6.md §8.5):
+ * Two-mode pattern (per legacy-research §8.5):
  *   Mode 1 — initial create / give-name (Save As…)
  *   Mode 2 — snapshot-only checkpoint (ad-hoc save with optional note)
  *

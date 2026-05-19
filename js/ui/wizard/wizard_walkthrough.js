@@ -1,5 +1,5 @@
 /**
- * Wizard Walkthrough — 5-step EduPage-style onboarding overlay.
+ * Wizard Walkthrough — 5-step Classic-style onboarding overlay.
  *
  * Replaces the jarring "Create new → blank editor" flow with a sequential
  * walkthrough: Subjects → Teachers → Classes → Classrooms → Lessons.

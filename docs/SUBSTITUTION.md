@@ -74,7 +74,7 @@ css/substitution.css       Module-scoped styling and @media print rules.
 - `APP.school` is required (XML must be loaded).
 - We read `school.teachers`, `school._idx.teacherById`,
   `school._idx.cardsByTeacher`, `school._idx.days`, and the per-card
-  fields produced by `parse_asc_xml.js`.
+  fields produced by `parse_timetable_xml.js`.
 - Day index: 0 = Mon … 5 = Sat (matches parser).
 
 ## Events

@@ -117,7 +117,7 @@
       status.innerHTML = `<span class="text-slate-500">${escapeHtml(t("parsing"))}</span>`;
       try {
         const t0 = performance.now();
-        const school = await parseAscXml.parseFile(f);
+        const school = await parseTimetableXml.parseFile(f);
         const dt = Math.round(performance.now() - t0);
         window.APP.school = school;
         const c = school._meta.counts;
@@ -192,20 +192,20 @@
       };
     }
 
-    // ─── CTA: Load Demo Seed (bundled GD Goenka asctt2012.xml) ──
+    // ─── CTA: Load Demo Seed (bundled GD Goenka sample-school.xml) ──
     const demoBtn = document.getElementById("cta-load-demo");
     if (demoBtn) {
       demoBtn.onclick = async () => {
         const status = document.getElementById("xml-status");
         if (status) status.innerHTML = `<span class="text-slate-500">Loading bundled sample…</span>`;
         try {
-          const r = await fetch("./asctt2012.xml");
+          const r = await fetch("./sample-school.xml");
           if (!r.ok) throw new Error("HTTP " + r.status);
           const xmlText = await r.text();
           // Use the same parse pipeline as <input type="file">
           const blob = new Blob([xmlText], { type: "application/xml" });
-          const file = new File([blob], "asctt2012.xml", { type: "application/xml" });
-          const school = await parseAscXml.parseFile(file);
+          const file = new File([blob], "sample-school.xml", { type: "application/xml" });
+          const school = await parseTimetableXml.parseFile(file);
           window.APP.school = school;
           if (window.CreateNew && window.CreateNew.ensureColors) window.CreateNew.ensureColors();
           const c = school._meta.counts;
@@ -231,16 +231,16 @@
       if (n) showStep(n);
     });
 
-    // ─── EduPage skin toggle in editor header ──────────────────
+    // ─── Classic skin toggle in editor header ──────────────────
     const skinBtn = document.getElementById("editor-toggle-skin");
     if (skinBtn) {
       skinBtn.onclick = () => {
         const html = document.documentElement;
-        if (html.getAttribute("data-skin") === "edupage") {
+        if (html.getAttribute("data-skin") === "classic") {
           html.removeAttribute("data-skin");
           skinBtn.classList.remove("bg-amber-100", "border-amber-500");
         } else {
-          html.setAttribute("data-skin", "edupage");
+          html.setAttribute("data-skin", "classic");
           skinBtn.classList.add("bg-amber-100", "border-amber-500");
         }
       };

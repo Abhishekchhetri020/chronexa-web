@@ -41,7 +41,7 @@
   cursor: grabbing;
 }
 
-/* Bold thick left stripe matches EduPage's "this card belongs to teacher X" cue */
+/* Bold thick left stripe matches Classic's "this card belongs to teacher X" cue */
 .chrx-vkarta::before,
 .chrx-card::before {
   content: "";

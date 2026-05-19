@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Chronexa — Open Timetable Viewer</title>
-<meta name="description" content="Browser-based school timetable viewer. Upload an aSc Timetables XML and explore class / teacher / room grids. Everything runs locally — no upload, no tracking.">
+<meta name="description" content="Browser-based school timetable viewer. Upload an Classic Timetable XML and explore class / teacher / room grids. Everything runs locally — no upload, no tracking.">
 
 <!-- PWA: installable + offline-capable. Solver runs on the user's CPU via Web Workers. -->
 <link rel="manifest" href="manifest.json">
@@ -122,7 +122,7 @@
         <button id="cta-build-new" class="w-full px-4 py-2.5 rounded-lg bg-emerald-600 text-white font-semibold hover:bg-emerald-700">
           ✨ Create new timetable
         </button>
-        <p class="text-xs text-slate-500 mt-3">After you finish, export as aSc XML, Excel, or print.</p>
+        <p class="text-xs text-slate-500 mt-3">After you finish, export as Timetable XML, Excel, or print.</p>
       </div>
 
       <!-- LOAD EXISTING -->
@@ -131,7 +131,7 @@
           <span class="text-3xl">📂</span>
           <h3 class="text-lg font-bold text-slate-700">Load an existing timetable</h3>
         </div>
-        <p class="text-sm text-slate-600 mb-4">Already have an <code class="bg-slate-100 px-1 rounded">asctt2012*.xml</code> from aSc or EduPage? Drop it here to view, edit, and re-generate.</p>
+        <p class="text-sm text-slate-600 mb-4">Already have an <code class="bg-slate-100 px-1 rounded">sample-school*.xml</code> from Classic or Classic? Drop it here to view, edit, and re-generate.</p>
         <label class="block bg-slate-50 border-2 border-dashed border-slate-300 rounded-lg p-3 hover:border-blue-500 transition-colors cursor-pointer">
           <input type="file" id="xml-file" accept=".xml" class="block w-full text-xs file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:bg-blue-700 file:text-white hover:file:bg-blue-800 cursor-pointer">
         </label>
@@ -150,7 +150,7 @@
         <p class="text-sm text-slate-600">Click a card to pick it up. Click an empty slot to place it. Cards in the bottom strip are unplaced — drag them onto the grid.</p>
       </div>
       <div class="flex gap-2">
-        <button id="editor-toggle-skin" class="px-3 py-1.5 text-xs rounded border border-slate-300 hover:bg-slate-100">EduPage skin</button>
+        <button id="editor-toggle-skin" class="px-3 py-1.5 text-xs rounded border border-slate-300 hover:bg-slate-100">Classic skin</button>
         <button id="editor-perspective" class="px-3 py-1.5 text-xs rounded bg-slate-100 hover:bg-slate-200">By Class</button>
       </div>
     </div>
@@ -204,14 +204,14 @@
 
 <!-- ─────────────────────── SCRIPTS ─────────────────────── -->
 <!-- Bump APP_VER on every deploy so the browser refetches the JS bundle -->
-<script>window.APP_VER = "20260519-p9-advisor";</script>
+<script>window.APP_VER = "20260519-p10-sanitized";</script>
 <!-- Backend URL — leave empty to force "Run on this computer". Override at deploy time. -->
 <script>window.CHRONEXA_BACKEND_URL = window.CHRONEXA_BACKEND_URL || "";</script>
 <script>
   document.write([
     ["ui","state"],
     ["ui","i18n"],
-    ["xml","parse_asc_xml"],
+    ["xml","parse_timetable_xml"],
     ["ui","grid_view"],
     ["ui","school_info"],
     ["ui","class_grid"],
@@ -297,16 +297,16 @@
     ["ui","ribbon/menus/options_menu"],
     ["ui","ribbon/menus/help_menu"],
     ["ui","ribbon/menus/ai_menu"],
-    ["ui","io/import_asc_xml"],
-    ["ui","io/export_asc_xml"],
+    ["ui","io/import_timetable_xml"],
+    ["ui","io/export_timetable_xml"],
     ["ui","io/export_excel"],
     ["ui","io/snapshot"],
     // ─── Import/export formats (Agent M-bis) ──────────────────
-    ["ui","io/import_edupage_basic"],
-    ["ui","io/import_edupage_bell_times"],
+    ["ui","io/import_basic_xml"],
+    ["ui","io/import_bell_times"],
     ["ui","io/import_clipboard"],
     ["ui","io/import_gp_untis"],
-    ["ui","io/export_asc_roz"],
+    ["ui","io/export_legacy_roz"],
     ["ui","io/export_gp_untis_dif"],
     ["ui","io/export_atlantis"],
     ["ui","io/export_powerschool"],
@@ -326,13 +326,13 @@
     ["ui","print_preview/templates/teacherwise_extra"],
     ["ui","print_preview/templates/contract_overview"],
     ["ui","print_preview/templates/daily_attendance"],
-    // 5 new template modules (p4-w11: EduPage parity).
+    // 5 new template modules (p4-w11: Classic parity).
     ["ui","print_preview/templates/timetable_for_each_subject"],
     ["ui","print_preview/templates/summary_of_teachers"],
     ["ui","print_preview/templates/summary_of_classrooms"],
     ["ui","print_preview/templates/wall_poster_teachers"],
     ["ui","print_preview/templates/list_of_teachers"],
-    // P5: final 4 templates → full 24 EduPage parity
+    // P5: final 4 templates → full 24 Classic parity
     ["ui","print_preview/templates/list_of_classes"],
     ["ui","print_preview/templates/custom_slots"],
     ["ui","io/compare_files"],

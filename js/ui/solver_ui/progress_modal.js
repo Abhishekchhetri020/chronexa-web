@@ -14,7 +14,7 @@
  *     onCancel()
  *   })
  *
- * Live stats row mirrors EduPage's m_nRychlost / m_nTries / p_VykaslalSa /
+ * Live stats row mirrors Classic's m_nRychlost / m_nTries / p_VykaslalSa /
  * soft score — naming localised to plain English. Stuck counter shows "—"
  * because csp_solver.js doesn't emit it (Agent C's progress payload has
  * iter / softScore / hardConflicts / durationMs only).

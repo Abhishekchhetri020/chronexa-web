@@ -4,14 +4,14 @@
 **Verdict:** User's "30% done" assessment is accurate. Both *feature parity* and *solver effectiveness* sit around 30%.
 
 This doc consolidates findings from:
-- `GHIDRA_SOLVER_AUDIT_2026-05-03.md` + `GHIDRA_AUDIT_Q2Q4_RESOLUTION_2026-05-03.md` (aSc binary RE)
+- `legacy-research` + `legacy-research` (Classic binary RE)
 - Chronexa Swift inventory (68 files, the source-of-truth implementation that was halted)
 - Live solver test on GD Goenka 951-card school (puppeteer'd against production)
-- 16 EDUPAGE_*.md research docs
+- 16 CLASSIC_*.md research docs
 
 ## Top finding: the solver places 28%, not 100%
 
-Tested today on production with GD Goenka data (951 cards, what aSc places at 100%):
+Tested today on production with GD Goenka data (951 cards, what Classic places at 100%):
 
 ```
 Status:          TIMEOUT (30s budget)
@@ -31,7 +31,7 @@ Ranked by impact on placement rate.
 
 | # | Gap | C class | Swift status | Web status | Impact |
 |---|---|---|---|---|---|
-| 1 | **Sibling-subject deficit** | CSIntegerCDNeededCards (~3,600 LoC in C) | NOT PORTED (stub returns 0) | NOT PORTED | 8 unplaced lessons on `asctt2012.xml`. Solver doesn't bias toward subjects falling behind weekly quota. |
+| 1 | **Sibling-subject deficit** | CSIntegerCDNeededCards (~3,600 LoC in C) | NOT PORTED (stub returns 0) | NOT PORTED | 8 unplaced lessons on `sample-school.xml`. Solver doesn't bias toward subjects falling behind weekly quota. |
 | 2 | **Per-card-ordinal listener fan-out** | FUN_009a391c + FUN_00a2a128 | Disconnected | Not modeled | Several scoring leaves silent. |
 | 3 | **CKritOkno mutex** | -200,000 hard veto | Flag-gated dead code | Not modeled | Tabu picks illegal swaps that should have scored -200K. |
 | 4 | **Score aggregator coverage** | CAlgoritmus sums ~9-12 criteria | Swift sums 4 | Web sums 8 | Tabu ranks on partial signal. |
@@ -40,7 +40,7 @@ Ranked by impact on placement rate.
 | 7 | **CKritResty** (rest periods between heavy days) | weight 10 | Not ported | Not ported | Teachers complain about no recovery. |
 | 8 | **n_15 "Reserve space"** | CPodmVztah… | Missing mapping | Missing mapping | User-visible constraint dropped. |
 | 9 | Collapsed n_* pairs | n_6/n_5, n_9/n_8, n_10/n_8, n_13/n_14, n_17/n_4 | Single Swift case per pair | Same drift | Semantic mismatch. |
-| 10 | ASC-faithful weights | C: 25 / 20 / 10 for teacher_gaps / teacher_gaps_per_day / subject_groups | Swift: 50 / 40 / 25 (benchmark-tuned) | Web: same as Swift | A/B flag needed. |
+| 10 | CLASSIC-faithful weights | C: 25 / 20 / 10 for teacher_gaps / teacher_gaps_per_day / subject_groups | Swift: 50 / 40 / 25 (benchmark-tuned) | Web: same as Swift | A/B flag needed. |
 
 **Closed by Q2/Q4 follow-up:** `n_2`, `n_3` confirmed RETIRED (zero matches in binary). `CKritBody` confirmed VESTIGIAL (weight 0, hard-coded "Chan Min Chung" test string). Don't port.
 
@@ -91,7 +91,7 @@ Estimated effort to 80% parity: 120-150 days. We're attacking it in parallel wav
 | W7 | Solver: add Min-Conflicts repair → ≥80% on real data | Running |
 | W8 | Day/Term/Week pattern dialogs | Running |
 | W9 | Wildcard lessons + Divisions tree + Cell-style editor | Running |
-| EduPage agent | Exhaustive Top 30 missing features doc | Running |
+| Classic agent | Exhaustive Top 30 missing features doc | Running |
 | **Main thread** | Buildings entity (shipped 57be227) + this doc | Done |
 
 ## Wave 4 (planned, post-Wave 3 land)
@@ -100,7 +100,7 @@ Independent agents, no file overlap.
 
 | Agent | Brief | Time |
 |---|---|---|
-| W10 | 8 missing soft constraints + ASC-faithful weight flag + Approbation mismatch | 5h |
+| W10 | 8 missing soft constraints + CLASSIC-faithful weight flag + Approbation mismatch | 5h |
 | W11 | Time-off calendar grid + Focus mode + Command palette | 6h |
 | W12 | Report-type dropdown + 4 more print templates + multi-sheet Excel | 5h |
 | W13 | Statistics panel (TeacherDailyDetail, gap ratio, slot utilization) | 4h |
@@ -111,18 +111,18 @@ Independent agents, no file overlap.
 | Item | Days | Why a wave on its own |
 |---|---|---|
 | ScoreExpr DSL + TokenResolver | 4-5 | 79 expression node types; user-defined scoring |
-| CardRelationships HAR Importer + 100-type constraint UI | 3-4 | Schools migrating from EduPage need this |
+| CardRelationships HAR Importer + 100-type constraint UI | 3-4 | Schools migrating from Classic need this |
 | Print design (def.xml) parser + rendering | 4-5 | Desktop reports must roundtrip |
-| ASC XML round-trip lossless test harness | 1 | Verifies import→export→reimport equality |
+| Timetable XML round-trip lossless test harness | 1 | Verifies import→export→reimport equality |
 
 ## Completion gate (the test that decides "ready")
 
 A school admin can:
 1. Open the URL on any laptop/tablet/phone.
-2. Either create from scratch via wizard OR upload their aSc XML.
+2. Either create from scratch via wizard OR upload their Timetable XML.
 3. Click Generate → solver places **≥80% of cards in ≤60s using only their device CPU** (no server).
 4. Hover any red card → see the conflict explained in plain English.
-5. Export aSc XML + Excel + PDF.
+5. Export Timetable XML + Excel + PDF.
 6. Print 24 different report templates.
 7. Mark a teacher absent → see ranked substitutes → assign with one click.
 8. The whole thing works **offline** after first visit (PWA).

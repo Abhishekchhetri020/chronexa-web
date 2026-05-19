@@ -134,12 +134,12 @@ export const SOFT_CONSTRAINTS = Object.freeze([
 ]);
 
 // ---------------------------------------------------------------------------
-// CKrit* constraint family — JS ports of the ASC Tabu Search criterion classes.
+// CKrit* constraint family — JS ports of the CLASSIC Tabu Search criterion classes.
 //
 // Each function takes (assignment, lessonsById, schoolData) and returns
 // `{violations: int, weight: int}` — `violations` is a non-negative count of
 // rule breaks, `weight` is the per-violation penalty (matches the original
-// ASC penalty table; see docs/SOLVER_V2.md and Chronexa-AUDIT-Master.md).
+// CLASSIC penalty table; see docs/SOLVER_V2.md and Chronexa-AUDIT-Master.md).
 //
 // Shapes:
 //   assignment   — Array<{lessonId, day, period, classroomId?, teacherId, classIds[]}>

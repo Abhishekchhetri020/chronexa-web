@@ -1,6 +1,6 @@
 /* Timetable for each subject — one A4 portrait page per subject.
  *
- * EduPage parity: "Timetable for each subject". For each subject, render a
+ * Classic parity: "Timetable for each subject". For each subject, render a
  * day × period grid showing which class/teacher uses that subject in each
  * slot. Lets HoDs check subject-specific room/teacher load.
  */

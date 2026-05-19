@@ -1,7 +1,7 @@
 /* Groups CRUD dialog. window.EntityGroups.open()
  * A group is a sub-grouping of a class — either the full class
  * (entireclass=true) or a fraction taking an elective. Fields:
- * classid, entireclass, ascttdivision, name. */
+ * classid, entireclass, divisionTag, name. */
 (function (global) {
   "use strict";
   const D = window.EntityDialog;
@@ -20,7 +20,7 @@
     return ensure().map(g => ({
       id: g.id, name: g.name || "(unnamed)",
       classname: cm[g.classid]?.name || "(unassigned)",
-      ascttdivision: g.ascttdivision || "",
+      divisionTag: g.divisionTag || "",
       entire: g.entireclass ? "✔" : "—",
       _ref: g,
     }));
@@ -29,7 +29,7 @@
   function columns() { return [
     { key:"name",          label:"Name" },
     { key:"classname",     label:"Class" },
-    { key:"ascttdivision", label:"Division" },
+    { key:"divisionTag", label:"Division" },
     { key:"entire",        label:"Entire?" },
   ]; }
 
@@ -49,10 +49,10 @@
     const isNew = !r;
     const ref = r ? r._ref : null;
     const draft = isNew
-      ? { name:"", classid:"", entireclass:false, ascttdivision:"" }
+      ? { name:"", classid:"", entireclass:false, divisionTag:"" }
       : { name:ref.name || "", classid:ref.classid || "",
           entireclass:!!ref.entireclass,
-          ascttdivision:ref.ascttdivision || "" };
+          divisionTag:ref.divisionTag || "" };
 
     const fName = D.el("input", { type:"text", value:draft.name, required:"required",
       maxlength:"30", oninput:(e)=>draft.name = e.target.value });
@@ -60,9 +60,9 @@
     const fEntire = D.el("input", { type:"checkbox",
       checked: draft.entireclass ? "checked" : null,
       onchange:(e)=>draft.entireclass = e.target.checked });
-    const fDiv = D.el("input", { type:"text", value:draft.ascttdivision,
+    const fDiv = D.el("input", { type:"text", value:draft.divisionTag,
       maxlength:"20", placeholder:"e.g. mu / da",
-      oninput:(e)=>draft.ascttdivision = e.target.value });
+      oninput:(e)=>draft.divisionTag = e.target.value });
 
     D.buildEditSheet({
       title: isNew ? "New group" : `Edit group — ${draft.name}`,
@@ -80,7 +80,7 @@
           name: draft.name.trim(),
           classid: draft.classid,
           entireclass: !!draft.entireclass,
-          ascttdivision: draft.ascttdivision.trim() || undefined,
+          divisionTag: draft.divisionTag.trim() || undefined,
         };
         if (!isNew) {
           const before = { ...ref };

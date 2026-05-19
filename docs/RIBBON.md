@@ -1,7 +1,7 @@
 # Ribbon — Agent H surface
 
 Top ribbon (8 menus) + persistent action bar + File menu (Open/Save/Import/Export/Compare/Print Preview).
-Models the EduPage / aSc Timetables editor toolbar; ships only what we can wire today and leaves
+Models the Classic / Classic Timetable editor toolbar; ships only what we can wire today and leaves
 parity gaps as “coming soon” entries.
 
 ## Layout (top to bottom)
@@ -31,8 +31,8 @@ parity gaps as “coming soon” entries.
 | `js/ui/ribbon/menus/options_menu.js`    | ~1.3K | Settings / Constraints / Preferences |
 | `js/ui/ribbon/menus/help_menu.js`       | ~3.2K | About / Docs / Shortcuts             |
 | `js/ui/ribbon/menus/ai_menu.js`         | ~1.1K | AI assist toggle (stub)              |
-| `js/ui/io/import_asc_xml.js`            | ~3.2K | Open file / Demo / wrap parser       |
-| `js/ui/io/export_asc_xml.js`            | ~8.0K | Round-trip XML export (template + synth) |
+| `js/ui/io/import_timetable_xml.js`            | ~3.2K | Open file / Demo / wrap parser       |
+| `js/ui/io/export_timetable_xml.js`            | ~8.0K | Round-trip XML export (template + synth) |
 | `js/ui/io/export_excel.js`              | ~5.8K | 4 Excel reports via SheetJS          |
 | `js/ui/io/snapshot.js`                  | ~9.9K | Save / Save-as / Version history (pako) |
 | `js/ui/print_preview/print_preview.js`  | ~12.9K | Mode-swap ribbon + 5 starter templates |
@@ -46,10 +46,10 @@ The ribbon dispatches `CustomEvent`s on `window`. Other agents listen.
 |------------------------|-----------------------|--------------------|---------------------|
 | `app:save`             | —                     | topbar, ⌘S, menus  | `snapshot.js` (Agent H) |
 | `app:save-as`          | `{snapshotOnly?}`     | topbar, ⇧⌘S, menus | `snapshot.js`       |
-| `app:open-file`        | —                     | menus              | `import_asc_xml.js` |
-| `app:open-demo`        | —                     | menus              | `import_asc_xml.js` |
-| `app:import-asc-xml`   | —                     | files menu         | `import_asc_xml.js` |
-| `app:export-asc-xml`   | —                     | files menu         | `export_asc_xml.js` |
+| `app:open-file`        | —                     | menus              | `import_timetable_xml.js` |
+| `app:open-demo`        | —                     | menus              | `import_timetable_xml.js` |
+| `app:import-classic-xml`   | —                     | files menu         | `import_timetable_xml.js` |
+| `app:export-classic-xml`   | —                     | files menu         | `export_timetable_xml.js` |
 | `app:export-excel`     | `{kind}`              | files menu         | `export_excel.js`   |
 | `app:open-snapshot`    | —                     | menus              | `snapshot.js`       |
 | `app:test`             | —                     | topbar, menus      | Agent G solver_ui   |
@@ -82,9 +82,9 @@ APP.ribbon = {
 }
 
 APP.io = {
-  importAscXml(), loadFromFile(file), loadFromText(text, name),
+  importTimetableXml(), loadFromFile(file), loadFromText(text, name),
   openDemoFile(), applySchool(school),
-  exportAscXml(), exportFromTemplate(school), exportSynthesized(school),
+  exportTimetableXml(), exportFromTemplate(school), exportSynthesized(school),
   exportContracts(), exportAvailable(), exportSupervision(), exportTimetable()
 }
 
@@ -110,7 +110,7 @@ window.ChrxMenu = {
 ## Menu entry shape (ChrxMenu)
 
 ```js
-{ icon?: "📄", label: "aSc XML", hint?: "⌘O",
+{ icon?: "📄", label: "Timetable XML", hint?: "⌘O",
   run?: () => …,        // click handler (omit + sub for submenu opener)
   sub?: [ ...entries ], // sub-panel (mouse-enter opens)
   disabled?: bool,      // greyed out
@@ -120,17 +120,17 @@ window.ChrxMenu = {
 }
 ```
 
-## ASC XML round-trip strategy
+## Timetable XML round-trip strategy
 
-1. `import_asc_xml.js` preserves the raw text on `school._meta.sourceText`.
-2. `export_asc_xml.js` template-mode: regex-replaces just the `<cards>…</cards>`
+1. `import_timetable_xml.js` preserves the raw text on `school._meta.sourceText`.
+2. `export_timetable_xml.js` template-mode: regex-replaces just the `<cards>…</cards>`
    block in the original text. Keeps every other byte intact — IDs, daysdefs,
    option attrs, comments.
 3. If `sourceText` is missing (e.g. snapshot decoded with stripped meta), we
-   synthesize an ASC-shaped XML from the canonical JSON. Counts round-trip
+   synthesize an CLASSIC-shaped XML from the canonical JSON. Counts round-trip
    stable across multiple synth↔parse cycles.
 
-Verified manually on `docs/demo_asctt2012.xml`:
+Verified manually on `docs/demo_sample-school.xml`:
 
 ```
 ORIGINAL    → 66 teachers · 23 classes · 9 rooms · 44 subjects · 381 lessons · 951 cards
@@ -171,14 +171,14 @@ of the largest realistic school.
 | `summary` | All classes on one page (compact subject letters) |
 | `poster`  | Landscape A4, all classes side-by-side (wall poster) |
 
-The 19 other ASC templates (lesson grid, students, custom 1-3, contract overview,
+The 19 other CLASSIC templates (lesson grid, students, custom 1-3, contract overview,
 attendance, lists of teachers/classes) are deferred — see
-`EDUPAGE_FEATURE_MAP_TOOLBAR_R7.md` §Files for the full inventory.
+`legacy-research` §Files for the full inventory.
 
 ## Quality bar verification
 
-- Open `docs/demo_asctt2012.xml` via `Files → Show demo file` ✓
+- Open `docs/demo_sample-school.xml` via `Files → Show demo file` ✓
 - `Files → Save as…` writes to localStorage, reload page, `Files → Open` lists it ✓
 - Each ribbon menu opens a dropdown panel ✓
-- `Files → Export → aSc Timetables XML` produces a round-trip-clean .xml ✓
+- `Files → Export → Classic Timetable XML` produces a round-trip-clean .xml ✓
 - File budgets: topbar 12.1 KB · each menu ≤ 3.4 KB · print_preview 12.9 KB ✓

@@ -1,7 +1,7 @@
 /* Divisions CRUD dialog. window.EntityDivisions.open()
  * A division splits one class into parallel sub-groups for elective /
- * lab lessons. EduPage field 'ascttdivision' is the textual label used
- * inside aSc XML. Fields: classid, ascttdivision, groupids[]. */
+ * lab lessons. Classic field 'divisionTag' is the textual label used
+ * inside Timetable XML. Fields: classid, divisionTag, groupids[]. */
 (function (global) {
   "use strict";
   const D = window.EntityDialog;
@@ -25,7 +25,7 @@
     return ensure().map(d => ({
       id: d.id,
       classname: cm[d.classid]?.name || "(unassigned)",
-      ascttdivision: d.ascttdivision || "",
+      divisionTag: d.divisionTag || "",
       groupCount: (d.groupids || []).length,
       groups: (d.groupids || []).map(id => gm[id]?.name || id)
         .filter(Boolean).join(", "),
@@ -35,7 +35,7 @@
 
   function columns() { return [
     { key:"classname",     label:"Class" },
-    { key:"ascttdivision", label:"Division" },
+    { key:"divisionTag", label:"Division" },
     { key:"groupCount",    label:"# Groups" },
     { key:"groups",        label:"Groups" },
   ]; }
@@ -56,14 +56,14 @@
     const isNew = !r;
     const ref = r ? r._ref : null;
     const draft = isNew
-      ? { classid:"", ascttdivision:"", groupids:[] }
-      : { classid:ref.classid || "", ascttdivision:ref.ascttdivision || "",
+      ? { classid:"", divisionTag:"", groupids:[] }
+      : { classid:ref.classid || "", divisionTag:ref.divisionTag || "",
           groupids:(ref.groupids || []).slice() };
 
     const fClass = makeClassSelect(draft.classid, v => draft.classid = v);
-    const fDiv = D.el("input", { type:"text", value:draft.ascttdivision,
+    const fDiv = D.el("input", { type:"text", value:draft.divisionTag,
       maxlength:"20", placeholder:"e.g. mu / da",
-      oninput:(e)=>draft.ascttdivision = e.target.value });
+      oninput:(e)=>draft.divisionTag = e.target.value });
 
     const fGroups = D.el("select", { multiple:"multiple", size:"6" });
     ((window.APP.school?.groups) || []).forEach(g => {
@@ -87,7 +87,7 @@
         const all = ensure();
         const payload = {
           classid: draft.classid,
-          ascttdivision: draft.ascttdivision.trim() || undefined,
+          divisionTag: draft.divisionTag.trim() || undefined,
           groupids: draft.groupids.slice(),
         };
         if (!isNew) {

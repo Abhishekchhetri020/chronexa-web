@@ -2,7 +2,7 @@
  * Defines reusable term-pattern entries (Term-1, Term-2, "Whole year") that
  * lessons / supervisions can scope themselves to. Each pattern is a bitmask
  * string — "1" for whole-year, "10"/"01" for which term applies in a
- * 2-term school. Mirrors ASC <termsdef terms="…"> wire shape.
+ * 2-term school. Mirrors CLASSIC <termsdef terms="…"> wire shape.
  * Fields: name, short, color, terms. */
 (function (global) {
   "use strict";

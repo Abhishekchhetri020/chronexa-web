@@ -15,9 +15,9 @@ window.I18N = (function () {
     nav4:            { en: "4. Teacher Grid",                 hi: "४. शिक्षक सूची" },
     nav5:            { en: "5. Room Grid",                    hi: "५. कक्ष सूची" },
 
-    step1Title:      { en: "Upload aSc Timetable XML",        hi: "एएससी टाइमटेबल एक्सएमएल अपलोड करें" },
-    step1Desc:       { en: "Drop your asctt2012*.xml export here. Everything stays in your browser — no upload to any server.",
-                       hi: "अपनी asctt2012*.xml फ़ाइल यहाँ डालें। सब कुछ आपके ब्राउज़र में रहता है।" },
+    step1Title:      { en: "Upload Classic Timetable XML",        hi: "एएससी टाइमटेबल एक्सएमएल अपलोड करें" },
+    step1Desc:       { en: "Drop your sample-school*.xml export here. Everything stays in your browser — no upload to any server.",
+                       hi: "अपनी sample-school*.xml फ़ाइल यहाँ डालें। सब कुछ आपके ब्राउज़र में रहता है।" },
     step1Button:     { en: "Choose XML file",                 hi: "फ़ाइल चुनें" },
 
     step2Title:      { en: "School Info",                     hi: "विद्यालय जानकारी" },

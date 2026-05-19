@@ -12,7 +12,7 @@
     {
       selector: "#cta-build-new, [data-step='1']",
       title: "Welcome to Chronexa 👋",
-      body:  "Build your school's timetable in your browser, on your computer. No upload, no tracking. Click <strong>Create new timetable</strong> or load an existing aSc XML to start.",
+      body:  "Build your school's timetable in your browser, on your computer. No upload, no tracking. Click <strong>Create new timetable</strong> or load an existing Timetable XML to start.",
     },
     {
       selector: "[data-step='6'], #step-6 [data-kind='subjects']",
@@ -22,7 +22,7 @@
     {
       selector: ".chrx-menubar, button.chrx-menubar__item",
       title: "Ribbon menus",
-      body:  "Eight top menus mirror EduPage/aSc. Specification has every entity. Timetable has the solver. Options has Constraints library. Help has searchable docs.",
+      body:  "Eight top menus mirror Classic/Classic. Specification has every entity. Timetable has the solver. Options has Constraints library. Help has searchable docs.",
     },
     {
       selector: "#cta-generate, [data-act-fire='app:master-solve']",
@@ -32,7 +32,7 @@
     {
       selector: "[data-kind='lessons'], #cta-test, #cta-generate",
       title: "Hover a card for plain-English explanations",
-      body:  "Any red card in the editor shows exactly WHY it's flagged (e.g. 'Mr. Sharma already teaches IX-A in this period'). aSc just says 'conflict'.",
+      body:  "Any red card in the editor shows exactly WHY it's flagged (e.g. 'Mr. Sharma already teaches IX-A in this period'). Classic just says 'conflict'.",
     },
   ];
 

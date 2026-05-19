@@ -1,6 +1,6 @@
 /* Chronexa Solver — Test dialog.
  *
- * Mirrors EduPage's `Test the timetable`: validate constraints without moving
+ * Mirrors Classic's `Test the timetable`: validate constraints without moving
  * any card. We use a short solver run (verbose: true) and route its
  * violations array straight into the verification panel.
  *
@@ -8,7 +8,7 @@
  *   SolverUI.Test.open({ school?, onClose? })
  *
  * Flow:
- *   1. Destructive-action confirm (matches EduPage's confirm dialog).
+ *   1. Destructive-action confirm (matches Classic's confirm dialog).
  *   2. Progress modal — same modal as Generate, just with the test title.
  *   3. On done:
  *      - 0 violations → toast "Test passed" + close.

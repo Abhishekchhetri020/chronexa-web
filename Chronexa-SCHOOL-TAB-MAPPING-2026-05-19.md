@@ -1,8 +1,8 @@
-# EduPage School-Tab → Chronexa Mapping (Exhaustive)
+# Classic School-Tab → Chronexa Mapping (Exhaustive)
 
 **Date:** 2026-05-19
 **Scope:** Per user request: *"like the school tab which has so many functionalities has not been properly mapped that also needs to be mapped"*
-**Method:** Reconciliation of `EDUPAGE_FEATURE_MAP_2026-05-03.md §1` + `EDUPAGE_OPS_DEEP_DIVE_R2.md §3` (globals.settings 23-field census) + Ghidra-confirmed solver semantics + live verification on `https://abhishekchhetri020.github.io/chronexa-web/`.
+**Method:** Reconciliation of `legacy-research §1` + `legacy-research §3` (globals.settings 23-field census) + Ghidra-confirmed solver semantics + live verification on `https://abhishekchhetri020.github.io/chronexa-web/`.
 **Live URL APP_VER:** `p8-presets`
 
 ---
@@ -11,7 +11,7 @@
 
 After today's Wave G2 (School Hub + Onboarding + UI polish):
 
-| EduPage School-tab feature | Count | Mapped in Chronexa |
+| Classic School-tab feature | Count | Mapped in Chronexa |
 |---|---:|---:|
 | Top-level fields (§1) | 9 | **9 ✅** |
 | `globals.settings` subobject fields (§3) | 23 | **17 ✅ / 6 deferred** |
@@ -27,7 +27,7 @@ After today's Wave G2 (School Hub + Onboarding + UI polish):
 
 ## 1. Top-level fields (§1)
 
-| EduPage label (verbatim) | Type | Chronexa surface | Status |
+| Classic label (verbatim) | Type | Chronexa surface | Status |
 |---|---|---|---|
 | Name of the school | text | School Hub → Identity → Name input | ✅ live |
 | School year | dropdown | School Hub → Identity → Academic year | ✅ |
@@ -42,7 +42,7 @@ After today's Wave G2 (School Hub + Onboarding + UI polish):
 
 ## 2. `globals.settings` subobject (§3 — 23 fields)
 
-| # | EduPage field | Type | Chronexa pane | Status |
+| # | Classic field | Type | Chronexa pane | Status |
 |---|---|---|---|---|
 | 1 | name (school name) | string | Identity → Name | ✅ |
 | 2 | year | string | Identity → Academic year | ✅ |
@@ -70,7 +70,7 @@ After today's Wave G2 (School Hub + Onboarding + UI polish):
 
 ## 3. Bell-times sub-dialog (§1a — 9 features)
 
-| EduPage feature | Chronexa surface | Status |
+| Classic feature | Chronexa surface | Status |
 |---|---|---|
 | Period table (one row per period) | School Hub → Bell pane (inline table) + EntityBells dialog | ✅ |
 | Clock icon per row (per-period bell sound) | — | ⛔ skipped — no sound integration |
@@ -115,7 +115,7 @@ After today's Wave G2 (School Hub + Onboarding + UI polish):
 
 ## 6. Multi-bell-schedule (§1a-ii — 3-D model)
 
-EduPage's 3-D model: BellSchedule × Period × Day-of-week.
+Classic's 3-D model: BellSchedule × Period × Day-of-week.
 
 | Dimension | Chronexa | Status |
 |---|---|---|
@@ -126,7 +126,7 @@ EduPage's 3-D model: BellSchedule × Period × Day-of-week.
 
 ## 7. Day patterns (§1g — Rename days dialog)
 
-| EduPage | Chronexa | Status |
+| Classic | Chronexa | Status |
 |---|---|---|
 | Days dropdown (5/6/7) | school.settings.daysPerWeek | ✅ |
 | Per-day Edit (rename Mon → "Day A") | EntityDays dialog | ✅ via W8 |
@@ -136,7 +136,7 @@ EduPage's 3-D model: BellSchedule × Period × Day-of-week.
 
 ## 8. Multi-term / Multi-week toggle wizard
 
-EduPage's "I want to create multi-term/multi-week timetable" checkbox opens a TBD wizard.
+Classic's "I want to create multi-term/multi-week timetable" checkbox opens a TBD wizard.
 
 | Feature | Chronexa | Status |
 |---|---|---|

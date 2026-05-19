@@ -2,14 +2,14 @@
 
 This document specifies the pixel geometry of the writable editor canvas.
 The constants live in [`js/ui/editor/canvas_geometry.js`](../js/ui/editor/canvas_geometry.js)
-as the exported `GEOMETRY` object and are mirrored by the EduPage skin
-in [`css/edupage-skin.css`](../css/edupage-skin.css).
+as the exported `GEOMETRY` object and are mirrored by the Classic skin
+in [`css/classic-skin.css`](../css/classic-skin.css).
 
 The chronexa-web editor uses a CSS flex-grid (not absolute positioning) for
 the body, so most of the time the browser computes coordinates for us. The
 constants below are still load-bearing for:
 
-- the EduPage skin (`<html data-skin="edupage">`),
+- the Classic skin (`<html data-skin="classic">`),
 - the Floor / FD overlay injected by `CanvasGeometry.decorate`,
 - future absolute-positioned card rendering (drag preview, conflict
   heat-map, multi-period span cards) that needs deterministic pixel math.
@@ -18,11 +18,11 @@ constants below are still load-bearing for:
 
 Source-of-truth docs read for this geometry:
 
-- `/Users/abhishekchhetri/Downloads/Cloning ASC/EDUPAGE_E2_GRID_INTERACTIONS_2026-05-03.md`
-  — EduPage DOM model (absolute-positioned canvas with `vriadok` rows,
+- `/Users/abhishekchhetri/Downloads/Cloning CLASSIC/legacy-research`
+  — Classic DOM model (absolute-positioned canvas with `vriadok` rows,
   `vline` period separators, `vkarta` cards; row height 25 px; period
   width 40–41 px; 6–12 px day gap).
-- `/Users/abhishekchhetri/Downloads/Cloning ASC/EDUPAGE_E3_COLOR_TAXONOMY_2026-05-03.md`
+- `/Users/abhishekchhetri/Downloads/Cloning CLASSIC/legacy-research`
   — Color1 (subject) / Color2 (teacher) priority + fallback grey.
 
 ## Constants
@@ -32,8 +32,8 @@ Source-of-truth docs read for this geometry:
 | `PERIOD_WIDTH`            | 40   | Configurable per-period (35–50).                        |
 | `PERIOD_WIDTH_MIN`        | 35   | Lower bound for zoom presets.                           |
 | `PERIOD_WIDTH_MAX`        | 50   | Upper bound for zoom presets.                           |
-| `DAY_GAP`                 | 8    | Gap between day-blocks (EduPage uses 6–12 px).          |
-| `ROW_HEIGHT`              | 26   | Default row height (EduPage = 25; +1 for AA crispness). |
+| `DAY_GAP`                 | 8    | Gap between day-blocks (Classic uses 6–12 px).          |
+| `ROW_HEIGHT`              | 26   | Default row height (Classic = 25; +1 for AA crispness). |
 | `ROW_HEIGHT_PRE_PRIMARY`  | 32   | Nursery / LKG / UKG (oral rows are taller).             |
 | `HEADER_HEIGHT`           | 32   | Period-number header strip.                             |
 | `PENDING_STRIP_HEIGHT`    | 80   | Sticky bottom rail.                                     |
@@ -79,7 +79,7 @@ otherwise `ROW_HEIGHT` (26 px).
 Idempotent overlay injected by `canvas_geometry.js`. Runs after every
 `Editor.render` (the function is wrapped additively on load) and on every
 `editor:place` / `editor:pickup` event. Gated entirely on
-`<html data-skin="edupage">` — with the skin off, the function clears any
+`<html data-skin="classic">` — with the skin off, the function clears any
 prior overlay and returns.
 
 | Perspective | Injection                                                         |
@@ -91,17 +91,17 @@ prior overlay and returns.
 ## Skin activation
 
 ```html
-<html data-skin="edupage">
+<html data-skin="classic">
 ```
 
 Or, after page load:
 
 ```js
-document.documentElement.setAttribute("data-skin", "edupage");
+document.documentElement.setAttribute("data-skin", "classic");
 ```
 
-The stylesheet `css/edupage-skin.css` is always loaded via `index.html`;
-every rule is scoped with the `html[data-skin="edupage"]` prefix, so until
+The stylesheet `css/classic-skin.css` is always loaded via `index.html`;
+every rule is scoped with the `html[data-skin="classic"]` prefix, so until
 the attribute is set the skin contributes zero specificity to the cascade.
 A `MutationObserver` inside `canvas_geometry.js` re-runs the overlay
 decorator whenever the attribute changes, so toggling is instant.
@@ -113,5 +113,5 @@ decorator whenever the attribute changes, so toggling is instant.
 - **Replacing the flex-grid body with an absolute-positioned canvas** —
   the constants are in place for a future migration, but the current
   renderer continues to use flex.
-- **Cursor-following held-card ghost** — Phase-15 scope (see EduPage E2
+- **Cursor-following held-card ghost** — Phase-15 scope (see Classic E2
   reference, section "GAP: Card-follows-cursor visual ghost").

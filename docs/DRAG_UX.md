@@ -1,7 +1,7 @@
 # Chronexa Drag-Drop UX (Agent J)
 
 Cursor-following ghost overlay + live conflict halos for the editor grid.
-EduPage-parity: single-click pickup, no HTML5 `dragstart`, transform-based
+Classic-parity: single-click pickup, no HTML5 `dragstart`, transform-based
 ghost, validity halos painted from the seven hard constraints + soft
 preferences.
 
@@ -102,7 +102,7 @@ card to the strip.
 
 ## Why these defaults
 
-- **Single-click pickup, mouseup-to-place** is the EduPage parity baseline
+- **Single-click pickup, mouseup-to-place** is the Classic parity baseline
   (R9 §1). Native HTML5 `dragstart` is deliberately avoided because synthetic
   events don't trigger NSDragSession and headless tests would break.
 - **Ghost size 60×24** matches the editor slot width (`--chrx-slot:40px` +
@@ -114,7 +114,7 @@ card to the strip.
 ## Quick smoke test
 
 ```js
-// In DevTools after loading any aSc XML and activating the editor:
+// In DevTools after loading any Timetable XML and activating the editor:
 APP.editor.cardInHand           // null when idle
 // Click a placed tile → ghost appears, follows cursor.
 Placement.classify("LESSON_ID", 0, 1)

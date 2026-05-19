@@ -2,7 +2,7 @@
  * Defines reusable week-pattern entries (Week A, Week B, exam-week, "All
  * weeks") that lessons / supervisions can scope themselves to. Each pattern
  * is a bitmask string — "1" for non-fortnightly schools, "10"/"01" for an
- * A/B-week cycle, longer strings for term-long rotations. Mirrors ASC
+ * A/B-week cycle, longer strings for term-long rotations. Mirrors CLASSIC
  * <weeksdef weeks="…"> wire shape. Fields: name, short, color, weeks. */
 (function (global) {
   "use strict";

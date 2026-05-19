@@ -1,5 +1,5 @@
 /* Lesson grid — one A4 landscape page listing every lesson row (subject,
- * class, teacher, periods/week, day/period if pinned). Mirrors the ASC
+ * class, teacher, periods/week, day/period if pinned). Mirrors the CLASSIC
  * "Lessons" report developers use when auditing curriculum coverage.
  */
 (function () {

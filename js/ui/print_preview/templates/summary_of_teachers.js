@@ -1,6 +1,6 @@
 /* Summary of teachers — single A4 landscape with one row per teacher.
  *
- * EduPage parity: "Summary timetable of teachers". Per-day period count
+ * Classic parity: "Summary timetable of teachers". Per-day period count
  * across the week, plus a total. Quick way for the principal to spot
  * teacher-load imbalances on one page.
  */

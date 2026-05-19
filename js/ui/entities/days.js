@@ -1,7 +1,7 @@
 /* Days CRUD dialog. window.EntityDays.open()
  * Defines reusable day-of-week patterns: each pattern is a 6-bit bitmask
  * (Mon..Sat) that lessons / supervisions can scope themselves to. Mirrors
- * ASC <daysdef days="100000"> wire shape, including comma-separated
+ * CLASSIC <daysdef days="100000"> wire shape, including comma-separated
  * "Any day" alternatives. Fields: name, short, color, days (bitmask).
  *
  * Default seed: 6 single days + "Any day" + "Every day". Stored on
@@ -14,7 +14,7 @@
   const DAY_LABELS = ["Mon","Tue","Wed","Thu","Fri","Sat"];
   const DAY_SHORTS = ["Mo","Tu","We","Th","Fr","Sa"];
 
-  // Default day-pattern seed — mirrors asctt2012.xml so a fresh school
+  // Default day-pattern seed — mirrors sample-school.xml so a fresh school
   // already has working "any day" / "every day" patterns for the lesson
   // dialog to pick.
   function seedDefaults(arr) {

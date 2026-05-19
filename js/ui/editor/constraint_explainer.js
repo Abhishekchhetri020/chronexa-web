@@ -3,7 +3,7 @@
  *
  * Hovering a red/yellow card in the editor grid pops a tooltip explaining
  * which hard or soft constraints are broken at that (lessonId, day, period).
- * EduPage's "conflict" gives one generic word; Chronexa names the rule and
+ * Classic's "conflict" gives one generic word; Chronexa names the rule and
  * the offending neighbour ("Mr. Sharma already teaches IX-A → Maths here").
  *
  * Data sources (in priority order):

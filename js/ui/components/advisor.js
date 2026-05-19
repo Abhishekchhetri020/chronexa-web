@@ -1,6 +1,6 @@
 /* Advisor — analyses the current timetable + surfaces improvement opportunities.
  *
- * Mirrors EduPage's `runTTAdvisor` RPC (W15 finding #16 — present in
+ * Mirrors Classic's `runTTAdvisor` RPC (W15 finding #16 — present in
  * Timetable ribbon's group of Test/Generate/Improve/Advisor).
  *
  * Inputs: school + the constraint engine (RelationEnforcer +

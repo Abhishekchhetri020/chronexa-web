@@ -1,5 +1,5 @@
 /**
- * ASC TimeTables XML → SchoolData (per docs/DATA_SHAPES.md).
+ * Classic Timetable XML → SchoolData (per docs/DATA_SHAPES.md).
  *
  * Browser-side only — no upload, all parsing in the user's tab.
  *
@@ -16,13 +16,13 @@
  *     }
  *   }
  *
- * Day indexing matches DATA_SHAPES.md: 0=Mon..5=Sat (ASC daysdef bit positions).
+ * Day indexing matches DATA_SHAPES.md: 0=Mon..5=Sat (CLASSIC daysdef bit positions).
  * Period indexing is 1-based to mirror <card period="N">.
  *
  * Floor-duty supervision "classes" (e.g. "1st Floor") are skipped — same rule
  * as the sitting-planner parser. Cards whose only class is a Floor are dropped.
  */
-window.parseAscXml = (function () {
+window.parseTimetableXml = (function () {
   "use strict";
 
   const DAYS_EN = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -47,7 +47,7 @@ window.parseAscXml = (function () {
   async function parseFile(file) {
     if (!file) throw new Error("No file provided.");
     const text = await file.text();
-    return parseText(text, file.name || "asctt.xml");
+    return parseText(text, file.name || "sample.xml");
   }
 
   function parseText(text, sourceName) {
@@ -59,7 +59,7 @@ window.parseAscXml = (function () {
     const schoolName = root ? (root.getAttribute("displayname") || "") : "";
 
     // --- Days per week (inferred from daysdefs, mirrors Swift port) ------------
-    // ASC's daysdefs has one entry per logical day (Mon, Tue, …) plus aggregate
+    // CLASSIC's daysdefs has one entry per logical day (Mon, Tue, …) plus aggregate
     // entries ("Any day", "Every day"). A SINGLE-DAY entry has exactly one "1"
     // in its `days` bitmask. We count those to set school.daysPerWeek so the
     // solver's `inferDays()` doesn't fall back to 5 when no cards exist.
@@ -203,7 +203,7 @@ window.parseAscXml = (function () {
       const period = parseInt(attr(card, "period"), 10);
       if (!period) return;
 
-      // Card-level classroom OVERRIDES lesson-level (per advisor / aSc semantics).
+      // Card-level classroom OVERRIDES lesson-level (per advisor / Classic semantics).
       const cardRoomIds = (attr(card, "classroomids") || "").split(",").filter(Boolean);
       const classroomId = cardRoomIds[0] || lesson.preferredRoomId || undefined;
 

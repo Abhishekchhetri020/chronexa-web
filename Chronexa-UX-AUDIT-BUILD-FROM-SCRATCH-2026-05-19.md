@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-19
 **Scope:** what happens between clicking ✨ "Create new timetable" and dragging the first card onto the grid
-**Method:** live walk of `https://abhishekchhetri020.github.io/chronexa-web/` via puppeteer + diff against EduPage's 8-step wizard (already reverse-engineered in `EDUPAGE_FEATURE_MAP_WIZARD_2_5_R5.md` + `WIZARD_6_8_R6.md`)
+**Method:** live walk of `https://abhishekchhetri020.github.io/chronexa-web/` via puppeteer + diff against Classic's 8-step wizard (already reverse-engineered in `legacy-research` + `WIZARD_6_8_R6.md`)
 **APP_VER under test:** `20260518-pwa1`
 
 ---
@@ -41,7 +41,7 @@ TypeError: Cannot read properties of undefined (reading 'counts')
   at renderActiveStep (js/ui/main.js:48:26)
   at showStep         (js/ui/main.js:42:5)
 ```
-**Root cause:** `school_info.js` reads `school._meta.counts`. The `_meta` blob is only created by `parseAscXml.parseFile()`. `CreateNew.createBlank()` doesn't populate `_meta`. So Step 2 is XML-upload-only and crashes for everyone else.
+**Root cause:** `school_info.js` reads `school._meta.counts`. The `_meta` blob is only created by `parseTimetableXml.parseFile()`. `CreateNew.createBlank()` doesn't populate `_meta`. So Step 2 is XML-upload-only and crashes for everyone else.
 **Once raised, the error banner persists across all subsequent step changes** (visible in steps 3/4/5 screenshots too — same red box, never cleared).
 
 ### Bug B — Specification menu items are decorative
@@ -52,17 +52,17 @@ TypeError: Cannot read properties of undefined (reading 'counts')
 
 ---
 
-## 3. Structural gap — Chronexa step ladder vs EduPage wizard
+## 3. Structural gap — Chronexa step ladder vs Classic wizard
 
-**EduPage's actual 8-step wizard:**
+**Classic's actual 8-step wizard:**
 
-| EduPage step | What it does | Chronexa today |
+| Classic step | What it does | Chronexa today |
 |---|---|---|
 | 1 — School | name, year, country, region, days/week, periods, multi-term/week toggles | 🟨 Step 2 "School Info" exists but **crashes** for from-scratch users |
 | 2 — Subjects | CRUD for subjects (name, abbr, color, picture, time-off matrix, contract weight, constraints) | ⛔ **NO STEP, NO MENU ITEM, NO RIBBON BUTTON** |
 | 3 — Classes | CRUD for classes + class teacher, home rooms, bell schedule, color, 14-field constraints, divisions, time-off | 🟨 Step 3 "Class Grid" is a **read-only timetable preview**, not a CRUD editor |
 | 4 — Classrooms | CRUD for rooms (name, abbr, color, building, capacity, supervision, nearby rooms, time-off) | 🟨 Step 5 "Room Grid" — read-only preview, no CRUD |
-| 5 — (Days definition — folded into step 1 in modern EduPage) | bell, daysdefs, weeksdefs, termsdefs | ⛔ menu items exist but click handlers missing |
+| 5 — (Days definition — folded into step 1 in modern Classic) | bell, daysdefs, weeksdefs, termsdefs | ⛔ menu items exist but click handlers missing |
 | 6 — Teachers | CRUD (last/first/abbr, color, gender, title, suffix, classrooms, bell, number, time-off, 11 constraints) | 🟨 Step 4 "Teacher Grid" — read-only preview, no CRUD |
 | 7 — **Lessons** (the most complex entity — 21 fields) | subject + teacher(s) + class(es) + group + duration + count + classroom rules | ⛔ **NO STEP, NO MENU ITEM, NO RIBBON BUTTON**. Without lessons, no cards exist; without cards, the editor is permanently empty. |
 | 8 — End (Test / Generate / Verify) | three independent solver flows | ✅ Generate dialog at **parity** — mode tiles, complexity, conditions, algorithm choice, status line |
@@ -103,10 +103,10 @@ The dialog shell (`dialog_shell.js`) exists — these modules are NOT broken, th
 ## 5. Solver UI — confirmed at parity ✅
 
 **Verified live:** click ⚡ Generate → opens `.csu-dialog` with:
-- ✅ **Mode tiles:** "Test the timetable" + "Generate timetable" (matches EduPage's `testStart` vs `generatorStart`)
-- ✅ **Complexity:** Normal · 30s · small school | Large · 60s · 30-50 classes | Huge · 2 min · 60+ teachers (matches EduPage's `Normal/Large/Huge`)
-- ✅ **Conditions:** Draft · Allow relaxation · Strict (matches EduPage's verbatim labels)
-- ✅ **Algorithm:** "Run on this computer (Web Worker, offline)" + "Run on cloud (Backend URL not set — falls back to browser)" — this is a **Chronexa-only feature**; EduPage has no offline mode
+- ✅ **Mode tiles:** "Test the timetable" + "Generate timetable" (matches Classic's `testStart` vs `generatorStart`)
+- ✅ **Complexity:** Normal · 30s · small school | Large · 60s · 30-50 classes | Huge · 2 min · 60+ teachers (matches Classic's `Normal/Large/Huge`)
+- ✅ **Conditions:** Draft · Allow relaxation · Strict (matches Classic's verbatim labels)
+- ✅ **Algorithm:** "Run on this computer (Web Worker, offline)" + "Run on cloud (Backend URL not set — falls back to browser)" — this is a **Chronexa-only feature**; Classic has no offline mode
 - ✅ **Status line:** "My School · 0 teachers · 0 classes · 0 lessons · 0 placed"
 - ✅ **Show solver report after run** checkbox
 
@@ -133,9 +133,9 @@ No work needed here. The solver flow is already past parity.
 
 | # | Item | Hours |
 |---|---|---|
-| 7 | Add a real **Step 1.5: Wizard** option after "Create new timetable" — sequential walkthrough Subject → Teacher → Class → Room → Lesson with "Next" buttons (EduPage parity) | 8 |
+| 7 | Add a real **Step 1.5: Wizard** option after "Create new timetable" — sequential walkthrough Subject → Teacher → Class → Room → Lesson with "Next" buttons (Classic parity) | 8 |
 | 8 | Time-off matrix dialog (3-state ✓ ? ✗) for subjects/classes/classrooms/teachers — single shared component | 4 |
-| 9 | Class constraints sub-dialog with 14 fields (per EduPage cdefs) — `classteacherpos` matrix is the heavy one | 4 |
+| 9 | Class constraints sub-dialog with 14 fields (per Classic cdefs) — `classteacherpos` matrix is the heavy one | 4 |
 | 10 | Teacher constraints sub-dialog with 11 fields (max gaps, max consecutive, lessons-per-day range, supervision min/max) | 3 |
 | 11 | Divisions UI per class (`entities/divisions.js` orphan today) | 3 |
 
@@ -174,8 +174,8 @@ The current `Class Grid / Teacher Grid / Room Grid` (read-only timetable preview
 
 ## 8. What's NOT in scope of this audit
 
-- aSc XML upload flow (already working at parity)
-- Print preview (separate audit; gap map at `EDUPAGE_VS_CHRONEXA_GAP_MAP_2026-05-04.md` covers 5 missing templates)
+- Timetable XML upload flow (already working at parity)
+- Print preview (separate audit; gap map at `legacy-research` covers 5 missing templates)
 - Mobile / touch drag-drop
 - PWA / offline / ZIP download (just shipped, working)
 - Backend `/solve` Hostinger deploy (20 May post-VPS)
@@ -185,8 +185,8 @@ The current `Class Grid / Teacher Grid / Room Grid` (read-only timetable preview
 
 ## 9. Bottom line
 
-**Two showstopper bugs + Subjects/Lessons unreachable + step ladder routes the user away from CRUD = the "create new" CTA is effectively non-functional today** for a user who doesn't already have an aSc XML to upload.
+**Two showstopper bugs + Subjects/Lessons unreachable + step ladder routes the user away from CRUD = the "create new" CTA is effectively non-functional today** for a user who doesn't already have an Timetable XML to upload.
 
-Fixing P0 (14 hours) restores the from-scratch path. P1 (22 hours) brings the wizard to EduPage parity. P2 (30 hours) takes us past it into moat territory.
+Fixing P0 (14 hours) restores the from-scratch path. P1 (22 hours) brings the wizard to Classic parity. P2 (30 hours) takes us past it into moat territory.
 
 **No code changes were made in this audit.** Approval gate before the sprint starts.

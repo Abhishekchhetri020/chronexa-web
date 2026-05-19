@@ -103,8 +103,8 @@
       const school = decode(found.payload);
       setCurrent(snapId);
       // Re-derive _idx by re-parsing sourceText if available, else accept stripped form
-      if (school._meta && school._meta.sourceText && window.parseAscXml) {
-        const fresh = window.parseAscXml.parseText(school._meta.sourceText, school._meta.sourceFilename);
+      if (school._meta && school._meta.sourceText && window.parseTimetableXml) {
+        const fresh = window.parseTimetableXml.parseText(school._meta.sourceText, school._meta.sourceFilename);
         fresh._meta = school._meta;
         // Restore custom mutations (e.g. cards changed since import)
         if (school.cards) fresh.cards = school.cards;

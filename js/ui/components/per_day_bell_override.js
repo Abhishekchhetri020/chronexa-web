@@ -1,6 +1,6 @@
 /* Per-day-of-week period bell override — the last 15% of School-tab parity.
  *
- * EduPage's per-period edit dialog has a "This period has different bells
+ * Classic's per-period edit dialog has a "This period has different bells
  * on some days" checkbox that exposes a 5-row matrix (Mon-Fri) of start/end
  * overrides. Schools use this for: shorter Friday periods, longer Monday
  * assemblies, half-day Saturday schedules.

@@ -1,7 +1,7 @@
-/* Teacher constraints dialog — EduPage's 11-field teachers.constraints subobject.
+/* Teacher constraints dialog — Classic's 11-field teachers.constraints subobject.
  * window.TeacherConstraintsDialog.open(teacherRow, onSave)
  *
- * Verbatim labels from EDUPAGE_FEATURE_MAP_WIZARD_6_8_R6.md §6.3.
+ * Verbatim labels from legacy-research §6.3.
  *
  * Fields written to teacherRow.constraints (created if absent):
  *   teachers_maxgapsweek           — int_or_enum ("*" = any)
@@ -156,7 +156,7 @@
       { label: "Max days per week",
         control: sfm(intOrEnum(c.maxDaysPerWeek, v => c.maxDaysPerWeek = v), "maxDaysPerWeek") },
       // Supervisions block intentionally lacks "Set for more" (matches
-      // EDUPAGE_FEATURE_MAP_WIZARD_6_8_R6.md §6.3 — supervisions excluded).
+      // legacy-research §6.3 — supervisions excluded).
       { label: "Supervisions: Min Count",
         control: plainInt(c.supervisionMinCount, v => c.supervisionMinCount = v) },
       { label: "Supervisions: Max Count",

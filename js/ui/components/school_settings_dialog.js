@@ -2,7 +2,7 @@
  *
  * Centralized place for school-wide settings: name, year, country/region,
  * days/week, periods/day, multi-term toggle, default time-zone, and the
- * 23 `globals.settings` fields documented in EDUPAGE_OPS_DEEP_DIVE_R2.md.
+ * 23 `globals.settings` fields documented in legacy-research
  *
  * Backs the "school" route in entity_router (replacing the previous stub).
  * Settings persist on `school.settings = {...}`.

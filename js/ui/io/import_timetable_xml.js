@@ -1,4 +1,4 @@
-/* Import wrapper around the existing js/xml/parse_asc_xml.js.
+/* Import wrapper around the existing js/xml/parse_timetable_xml.js.
  * Adds: source-text retention (so export can round-trip), demo loader,
  * and wires the "Open / Import / Demo" UI to APP.school.
  */
@@ -11,7 +11,7 @@
     if (!file) return null;
     const t0 = performance.now();
     const text = await file.text();
-    const school = window.parseAscXml.parseText(text, file.name || "asctt.xml");
+    const school = window.parseTimetableXml.parseText(text, file.name || "sample.xml");
     school._meta = school._meta || {};
     school._meta.sourceText = text;             // preserve for round-trip
     school._meta.sourceFilename = file.name;
@@ -20,10 +20,10 @@
   }
 
   async function loadFromText(text, fname) {
-    const school = window.parseAscXml.parseText(text, fname || "asctt.xml");
+    const school = window.parseTimetableXml.parseText(text, fname || "sample.xml");
     school._meta = school._meta || {};
     school._meta.sourceText = text;
-    school._meta.sourceFilename = fname || "asctt.xml";
+    school._meta.sourceFilename = fname || "sample.xml";
     return school;
   }
 
@@ -46,7 +46,7 @@
     notify(`Loaded · ${c.classes || 0} classes · ${c.teachers || 0} teachers · ${c.lessons || 0} lessons`);
   }
 
-  async function importAscXml() {
+  async function importTimetableXml() {
     const f = await pickFile();
     if (!f) return;
     try {
@@ -57,17 +57,17 @@
 
   async function openDemoFile() {
     try {
-      const r = await fetch("docs/demo_asctt2012.xml?v=" + (window.APP_VER || "dev"));
+      const r = await fetch("docs/demo_sample-school.xml?v=" + (window.APP_VER || "dev"));
       if (!r.ok) throw new Error("HTTP " + r.status);
       const text = await r.text();
-      const s = await loadFromText(text, "demo_asctt2012.xml");
+      const s = await loadFromText(text, "demo_sample-school.xml");
       await applySchool(s);
     } catch (e) { notify("Demo file failed: " + e.message, "error"); console.error(e); }
   }
 
   // Event wiring
-  window.addEventListener("app:import-asc-xml", importAscXml);
-  window.addEventListener("app:open-file",      importAscXml);
+  window.addEventListener("app:import-timetable-xml", importTimetableXml);
+  window.addEventListener("app:open-file",      importTimetableXml);
   window.addEventListener("app:open-demo",      openDemoFile);
   window.addEventListener("app:new",            () => {
     if (APP.school && !confirm("Discard current timetable and start fresh?")) return;
@@ -77,7 +77,7 @@
   });
 
   APP.io = APP.io || {};
-  APP.io.importAscXml = importAscXml;
+  APP.io.importTimetableXml = importTimetableXml;
   APP.io.loadFromFile = loadFromFile;
   APP.io.loadFromText = loadFromText;
   APP.io.openDemoFile = openDemoFile;

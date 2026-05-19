@@ -1,6 +1,6 @@
 /* Custom 1 / Custom 2 / Custom 3 — empty user-editable report slots.
  *
- * EduPage exposes 3 user-customizable slots in the print preview dropdown.
+ * Classic exposes 3 user-customizable slots in the print preview dropdown.
  * Each is empty by default; users compose via the cell-style editor +
  * a basic class×period skeleton.
  *

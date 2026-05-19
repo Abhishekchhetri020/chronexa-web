@@ -1,7 +1,7 @@
 /**
  * Step 5 — Room Grid. Rows = classrooms, cols = day×period.
  *
- * Most ASC class slots don't have a `classroomids` (home-room model — class
+ * Most CLASSIC class slots don't have a `classroomids` (home-room model — class
  * sits in its own room). To make this view useful we *also* show, when a
  * classroom is empty, the home-class that owns it via the `classes.classroomids`
  * back-reference (when populated). Otherwise the row stays sparse — that's
