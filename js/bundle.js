@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-19T08:54:59Z
+/* Chronexa bundle — generated 2026-05-19T09:00:10Z
  *      134 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -9081,7 +9081,11 @@ ${body}
     let buf = [];
     let cancelled = false;
 
-    const url = new URL("../../solver/worker.js", SELF_URL);
+    // Worker path is always relative to the page (not the bundle/script).
+    // Previously used `new URL("../../solver/worker.js", SELF_URL)` which
+    // works for per-file load (SELF_URL = backend_client.js) but breaks
+    // when bundled (SELF_URL = bundle.js → wrong resolution).
+    const url = "js/solver/worker.js?v=" + (window.APP_VER || "");
     const worker = new Worker(url, { type: "module" });
 
     worker.onmessage = (ev) => {
