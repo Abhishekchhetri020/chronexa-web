@@ -12,7 +12,7 @@ MAN="js/bundle.manifest.txt"
 
 # Extract entries via grep + sed (portable, no bash 4 mapfile, no awk regex).
 TMP=$(mktemp)
-grep -oE '\["[a-z]+","[a-z_/]+"\]' index.html > "$TMP"
+grep -oE '\["[a-z]+","[a-z0-9_/]+"\]' index.html > "$TMP"
 
 echo "/* Chronexa bundle — generated $(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$OUT"
 echo " * $(wc -l < "$TMP") modules concatenated in document order." >> "$OUT"
