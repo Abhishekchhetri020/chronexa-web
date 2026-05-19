@@ -37,7 +37,7 @@
 
     // Options menu (currently stubbed — these aren't entity-shaped)
     "settings":             () => openStub("Settings", "App settings live under the View menu (Theme, Density, Zoom)."),
-    "constraints":          () => openStub("Constraints library", "Coming in P1 — full editor for the 15 decoded n_* constraint types lives in the Relations dialog (try Edit → Relations…)."),
+    "constraints":          () => window.ConstraintsLibrary && window.ConstraintsLibrary.open(),
     "preferences":          () => openStub("Account preferences", "No account needed — Chronexa is local-first."),
     "display-settings":     () => openStub("Display settings", "Open the View menu for Density/Theme/Zoom toggles."),
     "print-defaults":       () => openStub("Print defaults", "Use Files → Print preview… to set defaults per-report."),
