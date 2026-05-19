@@ -72,17 +72,42 @@
     out.push("  </periods>");
     out.push('  <breaks options="canadd,export:silent" columns="break,name,short,starttime,endtime"/>');
 
-    // Daysdefs: emit the 6 standard plus 'Any day'
+    // Daysdefs: prefer user-defined patterns (school.daysDefs), else emit 6 standard + 'Any day'.
     out.push('  <daysdefs options="canadd,export:silent" columns="id,days,name,short">');
-    const DAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
-    DAYS.forEach((d, i) => {
-      const bits = new Array(DAY_BITS).fill("0"); bits[i] = "1";
-      out.push(`    <daysdef id="DAY_${i}" name="${d}" short="${d.slice(0,2)}" days="${bits.join("")}"/>`);
-    });
-    out.push(`    <daysdef id="DAY_ANY" name="Any day" short="X" days="100000,010000,001000,000100,000010,000001"/>`);
+    const userDaysDefs = (school.daysDefs && school.daysDefs.length) ? school.daysDefs : null;
+    if (userDaysDefs) {
+      for (const d of userDaysDefs) {
+        out.push(`    <daysdef id="${xmlEscape(d.id)}" name="${xmlEscape(d.name || d.id)}" short="${xmlEscape(d.short || "")}" days="${xmlEscape(d.bits || "111111")}"/>`);
+      }
+    } else {
+      const DAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+      DAYS.forEach((d, i) => {
+        const bits = new Array(DAY_BITS).fill("0"); bits[i] = "1";
+        out.push(`    <daysdef id="DAY_${i}" name="${d}" short="${d.slice(0,2)}" days="${bits.join("")}"/>`);
+      });
+      out.push(`    <daysdef id="DAY_ANY" name="Any day" short="X" days="100000,010000,001000,000100,000010,000001"/>`);
+    }
     out.push("  </daysdefs>");
-    out.push('  <weeksdefs options="canadd,export:silent" columns="id,weeks,name,short"><weeksdef id="WEEK_ALL" name="All weeks" short="All" weeks="1"/></weeksdefs>');
-    out.push('  <termsdefs options="canadd,export:silent" columns="id,terms,name,short"><termsdef id="TERM_YR" name="Whole year" short="YR" terms="1"/></termsdefs>');
+
+    const userWeeksDefs = (school.weeksDefs && school.weeksDefs.length) ? school.weeksDefs : null;
+    out.push('  <weeksdefs options="canadd,export:silent" columns="id,weeks,name,short">');
+    if (userWeeksDefs) {
+      for (const w of userWeeksDefs)
+        out.push(`    <weeksdef id="${xmlEscape(w.id)}" name="${xmlEscape(w.name || "")}" short="${xmlEscape(w.short || "")}" weeks="${xmlEscape(w.bits || "1")}"/>`);
+    } else {
+      out.push('    <weeksdef id="WEEK_ALL" name="All weeks" short="All" weeks="1"/>');
+    }
+    out.push("  </weeksdefs>");
+
+    const userTermsDefs = (school.termsDefs && school.termsDefs.length) ? school.termsDefs : null;
+    out.push('  <termsdefs options="canadd,export:silent" columns="id,terms,name,short">');
+    if (userTermsDefs) {
+      for (const t of userTermsDefs)
+        out.push(`    <termsdef id="${xmlEscape(t.id)}" name="${xmlEscape(t.name || "")}" short="${xmlEscape(t.short || "")}" terms="${xmlEscape(t.bits || "1")}"/>`);
+    } else {
+      out.push('    <termsdef id="TERM_YR" name="Whole year" short="YR" terms="1"/>');
+    }
+    out.push("  </termsdefs>");
 
     // Subjects
     out.push('  <subjects options="canadd,export:silent" columns="id,name,short,partner_id">');
@@ -116,7 +141,10 @@
       const tch = (l.teacherIds || []).join(",");
       const rooms = l.preferredRoomId || "";
       const ppc = l.isLabDouble ? 2 : 1;
-      out.push(`    <lesson id="${xmlEscape(l.id)}" classids="${cls}" subjectid="${xmlEscape(l.subjectId || "")}" periodspercard="${ppc}" periodsperweek="${l.periodsPerWeek || 0}" teacherids="${tch}" classroomids="${rooms}" groupids="" seminargroup="" termsdefid="TERM_YR" weeksdefid="WEEK_ALL" daysdefid="DAY_ANY" capacity="*" partner_id=""/>`);
+      const daysDefId = l.daysDefId || "DAY_ANY";
+      const weeksDefId = l.weeksDefId || "WEEK_ALL";
+      const termsDefId = l.termsDefId || "TERM_YR";
+      out.push(`    <lesson id="${xmlEscape(l.id)}" classids="${cls}" subjectid="${xmlEscape(l.subjectId || "")}" periodspercard="${ppc}" periodsperweek="${l.periodsPerWeek || 0}" teacherids="${tch}" classroomids="${rooms}" groupids="" seminargroup="" termsdefid="${xmlEscape(termsDefId)}" weeksdefid="${xmlEscape(weeksDefId)}" daysdefid="${xmlEscape(daysDefId)}" capacity="*" partner_id=""/>`);
     }
     out.push("  </lessons>");
 
