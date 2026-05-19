@@ -1,0 +1,152 @@
+/* Per-day-of-week period bell override — the last 15% of School-tab parity.
+ *
+ * EduPage's per-period edit dialog has a "This period has different bells
+ * on some days" checkbox that exposes a 5-row matrix (Mon-Fri) of start/end
+ * overrides. Schools use this for: shorter Friday periods, longer Monday
+ * assemblies, half-day Saturday schedules.
+ *
+ * window.PerDayBellOverride.open(period, school?) — modal editor.
+ * Persists on `period.perDayOverrides = { 0: {startMin, endMin}, 4: {...} }`.
+ */
+(function (global) {
+  "use strict";
+
+  const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      const v = attrs[k]; if (v == null) continue;
+      if (k === "class") n.className = v;
+      else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v);
+    }
+    for (const c of kids) if (c != null && c !== false)
+      n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    return n;
+  }
+
+  function minToTime(min) {
+    if (min == null || isNaN(min)) return "";
+    const h = Math.floor(min / 60), m = min % 60;
+    return String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0");
+  }
+  function timeToMin(text) {
+    if (!text) return null;
+    const m = text.match(/^(\d{1,2}):(\d{2})$/);
+    if (!m) return null;
+    return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+  }
+
+  function open(period, school) {
+    school = school || global.APP?.school;
+    if (!period || !school) { (global._chrxNotify || console.log)("Period or school missing.", "error"); return; }
+    ensureStyles();
+
+    const daysPerWeek = (school.settings?.daysPerWeek) || (school.bell?.daysPerWeek) || 6;
+    period.perDayOverrides = period.perDayOverrides || {};
+
+    const root = el("div", { class: "chrx-pdo-root", onclick: e => { if (e.target === root) root.remove(); } });
+    const panel = el("div", { class: "chrx-pdo-panel" });
+
+    panel.appendChild(el("header", null,
+      el("h2", null, `🕒 Per-day overrides — ${period.label || ""}`),
+      el("button", { class: "chrx-pdo-close", "aria-label": "Close", onclick: () => root.remove() }, "×"),
+    ));
+    panel.appendChild(el("p", { class: "chrx-pdo-sub" },
+      `Default: ${minToTime(period.startMin)} – ${minToTime(period.endMin)}. Leave a row's fields blank to use the default; override per-day where needed (e.g. shorter Friday periods).`));
+
+    const tbl = el("table", { class: "chrx-pdo-table" });
+    const thead = el("thead", null,
+      el("tr", null,
+        el("th", null, "Day"),
+        el("th", null, "Start"),
+        el("th", null, "End"),
+        el("th", null, "Duration"),
+        el("th", null, "")));
+    tbl.appendChild(thead);
+    const tbody = el("tbody");
+    const inputs = {};
+    for (let d = 0; d < daysPerWeek; d++) {
+      const o = period.perDayOverrides[d] || {};
+      const start = el("input", { type: "text", placeholder: minToTime(period.startMin), value: minToTime(o.startMin), maxlength: "5" });
+      const end   = el("input", { type: "text", placeholder: minToTime(period.endMin),   value: minToTime(o.endMin),   maxlength: "5" });
+      const dur   = el("span", null, "");
+      inputs[d] = { start, end, dur };
+      function updateDur() {
+        const s = timeToMin(start.value) ?? period.startMin;
+        const e = timeToMin(end.value)   ?? period.endMin;
+        dur.textContent = `${Math.max(0, e - s)} min`;
+      }
+      start.oninput = updateDur; end.oninput = updateDur;
+      updateDur();
+      const clearBtn = el("button", { class: "chrx-pdo-clear", onclick: () => { start.value = ""; end.value = ""; updateDur(); } }, "Clear");
+      tbody.appendChild(el("tr", null,
+        el("td", null, DAY_NAMES[d] || ("Day " + (d + 1))),
+        el("td", null, start),
+        el("td", null, end),
+        el("td", null, dur),
+        el("td", null, clearBtn)));
+    }
+    tbl.appendChild(tbody);
+    panel.appendChild(tbl);
+
+    panel.appendChild(el("footer", null,
+      el("button", { class: "chrx-pdo-cancel", onclick: () => root.remove() }, "Cancel"),
+      el("button", { class: "chrx-pdo-save", onclick: () => {
+        const newOverrides = {};
+        for (let d = 0; d < daysPerWeek; d++) {
+          const s = timeToMin(inputs[d].start.value);
+          const e = timeToMin(inputs[d].end.value);
+          if (s != null || e != null) {
+            newOverrides[d] = {
+              startMin: s != null ? s : period.startMin,
+              endMin:   e != null ? e : period.endMin,
+            };
+          }
+        }
+        const before = { ...period.perDayOverrides };
+        period.perDayOverrides = newOverrides;
+        if (global.APP?.audit?.append) {
+          global.APP.audit.append({ entity: "bells", op: "per-day-override", period: period.label, before, after: newOverrides });
+        }
+        (global._chrxNotify || console.log)(`✓ Saved per-day overrides for ${period.label} (${Object.keys(newOverrides).length} days)`);
+        root.remove();
+      } }, "Save")));
+
+    root.appendChild(panel);
+    document.body.appendChild(root);
+  }
+
+  function ensureStyles() {
+    if (document.getElementById("chrx-pdo-styles")) return;
+    const s = document.createElement("style");
+    s.id = "chrx-pdo-styles";
+    s.textContent = `
+.chrx-pdo-root{position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:24px;z-index:1100}
+.chrx-pdo-panel{background:#fff;border-radius:14px;width:min(560px,95vw);padding:20px 24px;box-shadow:0 20px 60px rgba(0,0,0,.3);font-family:-apple-system,sans-serif}
+.chrx-pdo-panel header{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e2e8f0;padding-bottom:10px;margin-bottom:8px}
+.chrx-pdo-panel h2{margin:0;font-size:16px;color:#1e3a8a}
+.chrx-pdo-close{background:none;border:0;font-size:22px;cursor:pointer;color:#64748b}
+.chrx-pdo-sub{margin:0 0 14px;color:#64748b;font-size:13px;line-height:1.5}
+.chrx-pdo-table{width:100%;border-collapse:collapse;font-size:13px}
+.chrx-pdo-table th{background:#f8fafc;padding:6px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#475569;border-bottom:1px solid #e2e8f0}
+.chrx-pdo-table td{padding:6px 8px;border-bottom:1px solid #f1f5f9}
+.chrx-pdo-table input{width:80px;padding:4px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:12px;font-family:Menlo,Monaco,monospace}
+.chrx-pdo-table input:focus{border-color:#4f46e5;outline:none}
+.chrx-pdo-clear{background:transparent;border:1px solid #cbd5e1;color:#64748b;padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer}
+.chrx-pdo-clear:hover{background:#f1f5f9}
+.chrx-pdo-panel footer{display:flex;justify-content:flex-end;gap:8px;margin-top:14px;padding-top:12px;border-top:1px solid #f1f5f9}
+.chrx-pdo-cancel{background:#fff;border:1px solid #cbd5e1;color:#0f172a;padding:6px 14px;border-radius:6px;cursor:pointer}
+.chrx-pdo-save{background:#4f46e5;color:#fff;border:0;padding:6px 16px;border-radius:6px;font-weight:600;cursor:pointer}
+    `;
+    document.head.appendChild(s);
+  }
+
+  window.addEventListener("app:per-day-bell-override", (e) => {
+    const detail = e.detail || {};
+    if (detail.period) open(detail.period, detail.school);
+  });
+
+  global.PerDayBellOverride = { open };
+})(window);
