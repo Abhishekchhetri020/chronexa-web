@@ -1,0 +1,226 @@
+/* Class constraints dialog — EduPage's 14-field classes.constraints subobject.
+ * window.ClassConstraintsDialog.open(classRow, onSave)
+ *
+ * Verbatim labels from EDUPAGE_FEATURE_MAP_WIZARD_2_5_R5.md §3b-constraints.
+ *
+ * Fields written to classRow.constraints (created if absent):
+ *   classTeacherPos      — 3-deep bitmap [[["001000000",...x6]]] (1 term × 1 week × 6 days × 9 periods)
+ *   maxQuestionMarked    — int_or_enum ("*" = any)
+ *   m_nManualnyBlok      — enum "0" | "1" | "2"
+ *   m_nMinBlokOd / Do    — int_or_enum
+ *   m_nMaxVyucOd / Do    — int_or_enum
+ *   m_bDruheHodiny       — bool
+ *   m_bKoncitNaraz       — bool
+ *   minperiodsday        — int_or_enum
+ *   maxperiodsday        — int_or_enum
+ *   lunch_periodfrom     — int_or_enum ("d" allowed = school default)
+ *   lunch_periodto       — int_or_enum ("d" allowed)
+ *   maxneedspreparation  — int_or_enum
+ */
+(function (global) {
+  "use strict";
+  const D = window.EntityDialog;
+  if (!D) return;
+  const { el } = D;
+
+  const CTPOS_DAYS    = 6;
+  const CTPOS_PERIODS = 9;
+
+  function defaultConstraints() {
+    return {
+      classTeacherPos: emptyCtposMatrix(),
+      maxQuestionMarked: "*",
+      m_nManualnyBlok: "0",
+      m_nMinBlokOd: "*",
+      m_nMinBlokDo: "*",
+      m_nMaxVyucOd: "*",
+      m_nMaxVyucDo: "*",
+      m_bDruheHodiny: false,
+      m_bKoncitNaraz: false,
+      minperiodsday: "*",
+      maxperiodsday: "*",
+      lunch_periodfrom: "d",
+      lunch_periodto: "d",
+      maxneedspreparation: "*",
+    };
+  }
+
+  function emptyCtposMatrix() {
+    // EduPage wire shape: [term][week][day] where day is a 9-char "0"/"1" string.
+    const day = "0".repeat(CTPOS_PERIODS);
+    const days = []; for (let d = 0; d < CTPOS_DAYS; d++) days.push(day);
+    return [[days]];
+  }
+
+  // Coerce arbitrary shape to a normalized 6×9 grid (matches CTPOS_DAYS × CTPOS_PERIODS).
+  // Returns a flat boolean[6][9] for UI editing.
+  function ctposToGrid(wire) {
+    const grid = [];
+    for (let d = 0; d < CTPOS_DAYS; d++) {
+      const row = [];
+      for (let p = 0; p < CTPOS_PERIODS; p++) row.push(false);
+      grid.push(row);
+    }
+    if (!Array.isArray(wire) || !wire[0] || !Array.isArray(wire[0][0])) return grid;
+    const days = wire[0][0];
+    for (let d = 0; d < CTPOS_DAYS; d++) {
+      const s = days[d];
+      if (typeof s !== "string") continue;
+      for (let p = 0; p < CTPOS_PERIODS && p < s.length; p++) {
+        if (s[p] === "1") grid[d][p] = true;
+      }
+    }
+    return grid;
+  }
+  function gridToCtpos(grid) {
+    const out = grid.map(row =>
+      row.slice(0, CTPOS_PERIODS).map(b => b ? "1" : "0").join("")
+         .padEnd(CTPOS_PERIODS, "0"));
+    return [[out]];
+  }
+
+  // --- shared int_or_enum helper ---------------------------------------------
+  function intOrEnum(value, onChange, opts) {
+    opts = opts || {};
+    const wrap = el("div", { class: "chrx-ent-ioe" });
+    const isInt = typeof value === "number" || (value != null && /^-?\d+$/.test(String(value)));
+    const input = el("input", {
+      type: "number",
+      min: opts.min != null ? String(opts.min) : "0",
+      max: opts.max != null ? String(opts.max) : null,
+      value: isInt ? String(value) : "",
+      oninput: (e) => {
+        const v = e.target.value.trim();
+        if (v === "") return; // sentinel buttons drive the sentinel state
+        const n = parseInt(v, 10);
+        if (!isNaN(n)) onChange(n);
+        unmarkSentinels();
+      },
+    });
+    function unmarkSentinels() {
+      wrap.querySelectorAll(".chrx-ent-ioe__sent.is-on")
+          .forEach(b => b.classList.remove("is-on"));
+    }
+    function setSentinel(token, btn) {
+      input.value = "";
+      onChange(token);
+      unmarkSentinels();
+      btn.classList.add("is-on");
+    }
+    const btnAny = el("button", {
+      type: "button",
+      class: "chrx-btn chrx-ent-ioe__sent" + (value === "*" ? " is-on" : ""),
+      title: "Unconstrained — any value",
+      onclick: (e) => setSentinel("*", e.currentTarget),
+    }, "Any");
+    wrap.appendChild(input);
+    wrap.appendChild(btnAny);
+    if (opts.allowDefault) {
+      const btnDef = el("button", {
+        type: "button",
+        class: "chrx-btn chrx-ent-ioe__sent" + (value === "d" ? " is-on" : ""),
+        title: "Use school default",
+        onclick: (e) => setSentinel("d", e.currentTarget),
+      }, "Default");
+      wrap.appendChild(btnDef);
+    }
+    return wrap;
+  }
+
+  function buildCtposGrid(grid) {
+    const wrap = el("div", { class: "chrx-ent-ctpos" });
+    wrap.style.gridTemplateColumns = `48px repeat(${CTPOS_PERIODS}, 1fr)`;
+    wrap.appendChild(el("div", { class: "chrx-ent-tomatrix__corner" }));
+    for (let p = 0; p < CTPOS_PERIODS; p++) {
+      wrap.appendChild(el("div", { class: "chrx-ent-tomatrix__h" }, `P${p + 1}`));
+    }
+    const days = (window.APP && window.APP.school && window.APP.school._idx && window.APP.school._idx.days)
+      || ["Mon","Tue","Wed","Thu","Fri","Sat"];
+    for (let d = 0; d < CTPOS_DAYS; d++) {
+      wrap.appendChild(el("div", { class: "chrx-ent-tomatrix__h" }, days[d] || `D${d + 1}`));
+      for (let p = 0; p < CTPOS_PERIODS; p++) {
+        const cell = el("button", {
+          type: "button",
+          class: "chrx-ent-ctpos__c" + (grid[d][p] ? " is-on" : ""),
+          "aria-pressed": grid[d][p] ? "true" : "false",
+          title: `${days[d] || "D"+(d+1)} P${p+1}`,
+          onclick: (e) => {
+            grid[d][p] = !grid[d][p];
+            e.currentTarget.classList.toggle("is-on", grid[d][p]);
+            e.currentTarget.setAttribute("aria-pressed", grid[d][p] ? "true" : "false");
+          },
+        });
+        wrap.appendChild(cell);
+      }
+    }
+    return wrap;
+  }
+
+  function open(classRow, onSave) {
+    if (!classRow) return;
+    const c = Object.assign(defaultConstraints(), classRow.constraints || {});
+    const ctposGrid = ctposToGrid(c.classTeacherPos || emptyCtposMatrix());
+
+    // ---- controls ----
+    const ctposBox = buildCtposGrid(ctposGrid);
+
+    const fMaxQ      = intOrEnum(c.maxQuestionMarked, v => c.maxQuestionMarked = v);
+    const fManual    = el("select", null,
+      el("option", { value: "0" }, "Disabled"),
+      el("option", { value: "1" }, "Manual"),
+      el("option", { value: "2" }, "Auto"),
+    );
+    fManual.value = c.m_nManualnyBlok != null ? String(c.m_nManualnyBlok) : "0";
+    fManual.addEventListener("change", e => c.m_nManualnyBlok = e.target.value);
+
+    const fMinFrom = intOrEnum(c.m_nMinBlokOd, v => c.m_nMinBlokOd = v);
+    const fMinTill = intOrEnum(c.m_nMinBlokDo, v => c.m_nMinBlokDo = v);
+    const fMaxFrom = intOrEnum(c.m_nMaxVyucOd, v => c.m_nMaxVyucOd = v);
+    const fMaxTill = intOrEnum(c.m_nMaxVyucDo, v => c.m_nMaxVyucDo = v);
+
+    const fDruhe = el("input", { type: "checkbox",
+      checked: c.m_bDruheHodiny ? "checked" : null,
+      onchange: e => c.m_bDruheHodiny = e.target.checked });
+    const fKoncit = el("input", { type: "checkbox",
+      checked: c.m_bKoncitNaraz ? "checked" : null,
+      onchange: e => c.m_bKoncitNaraz = e.target.checked });
+
+    const fMinDay = intOrEnum(c.minperiodsday, v => c.minperiodsday = v);
+    const fMaxDay = intOrEnum(c.maxperiodsday, v => c.maxperiodsday = v);
+
+    const fLunchFrom = intOrEnum(c.lunch_periodfrom, v => c.lunch_periodfrom = v, { allowDefault: true });
+    const fLunchTill = intOrEnum(c.lunch_periodto,   v => c.lunch_periodto   = v, { allowDefault: true });
+
+    const fPrep = intOrEnum(c.maxneedspreparation, v => c.maxneedspreparation = v);
+
+    const fields = [
+      { label: "Class teacher must teach this class in specific time every day", control: ctposBox },
+      { label: "Max. on the question marked", control: fMaxQ },
+      { label: "Education block", control: fManual },
+      { label: "Education block - min - from", control: fMinFrom },
+      { label: "Education block - min - till", control: fMinTill },
+      { label: "Education block - max - from", control: fMaxFrom },
+      { label: "Education block - max - till", control: fMaxTill },
+      { label: "Allow arrival on second lesson.", control: fDruhe },
+      { label: "The groups of students have to finish the day in the same time.", control: fKoncit },
+      { label: "Min periods per day", control: fMinDay },
+      { label: "Max periods per day", control: fMaxDay },
+      { label: "Lunch - from", control: fLunchFrom },
+      { label: "Lunch - till", control: fLunchTill },
+      { label: "Max. number of lessons per day requiring preparation", control: fPrep },
+    ];
+
+    D.buildEditSheet({
+      title: `Constraints — ${classRow.name || classRow.id}`,
+      fields,
+      onSave: () => {
+        c.classTeacherPos = gridToCtpos(ctposGrid);
+        // Final write happens here so caller controls audit + persistence.
+        D.closeSheet();
+        if (typeof onSave === "function") onSave(c);
+      },
+    });
+  }
+
+  global.ClassConstraintsDialog = { open };
+})(window);

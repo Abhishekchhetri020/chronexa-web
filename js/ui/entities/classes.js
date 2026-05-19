@@ -110,25 +110,23 @@
 
   function openConstraints(r) {
     const ref = r._ref;
-    const c = Object.assign({ minPerDay:"", maxPerDay:"", maxGaps:"" }, ref.constraints || {});
-    const f1 = D.el("input", { type:"number", min:"0", value:c.minPerDay,
-      oninput:(e)=> c.minPerDay = e.target.value });
-    const f2 = D.el("input", { type:"number", min:"0", value:c.maxPerDay,
-      oninput:(e)=> c.maxPerDay = e.target.value });
-    const f3 = D.el("input", { type:"number", min:"0", value:c.maxGaps,
-      oninput:(e)=> c.maxGaps = e.target.value });
-    D.buildEditSheet({
-      title:`Constraints — ${ref.name}`,
-      fields:[
-        { label:"Min periods per day", control:f1 },
-        { label:"Max periods per day", control:f2 },
-        { label:"Max gaps per day",    control:f3 },
-      ],
-      onSave:()=>{
-        const before = ref.constraints; ref.constraints = c;
-        window.APP.audit.append({ entity:"classes", op:"constraints", id:ref.id, before, after:c });
-        D.closeSheet(); D.refresh(rows());
-      },
+    if (!window.ClassConstraintsDialog) return;
+    window.ClassConstraintsDialog.open(ref, (next) => {
+      const before = ref.constraints;
+      ref.constraints = next;
+      window.APP.audit.append({ entity:"classes", op:"constraints", id:ref.id, before, after:next });
+      D.refresh(rows());
+    });
+  }
+
+  function openTimeOff(r) {
+    const ref = r._ref;
+    if (!window.TimeOffMatrix) return;
+    window.TimeOffMatrix.open(ref, "classes", (newTimeOff) => {
+      const before = ref.timeOff;
+      ref.timeOff = newTimeOff;
+      window.APP.audit.append({ entity:"classes", op:"timeoff", id:ref.id, before, after:newTimeOff });
+      D.refresh(rows());
     });
   }
 
@@ -203,8 +201,7 @@
           }
           return;
         }
-        if (cmd === "timeoff" && row)
-          return D.openTimeOffSheet(row._ref, "classes", () => D.refresh(rows()));
+        if (cmd === "timeoff" && row)     return openTimeOff(row);
         if (cmd === "constraints" && row) return openConstraints(row);
         if (cmd === "divisions" && row)   return openDivisions(row);
         if (cmd === "subjects" && row)    return openSubjectsOf(row);

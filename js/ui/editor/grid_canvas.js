@@ -32,6 +32,9 @@ window.Editor = (function () {
 
     wire(rootEl);
     syncCardInHandClass();
+    if (window.ConstraintExplainer && typeof window.ConstraintExplainer.attachTooltip === "function") {
+      window.ConstraintExplainer.attachTooltip(rootEl);
+    }
   }
 
   function buildCardLookup(S, perspective) {

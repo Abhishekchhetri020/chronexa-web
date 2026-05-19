@@ -299,13 +299,24 @@
   }
 
   function buildTimeOffMini(timeOff, days, periods) {
+    // Accepts two shapes:
+    //   1. 2D array timeOff[day][period] = 0|1|2 (current TimeOffMatrix output)
+    //   2. Legacy object map { "d_p": "available|preferred|unavailable" }
     const grid = el("div", { class:"chrx-ent-tomini" });
     grid.style.gridTemplateColumns = `repeat(${periods}, 1fr)`;
+    const is2D = Array.isArray(timeOff);
     for (let d = 0; d < days; d++) {
-      for (let p = 1; p <= periods; p++) {
-        const state = (timeOff && timeOff[`${d}_${p}`]) || "available";
-        grid.appendChild(el("span", { class:`chrx-ent-tomini__c is-${state}`,
-          title:`D${d+1} P${p}: ${state}` }));
+      for (let p = 0; p < periods; p++) {
+        let cls;
+        if (is2D) {
+          const v = (timeOff[d] && timeOff[d][p]) | 0;
+          cls = v === 1 ? "is-conditional" : v === 2 ? "is-blocked" : "is-available";
+        } else {
+          const state = (timeOff && timeOff[`${d}_${p + 1}`]) || "available";
+          cls = `is-${state}`;
+        }
+        grid.appendChild(el("span", { class:`chrx-ent-tomini__c ${cls}`,
+          title:`D${d+1} P${p+1}` }));
       }
     }
     return grid;

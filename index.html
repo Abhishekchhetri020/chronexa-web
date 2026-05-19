@@ -201,7 +201,7 @@
 
 <!-- ─────────────────────── SCRIPTS ─────────────────────── -->
 <!-- Bump APP_VER on every deploy so the browser refetches the JS bundle -->
-<script>window.APP_VER = "20260519-p0";</script>
+<script>window.APP_VER = "20260519-p1-w6";</script>
 <!-- Backend URL — leave empty to force "Run on this computer". Override at deploy time. -->
 <script>window.CHRONEXA_BACKEND_URL = window.CHRONEXA_BACKEND_URL || "";</script>
 <script>
@@ -216,6 +216,9 @@
     ["ui","room_grid"],
     ["ui","inspector"],
     ["ui","entities/dialog_shell"],
+    ["ui","components/time_off_matrix"],
+    ["ui","components/class_constraints_dialog"],
+    ["ui","components/teacher_constraints_dialog"],
     ["ui","entities/subjects"],
     ["ui","entities/classes"],
     ["ui","entities/classrooms"],
@@ -243,6 +246,7 @@
     ["ui","solver_ui/test_dialog"],
     // ─── Wizard + Editor activator ────────────────────────────
     ["ui","wizard/create_new"],
+    ["ui","wizard/wizard_walkthrough"],
     ["ui","editor/activator"],
     // ─── PWA install + service-worker registration ────────────
     ["ui","pwa_install"],
@@ -252,6 +256,8 @@
     // ─── Drag-drop UX (Agent J) ───────────────────────────────
     ["ui","editor/placement_validator"],
     ["ui","editor/card_in_hand"],
+    // ─── Constraint-explanation tooltip (P1-w4 moat feature) ──
+    ["ui","editor/constraint_explainer"],
     ["ui","main"],
     // ─── Ribbon (Agent H) ─────────────────────────────────────
     ["ui","ribbon/topbar"],
@@ -319,6 +325,9 @@
               showReport: cfg.showReport,
               onDone: function (result) {
                 if (!result) return;
+                // Stash for ConstraintExplainer tooltip (P1-w4): lesson-level
+                // violations let the tooltip flag unplaced-by-solver cards.
+                window.APP.lastSolverResult = result;
                 window.SolverUI.Result.open({
                   result: result,
                   school: window.APP.school,
@@ -343,6 +352,25 @@
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bind);
     else bind();
   })();
+</script>
+
+<!-- Expose solver-side checkPlacement to the main thread for the constraint
+     tooltip explainer. The constraints.js file is an ES module (imported by
+     the solver worker); this tiny shim is the only way to reach it from a
+     classic script. If the import fails, the explainer falls back to
+     window.Placement.classify. -->
+<script type="module">
+  try {
+    const mod = await import("./js/solver/constraints.js?v=" + window.APP_VER);
+    window.SolverConstraints = Object.assign(window.SolverConstraints || {}, {
+      checkPlacement: mod.checkPlacement,
+      FAIL_NAME: mod.FAIL_NAME,
+      HARD_CONSTRAINTS: mod.HARD_CONSTRAINTS,
+      SOFT_CONSTRAINTS: mod.SOFT_CONSTRAINTS,
+    });
+  } catch (e) {
+    console.warn("[constraint-explainer] SolverConstraints shim failed; falling back to Placement.classify", e);
+  }
 </script>
 
 </body>

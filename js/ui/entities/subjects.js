@@ -77,7 +77,14 @@
   }
 
   function openTimeOff(r) {
-    D.openTimeOffSheet(r._ref, "subjects", () => D.refresh(rows()));
+    const ref = r._ref;
+    if (!window.TimeOffMatrix) return;
+    window.TimeOffMatrix.open(ref, "subjects", (newTimeOff) => {
+      const before = ref.timeOff;
+      ref.timeOff = newTimeOff;
+      window.APP.audit.append({ entity:"subjects", op:"timeoff", id:ref.id, before, after:newTimeOff });
+      D.refresh(rows());
+    });
   }
 
   function openConstraints(r) {

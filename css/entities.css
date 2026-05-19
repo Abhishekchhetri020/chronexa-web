@@ -133,8 +133,11 @@
   grid-auto-rows: 1fr;
 }
 .chrx-ent-tomini__c { background: var(--chrx-green); }
-.chrx-ent-tomini__c.is-preferred  { background: var(--chrx-yellow); }
+.chrx-ent-tomini__c.is-available   { background: var(--chrx-green); }
+.chrx-ent-tomini__c.is-preferred   { background: var(--chrx-yellow); }
+.chrx-ent-tomini__c.is-conditional { background: var(--chrx-blue); }
 .chrx-ent-tomini__c.is-unavailable { background: var(--chrx-red); }
+.chrx-ent-tomini__c.is-blocked     { background: var(--chrx-red); }
 
 /* ---------- Sub-sheet (Edit / Time off / Constraints) ---------- */
 .chrx-ent-sheet-scrim {
@@ -239,8 +242,78 @@
   transition: filter var(--chrx-duration-fast) var(--chrx-ease);
 }
 .chrx-ent-tomatrix__c:hover { filter: brightness(1.1); }
-.chrx-ent-tomatrix__c.is-preferred  { background: var(--chrx-yellow); }
+.chrx-ent-tomatrix__c.is-available   { background: var(--chrx-green); }
+.chrx-ent-tomatrix__c.is-preferred   { background: var(--chrx-yellow); }
+.chrx-ent-tomatrix__c.is-conditional { background: var(--chrx-blue); }
 .chrx-ent-tomatrix__c.is-unavailable { background: var(--chrx-red); }
+.chrx-ent-tomatrix__c.is-blocked     { background: var(--chrx-red); }
+
+/* ---------- Time-off matrix decoration (tip, legend, quick actions) ---------- */
+.chrx-timeoff-body { display: flex; flex-direction: column; gap: 8px; }
+.chrx-ent-tomatrix__tip {
+  margin: 0; padding: 8px 10px;
+  background: var(--chrx-blue-bg);
+  border-left: 3px solid var(--chrx-blue);
+  border-radius: var(--chrx-radius-sm);
+  font-size: var(--chrx-font-small);
+  color: var(--chrx-fg-secondary);
+}
+.chrx-ent-tomatrix__actions { display: flex; gap: 8px; }
+.chrx-ent-tomatrix__legend {
+  display: flex; gap: 12px; flex-wrap: wrap;
+  font-size: var(--chrx-font-small);
+  color: var(--chrx-fg-secondary);
+  padding: 4px 0;
+}
+.chrx-ent-tomatrix__lg {
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.chrx-ent-tomatrix__lg::before {
+  content: ""; display: inline-block;
+  width: 12px; height: 12px;
+  border-radius: var(--chrx-radius-xs);
+}
+.chrx-ent-tomatrix__lg.is-available::before   { background: var(--chrx-green); }
+.chrx-ent-tomatrix__lg.is-conditional::before { background: var(--chrx-blue); }
+.chrx-ent-tomatrix__lg.is-blocked::before     { background: var(--chrx-red); }
+
+/* ---------- int_or_enum control (number + sentinel buttons) ---------- */
+.chrx-ent-ioe { display: flex; gap: 6px; align-items: center; }
+.chrx-ent-ioe input[type=number] {
+  flex: 1; min-width: 80px;
+}
+.chrx-ent-ioe__sent {
+  padding: 4px 10px;
+  font-size: var(--chrx-font-small);
+  white-space: nowrap;
+}
+.chrx-ent-ioe__sent.is-on {
+  background: var(--chrx-blue);
+  color: #fff;
+  border-color: var(--chrx-blue-border);
+}
+
+/* ---------- Class teacher position grid (6 × 9 toggles) ---------- */
+.chrx-ent-ctpos {
+  display: grid; gap: 2px;
+  padding: 4px;
+  background: var(--chrx-line);
+  border-radius: var(--chrx-radius-md);
+  margin: 4px 0;
+}
+.chrx-ent-ctpos__c {
+  background: var(--chrx-bg-tile-thin);
+  border: 1px solid var(--chrx-line);
+  height: 22px; min-width: 22px;
+  border-radius: var(--chrx-radius-xs);
+  cursor: pointer; padding: 0;
+  transition: background var(--chrx-duration-fast) var(--chrx-ease);
+}
+.chrx-ent-ctpos__c:hover { background: var(--chrx-bg-elev); }
+.chrx-ent-ctpos__c.is-on {
+  background: var(--chrx-blue);
+  border-color: var(--chrx-blue-border);
+}
 
 /* ---------- Relations dual-pattern matcher ---------- */
 .chrx-ent-rels {

@@ -119,31 +119,23 @@
 
   function openConstraints(r) {
     const ref = r._ref;
-    const c = Object.assign({
-      maxGapsPerWeek:"", maxDaysPerWeek:"", minPerDay:"", maxPerDay:"",
-      supervisionMinCount:"", supervisionMaxCount:"",
-    }, ref.constraints || {});
-    const fields = [
-      ["Max gaps per week",         "maxGapsPerWeek"],
-      ["Max days per week",         "maxDaysPerWeek"],
-      ["Min periods per day",       "minPerDay"],
-      ["Max periods per day",       "maxPerDay"],
-      ["Supervisions — min count",  "supervisionMinCount"],
-      ["Supervisions — max count",  "supervisionMaxCount"],
-    ];
-    const sheetFields = fields.map(([label, key]) => {
-      const input = D.el("input", { type:"number", min:"0", value:c[key],
-        oninput:(e)=> c[key] = e.target.value });
-      return { label, control: input };
+    if (!window.TeacherConstraintsDialog) return;
+    window.TeacherConstraintsDialog.open(ref, (next) => {
+      const before = ref.constraints;
+      ref.constraints = next;
+      window.APP.audit.append({ entity:"teachers", op:"constraints", id:ref.id, before, after:next });
+      D.refresh(rows());
     });
-    D.buildEditSheet({
-      title:`Constraints — ${ref.name}`,
-      fields: sheetFields,
-      onSave:()=>{
-        const before = ref.constraints; ref.constraints = c;
-        window.APP.audit.append({ entity:"teachers", op:"constraints", id:ref.id, before, after:c });
-        D.closeSheet(); D.refresh(rows());
-      },
+  }
+
+  function openTimeOff(r) {
+    const ref = r._ref;
+    if (!window.TimeOffMatrix) return;
+    window.TimeOffMatrix.open(ref, "teachers", (newTimeOff) => {
+      const before = ref.timeOff;
+      ref.timeOff = newTimeOff;
+      window.APP.audit.append({ entity:"teachers", op:"timeoff", id:ref.id, before, after:newTimeOff });
+      D.refresh(rows());
     });
   }
 
@@ -184,8 +176,7 @@
           }
           return;
         }
-        if (cmd === "timeoff" && row)
-          return D.openTimeOffSheet(row._ref, "teachers", () => D.refresh(rows()));
+        if (cmd === "timeoff" && row)     return openTimeOff(row);
         if (cmd === "constraints" && row) return openConstraints(row);
         if (cmd === "lessons" && row) return openLessonsOf(row);
       },

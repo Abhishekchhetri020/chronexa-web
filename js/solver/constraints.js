@@ -357,3 +357,184 @@ export const CKRIT_FUNCTIONS = Object.freeze({
   ckrit_resty: CKritResty,
   ckrit_vhodne_na_spojenie: CKritVhodneNaSpojenie,
 });
+
+// ---------------------------------------------------------------------------
+// checkPlacement — per-cell hard/soft violation checker for the editor.
+//
+// Used by js/ui/editor/constraint_explainer.js to produce the hover tooltip.
+// Pure function: takes the canonical SchoolData + a candidate (lessonId, day,
+// period, roomId) and returns { hard: string[], soft: string[] } — short
+// human-readable messages, one per broken rule.
+//
+// Mirrors the hard checks inside canPlace() (csp_solver.js) but operates on
+// the current S.cards array (the live editor state) instead of the internal
+// occupancy bitmasks. This is fine for editor sizes (≤ 2000 cards); avoids
+// the cost of maintaining a live solver state in the UI.
+// ---------------------------------------------------------------------------
+export function checkPlacement(school, lessonId, day, period, roomId) {
+  const result = { hard: [], soft: [] };
+  if (!school || !school._idx) return result;
+  const idx = school._idx;
+  const lesson = idx.lessonById[lessonId];
+  if (!lesson) {
+    result.hard.push("Unknown lesson");
+    return result;
+  }
+
+  const dayLabel = (d) => ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d] || `D${d}`;
+
+  // Lookups for labels.
+  const subj = idx.subjectById[lesson.subjectId];
+  const subjName = subj ? (subj.name || subj.abbr || lesson.subjectId) : lesson.subjectId;
+  const teacherNames = (lesson.teacherIds || [])
+    .map(tid => idx.teacherById[tid])
+    .map((t, i) => t ? (t.name || t.abbr) : (lesson.teacherIds || [])[i])
+    .filter(Boolean);
+  const teacherDisplay = teacherNames.length ? teacherNames.join(", ") : "Teacher";
+  const classNames = (lesson.classIds || [])
+    .map(cid => idx.classById[cid])
+    .map((c, i) => c ? c.name : (lesson.classIds || [])[i])
+    .filter(Boolean);
+  const myClasses = new Set(lesson.classIds || []);
+  const myTeachers = new Set(lesson.teacherIds || []);
+  const rid = roomId || lesson.preferredRoomId;
+  const room = rid ? idx.classroomById[rid] : null;
+
+  // 1. Fixed-day / fixed-period mismatch (hard).
+  if (lesson.fixedDay != null && lesson.fixedDay !== day) {
+    result.hard.push(`${subjName} is fixed to ${dayLabel(lesson.fixedDay)} (not ${dayLabel(day)})`);
+  }
+  if (lesson.fixedPeriod != null && lesson.fixedPeriod !== period) {
+    result.hard.push(`${subjName} is fixed to period ${lesson.fixedPeriod} (not P${period})`);
+  }
+
+  // 2. Period non-teaching? (soft — placement legal but unusual).
+  const periods = (school.bell && school.bell.periods) || [];
+  const periodObj = periods.find(p => p.index === period);
+  if (periodObj && periodObj.isTeaching === false) {
+    result.soft.push(`P${period} is a non-teaching slot (${periodObj.label || "break"})`);
+  }
+
+  // Build a per-slot view from S.cards, excluding this exact placement (so
+  // re-checking a card on its own slot doesn't flag itself).
+  const sameSlot = (school.cards || []).filter(c =>
+    c.day === day && c.period === period &&
+    !(c.lessonId === lessonId && c.classroomId === rid)
+  );
+
+  // 3. Teacher conflict + availability (hard) + preferred-off (soft).
+  for (const tid of (lesson.teacherIds || [])) {
+    const teacher = idx.teacherById[tid];
+    const tName = teacher ? (teacher.name || teacher.abbr) : tid;
+    for (const c of sameSlot) {
+      const other = idx.lessonById[c.lessonId];
+      if (!other) continue;
+      if ((other.teacherIds || []).includes(tid)) {
+        const otherSubj = idx.subjectById[other.subjectId];
+        const otherClasses = (other.classIds || [])
+          .map(cid => (idx.classById[cid] || {}).name).filter(Boolean).join(", ");
+        const otherSubjName = otherSubj ? (otherSubj.name || otherSubj.abbr) : other.subjectId;
+        result.hard.push(
+          `${tName} already teaches ${otherClasses || "another class"} → ${otherSubjName} in this period`
+        );
+      }
+    }
+    if (teacher && teacher.timeOff) {
+      const key = day + "_" + period;
+      const mark = teacher.timeOff[key];
+      if (mark === "unavailable") {
+        result.hard.push(`${tName} is marked unavailable ${dayLabel(day)} P${period}`);
+      } else if (mark === "preferred") {
+        result.soft.push(`${tName} prefers not to teach ${dayLabel(day)} P${period}`);
+      }
+    }
+  }
+
+  // 4. Class conflict (hard).
+  for (const c of sameSlot) {
+    const other = idx.lessonById[c.lessonId];
+    if (!other) continue;
+    for (const cid of (other.classIds || [])) {
+      if (myClasses.has(cid)) {
+        const cls = idx.classById[cid];
+        const otherSubj = idx.subjectById[other.subjectId];
+        const otherSubjName = otherSubj ? (otherSubj.name || otherSubj.abbr) : other.subjectId;
+        result.hard.push(
+          `Class ${cls ? cls.name : cid} already has ${otherSubjName} in this period`
+        );
+        break;
+      }
+    }
+  }
+
+  // 5. Room conflict + required-room-type (hard).
+  if (rid) {
+    for (const c of sameSlot) {
+      const otherRid = c.classroomId || (idx.lessonById[c.lessonId] || {}).preferredRoomId;
+      if (otherRid === rid) {
+        const other = idx.lessonById[c.lessonId];
+        const otherSubj = other ? idx.subjectById[other.subjectId] : null;
+        const otherSubjName = otherSubj ? (otherSubj.name || otherSubj.abbr) : (other ? other.subjectId : "another lesson");
+        result.hard.push(
+          `Room ${room ? room.name : rid} is full — already hosts ${otherSubjName} (max 1 lesson per slot)`
+        );
+        break;
+      }
+    }
+    if (lesson.requiredRoomType && room && room.roomType && room.roomType !== lesson.requiredRoomType) {
+      result.hard.push(
+        `${subjName} needs a "${lesson.requiredRoomType}" room (this one is "${room.roomType}")`
+      );
+    }
+  } else if (lesson.requiredRoomType) {
+    result.hard.push(`${subjName} needs a "${lesson.requiredRoomType}" room (none assigned)`);
+  }
+
+  // 6. Class-teacher last-period soft preference (CKritTriedny).
+  // If this class has a class-teacher and the slot is the last period, prefer
+  // the class-teacher in it. Inverse: if THIS lesson's teacher is not the
+  // class-teacher and we're placing them in last period, mention the
+  // preference. Cheaper to just flag absence when the slot IS last.
+  const teaching = periods.filter(p => p.isTeaching !== false);
+  const lastPeriod = teaching.length ? teaching[teaching.length - 1].index : null;
+  if (lastPeriod != null && period === lastPeriod) {
+    for (const cid of (lesson.classIds || [])) {
+      const cls = idx.classById[cid];
+      const ct = cls && (cls.classTeacherId || cls.teacherid || cls.classteacher);
+      if (!ct) continue;
+      if (!myTeachers.has(ct)) {
+        const ctObj = idx.teacherById[ct];
+        const ctName = ctObj ? (ctObj.name || ctObj.abbr) : ct;
+        result.soft.push(
+          `Class teacher of ${cls.name} (${ctName}) prefers last period`
+        );
+      }
+    }
+  }
+
+  // 7. Lab-double: needs period+1 also free (hard).
+  if (lesson.isLabDouble) {
+    const next = periods.find(p => p.index === period + 1);
+    if (!next || next.isTeaching === false) {
+      result.hard.push(`Lab-double lesson needs two consecutive teaching periods`);
+    } else {
+      const nextSlot = (school.cards || []).filter(c =>
+        c.day === day && c.period === period + 1 &&
+        !(c.lessonId === lessonId)
+      );
+      const labClassBusy = nextSlot.some(c =>
+        ((idx.lessonById[c.lessonId] || {}).classIds || []).some(cid => myClasses.has(cid)));
+      if (labClassBusy) result.hard.push(`Lab P+${period + 1}: class already busy`);
+      const labTeacherBusy = nextSlot.some(c =>
+        ((idx.lessonById[c.lessonId] || {}).teacherIds || []).some(tid => myTeachers.has(tid)));
+      if (labTeacherBusy) result.hard.push(`Lab P+${period + 1}: ${teacherDisplay} already busy`);
+      if (rid) {
+        const labRoomBusy = nextSlot.some(c =>
+          (c.classroomId || (idx.lessonById[c.lessonId] || {}).preferredRoomId) === rid);
+        if (labRoomBusy) result.hard.push(`Lab P+${period + 1}: room ${room ? room.name : rid} already busy`);
+      }
+    }
+  }
+
+  return result;
+}

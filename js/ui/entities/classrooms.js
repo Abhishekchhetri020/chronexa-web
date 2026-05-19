@@ -135,8 +135,16 @@
           }
           return;
         }
-        if (cmd === "timeoff" && row)
-          return D.openTimeOffSheet(row._ref, "classrooms", () => D.refresh(rows()));
+        if (cmd === "timeoff" && row) {
+          const ref = row._ref;
+          if (!window.TimeOffMatrix) return;
+          return window.TimeOffMatrix.open(ref, "classrooms", (newTimeOff) => {
+            const before = ref.timeOff;
+            ref.timeOff = newTimeOff;
+            window.APP.audit.append({ entity:"classrooms", op:"timeoff", id:ref.id, before, after:newTimeOff });
+            D.refresh(rows());
+          });
+        }
         if (cmd === "constraints" && row) return openConstraints(row);
       },
     });

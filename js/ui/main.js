@@ -157,6 +157,9 @@
     });
 
     // ─── CTA: Build New Timetable ────────────────────────────
+    // CreateNew.createBlank() fires `app:school-loaded`, which the editor
+    // activator listens for and auto-advances to step 6. We then layer the
+    // 5-step wizard walkthrough on top as a modal overlay.
     const buildBtn = document.getElementById("cta-build-new");
     if (buildBtn) {
       buildBtn.onclick = () => {
@@ -166,8 +169,13 @@
         if (window.CreateNew && window.CreateNew.createBlank) {
           window.CreateNew.createBlank();
           document.querySelectorAll(".needs-school").forEach(b => b.disabled = false);
-          // jump to editor
-          showStep(6);
+          // Activator auto-advances to step 6 on app:school-loaded; now
+          // open the onboarding wizard as a modal overlay on top of it.
+          if (window.WizardWalkthrough && window.WizardWalkthrough.start) {
+            window.WizardWalkthrough.start();
+          } else {
+            showStep(6);
+          }
         }
       };
     }
