@@ -45,7 +45,15 @@
   }
   function renderActiveStep() {
     switch (window.APP.step) {
-      case 2: SchoolInfo.render(document.getElementById("step-2-body")); break;
+      case 2:
+        // Prefer the multi-pane School Hub (its file docstring calls it
+        // "multi-pane page for step-2"); fall back to SchoolInfo if missing.
+        if (window.SchoolHub && window.SchoolHub.render) {
+          window.SchoolHub.render(document.getElementById("step-2-body"));
+        } else {
+          SchoolInfo.render(document.getElementById("step-2-body"));
+        }
+        break;
       case 3: ClassGrid.render(document.getElementById("step-3-body")); break;
       case 4: TeacherGrid.render(document.getElementById("step-4-body")); break;
       case 5: RoomGrid.render(document.getElementById("step-5-body")); break;
