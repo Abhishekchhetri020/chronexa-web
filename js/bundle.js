@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-19T17:41:12Z
+/* Chronexa bundle — generated 2026-05-19T18:00:13Z
  *      135 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -10047,8 +10047,18 @@ ${body}
     if (!state) return false;
     if (state.mode === "test") return false;
     if (state.applied || state.discarded) return false;
-    const a = state.result && state.result.assignment;
-    return Array.isArray(a) && a.length > 0;
+    const r = state.result;
+    if (!r) return false;
+    const a = r.assignment;
+    if (!Array.isArray(a) || a.length === 0) return false;
+    // Refuse to silently overwrite a working timetable with an inferior
+    // run. Only auto-apply on clean, complete solutions.
+    if (r.status === "TIMEOUT" || r.status === "INFEASIBLE") return false;
+    const hard = (r.stats && r.stats.hardConflicts) || 0;
+    if (hard > 0) return false;
+    const before = (state.school && state.school.cards && state.school.cards.length) || 0;
+    if (before > 0 && a.length < before) return false;
+    return true;
   }
   function doClose() {
     // Implicit-apply: if the solver produced placements and the user
@@ -10073,7 +10083,17 @@ ${body}
       snapshot: null,
     };
     const status = state.result.status || "DONE";
-    const totalLessons = (state.school && state.school.lessons) ? state.school.lessons.length : ((state.result.stats && state.result.stats.placed + state.result.stats.unplaced) || 0);
+    // Hero denominator should be total expected cards (lessons × periodsPerWeek),
+    // not lesson count — a single lesson can spawn many cards per week.
+    let expectedCards = 0;
+    if (state.school && state.school.lessons) {
+      for (const l of state.school.lessons) {
+        expectedCards += Math.max(1, (l.periodsPerWeek || 1));
+      }
+    }
+    const placedNum  = (state.result.stats && state.result.stats.placed)   || 0;
+    const unplacedNm = (state.result.stats && state.result.stats.unplaced) || 0;
+    const totalLessons = expectedCards || (placedNum + unplacedNm);
     refs.title.textContent = state.mode === "test" ? "Test finished" : "Generator finished";
     refs.status.textContent = `${status} · ${(state.result.stats && state.result.stats.durationMs) ? Math.round(state.result.stats.durationMs / 1000) + "s" : ""}`;
     refs.status.style.color = (status === "OPTIMAL" || status === "FEASIBLE") ? "var(--chrx-green)" : "var(--chrx-orange)";
