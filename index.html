@@ -201,7 +201,7 @@
 
 <!-- ─────────────────────── SCRIPTS ─────────────────────── -->
 <!-- Bump APP_VER on every deploy so the browser refetches the JS bundle -->
-<script>window.APP_VER = "20260519-p3-w9";</script>
+<script>window.APP_VER = "20260519-p4-w10";</script>
 <!-- Backend URL — leave empty to force "Run on this computer". Override at deploy time. -->
 <script>window.CHRONEXA_BACKEND_URL = window.CHRONEXA_BACKEND_URL || "";</script>
 <script>
@@ -297,6 +297,10 @@
     ["ui","substitution/classwise_output"],
     ["ui","substitution/teacherwise_output"],
     ["ui","substitution/print_memo"],
+    // ─── P4-w10: Focus mode + Command palette (Cmd+K) ─────────
+    // Must load after all ribbon/menus/* so APP.ribbon.menus is populated.
+    ["ui","editor/focus_mode"],
+    ["ui","components/command_palette"],
   ].map(([d, n]) => '<script src="js/' + d + '/' + n + '.js?v=' + window.APP_VER + '"><\/script>').join(""));
 </script>
 <script>

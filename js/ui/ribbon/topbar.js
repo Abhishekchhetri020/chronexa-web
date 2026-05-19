@@ -248,5 +248,8 @@
     mount, registerMenu, openMenu, closeMenu: closeAllMenus,
     setPerspective, getPerspective: () => _perspective,
     setZoom, getZoom: () => _zoom, notify,
+    // Read-only accessor for command palette / cross-module consumers.
+    // Returns the live menu definition list (each: { key, label, build() }).
+    menus: MENUS,
   };
 })();

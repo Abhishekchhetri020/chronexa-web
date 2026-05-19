@@ -1,0 +1,360 @@
+/**
+ * CommandPalette — Cmd+K (Ctrl+K) launcher.
+ *
+ * Port of Swift's CommandPaletteView. Aggregates commands from:
+ *  - Every ribbon menu (APP.ribbon.menus, each def.build() returns entries)
+ *  - Every entity dialog (Subjects/Teachers/Classes/Classrooms/Lessons/Relations…)
+ *  - Every loaded school's entities (teacher names → open Teachers list, etc.)
+ *
+ * Fuzzy match. Arrow up/down, Enter, Esc.
+ *
+ *   window.CommandPalette.open()
+ */
+(function () {
+  "use strict";
+
+  const STATE = {
+    overlay: null,
+    input: null,
+    listEl: null,
+    items: [],       // currently shown
+    cursor: 0,
+    boundKey: null,
+  };
+
+  const ENTITY_KINDS = [
+    { kind: "subjects",    label: "Subjects",    icon: "📚" },
+    { kind: "teachers",    label: "Teachers",    icon: "👨‍🏫" },
+    { kind: "classes",     label: "Classes",     icon: "👥" },
+    { kind: "classrooms",  label: "Classrooms",  icon: "🚪" },
+    { kind: "lessons",     label: "Lessons",     icon: "📝" },
+    { kind: "relations",   label: "Relations",   icon: "🔗" },
+    { kind: "divisions",   label: "Divisions",   icon: "✂️" },
+    { kind: "supervisions",label: "Supervisions",icon: "👁" },
+    { kind: "grades",      label: "Grades",      icon: "🎓" },
+    { kind: "bells",       label: "Bell times",  icon: "🔔" },
+    { kind: "days",        label: "Days",        icon: "📅" },
+    { kind: "weeks",       label: "Weeks",       icon: "🗓" },
+    { kind: "terms",       label: "Terms",       icon: "🍂" },
+    { kind: "buildings",   label: "Buildings",   icon: "🏛" },
+    { kind: "breaks",      label: "Breaks",      icon: "🍱" },
+    { kind: "coursegroups",label: "Course groups",icon:"📦" },
+    { kind: "ttreports",   label: "Reports",     icon: "📊" },
+    { kind: "ttviews",     label: "Views",       icon: "🔭" },
+  ];
+
+  /** Pull every menu item (recursively into submenus) into a flat command list. */
+  function collectMenuCommands() {
+    const out = [];
+    const ribbon = window.APP && window.APP.ribbon;
+    if (!ribbon || !Array.isArray(ribbon.menus)) return out;
+    for (const def of ribbon.menus) {
+      let entries = [];
+      try { entries = def.build() || []; }
+      catch (e) { continue; }
+      walkEntries(def.label, entries, out);
+    }
+    return out;
+  }
+  function walkEntries(menuLabel, entries, out) {
+    for (const e of entries) {
+      if (!e || e.sep || e.section) continue;
+      if (e.disabled) continue;
+      if (typeof e.run === "function") {
+        out.push({
+          group: menuLabel,
+          icon: e.icon || "•",
+          title: e.label,
+          subtitle: menuLabel + (e.hint ? "  " + e.hint : ""),
+          run: e.run,
+          weight: 1.0,
+        });
+      }
+      if (Array.isArray(e.sub)) walkEntries(menuLabel + " › " + e.label, e.sub, out);
+    }
+  }
+
+  /** "Open <entity>…" rows so users can jump to any dialog by name. */
+  function collectEntityDialogs() {
+    return ENTITY_KINDS.map(e => ({
+      group: "Open",
+      icon: e.icon,
+      title: "Open " + e.label + "…",
+      subtitle: "Entity dialog",
+      run: () => window.dispatchEvent(new CustomEvent("app:open-entity", { detail: { kind: e.kind } })),
+      weight: 0.9,
+    }));
+  }
+
+  /** Every named entity in the loaded school. Choosing one opens its dialog. */
+  function collectSchoolEntities() {
+    const out = [];
+    const S = window.APP && window.APP.school;
+    if (!S) return out;
+    const push = (group, icon, items, kind) => {
+      if (!items) return;
+      for (const it of items) {
+        const name = it.name || it.abbr || it.id || "";
+        if (!name) continue;
+        out.push({
+          group: group,
+          icon: icon,
+          title: name,
+          subtitle: group + (it.abbr && it.abbr !== name ? " · " + it.abbr : ""),
+          // Open the entity list dialog. (Entity files are frozen — list-level open.)
+          run: () => window.dispatchEvent(new CustomEvent("app:open-entity", { detail: { kind: kind } })),
+          // Bonus: also offer Focus mode for teacher/class/room/subject via shift+enter (future).
+          focus: kindToFocus(kind) ? { kind: kindToFocus(kind), entityId: it.id } : null,
+          weight: 1.1,
+        });
+      }
+    };
+    push("Teacher",   "👨‍🏫", S.teachers,    "teachers");
+    push("Class",     "👥",   S.classes,     "classes");
+    push("Classroom", "🚪",   S.classrooms,  "classrooms");
+    push("Subject",   "📚",   S.subjects,    "subjects");
+    return out;
+  }
+  function kindToFocus(kind) {
+    if (kind === "teachers")   return "teacher";
+    if (kind === "classes")    return "class";
+    if (kind === "classrooms") return "room";
+    if (kind === "subjects")   return "subject";
+    return null;
+  }
+
+  /** Built-in commands the palette adds itself. */
+  function collectBuiltins() {
+    return [
+      {
+        group: "Spotlight",
+        icon: "🔦",
+        title: "Focus mode…",
+        subtitle: "Dim everything except one entity",
+        run: () => window.FocusMode && window.FocusMode.openPicker(),
+        weight: 1.0,
+      },
+      {
+        group: "Spotlight",
+        icon: "⨯",
+        title: "Exit focus mode",
+        subtitle: "Restore full opacity",
+        run: () => window.FocusMode && window.FocusMode.exit(),
+        weight: 0.4,
+      },
+    ];
+  }
+
+  /** Aggregate everything once per open() call. */
+  function buildAll() {
+    return collectBuiltins()
+      .concat(collectMenuCommands())
+      .concat(collectEntityDialogs())
+      .concat(collectSchoolEntities());
+  }
+
+  /** Fuzzy subsequence match — returns 0 (no match) or a score. */
+  function fuzzyScore(query, text) {
+    if (!query) return 1;
+    const q = query.toLowerCase();
+    const t = (text || "").toLowerCase();
+    if (!t) return 0;
+    if (t === q) return 1000;
+    if (t.startsWith(q)) return 500 + (q.length / t.length) * 50;
+    const direct = t.indexOf(q);
+    if (direct !== -1) return 200 + (q.length / t.length) * 50 - direct * 0.3;
+    // subsequence
+    let qi = 0, last = -1, gaps = 0;
+    for (let i = 0; i < t.length && qi < q.length; i++) {
+      if (t[i] === q[qi]) {
+        if (last !== -1) gaps += i - last - 1;
+        last = i;
+        qi++;
+      }
+    }
+    if (qi !== q.length) return 0;
+    return 100 - gaps * 0.5;
+  }
+
+  function rank(all, query) {
+    if (!query) {
+      // No query — show a useful default set capped.
+      return all.slice(0, 60);
+    }
+    const scored = [];
+    for (const c of all) {
+      const haystack = c.title + " " + (c.subtitle || "") + " " + (c.group || "");
+      const s = fuzzyScore(query, haystack) * (c.weight || 1);
+      if (s > 0) scored.push([s, c]);
+    }
+    scored.sort((a, b) => b[0] - a[0]);
+    return scored.slice(0, 50).map(p => p[1]);
+  }
+
+  // ───── Render ─────
+  function open() {
+    if (STATE.overlay) return;   // already open
+    const all = buildAll();
+
+    const overlay = document.createElement("div");
+    overlay.className = "chrx-cmdp__overlay";
+    overlay.setAttribute("role", "dialog");
+    overlay.setAttribute("aria-modal", "true");
+    overlay.setAttribute("aria-label", "Command palette");
+
+    const sheet = document.createElement("div");
+    sheet.className = "chrx-cmdp__sheet";
+
+    const input = document.createElement("input");
+    input.className = "chrx-cmdp__input";
+    input.type = "search";
+    input.placeholder = "Type a command, entity, or menu item…";
+    input.autocomplete = "off";
+    input.spellcheck = false;
+
+    const list = document.createElement("div");
+    list.className = "chrx-cmdp__list";
+    list.setAttribute("role", "listbox");
+
+    const hint = document.createElement("div");
+    hint.className = "chrx-cmdp__hint";
+    hint.innerHTML =
+      '<span><kbd class="chrx-cmdp__kbd">↑↓</kbd> navigate</span>'
+      + '<span><kbd class="chrx-cmdp__kbd">↵</kbd> run</span>'
+      + '<span><kbd class="chrx-cmdp__kbd">esc</kbd> close</span>';
+
+    sheet.appendChild(input);
+    sheet.appendChild(list);
+    sheet.appendChild(hint);
+    overlay.appendChild(sheet);
+    document.body.appendChild(overlay);
+
+    STATE.overlay = overlay;
+    STATE.input = input;
+    STATE.listEl = list;
+    STATE.cursor = 0;
+
+    function refresh() {
+      STATE.items = rank(all, input.value.trim());
+      if (STATE.cursor >= STATE.items.length) STATE.cursor = 0;
+      paintList();
+    }
+    function paintList() {
+      list.innerHTML = "";
+      if (!STATE.items.length) {
+        const e = document.createElement("div");
+        e.className = "chrx-cmdp__empty";
+        e.textContent = "No matches.";
+        list.appendChild(e);
+        return;
+      }
+      STATE.items.forEach((it, i) => {
+        const row = document.createElement("div");
+        row.className = "chrx-cmdp__row" + (i === STATE.cursor ? " is-active" : "");
+        row.setAttribute("role", "option");
+        row.setAttribute("data-idx", String(i));
+        const icon = document.createElement("span");
+        icon.className = "chrx-cmdp__icon";
+        icon.textContent = it.icon || "•";
+        const main = document.createElement("div");
+        main.className = "chrx-cmdp__main";
+        const title = document.createElement("div");
+        title.className = "chrx-cmdp__title";
+        title.textContent = it.title;
+        const sub = document.createElement("div");
+        sub.className = "chrx-cmdp__sub";
+        sub.textContent = it.subtitle || "";
+        main.appendChild(title);
+        main.appendChild(sub);
+        const tag = document.createElement("span");
+        tag.className = "chrx-cmdp__tag";
+        tag.textContent = it.group || "";
+        row.appendChild(icon);
+        row.appendChild(main);
+        row.appendChild(tag);
+        row.addEventListener("mousemove", () => {
+          if (STATE.cursor !== i) { STATE.cursor = i; paintCursor(); }
+        });
+        row.addEventListener("click", () => { STATE.cursor = i; execute(); });
+        list.appendChild(row);
+      });
+    }
+    function paintCursor() {
+      const rows = list.querySelectorAll(".chrx-cmdp__row");
+      rows.forEach((r, i) => r.classList.toggle("is-active", i === STATE.cursor));
+      const active = rows[STATE.cursor];
+      if (active && active.scrollIntoView) active.scrollIntoView({ block: "nearest" });
+    }
+    function execute() {
+      const it = STATE.items[STATE.cursor];
+      if (!it || typeof it.run !== "function") return;
+      // Close first so the dialog/sheet opened by run() lands on a clean stack.
+      close();
+      try { it.run(); }
+      catch (e) {
+        if (window._chrxNotify) window._chrxNotify("Command failed: " + (e && e.message || String(e)), "error");
+        else console.error("[command-palette]", e);
+      }
+    }
+
+    overlay.addEventListener("click", (ev) => {
+      if (ev.target === overlay) close();
+    });
+    input.addEventListener("input", refresh);
+    input.addEventListener("keydown", (ev) => {
+      if (ev.key === "ArrowDown") {
+        ev.preventDefault();
+        if (!STATE.items.length) return;
+        STATE.cursor = (STATE.cursor + 1) % STATE.items.length;
+        paintCursor();
+      } else if (ev.key === "ArrowUp") {
+        ev.preventDefault();
+        if (!STATE.items.length) return;
+        STATE.cursor = (STATE.cursor - 1 + STATE.items.length) % STATE.items.length;
+        paintCursor();
+      } else if (ev.key === "Enter") {
+        ev.preventDefault();
+        execute();
+      } else if (ev.key === "Escape") {
+        ev.preventDefault();
+        close();
+      }
+    });
+
+    refresh();
+    setTimeout(() => input.focus(), 30);
+  }
+
+  function close() {
+    if (!STATE.overlay) return;
+    if (STATE.overlay.parentNode) STATE.overlay.parentNode.removeChild(STATE.overlay);
+    STATE.overlay = null;
+    STATE.input = null;
+    STATE.listEl = null;
+    STATE.items = [];
+    STATE.cursor = 0;
+  }
+
+  // Global Cmd+K / Ctrl+K. Bound inside this module so we don't touch main.js.
+  function installShortcut() {
+    if (STATE.boundKey) return;
+    STATE.boundKey = function (ev) {
+      // Match k/K + meta/ctrl, ignore shift+cmd+k (browser).
+      const isK = ev.key === "k" || ev.key === "K";
+      if (!isK) return;
+      if (!(ev.metaKey || ev.ctrlKey)) return;
+      if (ev.shiftKey) return;
+      ev.preventDefault();
+      if (STATE.overlay) close();
+      else open();
+    };
+    document.addEventListener("keydown", STATE.boundKey, true);
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", installShortcut);
+  } else {
+    installShortcut();
+  }
+
+  window.CommandPalette = { open, close };
+})();

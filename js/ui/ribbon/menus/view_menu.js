@@ -47,6 +47,10 @@
         { section: "Theme" },
         { icon: tick(th==="light"), label: "Light", run: () => setTheme("light") },
         { icon: tick(th==="dark"),  label: "Dark",  run: () => setTheme("dark")  },
+        { sep: true },
+        { section: "Spotlight" },
+        { icon: "🔦", label: "Focus mode…",
+          run: () => { if (window.FocusMode) window.FocusMode.openPicker(); } },
       ];
     },
   });
