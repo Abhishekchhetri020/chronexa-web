@@ -14,7 +14,7 @@
  */
 
 const CACHE_PREFIX = "chronexa-";
-const APP_VER = "20260519-p14-hubwire";
+const APP_VER = "20260519-p15-startscreen";
 const CACHE_NAME = CACHE_PREFIX + APP_VER;
 
 // Minimal app shell — the rest is cached lazily on first fetch
@@ -24,7 +24,7 @@ const APP_SHELL = [
   "./manifest.json",
   "./css/style.css",
   "./css/chronexa-theme.css",
-  "./css/components.css",
+  "./css/components.css?v=20260519-p15-startscreen",
   "./css/editor.css",
   "./css/drag_ux.css",
   "./css/teacher_colors.css",

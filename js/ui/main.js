@@ -45,6 +45,9 @@
   }
   function renderActiveStep() {
     switch (window.APP.step) {
+      case 1:
+        if (window.StartScreen && window.StartScreen.render) window.StartScreen.render();
+        break;
       case 2:
         // Prefer the multi-pane School Hub (its file docstring calls it
         // "multi-pane page for step-2"); fall back to SchoolInfo if missing.
@@ -124,6 +127,16 @@
       const status = document.getElementById("xml-status");
       status.innerHTML = `<span class="text-slate-500">${escapeHtml(t("parsing"))}</span>`;
       try {
+        if (/\.har$/i.test(f.name || "")) {
+          if (!window.APP.school) throw new Error("Open or create a timetable before importing a HAR file.");
+          if (!window.APP.io || !window.APP.io.importCardRelationshipsHARFile) {
+            throw new Error("HAR importer is not ready yet.");
+          }
+          await window.APP.io.importCardRelationshipsHARFile(f);
+          status.innerHTML = `<span class="text-emerald-700 font-semibold">Imported HAR.</span>`;
+          input.value = "";
+          return;
+        }
         const t0 = performance.now();
         const school = await parseTimetableXml.parseFile(f);
         const dt = Math.round(performance.now() - t0);

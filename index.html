@@ -20,7 +20,7 @@
 <!-- Agent D owns css/style.css; we just reference it so it picks up when D ships -->
 <link rel="stylesheet" href="css/style.css">
 <link rel="stylesheet" href="css/chronexa-theme.css">
-<link rel="stylesheet" href="css/components.css">
+<link rel="stylesheet" href="css/components.css?v=20260519-p15-startscreen">
 <link rel="stylesheet" href="css/solver_ui.css">
 <link rel="stylesheet" href="css/ribbon.css">
 <link rel="stylesheet" href="css/entities.css">
@@ -108,38 +108,49 @@
 
   <!-- STEP 1 — Start (build new OR upload existing) -->
   <section id="step-1" class="step-panel">
-    <h2 class="text-xl sm:text-2xl font-bold mb-1 text-blue-900">Start your timetable</h2>
-    <p class="text-sm text-slate-600 mb-6">Build a fresh timetable from scratch, or open an existing one. Everything runs in your browser — no upload, no tracking.</p>
+    <div class="chrx-start">
+      <header class="chrx-start__hero">
+        <h2 class="chrx-start__wordmark">Chronexa</h2>
+        <p class="chrx-start__tagline">Plan timetables in your browser.</p>
+      </header>
 
-    <div class="grid md:grid-cols-2 gap-4 mb-6">
-      <!-- BUILD NEW TIMETABLE -->
-      <div class="bg-white border-2 border-emerald-500 rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow">
-        <div class="flex items-center gap-2 mb-3">
-          <span class="text-3xl">🪄</span>
-          <h3 class="text-lg font-bold text-emerald-700">Build a new timetable</h3>
-        </div>
-        <p class="text-sm text-slate-600 mb-4">Start with a blank canvas. Set up your school, add teachers, classes, classrooms, subjects, and lessons. Drag cards onto the grid or run the auto-generator.</p>
-        <button id="cta-build-new" class="w-full px-4 py-2.5 rounded-lg bg-emerald-600 text-white font-semibold hover:bg-emerald-700">
-          ✨ Create new timetable
+      <div class="chrx-start__actions" aria-label="Start actions">
+        <button id="cta-build-new" type="button" class="chrx-start-card chrx-start-card--new">
+          <span class="chrx-start-card__icon" aria-hidden="true">+</span>
+          <span class="chrx-start-card__copy">
+            <span class="chrx-start-card__title">New</span>
+            <span class="chrx-start-card__subtitle">Build fresh</span>
+          </span>
         </button>
-        <p class="text-xs text-slate-500 mt-3">After you finish, export as Timetable XML, Excel, or print.</p>
-      </div>
 
-      <!-- LOAD EXISTING -->
-      <div class="bg-white border-2 border-slate-300 rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow">
-        <div class="flex items-center gap-2 mb-3">
-          <span class="text-3xl">📂</span>
-          <h3 class="text-lg font-bold text-slate-700">Load an existing timetable</h3>
-        </div>
-        <p class="text-sm text-slate-600 mb-4">Already have an <code class="bg-slate-100 px-1 rounded">sample-school*.xml</code> from Classic or Classic? Drop it here to view, edit, and re-generate.</p>
-        <label class="block bg-slate-50 border-2 border-dashed border-slate-300 rounded-lg p-3 hover:border-blue-500 transition-colors cursor-pointer">
-          <input type="file" id="xml-file" accept=".xml" class="block w-full text-xs file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:bg-blue-700 file:text-white hover:file:bg-blue-800 cursor-pointer">
+        <label id="start-open-card" class="chrx-start-card chrx-start-card--open" tabindex="0">
+          <input type="file" id="xml-file" accept=".xml,.har" class="chrx-start-card__input">
+          <span class="chrx-start-card__icon" aria-hidden="true">↥</span>
+          <span class="chrx-start-card__copy">
+            <span class="chrx-start-card__title">Open file</span>
+            <span class="chrx-start-card__subtitle">XML or HAR</span>
+          </span>
         </label>
-        <p class="text-xs text-slate-500 mt-3">Demo file: <button id="cta-load-demo" class="text-blue-700 hover:underline font-semibold">try the bundled GD Goenka sample</button></p>
       </div>
-    </div>
 
-    <div id="xml-status" class="mt-4 text-sm"></div>
+      <section id="start-recent-section" class="chrx-start-recent hidden" aria-label="Recent timetables">
+        <div class="chrx-start-recent__head">
+          <h3>Recent</h3>
+          <span aria-hidden="true"></span>
+        </div>
+        <div id="start-recent-list" class="chrx-start-recent__list"></div>
+      </section>
+
+      <nav class="chrx-start-links" aria-label="Start links">
+        <button id="cta-load-demo" type="button">Demo</button>
+        <span aria-hidden="true">·</span>
+        <button id="start-sample-info" type="button">Sample school</button>
+        <span aria-hidden="true">·</span>
+        <a href="https://github.com/Abhishekchhetri020/chronexa-web/blob/main/README.md" target="_blank" rel="noopener">Docs</a>
+      </nav>
+
+      <div id="xml-status" class="chrx-start-status"></div>
+    </div>
   </section>
 
   <!-- STEP 6 — Editor (drag-drop main grid) -->
@@ -204,7 +215,7 @@
 
 <!-- ─────────────────────── SCRIPTS ─────────────────────── -->
 <!-- Bump APP_VER on every deploy so the browser refetches the JS bundle -->
-<script>window.APP_VER = "20260519-p14-hubwire";</script>
+<script>window.APP_VER = "20260519-p15-startscreen";</script>
 <!-- Backend URL — leave empty to force "Run on this computer". Override at deploy time. -->
 <script>window.CHRONEXA_BACKEND_URL = window.CHRONEXA_BACKEND_URL || "";</script>
 <!-- Bundle mode (default): single HTTP request for all 133 modules.
@@ -291,6 +302,7 @@
     ["ui","editor/card_in_hand"],
     // ─── Constraint-explanation tooltip (P1-w4 moat feature) ──
     ["ui","editor/constraint_explainer"],
+    ["ui","start_screen"],
     ["ui","main"],
     // ─── Onboarding (fresh-start UX) ──────────────────────────
     // Loaded after main.js so we can re-bind #cta-build-new to open the

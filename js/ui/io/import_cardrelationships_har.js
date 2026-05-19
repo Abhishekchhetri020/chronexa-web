@@ -137,4 +137,5 @@
   window.addEventListener("app:import-cardrelationships-har", trigger);
   APP.io = APP.io || {};
   APP.io.importCardRelationshipsHAR = trigger;
+  APP.io.importCardRelationshipsHARFile = importHAR;
 })();
