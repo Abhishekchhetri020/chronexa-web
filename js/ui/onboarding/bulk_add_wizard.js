@@ -23,14 +23,50 @@
     return n;
   }
 
+  // Detect if the pasted text is a TSV/CSV with a header row. If so, look
+  // for a "name"-like column and emit values from that. Otherwise fall back
+  // to the original newline-then-comma split. Returns up to 200 items.
   function parse(text) {
     if (!text) return [];
-    // Split by newline, fall back to comma-split if all on one line
-    let parts = text.split(/[\r\n]+/).map(s => s.trim()).filter(Boolean);
+    const lines = text.split(/[\r\n]+/).map(s => s.trim()).filter(Boolean);
+    if (!lines.length) return [];
+
+    // TSV/CSV detection: first line has multiple cells AND looks header-y
+    // (contains "name" / "teacher" / "subject" / "class" / "room").
+    const firstLine = lines[0];
+    const hasTab = firstLine.includes("\t");
+    const hasSemi = firstLine.includes(";");
+    const cellsInFirst = (hasTab ? firstLine.split("\t") :
+                          hasSemi ? firstLine.split(";") :
+                          firstLine.split(","));
+    const headerLooksReal = cellsInFirst.length >= 2 &&
+      /name|teacher|subject|class|room|abbr|short/i.test(firstLine);
+
+    if (lines.length > 1 && headerLooksReal) {
+      const sep = hasTab ? "\t" : (hasSemi ? ";" : ",");
+      const headers = cellsInFirst.map(h => h.replace(/^"|"$/g, "").trim().toLowerCase());
+      // Pick name column. Priority: "name", "teacher", "subject", "class",
+      // "room", "title". Else column 0.
+      const priorities = ["name", "fullname", "teacher", "subject", "class",
+                          "room", "classroom", "title"];
+      let nameCol = -1;
+      for (const p of priorities) {
+        const i = headers.indexOf(p);
+        if (i >= 0) { nameCol = i; break; }
+      }
+      if (nameCol < 0) nameCol = 0;
+      return lines.slice(1).map(l => {
+        const cells = l.split(sep).map(c => c.replace(/^"|"$/g, "").trim());
+        return (cells[nameCol] || "").trim();
+      }).filter(Boolean).slice(0, 200);
+    }
+
+    // No header → original behaviour: newline-split, fall back to commas.
+    let parts = lines;
     if (parts.length === 1 && parts[0].includes(",")) {
       parts = parts[0].split(/,\s*/).map(s => s.trim()).filter(Boolean);
     }
-    return parts.slice(0, 100);   // cap at 100 to avoid runaway
+    return parts.slice(0, 200);
   }
 
   function open(kind, school) {
@@ -55,7 +91,7 @@
       el("button", { class: "chrx-bulk-close", "aria-label": "Close", onclick: () => root.remove() }, "×")
     ));
     panel.appendChild(el("p", { class: "chrx-bulk-sub" },
-      `Paste a list of ${info.plural} — one per line, or comma-separated. We'll auto-create them with default colors. Edit individual entries later via the entity dialog.`));
+      `Paste a list of ${info.plural} — one per line, comma-separated, OR a full TSV/CSV with a header row (we'll auto-pick the "name" column). We'll auto-create them with default colors.`));
 
     const exampleByKind = {
       teachers: "Mr. Sharma\nMrs. Verma\nMs. Kapoor",

@@ -132,9 +132,14 @@
 
   function injectBulkLinkIntoSidebar(dialogEl, kind) {
     if (dialogEl.querySelector(".chrx-ent-bulk-link")) return;
-    const sidebar = dialogEl.querySelector(".chrx-ent-sidebar")
+    // The entity-dialog shell uses `.chrx-ent-aside` for the right rail
+    // (it's an <aside> element). Fall back to other plausible names in case
+    // the markup changes in the future.
+    const sidebar = dialogEl.querySelector(".chrx-ent-aside")
+                 || dialogEl.querySelector(".chrx-ent-sidebar")
                  || dialogEl.querySelector(".chrx-ent-side")
-                 || dialogEl.querySelector(".chrx-ent-side-buttons");
+                 || dialogEl.querySelector(".chrx-ent-side-buttons")
+                 || dialogEl.querySelector("aside");
     if (!sidebar) return;
     const link = document.createElement("button");
     link.type = "button";
