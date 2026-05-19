@@ -1,0 +1,143 @@
+/* Buildings CRUD dialog — window.EntityBuildings.open().
+ *
+ * Each building: { id, name, short, color, address?, floors?, notes? }.
+ * Buildings let schools split rooms across physical locations and the solver
+ * honours teacher-building-change penalties (max N buildings/day, transition
+ * time between buildings).
+ *
+ * Wire shape (EduPage): single column `color` per the cdef dump; we extend
+ * with locally-meaningful fields (name, short, address, floors, notes) since
+ * the wire format is permissive. Round-trip via XML preserves all fields.
+ */
+(function (global) {
+  "use strict";
+  const D = window.EntityDialog;
+  if (!D) return;
+
+  function rows() {
+    return ((window.APP.school && window.APP.school.buildings) || []).map(b => ({
+      id: b.id, name: b.name || "", short: b.short || "", color: b.color || "",
+      address: b.address || "", floors: b.floors || 1,
+      _ref: b,
+    }));
+  }
+
+  function columns() { return [
+    { key: "color", label: "", sortable: false,
+      render: (r) => D.el("span", { class: "chrx-ent-swatch-dot",
+        style: `background:${r.color || "transparent"}`, "aria-hidden": "true" }) },
+    { key: "name",   label: "Name" },
+    { key: "short",  label: "Short" },
+    { key: "floors", label: "Floors" },
+    { key: "address", label: "Address",
+      render: (r) => r.address ? r.address.slice(0, 40) : "—" },
+  ]; }
+
+  function openEdit(r) {
+    const isNew = !r;
+    const draft = isNew
+      ? { name: "", short: "", color: "", address: "", floors: 1, notes: "" }
+      : { name: r.name, short: r.short, color: r.color,
+          address: r._ref.address || "", floors: r._ref.floors || 1, notes: r._ref.notes || "" };
+
+    const fName = D.el("input", { type: "text", value: draft.name, required: "required",
+      maxlength: "80", oninput: (e) => draft.name = e.target.value });
+    const fShort = D.el("input", { type: "text", value: draft.short, maxlength: "10",
+      oninput: (e) => draft.short = e.target.value });
+    const fColor = D.buildSwatchPicker(draft.color, v => draft.color = v);
+    const fFloors = D.el("input", { type: "number", min: "1", max: "20", value: draft.floors,
+      oninput: (e) => draft.floors = parseInt(e.target.value, 10) || 1 });
+    const fAddress = D.el("input", { type: "text", value: draft.address, maxlength: "160",
+      placeholder: "Optional — for print headers / wayfinding",
+      oninput: (e) => draft.address = e.target.value });
+    const fNotes = D.el("textarea", { rows: "2", maxlength: "300",
+      placeholder: "Optional notes (printed in admin reports)",
+      oninput: (e) => draft.notes = e.target.value }, draft.notes || "");
+
+    D.buildEditSheet({
+      title: isNew ? "New building" : `Edit building — ${r.name}`,
+      fields: [
+        { label: "Name",        control: fName },
+        { label: "Abbreviation", control: fShort },
+        { label: "Color",       control: fColor },
+        { label: "Floors",      control: fFloors },
+        { label: "Address",     control: fAddress },
+        { label: "Notes",       control: fNotes },
+      ],
+      onSave: () => {
+        if (!draft.name.trim()) { fName.focus(); return; }
+        const all = (window.APP.school.buildings = window.APP.school.buildings || []);
+        if (!isNew) {
+          const ref = r._ref;
+          const before = { ...ref };
+          ref.name = draft.name.trim();
+          ref.short = draft.short.trim() || undefined;
+          ref.color = draft.color || undefined;
+          ref.floors = draft.floors;
+          ref.address = draft.address.trim() || undefined;
+          ref.notes = draft.notes.trim() || undefined;
+          window.APP.audit.append({ entity: "buildings", op: "update", before, after: { ...ref } });
+        } else {
+          const nb = { id: D.uid("b"), name: draft.name.trim(),
+            short: draft.short.trim() || undefined, color: draft.color || undefined,
+            floors: draft.floors,
+            address: draft.address.trim() || undefined,
+            notes: draft.notes.trim() || undefined };
+          if (all.some(x => x.name === nb.name)) { fName.focus(); return; }
+          all.push(nb);
+          if (window.APP.school._idx) {
+            window.APP.school._idx.buildingById = window.APP.school._idx.buildingById || {};
+            window.APP.school._idx.buildingById[nb.id] = nb;
+          }
+          window.APP.audit.append({ entity: "buildings", op: "add", after: { ...nb } });
+        }
+        D.closeSheet(); D.refresh(rows());
+      },
+    });
+  }
+
+  function openClassroomsOf(r) {
+    const ref = r._ref;
+    const rooms = ((window.APP.school && window.APP.school.classrooms) || [])
+      .filter(c => c.buildingId === ref.id || c.buildingid === ref.id);
+    const list = D.el("ul", { class: "chrx-ent-list" });
+    if (!rooms.length) list.appendChild(D.el("li", null, "No classrooms assigned to this building yet."));
+    rooms.forEach(c => list.appendChild(D.el("li", null,
+      `${c.name || "—"} (${c.short || ""}) · capacity ${c.capacity || "—"}`)));
+    D.openSheet(list, { title: `Classrooms in ${ref.name} (${rooms.length})` });
+  }
+
+  function open() {
+    D.open({
+      entity: "buildings", title: "Buildings",
+      columns: columns(), rows: rows(),
+      extras: [
+        { id: "rooms", label: "Classrooms" },
+      ],
+      onAction: (cmd, row) => {
+        if (cmd === "new") return openEdit(null);
+        if (cmd === "edit" && row) return openEdit(row);
+        if (cmd === "delete" && row) {
+          const all = window.APP.school.buildings || [];
+          const i = all.findIndex(x => x.id === row._ref.id);
+          if (i >= 0) {
+            const removed = all.splice(i, 1)[0];
+            // Unset buildingId on any classrooms that used this building
+            for (const c of (window.APP.school.classrooms || [])) {
+              if (c.buildingId === removed.id || c.buildingid === removed.id) {
+                c.buildingId = undefined;
+                c.buildingid = undefined;
+              }
+            }
+            window.APP.audit.append({ entity: "buildings", op: "remove", before: { ...removed } });
+            D.refresh(rows());
+          }
+          return;
+        }
+        if (cmd === "rooms" && row) return openClassroomsOf(row);
+      },
+    });
+  }
+
+  global.EntityBuildings = { open };
+})(window);
