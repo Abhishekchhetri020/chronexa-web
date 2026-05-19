@@ -1,22 +1,49 @@
 /* Weeks CRUD dialog. window.EntityWeeks.open()
- * Free-form week entity for A/B-week scheduling (Week A, Week B, exam-week …).
- * Lessons / supervisions can scope themselves to a week. Fields: name,
- * short, color. */
+ * Defines reusable week-pattern entries (Week A, Week B, exam-week, "All
+ * weeks") that lessons / supervisions can scope themselves to. Each pattern
+ * is a bitmask string — "1" for non-fortnightly schools, "10"/"01" for an
+ * A/B-week cycle, longer strings for term-long rotations. Mirrors ASC
+ * <weeksdef weeks="…"> wire shape. Fields: name, short, color, weeks. */
 (function (global) {
   "use strict";
   const D = window.EntityDialog;
   if (!D) return;
 
+  function seedDefaults(arr) {
+    arr.push({ id: D.uid("wk"), name: "All weeks", short: "All", weeks: "1" });
+  }
+
   function ensure() {
     const s = window.APP.school = window.APP.school || {};
-    if (!Array.isArray(s.weeks)) s.weeks = [];
+    if (!Array.isArray(s.weeks)) {
+      s.weeks = [];
+      seedDefaults(s.weeks);
+    } else if (s.weeks.length === 0) {
+      seedDefaults(s.weeks);
+    }
     return s.weeks;
+  }
+
+  function patternLabel(weeks) {
+    if (!weeks) return "";
+    const bits = String(weeks);
+    if (bits === "1") return "All weeks";
+    const on = []; const off = [];
+    for (let i = 0; i < bits.length; i++) {
+      if (bits[i] === "1") on.push("W" + (i + 1));
+      else off.push("W" + (i + 1));
+    }
+    if (!on.length) return "(none)";
+    if (!off.length) return "All " + bits.length;
+    return on.join("/");
   }
 
   function rows() {
     return ensure().map(w => ({
       id: w.id, name: w.name || "(unnamed)",
       short: w.short || "", color: w.color || "",
+      weeks: w.weeks || "",
+      pattern: patternLabel(w.weeks),
       _ref: w,
     }));
   }
@@ -25,37 +52,98 @@
     { key:"color", label:"", sortable:false,
       render:(r)=>D.el("span", { class:"chrx-ent-swatch-dot",
         style:`background:${r.color || "transparent"}`, "aria-hidden":"true" }) },
-    { key:"name",  label:"Name" },
-    { key:"short", label:"Short" },
+    { key:"name",    label:"Name" },
+    { key:"short",   label:"Short" },
+    { key:"pattern", label:"Weeks" },
   ]; }
+
+  function buildBitmaskEditor(initial, onChange) {
+    // The bitmask string has variable length (1 = single, 2 = A/B, etc).
+    // Render N checkboxes + an int input to change N.
+    let bits = String(initial || "1").split("");
+
+    const wrap = D.el("div", {
+      style:"display:flex;flex-direction:column;gap:6px" });
+    const row = D.el("div", {
+      style:"display:flex;flex-wrap:wrap;gap:6px;align-items:center" });
+    wrap.appendChild(row);
+
+    function fire() { onChange(bits.join("")); }
+
+    function render() {
+      row.innerHTML = "";
+      bits.forEach((b, i) => {
+        const cb = D.el("input", { type:"checkbox",
+          checked: b === "1" ? "checked" : null,
+          onchange:(e)=>{ bits[i] = e.target.checked ? "1" : "0"; fire(); },
+        });
+        row.appendChild(D.el("label", {
+          style:"display:inline-flex;gap:4px;align-items:center;cursor:pointer;padding:2px 6px;border:1px solid var(--chrx-border,#d1d5db);border-radius:6px" },
+          cb, D.el("span", null, "W" + (i + 1))));
+      });
+    }
+    render();
+
+    const countWrap = D.el("div", {
+      style:"display:flex;gap:6px;align-items:center;font-size:12px;opacity:.85" },
+      D.el("span", null, "# of weeks:"),
+      D.el("input", { type:"number", min:"1", max:"12", value:String(bits.length),
+        style:"width:64px",
+        oninput:(e)=>{
+          const n = Math.max(1, Math.min(12, parseInt(e.target.value, 10) || 1));
+          if (n === bits.length) return;
+          if (n > bits.length) {
+            while (bits.length < n) bits.push("1");
+          } else {
+            bits.length = n;
+          }
+          fire(); render();
+        } }));
+    wrap.appendChild(countWrap);
+
+    wrap.appendChild(D.el("p", {
+      class:"chrx-ent-help",
+      style:"margin:0;font-size:11px;opacity:.7" },
+      "1 = applies that week, 0 = skipped. Use 2 weeks for A/B-week schedules."));
+
+    return wrap;
+  }
 
   function openEdit(r) {
     const isNew = !r;
     const ref = r ? r._ref : null;
     const draft = isNew
-      ? { name:"", short:"", color:"" }
-      : { name:ref.name || "", short:ref.short || "", color:ref.color || "" };
+      ? { name:"", short:"", color:"", weeks:"1" }
+      : { name:ref.name || "", short:ref.short || "",
+          color:ref.color || "", weeks:ref.weeks || "1" };
 
     const fName = D.el("input", { type:"text", value:draft.name, required:"required",
       maxlength:"30", oninput:(e)=>draft.name = e.target.value });
     const fShort = D.el("input", { type:"text", value:draft.short, maxlength:"10",
       oninput:(e)=>draft.short = e.target.value });
     const fColor = D.buildSwatchPicker(draft.color, v => draft.color = v);
+    const fBits = buildBitmaskEditor(draft.weeks, v => draft.weeks = v);
 
     D.buildEditSheet({
       title: isNew ? "New week" : `Edit week — ${draft.name}`,
       fields:[
         { label:"Name",  control:fName },
         { label:"Short", control:fShort },
+        { label:"Weeks", control:fBits },
         { label:"Color", control:fColor },
       ],
       onSave:()=>{
         if (!draft.name.trim()) { fName.focus(); return; }
+        if (!/[1]/.test(draft.weeks)) {
+          fBits.querySelector("input[type=checkbox]")?.focus();
+          return;
+        }
         const all = ensure();
         const payload = {
           name: draft.name.trim(),
           short: draft.short.trim() || undefined,
           color: draft.color || undefined,
+          weeks: draft.weeks,
         };
         if (!isNew) {
           const before = { ...ref };
@@ -93,5 +181,11 @@
     });
   }
 
-  global.EntityWeeks = { open };
+  function defaultId() {
+    const all = ensure();
+    const allWk = all.find(w => w.weeks === "1") || all[0];
+    return allWk ? allWk.id : null;
+  }
+
+  global.EntityWeeks = { open, ensure, defaultId, patternLabel };
 })(window);

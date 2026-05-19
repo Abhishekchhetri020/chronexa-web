@@ -12,10 +12,10 @@
   const ROUTE = {
     // Specification menu
     "bells":     () => window.EntityBells     && window.EntityBells.open(),
-    "days":      () => openStub("Days definition", "Pick how many days per week + which days are used. Coming in the next sprint — for now edit via aSc XML or in the bell-time editor."),
+    "days":      () => window.EntityDays      && window.EntityDays.open(),
     "weeks":     () => window.EntityWeeks     && window.EntityWeeks.open(),
     "terms":     () => window.EntityTerms     && window.EntityTerms.open(),
-    "buildings": () => openStub("Buildings", "Buildings dialog is not built yet. For now create buildings via XML; the solver honours building-transfer constraints."),
+    "buildings": () => window.EntityBuildings && window.EntityBuildings.open(),
     "holidays":  () => openStub("Holidays", "Holidays dialog coming in P1. Today, mark `timeOff` cells in the bell schedule."),
     "school":    () => openStub("School settings", "School settings dialog coming in P1. Today, edit school name via the Step 2 'School Info' page."),
 
