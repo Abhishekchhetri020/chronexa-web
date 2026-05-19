@@ -164,13 +164,25 @@
     if (buildBtn) {
       buildBtn.onclick = () => {
         if (window.APP.school && (window.APP.school.teachers.length || window.APP.school.cards.length)) {
-          if (!confirm("A timetable is already loaded. Replace it with a blank one?")) return;
+          if (!confirm("A timetable is already loaded. Replace it with a new one?")) return;
         }
-        if (window.CreateNew && window.CreateNew.createBlank) {
+        // Friendly entry: show school template picker first. If the user picks
+        // "Blank" we fall through to createBlank(); otherwise SchoolTemplates
+        // seeds subjects/bell/classes/teachers/rooms for that school type.
+        if (window.SchoolTemplates && window.SchoolTemplates.showPicker) {
+          window.SchoolTemplates.showPicker((id /*, result */) => {
+            document.querySelectorAll(".needs-school").forEach(b => b.disabled = false);
+            // Wizard walkthrough overlay covers the seeded school
+            if (window.WizardWalkthrough && window.WizardWalkthrough.start) {
+              window.WizardWalkthrough.start();
+            } else {
+              showStep(6);
+            }
+          });
+        } else if (window.CreateNew && window.CreateNew.createBlank) {
+          // Fallback: no template picker loaded (shouldn't happen on live)
           window.CreateNew.createBlank();
           document.querySelectorAll(".needs-school").forEach(b => b.disabled = false);
-          // Activator auto-advances to step 6 on app:school-loaded; now
-          // open the onboarding wizard as a modal overlay on top of it.
           if (window.WizardWalkthrough && window.WizardWalkthrough.start) {
             window.WizardWalkthrough.start();
           } else {
