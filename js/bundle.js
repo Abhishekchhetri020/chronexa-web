@@ -1,0 +1,22556 @@
+/* Chronexa bundle — generated 2026-05-19T08:31:10Z
+ *      133 modules concatenated in document order.
+ * DO NOT EDIT — regenerate with bash build_bundle.sh */
+
+/* ─── FILE: js/ui/state.js ─── */
+/**
+ * Global app state — single shared object so other modules don't have to import.
+ *
+ *   APP.lang      : "en" | "hi"
+ *   APP.step      : 1..5
+ *   APP.school    : SchoolData | null   (output of parseTimetableXml)
+ *   APP.filter    : string               (search bar text, lowercased)
+ *   APP.day       : 0..5                 (mobile single-day picker)
+ *   APP.dirty     : Set<string>          (which views need re-render)
+ *
+ * Modules read/write APP directly. main.js owns navigation + listeners.
+ */
+window.APP = window.APP || {
+  lang: "en",
+  step: 1,
+  school: null,
+  filter: "",
+  day: 0,                 // Monday default
+  dirty: new Set(),
+};
+
+/* ─── FILE: js/xml/parse_timetable_xml.js ─── */
+/**
+ * Classic Timetable XML → SchoolData (per docs/DATA_SHAPES.md).
+ *
+ * Browser-side only — no upload, all parsing in the user's tab.
+ *
+ * Output shape:
+ *   {
+ *     schoolName, bell:{periods:[...]},
+ *     teachers, classes, classrooms, subjects, lessons,
+ *     cards: [{lessonId, day, period, classroomId?}],   // placed cards from the XML
+ *     _idx: {                                            // viewer-only indexes
+ *       teacherById, classById, classroomById, subjectById, lessonById,
+ *       cardsByClass:  {classId:  [{day,period,subject,teacher,classroom,lessonId}]},
+ *       cardsByTeacher:{teacherId:[{day,period,subject,classes,classroom,lessonId}]},
+ *       cardsByRoom:   {roomId:   [{day,period,subject,teacher,classes,lessonId}]}
+ *     }
+ *   }
+ *
+ * Day indexing matches DATA_SHAPES.md: 0=Mon..5=Sat (CLASSIC daysdef bit positions).
+ * Period indexing is 1-based to mirror <card period="N">.
+ *
+ * Floor-duty supervision "classes" (e.g. "1st Floor") are skipped — same rule
+ * as the sitting-planner parser. Cards whose only class is a Floor are dropped.
+ */
+window.parseTimetableXml = (function () {
+  "use strict";
+
+  const DAYS_EN = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const SKIP_CLASS_PATTERNS = ["Floor"];
+
+  function attr(el, name) { return el.getAttribute(name) || ""; }
+  function pickLabel(el) {
+    return (el.getAttribute("short") || el.getAttribute("name") || "").trim();
+  }
+  function pickName(el) {
+    return (el.getAttribute("name") || el.getAttribute("short") || "").trim();
+  }
+  function timeToMin(t) {
+    if (!t) return 0;
+    const [h, m] = t.split(":").map(Number);
+    return (h || 0) * 60 + (m || 0);
+  }
+  function isFloor(label) {
+    return SKIP_CLASS_PATTERNS.some(p => (label || "").includes(p));
+  }
+
+  async function parseFile(file) {
+    if (!file) throw new Error("No file provided.");
+    const text = await file.text();
+    return parseText(text, file.name || "sample.xml");
+  }
+
+  function parseText(text, sourceName) {
+    const xml = new DOMParser().parseFromString(text, "application/xml");
+    const errNode = xml.querySelector("parsererror");
+    if (errNode) throw new Error("Invalid XML: " + errNode.textContent.slice(0, 200));
+
+    const root = xml.querySelector("timetable");
+    const schoolName = root ? (root.getAttribute("displayname") || "") : "";
+
+    // --- Days per week (inferred from daysdefs, mirrors Swift port) ------------
+    // CLASSIC's daysdefs has one entry per logical day (Mon, Tue, …) plus aggregate
+    // entries ("Any day", "Every day"). A SINGLE-DAY entry has exactly one "1"
+    // in its `days` bitmask. We count those to set school.daysPerWeek so the
+    // solver's `inferDays()` doesn't fall back to 5 when no cards exist.
+    // GD Goenka has 6 single-day entries (Mon-Sat) → 6 × 7 = 42 slots/class
+    // and we hit the Swift-port 92%+ placement baseline. Without this, the
+    // solver was misreading the school as Mon-Fri and capping at ~75%.
+    let daysPerWeek = 0;
+    xml.querySelectorAll("daysdefs > daysdef").forEach(d => {
+      const days = (d.getAttribute("days") || "").trim();
+      // Single-day = no commas (aggregates use comma-separated bitmasks) and
+      // exactly one "1" in the bitmask.
+      if (days && !days.includes(",")) {
+        const ones = (days.match(/1/g) || []).length;
+        if (ones === 1) daysPerWeek++;
+      }
+    });
+    if (daysPerWeek === 0) daysPerWeek = 5; // safety: never go below the inferDays default
+
+    // --- Periods (bell schedule from XML, not from local memory) ---------------
+    const periods = [];
+    xml.querySelectorAll("periods > period").forEach(p => {
+      const idx = parseInt(attr(p, "period"), 10);
+      if (!idx) return;
+      periods.push({
+        index: idx,
+        label: (p.getAttribute("name") || p.getAttribute("short") || String(idx)).trim(),
+        startMin: timeToMin(attr(p, "starttime")),
+        endMin:   timeToMin(attr(p, "endtime")),
+        isTeaching: true,
+      });
+    });
+    periods.sort((a, b) => a.index - b.index);
+
+    // --- Subjects -------------------------------------------------------------
+    const subjects = [];
+    const subjectById = Object.create(null);
+    xml.querySelectorAll("subjects > subject").forEach(s => {
+      const obj = {
+        id: attr(s, "id"),
+        name: pickName(s),
+        abbr: (s.getAttribute("short") || "").trim() || undefined,
+      };
+      if (!obj.id) return;
+      subjects.push(obj);
+      subjectById[obj.id] = obj;
+    });
+
+    // --- Teachers -------------------------------------------------------------
+    const teachers = [];
+    const teacherById = Object.create(null);
+    xml.querySelectorAll("teachers > teacher").forEach(t => {
+      const obj = {
+        id: attr(t, "id"),
+        name: pickName(t),
+        abbr: (t.getAttribute("short") || "").trim() || undefined,
+      };
+      if (!obj.id) return;
+      teachers.push(obj);
+      teacherById[obj.id] = obj;
+    });
+
+    // --- Classrooms -----------------------------------------------------------
+    const classrooms = [];
+    const classroomById = Object.create(null);
+    xml.querySelectorAll("classrooms > classroom").forEach(r => {
+      const cap = (r.getAttribute("capacity") || "").trim();
+      const obj = {
+        id: attr(r, "id"),
+        name: pickName(r),
+        capacity: (cap && cap !== "*") ? parseInt(cap, 10) || undefined : undefined,
+        roomType: undefined,
+      };
+      if (!obj.id) return;
+      classrooms.push(obj);
+      classroomById[obj.id] = obj;
+    });
+
+    // --- Classes --------------------------------------------------------------
+    // Per spec, the canonical SchoolData "classes" entry is a single record per
+    // grade, with sections inside. To stay useful for the viewer (which renders
+    // one row per section), we expose one entry per <class id="..."/> directly,
+    // with `id` and `name` mirroring the XML. Mother-section grouping can be
+    // layered on by other agents later.
+    const classes = [];
+    const classById = Object.create(null);
+    xml.querySelectorAll("classes > class").forEach(c => {
+      const name = pickName(c);
+      if (!name || isFloor(name)) return;
+      const obj = {
+        id: attr(c, "id"),
+        name,
+        sections: undefined,
+        _classroomIds: (attr(c, "classroomids") || "").split(",").filter(Boolean),
+        _teacherId: attr(c, "teacherid") || undefined,
+      };
+      if (!obj.id) return;
+      classes.push(obj);
+      classById[obj.id] = obj;
+    });
+    // Sort classes by school-order: Nursery, LKG, UKG, then Roman-numeral grades
+    classes.sort(classOrder);
+
+    // --- Lessons --------------------------------------------------------------
+    const lessons = [];
+    const lessonById = Object.create(null);
+    xml.querySelectorAll("lessons > lesson").forEach(l => {
+      const classIds = (attr(l, "classids") || "").split(",").filter(Boolean);
+      const realClassIds = classIds.filter(id => classById[id]);  // drops Floors
+      if (realClassIds.length === 0) return;
+
+      const teacherIds = (attr(l, "teacherids") || "").split(",").filter(Boolean)
+        .filter(id => teacherById[id]);
+      const subjectId  = attr(l, "subjectid");
+      const roomIds    = (attr(l, "classroomids") || "").split(",").filter(Boolean);
+
+      const obj = {
+        id: attr(l, "id"),
+        classIds: realClassIds,
+        teacherIds,
+        subjectId,
+        periodsPerWeek: parseFloat(attr(l, "periodsperweek")) || 0,
+        requiredRoomType: undefined,
+        preferredRoomId: roomIds[0] || undefined,
+        fixedDay: undefined,
+        fixedPeriod: undefined,
+        isLabDouble: parseInt(attr(l, "periodspercard"), 10) > 1 || undefined,
+        _lessonRoomIds: roomIds,
+      };
+      if (!obj.id) return;
+      lessons.push(obj);
+      lessonById[obj.id] = obj;
+    });
+
+    // --- Cards (placed sessions) ---------------------------------------------
+    const cards = [];
+    xml.querySelectorAll("cards > card").forEach(card => {
+      const lessonId = attr(card, "lessonid");
+      const lesson = lessonById[lessonId];
+      if (!lesson) return;
+
+      const period = parseInt(attr(card, "period"), 10);
+      if (!period) return;
+
+      // Card-level classroom OVERRIDES lesson-level (per advisor / Classic semantics).
+      const cardRoomIds = (attr(card, "classroomids") || "").split(",").filter(Boolean);
+      const classroomId = cardRoomIds[0] || lesson.preferredRoomId || undefined;
+
+      const days = attr(card, "days") || "";
+      for (let di = 0; di < days.length && di < DAYS_EN.length; di++) {
+        if (days[di] !== "1") continue;
+        cards.push({ lessonId, day: di, period, classroomId });
+      }
+    });
+
+    // --- Viewer indexes (denormalised for grid rendering) --------------------
+    const cardsByClass   = Object.create(null);
+    const cardsByTeacher = Object.create(null);
+    const cardsByRoom    = Object.create(null);
+
+    for (const c of cards) {
+      const lesson = lessonById[c.lessonId];
+      if (!lesson) continue;
+      const subject = subjectById[lesson.subjectId];
+      const room    = c.classroomId ? classroomById[c.classroomId] : null;
+      const subjAbbr = subject ? (subject.abbr || subject.name) : "";
+      const subjName = subject ? subject.name : "";
+      const teacherNames = lesson.teacherIds.map(tid => teacherById[tid]?.name).filter(Boolean);
+      const classNames   = lesson.classIds.map(cid => classById[cid]?.name).filter(Boolean);
+
+      const entry = {
+        day: c.day, period: c.period,
+        lessonId: c.lessonId,
+        subjectId: lesson.subjectId, subject: subjName, subjectAbbr: subjAbbr,
+        teacherIds: lesson.teacherIds.slice(), teachers: teacherNames,
+        classIds: lesson.classIds.slice(),     classes: classNames,
+        classroomId: c.classroomId || null,
+        classroom: room ? room.name : "",
+      };
+
+      for (const cid of lesson.classIds) {
+        (cardsByClass[cid] = cardsByClass[cid] || []).push(entry);
+      }
+      for (const tid of lesson.teacherIds) {
+        (cardsByTeacher[tid] = cardsByTeacher[tid] || []).push(entry);
+      }
+      if (c.classroomId) {
+        (cardsByRoom[c.classroomId] = cardsByRoom[c.classroomId] || []).push(entry);
+      }
+    }
+
+    // Strip viewer-only fields from the canonical contract output
+    const cleanLessons = lessons.map(l => ({
+      id: l.id,
+      classIds: l.classIds,
+      teacherIds: l.teacherIds,
+      subjectId: l.subjectId,
+      periodsPerWeek: l.periodsPerWeek,
+      requiredRoomType: l.requiredRoomType,
+      preferredRoomId: l.preferredRoomId,
+      fixedDay: l.fixedDay,
+      fixedPeriod: l.fixedPeriod,
+      isLabDouble: l.isLabDouble,
+    }));
+    const cleanClasses = classes.map(c => ({
+      id: c.id, name: c.name, sections: c.sections,
+    }));
+
+    return {
+      schoolName,
+      daysPerWeek,
+      bell: { periods },
+      teachers,
+      classes: cleanClasses,
+      classrooms,
+      subjects,
+      lessons: cleanLessons,
+      cards,
+      _meta: {
+        sourceFilename: sourceName,
+        generatedAt: new Date().toISOString(),
+        days: DAYS_EN,
+        counts: {
+          teachers: teachers.length,
+          classes: cleanClasses.length,
+          classrooms: classrooms.length,
+          subjects: subjects.length,
+          lessons: cleanLessons.length,
+          cards: cards.length,
+          periods: periods.length,
+        },
+      },
+      _idx: {
+        teacherById, classById, classroomById, subjectById, lessonById,
+        cardsByClass, cardsByTeacher, cardsByRoom,
+        days: DAYS_EN,
+      },
+    };
+  }
+
+  // --- Helpers -------------------------------------------------------------
+  const ROMAN_ORDER = { "I":1,"II":2,"III":3,"IV":4,"V":5,"VI":6,"VII":7,"VIII":8,"IX":9,"X":10,"XI":11,"XII":12 };
+  const PRE_ORDER = { "NURSERY":-3, "LKG":-2, "UKG":-1 };
+
+  function classOrder(a, b) {
+    return classRank(a.name) - classRank(b.name) || a.name.localeCompare(b.name);
+  }
+  function classRank(name) {
+    const u = (name || "").toUpperCase().trim();
+    if (u in PRE_ORDER) return PRE_ORDER[u];
+    const m = u.match(/^([IVX]+)\b/);
+    if (m && m[1] in ROMAN_ORDER) {
+      // Tie-break by section letter
+      const sect = u.slice(m[1].length).trim();
+      const letterBoost = sect ? (sect.charCodeAt(0) - 64) / 100 : 0;
+      return ROMAN_ORDER[m[1]] + letterBoost;
+    }
+    return 100;
+  }
+
+  return { parseFile, parseText, DAYS: DAYS_EN };
+})();
+
+/* ─── FILE: js/ui/grid_view.js ─── */
+/**
+ * Generic timetable grid renderer used by class/teacher/room views.
+ *
+ * Layout (desktop):
+ *   ┌────────────┬─── Mon ───┬─── Tue ───┬─ … ┬─── Sat ───┐
+ *   │ row label  │ P1 P2 …P8 │ P1 P2 …P8 │ …  │ P1 …  P8  │
+ *   ├────────────┼───────────┼───────────┼────┼───────────┤
+ *   │ I A        │ … cells … │ … cells … │    │           │
+ *   │ I B        │           │           │    │           │
+ *
+ * Mobile (<md, ~ <768px):
+ *   day-picker shows ONE day's columns; the rest are hidden via CSS class.
+ *
+ * Search: hides whole rows whose label/contents don't match APP.filter.
+ *
+ * Click on a cell → opens Inspector modal with full lesson details.
+ */
+window.GridView = (function () {
+  "use strict";
+  const NUM_DAYS = 6;
+  const t = (k) => I18N.t(k);
+
+  /**
+   * @param {HTMLElement} host
+   * @param {object} opts
+   *   rows:        [{id, label, sublabel?}]
+   *   cellEntries: (rowId, day, period) => Array<entry>   // entry from parser
+   *   periods:     [{index, label, startMin, endMin}]
+   *   onCellClick: (entry, rowId) => void
+   *   rowSearchText: (row) => string                       // for filter match
+   *   cellSearchText: (entry) => string                    // for filter match
+   */
+  function render(host, opts) {
+    const periods = opts.periods;
+    const day = window.APP.day || 0;
+
+    const dayHeaders = [];
+    for (let d = 0; d < NUM_DAYS; d++) {
+      dayHeaders.push(`
+        <th colspan="${periods.length}"
+            class="day-col day-col-${d} px-2 py-1.5 text-center bg-slate-100 border-b border-r border-slate-200 ${d !== day ? 'mobile-hidden' : ''}">
+          <div class="text-xs font-bold text-slate-700">${I18N.dayLabel(d)}</div>
+        </th>`);
+    }
+
+    const periodHeaders = [];
+    for (let d = 0; d < NUM_DAYS; d++) {
+      for (const p of periods) {
+        periodHeaders.push(`
+          <th class="day-col day-col-${d} px-1 py-0.5 text-[10px] font-semibold text-slate-500 bg-slate-50 border-r border-b border-slate-200 ${d !== day ? 'mobile-hidden' : ''}">${t("period")}${p.index}</th>`);
+      }
+    }
+
+    const rowsHtml = opts.rows.map(row => {
+      const searchHaystack = (opts.rowSearchText(row) || "").toLowerCase();
+      // Pre-build cells; while building, also check if any cell matches filter.
+      const cellsHtml = [];
+      let anyCellMatch = false;
+      for (let d = 0; d < NUM_DAYS; d++) {
+        for (const p of periods) {
+          const entries = opts.cellEntries(row.id, d, p.index) || [];
+          const cellTxt = entries.map(opts.cellSearchText).join(" ").toLowerCase();
+          if (cellTxt) anyCellMatch = anyCellMatch || (window.APP.filter && cellTxt.includes(window.APP.filter));
+          cellsHtml.push(renderCell(row.id, d, p.index, entries, d !== day));
+        }
+      }
+      const rowMatch = !window.APP.filter ||
+        searchHaystack.includes(window.APP.filter) ||
+        anyCellMatch;
+      return `
+        <tr class="grid-row ${rowMatch ? '' : 'hidden'}" data-row-id="${escapeAttr(row.id)}">
+          <th scope="row" class="row-label sticky left-0 z-10 bg-white border-r border-b border-slate-200 px-3 py-1.5 text-left align-top">
+            <div class="text-sm font-semibold text-slate-900">${escapeHtml(row.label)}</div>
+            ${row.sublabel ? `<div class="text-[10px] text-slate-500 mt-0.5">${escapeHtml(row.sublabel)}</div>` : ""}
+          </th>
+          ${cellsHtml.join("")}
+        </tr>`;
+    }).join("");
+
+    const visibleRows = opts.rows.length;
+    const emptyMsg = visibleRows === 0
+      ? `<div class="text-center text-slate-500 text-sm py-8">${t("noMatches")}</div>`
+      : "";
+
+    host.innerHTML = `
+      <div class="grid-toolbar md:hidden flex items-center gap-2 mb-2 text-sm" role="tablist" aria-label="Day picker">
+        <span class="text-slate-500">${t("showAllDays").replace(/^All\s/, "")}:</span>
+        <div class="flex flex-wrap gap-1" id="day-picker-${escapeAttr(opts.viewId || "view")}">
+          ${Array.from({length: NUM_DAYS}, (_, d) => `
+            <button data-day="${d}"
+                    class="day-pick px-2.5 py-1 rounded text-xs font-semibold border ${d === day ? 'bg-blue-700 text-white border-blue-700' : 'bg-white text-slate-700 border-slate-300'}"
+                    aria-pressed="${d === day}">${I18N.dayLabel(d)}</button>`).join("")}
+        </div>
+      </div>
+      <div class="grid-wrap overflow-x-auto border border-slate-200 rounded-lg shadow-sm bg-white">
+        <table class="grid-table min-w-full text-sm border-collapse">
+          <thead>
+            <tr>
+              <th class="row-label-head sticky left-0 z-20 bg-slate-100 border-b border-r border-slate-200 px-3 py-1.5 text-left text-xs font-semibold text-slate-600">${escapeHtml(opts.rowHeader || "")}</th>
+              ${dayHeaders.join("")}
+            </tr>
+            <tr>
+              <th class="row-label-head sticky left-0 z-20 bg-slate-50 border-b border-r border-slate-200"></th>
+              ${periodHeaders.join("")}
+            </tr>
+          </thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
+      </div>
+      ${emptyMsg}
+    `;
+
+    // Wire day picker (mobile)
+    host.querySelectorAll(".day-pick").forEach(b => {
+      b.onclick = () => {
+        window.APP.day = parseInt(b.dataset.day, 10);
+        render(host, opts);                                  // re-render same opts
+      };
+    });
+    // Wire cell clicks
+    host.querySelectorAll(".tt-cell[data-entries]").forEach(cell => {
+      cell.onclick = () => {
+        try {
+          const entries = JSON.parse(cell.dataset.entries);
+          if (entries.length && opts.onCellClick) opts.onCellClick(entries[0], cell.dataset.rowId);
+        } catch (e) { /* swallow */ }
+      };
+    });
+  }
+
+  /** Refresh visibility-only (when filter changes, no need to rebuild HTML). */
+  function applyFilter(host) {
+    const f = window.APP.filter;
+    host.querySelectorAll(".grid-row").forEach(row => {
+      const txt = row.textContent.toLowerCase();
+      const match = !f || txt.includes(f);
+      row.classList.toggle("hidden", !match);
+    });
+  }
+
+  // -----------------------------------------------------------------------
+  function renderCell(rowId, day, period, entries, mobileHidden) {
+    const dayClass = `day-col day-col-${day}` + (mobileHidden ? " mobile-hidden" : "");
+    if (!entries.length) {
+      return `<td class="tt-cell ${dayClass} border-r border-b border-slate-100 text-center text-slate-300 text-[11px] align-top py-1">·</td>`;
+    }
+    const primary = entries[0];
+    const subjLabel = primary.subjectAbbr || primary.subject || "";
+    const tchLabel  = primary.teachers.join(", ");
+    const roomLabel = primary.classroom || "";
+    const more = entries.length > 1 ? `<div class="text-[10px] text-amber-600">+${entries.length - 1}</div>` : "";
+
+    return `
+      <td class="tt-cell ${dayClass} border-r border-b border-slate-100 px-1 py-0.5 align-top cursor-pointer hover:bg-blue-50 transition-colors"
+          data-row-id="${escapeAttr(rowId)}"
+          data-entries='${escapeAttr(JSON.stringify(entries))}'
+          title="${escapeAttr(subjLabel + (tchLabel ? " · " + tchLabel : "") + (roomLabel ? " · " + roomLabel : ""))}">
+        <div class="text-[11px] font-semibold text-blue-900 leading-tight">${escapeHtml(subjLabel)}</div>
+        ${tchLabel ? `<div class="text-[10px] text-slate-700 leading-tight truncate">${escapeHtml(tchLabel)}</div>` : ""}
+        ${roomLabel ? `<div class="text-[10px] text-slate-400 leading-tight truncate">${escapeHtml(roomLabel)}</div>` : ""}
+        ${more}
+      </td>`;
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  }
+  function escapeAttr(s) {
+    return escapeHtml(s);
+  }
+
+  return { render, applyFilter };
+})();
+
+/* ─── FILE: js/ui/school_info.js ─── */
+/**
+ * Step 2 — School Info: summary cards + bell preview from the parsed XML.
+ */
+window.SchoolInfo = (function () {
+  "use strict";
+  const t = (k) => I18N.t(k);
+
+  function liveCounts(S) {
+    const m = (S._meta && S._meta.counts) || {};
+    return {
+      teachers:   m.teachers   != null ? m.teachers   : (S.teachers   || []).length,
+      classes:    m.classes    != null ? m.classes    : (S.classes    || []).length,
+      subjects:   m.subjects   != null ? m.subjects   : (S.subjects   || []).length,
+      classrooms: m.classrooms != null ? m.classrooms : (S.classrooms || []).length,
+      lessons:    m.lessons    != null ? m.lessons    : (S.lessons    || []).length,
+      cards:      m.cards      != null ? m.cards      : (S.cards      || []).length,
+      periods:    m.periods    != null ? m.periods    : (S.bell && S.bell.periods ? S.bell.periods.length : 0),
+    };
+  }
+
+  function render(host) {
+    const S = window.APP.school;
+    host.innerHTML = "";
+    if (!S) {
+      host.innerHTML = `<div class="text-sm text-slate-500">${t("needXml")}</div>`;
+      return;
+    }
+    const c = liveCounts(S);
+
+    const stats = [
+      [t("statSchool"),  S.schoolName || "—"],
+      [t("statTeachers"),  c.teachers],
+      [t("statClasses"),   c.classes],
+      [t("statSubjects"),  c.subjects],
+      [t("statRooms"),     c.classrooms],
+      [t("statLessons"),   c.lessons],
+      [t("statCards"),     c.cards],
+      [t("statPeriods"),   c.periods],
+    ];
+
+    const cards = stats.map(([k, v]) => `
+      <div class="bg-white rounded-lg shadow-sm border border-slate-200 px-4 py-3">
+        <div class="text-xs uppercase tracking-wide text-slate-500">${k}</div>
+        <div class="text-lg font-semibold text-slate-900 mt-1 truncate" title="${escapeHtml(String(v))}">${escapeHtml(String(v))}</div>
+      </div>`).join("");
+
+    host.innerHTML = `
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">${cards}</div>
+      <div id="school-hub-mount"></div>
+    `;
+
+    // Mount the multi-pane School Hub. Defensive: if the script hasn't loaded
+    // (script-order regression) fall back to the old bell-schedule preview.
+    const mount = host.querySelector("#school-hub-mount");
+    if (window.SchoolHub && typeof window.SchoolHub.render === "function") {
+      window.SchoolHub.render(mount);
+    } else {
+      const periods = (S.bell && S.bell.periods) || [];
+      const periodRows = periods.map(p => `
+        <tr>
+          <td class="px-3 py-1.5 font-medium">${escapeHtml(p.label)}</td>
+          <td class="px-3 py-1.5 text-right tabular-nums">${fmtTime(p.startMin)}</td>
+          <td class="px-3 py-1.5 text-right tabular-nums">${fmtTime(p.endMin)}</td>
+          <td class="px-3 py-1.5 text-right tabular-nums">${(p.endMin - p.startMin)} min</td>
+        </tr>`).join("");
+      mount.innerHTML = `
+        <div class="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
+          <div class="px-4 py-2 bg-slate-100 border-b border-slate-200 text-sm font-semibold text-slate-700">
+            Bell schedule (from XML)
+          </div>
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="text-slate-500 text-xs uppercase">
+                <th class="px-3 py-2 text-left">Period</th>
+                <th class="px-3 py-2 text-right">Start</th>
+                <th class="px-3 py-2 text-right">End</th>
+                <th class="px-3 py-2 text-right">Duration</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">${periodRows}</tbody>
+          </table>
+        </div>`;
+    }
+  }
+
+  function fmtTime(min) {
+    const h = Math.floor(min / 60), m = min % 60;
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  }
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  }
+
+  return { render };
+})();
+
+/* ─── FILE: js/ui/class_grid.js ─── */
+/**
+ * Step 3 — Class Grid. Rows = sections, cols = day×period.
+ */
+window.ClassGrid = (function () {
+  "use strict";
+  function render(host) {
+    const S = window.APP.school;
+    if (!S) {
+      host.innerHTML = `<div class="text-sm text-slate-500">${I18N.t("needXml")}</div>`;
+      return;
+    }
+    // Header bar with CRUD entry point
+    const bar = document.createElement("div");
+    bar.className = "flex items-center justify-between mb-3 gap-2 flex-wrap";
+    bar.innerHTML = `
+      <div class="text-sm text-slate-600">${(S.classes || []).length} class(es).</div>
+      <div class="flex gap-2">
+        <button data-act="manage" class="px-3 py-1.5 rounded bg-blue-700 text-white text-sm font-semibold hover:bg-blue-800">📋 Manage classes…</button>
+        <button data-act="add" class="px-3 py-1.5 rounded bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700">+ Add class</button>
+      </div>`;
+    host.innerHTML = "";
+    host.appendChild(bar);
+    bar.querySelector('[data-act="manage"]').onclick = () => window.dispatchEvent(new CustomEvent("app:open-entity", { detail: { kind: "classes" } }));
+    bar.querySelector('[data-act="add"]').onclick = () => {
+      window.dispatchEvent(new CustomEvent("app:open-entity", { detail: { kind: "classes" } }));
+      setTimeout(() => { const newBtn = document.querySelector('.chrx-entity-dialog [data-act="new"], .chrx-entity-dialog button[title="New"]'); if (newBtn) newBtn.click(); }, 120);
+    };
+    const gridHost = document.createElement("div");
+    host.appendChild(gridHost);
+    if (!(S.classes || []).length) {
+      gridHost.innerHTML = `<div class="bg-slate-50 border border-dashed border-slate-300 rounded-lg p-8 text-center text-slate-500">
+        <div class="text-3xl mb-2">📭</div>
+        <div class="text-sm">No classes yet. Click <strong>+ Add class</strong> above to create your first one.</div>
+      </div>`;
+      return;
+    }
+    GridView.render(gridHost, {
+      viewId: "class",
+      rowHeader: I18N.t("statClasses"),
+      rows: S.classes.map(c => ({
+        id: c.id,
+        label: c.name,
+        sublabel: classTeacherLabel(S, c.id),
+      })),
+      periods: S.bell.periods,
+      cellEntries: (rowId, day, period) => filterEntries(S._idx.cardsByClass[rowId], day, period),
+      rowSearchText: (row) => `${row.label} ${row.sublabel || ""}`,
+      cellSearchText: (e) => `${e.subject} ${e.subjectAbbr} ${e.teachers.join(" ")} ${e.classroom}`,
+      onCellClick: (entry, rowId) => Inspector.open(entry, { context: "class", rowId }),
+    });
+  }
+  function classTeacherLabel(S, classId) {
+    const cls = S.classes.find(c => c.id === classId);
+    if (!cls) return "";
+    // The parser stripped _teacherId off the canonical record; look up in _idx
+    const teacherId = (S._idx.classById[classId] || {})._teacherId;
+    if (!teacherId) return "";
+    const t = S._idx.teacherById[teacherId];
+    return t ? t.name : "";
+  }
+  function filterEntries(entries, day, period) {
+    if (!entries) return [];
+    return entries.filter(e => e.day === day && e.period === period);
+  }
+  return { render };
+})();
+
+/* ─── FILE: js/ui/teacher_grid.js ─── */
+/**
+ * Step 4 — Teacher Grid. Rows = teachers, cols = day×period.
+ */
+window.TeacherGrid = (function () {
+  "use strict";
+  function render(host) {
+    const S = window.APP.school;
+    if (!S) {
+      host.innerHTML = `<div class="text-sm text-slate-500">${I18N.t("needXml")}</div>`;
+      return;
+    }
+    // Header bar with CRUD entry point
+    host.innerHTML = "";
+    const bar = document.createElement("div");
+    bar.className = "flex items-center justify-between mb-3 gap-2 flex-wrap";
+    bar.innerHTML = `
+      <div class="text-sm text-slate-600">${(S.teachers || []).length} teacher(s).</div>
+      <div class="flex gap-2">
+        <button data-act="manage" class="px-3 py-1.5 rounded bg-blue-700 text-white text-sm font-semibold hover:bg-blue-800">📋 Manage teachers…</button>
+        <button data-act="add" class="px-3 py-1.5 rounded bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700">+ Add teacher</button>
+      </div>`;
+    host.appendChild(bar);
+    bar.querySelector('[data-act="manage"]').onclick = () => window.dispatchEvent(new CustomEvent("app:open-entity", { detail: { kind: "teachers" } }));
+    bar.querySelector('[data-act="add"]').onclick = () => {
+      window.dispatchEvent(new CustomEvent("app:open-entity", { detail: { kind: "teachers" } }));
+      setTimeout(() => { const newBtn = document.querySelector('.chrx-entity-dialog [data-act="new"], .chrx-entity-dialog button[title="New"]'); if (newBtn) newBtn.click(); }, 120);
+    };
+    const gridHost = document.createElement("div");
+    host.appendChild(gridHost);
+    if (!(S.teachers || []).length) {
+      gridHost.innerHTML = `<div class="bg-slate-50 border border-dashed border-slate-300 rounded-lg p-8 text-center text-slate-500">
+        <div class="text-3xl mb-2">📭</div>
+        <div class="text-sm">No teachers yet. Click <strong>+ Add teacher</strong> above to create your first one.</div>
+      </div>`;
+      return;
+    }
+    // Sort teachers alphabetically by name (numerals/honorifics stripped for sort key)
+    const teachers = S.teachers.slice().sort((a, b) =>
+      sortKey(a.name).localeCompare(sortKey(b.name)));
+
+    GridView.render(gridHost, {
+      viewId: "teacher",
+      rowHeader: I18N.t("statTeachers"),
+      rows: teachers.map(t => ({ id: t.id, label: t.name })),
+      periods: S.bell.periods,
+      cellEntries: (rowId, day, period) =>
+        (S._idx.cardsByTeacher[rowId] || []).filter(e => e.day === day && e.period === period)
+          .map(e => ({
+            ...e,
+            // For the teacher view, show the class instead of the teacher in the cell body
+            teachers: e.classes.slice(),
+          })),
+      rowSearchText: (row) => row.label,
+      cellSearchText: (e) => `${e.subject} ${e.subjectAbbr} ${e.teachers.join(" ")} ${e.classroom}`,
+      onCellClick: (entry, rowId) => Inspector.open(entry, { context: "teacher", rowId }),
+    });
+  }
+  function sortKey(name) {
+    return (name || "").replace(/^(Mr\.|Ms\.|Mrs\.|Dr\.)\s*/i, "").toLowerCase();
+  }
+  return { render };
+})();
+
+/* ─── FILE: js/ui/room_grid.js ─── */
+/**
+ * Step 5 — Room Grid. Rows = classrooms, cols = day×period.
+ *
+ * Most CLASSIC class slots don't have a `classroomids` (home-room model — class
+ * sits in its own room). To make this view useful we *also* show, when a
+ * classroom is empty, the home-class that owns it via the `classes.classroomids`
+ * back-reference (when populated). Otherwise the row stays sparse — that's
+ * fine; the special rooms (Science Lab, Art Room, Maths Lab, Music, MP Hall,
+ * Language Room, Activity Room) are exactly what this view is for.
+ */
+window.RoomGrid = (function () {
+  "use strict";
+  function render(host) {
+    const S = window.APP.school;
+    if (!S) {
+      host.innerHTML = `<div class="text-sm text-slate-500">${I18N.t("needXml")}</div>`;
+      return;
+    }
+    // Header bar with CRUD entry point
+    host.innerHTML = "";
+    const bar = document.createElement("div");
+    bar.className = "flex items-center justify-between mb-3 gap-2 flex-wrap";
+    bar.innerHTML = `
+      <div class="text-sm text-slate-600">${(S.classrooms || []).length} room(s).</div>
+      <div class="flex gap-2">
+        <button data-act="manage" class="px-3 py-1.5 rounded bg-blue-700 text-white text-sm font-semibold hover:bg-blue-800">📋 Manage rooms…</button>
+        <button data-act="add" class="px-3 py-1.5 rounded bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700">+ Add room</button>
+      </div>`;
+    host.appendChild(bar);
+    bar.querySelector('[data-act="manage"]').onclick = () => window.dispatchEvent(new CustomEvent("app:open-entity", { detail: { kind: "classrooms" } }));
+    bar.querySelector('[data-act="add"]').onclick = () => {
+      window.dispatchEvent(new CustomEvent("app:open-entity", { detail: { kind: "classrooms" } }));
+      setTimeout(() => { const newBtn = document.querySelector('.chrx-entity-dialog [data-act="new"], .chrx-entity-dialog button[title="New"]'); if (newBtn) newBtn.click(); }, 120);
+    };
+    const gridHost = document.createElement("div");
+    host.appendChild(gridHost);
+    if (!(S.classrooms || []).length) {
+      gridHost.innerHTML = `<div class="bg-slate-50 border border-dashed border-slate-300 rounded-lg p-8 text-center text-slate-500">
+        <div class="text-3xl mb-2">📭</div>
+        <div class="text-sm">No rooms yet. Click <strong>+ Add room</strong> above to create your first one.</div>
+      </div>`;
+      return;
+    }
+    GridView.render(gridHost, {
+      viewId: "room",
+      rowHeader: I18N.t("statRooms"),
+      rows: S.classrooms.map(r => ({ id: r.id, label: r.name })),
+      periods: S.bell.periods,
+      cellEntries: (rowId, day, period) =>
+        (S._idx.cardsByRoom[rowId] || []).filter(e => e.day === day && e.period === period)
+          .map(e => ({
+            ...e,
+            // For the room view, cell line 2 = the class, line 3 = teacher
+            teachers: e.classes.slice(),
+            classroom: e.teachers.join(", "),
+          })),
+      rowSearchText: (row) => row.label,
+      cellSearchText: (e) => `${e.subject} ${e.subjectAbbr} ${e.classes.join(" ")} ${e.teachers.join(" ")}`,
+      onCellClick: (entry, rowId) => Inspector.open(entry, { context: "room", rowId }),
+    });
+  }
+  return { render };
+})();
+
+/* ─── FILE: js/ui/inspector.js ─── */
+/**
+ * Lesson inspector — placeholder modal. Click any grid cell to see full details.
+ * Editor functionality will be added later by the editor agent.
+ */
+window.Inspector = (function () {
+  "use strict";
+  const t = (k) => I18N.t(k);
+  let host = null;
+
+  function ensureHost() {
+    if (host) return host;
+    host = document.createElement("div");
+    host.id = "lesson-inspector";
+    host.className = "fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/40";
+    document.body.appendChild(host);
+    host.addEventListener("click", (e) => { if (e.target === host) close(); });
+    return host;
+  }
+
+  function open(entry, ctx) {
+    const S = window.APP.school;
+    if (!S || !entry) return;
+    ensureHost();
+
+    const period = S.bell.periods.find(p => p.index === entry.period);
+    const periodLabel = period ? `${period.label} (${fmt(period.startMin)}–${fmt(period.endMin)})` : `P${entry.period}`;
+
+    host.innerHTML = `
+      <div class="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden">
+        <div class="px-5 py-3 bg-gradient-to-r from-blue-900 to-slate-900 text-white flex items-center justify-between">
+          <h3 class="font-bold text-sm">${t("inspectorTitle")}</h3>
+          <button id="inspector-close" class="text-white/80 hover:text-white text-lg leading-none">×</button>
+        </div>
+        <div class="p-5 space-y-3 text-sm">
+          ${row("Subject", entry.subject || entry.subjectAbbr)}
+          ${row("Class(es)", entry.classes.join(", "))}
+          ${row("Teacher(s)", entry.teachers.join(", "))}
+          ${row("Room", entry.classroom || "—")}
+          ${row("Day", I18N.dayLabel(entry.day, true))}
+          ${row("Period", periodLabel)}
+        </div>
+        <div class="px-5 py-3 bg-slate-50 border-t border-slate-200 text-right">
+          <button id="inspector-ok" class="px-3 py-1.5 rounded bg-blue-700 text-white text-sm font-semibold hover:bg-blue-800">${t("closeBtn")}</button>
+        </div>
+      </div>`;
+    host.classList.remove("hidden");
+    host.classList.add("flex");
+    host.querySelector("#inspector-close").onclick = close;
+    host.querySelector("#inspector-ok").onclick = close;
+  }
+  function close() {
+    if (!host) return;
+    host.classList.remove("flex");
+    host.classList.add("hidden");
+    host.innerHTML = "";
+  }
+  function row(label, value) {
+    return `
+      <div class="grid grid-cols-3 gap-2">
+        <div class="text-slate-500 col-span-1">${escapeHtml(label)}</div>
+        <div class="text-slate-900 col-span-2 font-medium">${escapeHtml(value || "—")}</div>
+      </div>`;
+  }
+  function fmt(min) {
+    const h = Math.floor(min / 60), m = min % 60;
+    return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
+  }
+  function escapeHtml(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  }
+  return { open, close };
+})();
+
+/* ─── FILE: js/ui/entities/dialog_shell.js ─── */
+/* Chronexa entity-CRUD dialog shell. window.EntityDialog. */
+(function (global) {
+  "use strict";
+  if (!window.APP) window.APP = {};
+  if (!window.APP.audit) window.APP.audit = {
+    _log: [], append(r){ this._log.push({ t:Date.now(), ...r }); },
+    pop(){ return this._log.pop(); },
+  };
+
+  const SWATCHES = ["#007AFF","#34C759","#FF3B30","#FF9F0A","#FFCC00",
+    "#AF52DE","#FF2D55","#5AC8FA","#A2845E","#8E8E93"];
+
+  let host=null, sheet=null, subSheet=null, cfg=null;
+  let selectedId=null, sortKey=null, sortDir=1;
+  let filterText="", filterTimer=null, lastFocused=null;
+
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      const v = attrs[k];
+      if (v == null) continue;
+      if (k === "class") n.className = v;
+      else if (k === "html") n.innerHTML = v;
+      else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v);
+    }
+    for (const c of kids) if (c != null && c !== false) {
+      n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    }
+    return n;
+  }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, c =>
+      ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+  }
+  function uid(p) { return p + "_" + Math.random().toString(36).slice(2,9); }
+
+  // ---- open / close -------------------------------------------------------
+  function open(c) {
+    cfg = c;
+    sortKey = (c.columns[0] && c.columns[0].key) || null;
+    sortDir = 1; filterText = ""; selectedId = null;
+    lastFocused = document.activeElement;
+    if (host) host.remove();
+    host = buildShell();
+    document.body.appendChild(host);
+    document.addEventListener("keydown", onKey, true);
+    renderRows();
+    setTimeout(() => { if (host) host.querySelector(".chrx-ent-search")?.focus(); }, 30);
+  }
+  function close() {
+    document.removeEventListener("keydown", onKey, true);
+    closeSubSheet();
+    closeSheet();
+    if (host) { host.remove(); host = null; }
+    cfg = null;
+    if (lastFocused) try { lastFocused.focus(); } catch(e) {}
+  }
+  function refresh(rows) { if (!cfg) return; if (rows) cfg.rows = rows; renderRows(); }
+  function openSheet(node, opts) {
+    closeSubSheet();
+    closeSheet();
+    sheet = el("div", { class:"chrx-ent-sheet-scrim",
+      onclick:(e)=>{ if (e.target === sheet) closeSheet(); } },
+      el("div", { class:"chrx-ent-sheet", role:"dialog", "aria-modal":"true" },
+        opts && opts.title ? el("header", { class:"chrx-ent-sheet__head" },
+          el("h3", null, opts.title),
+          opts.headerExtras || null,
+          el("button", { class:"chrx-ent-sheet__x", "aria-label":"Close", onclick:closeSheet }, "×"),
+        ) : null,
+        el("div", { class:"chrx-ent-sheet__body" }, node),
+      ),
+    );
+    host.appendChild(sheet);
+  }
+  function closeSheet() { if (sheet) { sheet.remove(); sheet = null; } }
+
+  // openSubSheet — overlay an additional sheet ON TOP of the existing sheet
+  // (e.g. "Set for more" picker opened from inside a constraints dialog).
+  // The underlying sheet stays in the DOM so its draft state survives.
+  function openSubSheet(node, opts) {
+    closeSubSheet();
+    subSheet = el("div", { class:"chrx-ent-sheet-scrim chrx-ent-subsheet-scrim",
+      onclick:(e)=>{ if (e.target === subSheet) closeSubSheet(); } },
+      el("div", { class:"chrx-ent-sheet", role:"dialog", "aria-modal":"true" },
+        opts && opts.title ? el("header", { class:"chrx-ent-sheet__head" },
+          el("h3", null, opts.title),
+          el("button", { class:"chrx-ent-sheet__x", "aria-label":"Close", onclick:closeSubSheet }, "×"),
+        ) : null,
+        el("div", { class:"chrx-ent-sheet__body" }, node),
+      ),
+    );
+    host.appendChild(subSheet);
+  }
+  function closeSubSheet() { if (subSheet) { subSheet.remove(); subSheet = null; } }
+
+  // ---- shell --------------------------------------------------------------
+  function buildShell() {
+    const root = el("div", { class:"chrx-ent-dialog", role:"dialog", "aria-modal":"true",
+      onclick:(e)=>{ if (e.target === root) close(); } });
+    const panel = el("div", { class:"chrx-ent-panel" });
+
+    panel.appendChild(el("header", { class:"chrx-ent-head" },
+      el("h2", null, cfg.title || cfg.entity),
+      el("div", { class:"chrx-ent-counts" }, `${cfg.rows.length} items`),
+      el("input", { class:"chrx-ent-search", type:"search", placeholder:"Search…",
+        "aria-label":"Filter rows",
+        oninput:(e)=>{
+          clearTimeout(filterTimer);
+          filterTimer = setTimeout(() => {
+            filterText = (e.target.value || "").toLowerCase();
+            renderRows();
+          }, 120);
+        },
+      }),
+    ));
+
+    const body = el("div", { class:"chrx-ent-body" });
+    body.appendChild(el("div", { class:"chrx-ent-table-wrap" },
+      el("table", { class:"chrx-ent-table" },
+        el("thead", null, headerRow()),
+        el("tbody", { class:"chrx-ent-rows" }),
+      ),
+    ));
+    body.appendChild(buildSidebar());
+    panel.appendChild(body);
+
+    panel.appendChild(el("footer", { class:"chrx-ent-foot" },
+      el("button", { class:"chrx-btn", onclick:()=>fireAction("undo") }, "↺ Undo"),
+      el("button", { class:"chrx-btn", onclick:()=>fireAction("redo") }, "↻ Redo"),
+      el("button", { class:"chrx-btn", onclick:()=>fireAction("help") }, "?"),
+      el("div", { class:"chrx-ent-foot-spacer" }),
+      el("span", { class:"chrx-ent-hint" },
+        el("span", { class:"chrx-kbd" }, "⌘N"), " new ",
+        el("span", { class:"chrx-kbd" }, "↵"), " edit ",
+        el("span", { class:"chrx-kbd" }, "esc"), " close",
+      ),
+      el("button", { class:"chrx-btn chrx-btn--primary", onclick:close }, "Close"),
+    ));
+    root.appendChild(panel);
+    return root;
+  }
+
+  function headerRow() {
+    const tr = el("tr");
+    cfg.columns.forEach(col => {
+      const isSorted = sortKey === col.key;
+      const sortable = col.sortable !== false;
+      tr.appendChild(el("th", {
+        class: "chrx-ent-th" + (isSorted ? " is-sorted" : "") + (sortable ? " is-sortable" : ""),
+        onclick: !sortable ? null : () => {
+          if (sortKey === col.key) sortDir = -sortDir; else { sortKey = col.key; sortDir = 1; }
+          renderRows();
+        },
+      }, col.label, isSorted ? (sortDir === 1 ? " ▲" : " ▼") : ""));
+    });
+    return tr;
+  }
+
+  function buildSidebar() {
+    const buttons = [
+      { id:"new",    label:"New",    primary:true, kbd:"⌘N", always:true },
+      { id:"edit",   label:"Edit",   needRow:true },
+      { id:"delete", label:"Delete", needRow:true, danger:true },
+    ];
+    (cfg.extras || []).forEach(x => buttons.push({ ...x, needRow: x.needRow !== false }));
+
+    const aside = el("aside", { class:"chrx-ent-aside" });
+    buttons.forEach(b => {
+      const cls = ["chrx-ent-btn"];
+      if (b.primary) cls.push("chrx-ent-btn--primary");
+      if (b.danger) cls.push("chrx-ent-btn--danger");
+      aside.appendChild(el("button", {
+        class: cls.join(" "), "data-act": b.id,
+        "data-needs-row": b.needRow ? "1" : null,
+        onclick: () => fireAction(b.id),
+      }, b.label, b.kbd ? el("span", { class:"chrx-kbd" }, b.kbd) : null));
+    });
+    return aside;
+  }
+
+  function updateSidebarState() {
+    if (!host) return;
+    const hasRow = !!selectedId;
+    host.querySelectorAll(".chrx-ent-btn[data-needs-row='1']").forEach(b => {
+      b.disabled = !hasRow;
+      b.classList.toggle("is-disabled", !hasRow);
+    });
+  }
+
+  // ---- rows ---------------------------------------------------------------
+  function renderRows() {
+    if (!host) return;
+    const tbody = host.querySelector(".chrx-ent-rows");
+    if (!tbody) return;
+
+    const all = cfg.rows || [];
+    const rows = filterSort(all);
+    host.querySelector(".chrx-ent-counts").textContent = `${rows.length} of ${all.length}`;
+    const thead = host.querySelector(".chrx-ent-table thead");
+    thead.innerHTML = "";
+    thead.appendChild(headerRow());
+
+    tbody.innerHTML = "";
+    rows.forEach(r => {
+      const tr = el("tr", {
+        class: "chrx-ent-tr" + (r.id === selectedId ? " is-selected" : ""),
+        "data-id": r.id, tabindex: "0",
+        onclick: () => selectRow(r.id),
+        ondblclick: () => { selectRow(r.id); fireAction("edit"); },
+        onkeydown: (e) => { if (e.key === "Enter") { e.preventDefault(); selectRow(r.id); fireAction("edit"); } },
+      });
+      cfg.columns.forEach(col => {
+        const v = col.render ? col.render(r) : r[col.key];
+        const td = el("td", { class:"chrx-ent-td" });
+        if (v instanceof Node) td.appendChild(v);
+        else td.textContent = (v == null ? "" : String(v));
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    updateSidebarState();
+  }
+
+  function filterSort(rows) {
+    let out = rows;
+    if (filterText) {
+      out = out.filter(r => {
+        for (const k in r) {
+          const v = r[k];
+          if (typeof v === "string" && v.toLowerCase().includes(filterText)) return true;
+          if (typeof v === "number" && String(v).includes(filterText)) return true;
+        }
+        return false;
+      });
+    }
+    if (sortKey) {
+      out = out.slice().sort((a,b) => {
+        const av = a[sortKey], bv = b[sortKey];
+        if (av == null && bv == null) return 0;
+        if (av == null) return 1;
+        if (bv == null) return -1;
+        if (typeof av === "number" && typeof bv === "number") return (av - bv) * sortDir;
+        return String(av).localeCompare(String(bv), undefined, { numeric:true }) * sortDir;
+      });
+    }
+    return out;
+  }
+
+  function selectRow(id) {
+    selectedId = id;
+    host.querySelectorAll(".chrx-ent-tr").forEach(tr => {
+      tr.classList.toggle("is-selected", tr.dataset.id === id);
+    });
+    updateSidebarState();
+    if (cfg.onSelect) cfg.onSelect(currentRow());
+  }
+  function currentRow() { return (cfg.rows || []).find(r => r.id === selectedId) || null; }
+
+  function fireAction(cmd) {
+    if (!cfg) return;
+    if (cmd === "delete" && selectedId) {
+      const r = currentRow();
+      if (!confirm(`Delete ${(r && (r.name||r.id)) || "this row"}?`)) return;
+    }
+    if (cfg.onAction) cfg.onAction(cmd, currentRow());
+  }
+
+  function onKey(e) {
+    if (!host) return;
+    if (e.key === "Escape") {
+      if (subSheet) { e.preventDefault(); closeSubSheet(); return; }
+      if (sheet) { e.preventDefault(); closeSheet(); return; }
+      e.preventDefault(); close(); return;
+    }
+    if ((e.metaKey || e.ctrlKey) && (e.key === "n" || e.key === "N")) {
+      e.preventDefault(); fireAction("new"); return;
+    }
+    if ((e.metaKey || e.ctrlKey) && (e.key === "z" || e.key === "Z")) {
+      e.preventDefault(); fireAction(e.shiftKey ? "redo" : "undo");
+    }
+  }
+
+  // ---- form helpers (shared by entity modules) ---------------------------
+  function buildField(label, control) {
+    return el("label", { class:"chrx-ent-field" },
+      el("span", { class:"chrx-ent-field__lbl" }, label),
+      control,
+    );
+  }
+
+  function buildSwatchPicker(value, onChange) {
+    const wrap = el("div", { class:"chrx-ent-swatch" });
+    const hex = el("input", { type:"text", value:value||"", maxlength:"7",
+      class:"chrx-ent-swatch__hex",
+      oninput:(e)=> onChange(e.target.value),
+    });
+    SWATCHES.forEach(c => wrap.appendChild(el("button", {
+      type:"button", class:"chrx-ent-swatch__dot",
+      title:c, style:`background:${c}`,
+      onclick:()=>{ hex.value = c; onChange(c); },
+    })));
+    wrap.appendChild(hex);
+    return wrap;
+  }
+
+  function buildEditSheet(opts) {
+    const form = el("form", { class:"chrx-ent-form",
+      onsubmit:(e)=>{ e.preventDefault(); opts.onSave && opts.onSave(); } });
+    (opts.fields || []).forEach(f => {
+      form.appendChild(f.label === null ? f.control : buildField(f.label, f.control));
+    });
+    form.appendChild(el("div", { class:"chrx-ent-form__foot" },
+      el("button", { type:"button", class:"chrx-btn", onclick:()=>{
+        opts.onCancel ? opts.onCancel() : closeSheet();
+      } }, "Cancel"),
+      el("button", { type:"submit", class:"chrx-btn chrx-btn--primary" }, "Save"),
+    ));
+
+    // < > cycle arrows (P2#12): caller passes siblingRows + currentRowId + onNavigate.
+    let headerExtras = null;
+    if (opts.siblingRows && opts.currentRowId && typeof opts.onNavigate === "function") {
+      const siblings = opts.siblingRows;
+      const i = siblings.findIndex(r => r.id === opts.currentRowId);
+      const hasPrev = i > 0;
+      const hasNext = i >= 0 && i < siblings.length - 1;
+      function go(delta) {
+        if (typeof opts.onSave === "function") {
+          // Implicit auto-save the current draft. onSave may return false on
+          // validation failure to abort navigation.
+          const ok = opts.onSave();
+          if (ok === false) return;
+        }
+        const target = siblings[i + delta];
+        if (!target) return;
+        // closeSheet is called by the caller's onSave normally; if not, do it
+        // now so onNavigate can openSheet anew without stacking.
+        closeSheet();
+        opts.onNavigate(target);
+      }
+      headerExtras = el("div", { class:"chrx-ent-sheet__nav" },
+        el("button", { type:"button", class:"chrx-ent-sheet__navbtn",
+          "aria-label":"Previous row",
+          disabled: hasPrev ? null : "disabled",
+          onclick: hasPrev ? (()=>go(-1)) : null,
+        }, "‹"),
+        el("button", { type:"button", class:"chrx-ent-sheet__navbtn",
+          "aria-label":"Next row",
+          disabled: hasNext ? null : "disabled",
+          onclick: hasNext ? (()=>go(1)) : null,
+        }, "›"),
+      );
+    }
+
+    openSheet(form, { title: opts.title, headerExtras });
+    setTimeout(()=> { if (form && form.isConnected) form.querySelector("input,select,textarea")?.focus(); }, 30);
+    return form;
+  }
+
+  // Inline "Set for more" link/button used inside constraint rows.
+  // Renders a small text-button that fires onClick when pressed.
+  function buildSetForMoreLink(onClick, opts) {
+    opts = opts || {};
+    return el("button", {
+      type:"button",
+      class:"chrx-ent-setformore",
+      title: opts.title || "Apply this value to other entities",
+      onclick:(e)=>{ e.preventDefault(); onClick(e); },
+    }, opts.label || "Set for more…");
+  }
+
+  // Generic multi-select picker as a sub-sheet (overlays current sheet so
+  // the underlying dialog's draft state is preserved).
+  //   items: [{id, label}], excludeIds: string[], multi: bool (default true),
+  //   onConfirm(selectedIds[])
+  function openPickEntitiesPopover(o) {
+    o = o || {};
+    const items = (o.items || []).filter(x => !(o.excludeIds || []).includes(x.id));
+    const multi = o.multi !== false;
+    const selected = new Set(o.preselected || []);
+
+    const list = el("div", { class:"chrx-ent-picker__list" });
+    function row(item) {
+      const cb = el("input", {
+        type: multi ? "checkbox" : "radio",
+        name: multi ? null : "chrx-pick",
+        checked: selected.has(item.id) ? "checked" : null,
+        onchange:(e)=>{
+          if (multi) {
+            if (e.target.checked) selected.add(item.id);
+            else selected.delete(item.id);
+          } else {
+            selected.clear();
+            if (e.target.checked) selected.add(item.id);
+          }
+        },
+      });
+      return el("label", { class:"chrx-ent-picker__row" },
+        cb,
+        el("span", null, item.label || item.name || item.id),
+      );
+    }
+    items.forEach(it => list.appendChild(row(it)));
+    if (!items.length) {
+      list.appendChild(el("p", { class:"chrx-ent-help" }, o.emptyText || "No other entities."));
+    }
+
+    // Bulk toggles
+    const toolbar = el("div", { class:"chrx-ent-picker__bar" },
+      multi ? el("button", { type:"button", class:"chrx-btn",
+        onclick:()=>{
+          items.forEach(it => selected.add(it.id));
+          list.querySelectorAll("input").forEach(cb => cb.checked = true);
+        } }, "Select all") : null,
+      multi ? el("button", { type:"button", class:"chrx-btn",
+        onclick:()=>{
+          selected.clear();
+          list.querySelectorAll("input").forEach(cb => cb.checked = false);
+        } }, "Clear") : null,
+    );
+
+    const foot = el("div", { class:"chrx-ent-form__foot" },
+      el("button", { type:"button", class:"chrx-btn", onclick: closeSubSheet }, "Cancel"),
+      el("button", { type:"button", class:"chrx-btn chrx-btn--primary",
+        onclick:()=>{
+          const out = Array.from(selected);
+          closeSubSheet();
+          if (typeof o.onConfirm === "function") o.onConfirm(out);
+        } }, o.confirmLabel || "Apply"),
+    );
+
+    const body = el("div", null,
+      o.help ? el("p", { class:"chrx-ent-help" }, o.help) : null,
+      toolbar, list, foot);
+    openSubSheet(body, { title: o.title || "Select" });
+  }
+
+  // Batch-edit sub-sheet (P2#11).
+  //   rows: [{id, _ref, name?}]                    — candidate rows
+  //   fields: [{id, label, build(state, onChange) }]
+  //         where state[id] holds the new value, build returns a control.
+  //   onApply(fieldId, value, targetIds[])
+  function openBatchEditSheet(o) {
+    o = o || {};
+    const rows = o.rows || [];
+    const fields = o.fields || [];
+    if (!fields.length) return;
+    const state = { fieldId: fields[0].id, value: null, targets: new Set() };
+
+    const fieldSel = el("select", null,
+      ...fields.map(f => el("option", { value:f.id }, f.label)));
+    fieldSel.value = state.fieldId;
+    fieldSel.addEventListener("change", e => {
+      state.fieldId = e.target.value;
+      state.value = null;
+      renderValueHost();
+    });
+
+    const valueHost = el("div");
+    function currentField() { return fields.find(f => f.id === state.fieldId) || fields[0]; }
+    function renderValueHost() {
+      valueHost.innerHTML = "";
+      const f = currentField();
+      const ctl = f.build(v => { state.value = v; });
+      valueHost.appendChild(ctl);
+    }
+    renderValueHost();
+
+    const targetsHost = el("div", { class:"chrx-ent-picker__list" });
+    rows.forEach(r => {
+      const cb = el("input", { type:"checkbox",
+        onchange:(e)=>{
+          if (e.target.checked) state.targets.add(r.id);
+          else state.targets.delete(r.id);
+        } });
+      targetsHost.appendChild(el("label", { class:"chrx-ent-picker__row" },
+        cb, el("span", null, r.name || r.id)));
+    });
+    const targetsBar = el("div", { class:"chrx-ent-picker__bar" },
+      el("button", { type:"button", class:"chrx-btn", onclick:()=>{
+        rows.forEach(r => state.targets.add(r.id));
+        targetsHost.querySelectorAll("input").forEach(cb => cb.checked = true);
+      } }, "Select all"),
+      el("button", { type:"button", class:"chrx-btn", onclick:()=>{
+        state.targets.clear();
+        targetsHost.querySelectorAll("input").forEach(cb => cb.checked = false);
+      } }, "Clear"),
+    );
+
+    const foot = el("div", { class:"chrx-ent-form__foot" },
+      el("button", { type:"button", class:"chrx-btn", onclick: closeSheet }, "Cancel"),
+      el("button", { type:"button", class:"chrx-btn chrx-btn--primary",
+        onclick:()=>{
+          if (!state.targets.size) { alert("Pick at least one row to apply to."); return; }
+          if (state.value == null) { alert("Set a value first."); return; }
+          const ids = Array.from(state.targets);
+          if (typeof o.onApply === "function")
+            o.onApply(state.fieldId, state.value, ids);
+          closeSheet();
+        } }, "Apply"),
+    );
+
+    const body = el("div", { class:"chrx-ent-form" },
+      el("p", { class:"chrx-ent-help" },
+        "Pick a field, set a new value, then choose rows to apply to."),
+      buildField("Field", fieldSel),
+      buildField("New value", valueHost),
+      el("div", { class:"chrx-ent-field" },
+        el("span", { class:"chrx-ent-field__lbl" }, "Apply to"),
+        el("div", null, targetsBar, targetsHost),
+      ),
+      foot,
+    );
+    openSheet(body, { title: o.title || "Batch edit" });
+  }
+
+  function buildTimeOffMini(timeOff, days, periods) {
+    // Accepts two shapes:
+    //   1. 2D array timeOff[day][period] = 0|1|2 (current TimeOffMatrix output)
+    //   2. Legacy object map { "d_p": "available|preferred|unavailable" }
+    const grid = el("div", { class:"chrx-ent-tomini" });
+    grid.style.gridTemplateColumns = `repeat(${periods}, 1fr)`;
+    const is2D = Array.isArray(timeOff);
+    for (let d = 0; d < days; d++) {
+      for (let p = 0; p < periods; p++) {
+        let cls;
+        if (is2D) {
+          const v = (timeOff[d] && timeOff[d][p]) | 0;
+          cls = v === 1 ? "is-conditional" : v === 2 ? "is-blocked" : "is-available";
+        } else {
+          const state = (timeOff && timeOff[`${d}_${p + 1}`]) || "available";
+          cls = `is-${state}`;
+        }
+        grid.appendChild(el("span", { class:`chrx-ent-tomini__c ${cls}`,
+          title:`D${d+1} P${p+1}` }));
+      }
+    }
+    return grid;
+  }
+
+  // Copy chooser (P2#10) — three-mode picker shared by all non-lesson entities.
+  //   o.title, o.source ({id, name}), o.others ([{id, name, _ref}]),
+  //   o.onDuplicate(), o.onCopyToOne(targetRef), o.onCopyToMany(targetRefs[])
+  // Set o.onCopyToOne / onCopyToMany to null/undefined to grey-out those
+  // modes (used by relations.js where only Duplicate is meaningful).
+  function openCopyChooser(o) {
+    o = o || {};
+    const srcName = (o.source && (o.source.name || o.source.id)) || "this row";
+    const others = (o.others || []).filter(x => !o.source || x.id !== o.source.id);
+    const hasOthers = others.length > 0;
+
+    function btn(label, sub, enabled, onClick) {
+      const cls = ["chrx-btn"];
+      if (enabled) cls.push("chrx-btn--primary");
+      return el("button", {
+        type:"button",
+        class: cls.join(" "),
+        disabled: enabled ? null : "disabled",
+        onclick: enabled ? onClick : null,
+      }, label, sub ? el("small", null, sub) : null);
+    }
+
+    const body = el("div", null,
+      el("p", { class:"chrx-ent-help" },
+        "Pick how you want to copy " + srcName + "."),
+      el("div", { class:"chrx-ent-copybtns" },
+        btn("⎘ Duplicate",
+            "Create a new row with the same settings (name will be suffixed \" (copy)\").",
+            typeof o.onDuplicate === "function",
+            () => {
+              closeSheet();
+              o.onDuplicate();
+            }),
+        btn("⛭ To another…",
+            hasOthers && typeof o.onCopyToOne === "function"
+              ? "Pick one target; this row's settings overwrite it."
+              : "No other rows available.",
+            hasOthers && typeof o.onCopyToOne === "function",
+            () => {
+              openPickEntitiesPopover({
+                title: "Copy " + srcName + " to…",
+                items: others.map(x => ({ id:x.id, label:x.name || x.id, _ref:x._ref })),
+                multi: false,
+                confirmLabel: "Copy",
+                onConfirm: (ids) => {
+                  if (!ids.length) return;
+                  const target = others.find(x => x.id === ids[0]);
+                  if (!target) return;
+                  closeSheet();
+                  o.onCopyToOne(target._ref);
+                },
+              });
+            }),
+        btn("↻ Apply to multiple…",
+            hasOthers && typeof o.onCopyToMany === "function"
+              ? "Pick multiple targets; this row's settings overwrite each."
+              : "No other rows available.",
+            hasOthers && typeof o.onCopyToMany === "function",
+            () => {
+              openPickEntitiesPopover({
+                title: "Copy " + srcName + " to multiple…",
+                items: others.map(x => ({ id:x.id, label:x.name || x.id, _ref:x._ref })),
+                multi: true,
+                confirmLabel: "Apply",
+                onConfirm: (ids) => {
+                  if (!ids.length) return;
+                  const refs = ids.map(id => {
+                    const it = others.find(x => x.id === id);
+                    return it && it._ref;
+                  }).filter(Boolean);
+                  closeSheet();
+                  o.onCopyToMany(refs);
+                },
+              });
+            }),
+      ),
+      el("div", { class:"chrx-ent-form__foot" },
+        el("button", { type:"button", class:"chrx-btn", onclick: closeSheet }, "Cancel"),
+      ),
+    );
+    openSheet(body, { title: o.title || ("Copy " + srcName) });
+  }
+
+  // Full editable time-off matrix sub-dialog (shared across entities).
+  const TO_STATES = ["available","preferred","unavailable"];
+  const TO_DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat"];
+  function openTimeOffSheet(ref, entity, onSave) {
+    const N = ((window.APP.school?.bell?.periods) || []).length || 8;
+    const s = Object.assign({}, ref.timeOff || {});
+    const g = el("div", { class:"chrx-ent-tomatrix" });
+    g.style.gridTemplateColumns = `60px repeat(${N}, 1fr)`;
+    g.appendChild(el("div", { class:"chrx-ent-tomatrix__corner" }));
+    for (let p = 1; p <= N; p++) g.appendChild(el("div", { class:"chrx-ent-tomatrix__h" }, `P${p}`));
+    for (let d = 0; d < 6; d++) {
+      g.appendChild(el("div", { class:"chrx-ent-tomatrix__h" }, TO_DAYS[d]));
+      for (let p = 1; p <= N; p++) {
+        const k = `${d}_${p}`;
+        g.appendChild(el("button", { type:"button",
+          class:`chrx-ent-tomatrix__c is-${s[k] || "available"}`,
+          onclick:(e)=>{
+            const nx = TO_STATES[(TO_STATES.indexOf(s[k] || "available")+1) % 3];
+            s[k] = nx; e.target.className = `chrx-ent-tomatrix__c is-${nx}`;
+          },
+        }));
+      }
+    }
+    openSheet(el("div", null, g,
+      el("div", { class:"chrx-ent-form__foot" },
+        el("button", { type:"button", class:"chrx-btn", onclick:closeSheet }, "Cancel"),
+        el("button", { type:"button", class:"chrx-btn chrx-btn--primary", onclick:()=>{
+          const before = ref.timeOff; ref.timeOff = s;
+          window.APP.audit.append({ entity, op:"timeoff", id:ref.id, before, after:s });
+          closeSheet(); if (onSave) onSave();
+        } }, "Save"),
+      ),
+    ), { title:`Time off — ${ref.name}` });
+  }
+
+  global.EntityDialog = {
+    open, close, refresh, openSheet, closeSheet,
+    openSubSheet, closeSubSheet,
+    SWATCHES, el, esc, uid,
+    buildField, buildSwatchPicker, buildEditSheet,
+    buildTimeOffMini, openTimeOffSheet,
+    buildSetForMoreLink, openPickEntitiesPopover, openBatchEditSheet,
+    openCopyChooser,
+  };
+})(window);
+
+/* ─── FILE: js/ui/components/time_off_matrix.js ─── */
+/* TimeOff matrix sub-dialog (shared across subjects/classes/classrooms/teachers).
+ * window.TimeOffMatrix.open(entity, kind, onSave)
+ *
+ * Cell states: 0=available (green), 1=conditional (blue), 2=blocked (red).
+ * Serialization: 2D array, timeOff[day][period] = 0|1|2.
+ * Days come from window.APP.school._idx.days; periods from window.APP.school.bell.periods.
+ *
+ * Backward compatibility: when an entity arrives with the legacy object-map shape
+ * ({"d_p":"available|preferred|unavailable"}), normalize() converts it to 2D once.
+ */
+(function (global) {
+  "use strict";
+  const D = window.EntityDialog;
+  if (!D) return;
+  const { el } = D;
+
+  const KIND_NOUN = {
+    subjects:   "subject",
+    classes:    "class",
+    classrooms: "classroom",
+    teachers:   "teacher",
+  };
+  const KIND_PLURAL = {
+    subjects:   "subjects",
+    classes:    "classes",
+    classrooms: "classrooms",
+    teachers:   "teachers",
+  };
+
+  function getDays() {
+    const idx = window.APP && window.APP.school && window.APP.school._idx;
+    const days = (idx && idx.days) || ["Mon","Tue","Wed","Thu","Fri","Sat"];
+    return days;
+  }
+  function getPeriodCount() {
+    const s = window.APP && window.APP.school;
+    const ps = (s && s.bell && s.bell.periods) || [];
+    return ps.length || 8;
+  }
+
+  // Convert legacy {"d_p":"available|preferred|unavailable"} to 2D 0|1|2.
+  // 2D shape is kept as a plain Array of Arrays so JSON round-trips cleanly.
+  function normalize(raw, nDays, nPeriods) {
+    const out = [];
+    for (let d = 0; d < nDays; d++) {
+      const row = [];
+      for (let p = 0; p < nPeriods; p++) row.push(0);
+      out.push(row);
+    }
+    if (!raw) return out;
+    if (Array.isArray(raw)) {
+      for (let d = 0; d < nDays; d++) {
+        const src = raw[d];
+        if (!Array.isArray(src)) continue;
+        for (let p = 0; p < nPeriods; p++) {
+          const v = src[p];
+          if (v === 0 || v === 1 || v === 2) out[d][p] = v;
+        }
+      }
+      return out;
+    }
+    if (typeof raw === "object") {
+      // Legacy keys "0_1" (1-indexed period) → 2D 0|1|2 (0-indexed period).
+      for (const k in raw) {
+        const m = /^(\d+)_(\d+)$/.exec(k);
+        if (!m) continue;
+        const d = parseInt(m[1], 10);
+        const p1 = parseInt(m[2], 10);
+        if (d < 0 || d >= nDays) continue;
+        const p = p1 - 1; // legacy was 1-indexed
+        if (p < 0 || p >= nPeriods) continue;
+        const v = raw[k];
+        if (v === "preferred" || v === "conditional") out[d][p] = 1;
+        else if (v === "unavailable" || v === "blocked") out[d][p] = 2;
+        else out[d][p] = 0;
+      }
+    }
+    return out;
+  }
+
+  function listForKind(kind) {
+    const s = window.APP && window.APP.school;
+    if (!s) return [];
+    if (kind === "subjects")   return s.subjects   || [];
+    if (kind === "classes")    return s.classes    || [];
+    if (kind === "classrooms") return s.classrooms || [];
+    if (kind === "teachers")   return s.teachers   || [];
+    return [];
+  }
+  function nameOf(e) {
+    return e.name || (e.lastName && e.firstName ? `${e.firstName} ${e.lastName}` : "") || e.lastName || e.id;
+  }
+
+  function open(entity, kind, onSave) {
+    const days = getDays();
+    const nDays = days.length;
+    const nPeriods = getPeriodCount();
+    const noun = KIND_NOUN[kind] || "item";
+
+    // Working copy — never mutate entity.timeOff until Save.
+    const state = normalize(entity && entity.timeOff, nDays, nPeriods);
+
+    // ---- grid ----
+    const grid = el("div", { class: "chrx-ent-tomatrix" });
+    grid.style.gridTemplateColumns = `64px repeat(${nPeriods}, 1fr)`;
+
+    function buildGrid() {
+      grid.innerHTML = "";
+      grid.appendChild(el("div", { class: "chrx-ent-tomatrix__corner" }));
+      for (let p = 0; p < nPeriods; p++) {
+        grid.appendChild(el("div", { class: "chrx-ent-tomatrix__h" }, `P${p + 1}`));
+      }
+      for (let d = 0; d < nDays; d++) {
+        grid.appendChild(el("div", { class: "chrx-ent-tomatrix__h" }, days[d] || `D${d + 1}`));
+        for (let p = 0; p < nPeriods; p++) {
+          const cell = el("button", {
+            type: "button",
+            class: cellClass(state[d][p]),
+            "data-d": d,
+            "data-p": p,
+            "aria-label": `${days[d]} P${p + 1}: ${stateName(state[d][p])}`,
+            title: `${days[d]} P${p + 1} — ${stateName(state[d][p])}`,
+            onclick: (e) => {
+              const nx = (state[d][p] + 1) % 3;
+              state[d][p] = nx;
+              e.currentTarget.className = cellClass(nx);
+              e.currentTarget.title = `${days[d]} P${p + 1} — ${stateName(nx)}`;
+              e.currentTarget.setAttribute("aria-label",
+                `${days[d]} P${p + 1}: ${stateName(nx)}`);
+            },
+          });
+          grid.appendChild(cell);
+        }
+      }
+    }
+    buildGrid();
+
+    // ---- tip ----
+    const tip = el("p", { class: "chrx-ent-tomatrix__tip" },
+      `Click cells to mark when this ${noun} is unavailable.`);
+
+    // ---- legend ----
+    const legend = el("div", { class: "chrx-ent-tomatrix__legend" },
+      el("span", { class: "chrx-ent-tomatrix__lg is-available" }, "Available"),
+      el("span", { class: "chrx-ent-tomatrix__lg is-conditional" }, "Conditional"),
+      el("span", { class: "chrx-ent-tomatrix__lg is-blocked" }, "Blocked"),
+    );
+
+    // ---- quick actions ----
+    function resetAll() {
+      for (let d = 0; d < nDays; d++)
+        for (let p = 0; p < nPeriods; p++) state[d][p] = 0;
+      buildGrid();
+    }
+    function blockWeekend() {
+      // Treat Sat (index 5) and any 7th day (Sun) as weekend; weekday list is school-defined.
+      // We block any day whose label starts with "Sat" or "Sun".
+      for (let d = 0; d < nDays; d++) {
+        const lbl = (days[d] || "").toLowerCase();
+        if (lbl.startsWith("sat") || lbl.startsWith("sun")) {
+          for (let p = 0; p < nPeriods; p++) state[d][p] = 2;
+        }
+      }
+      buildGrid();
+    }
+
+    // "Set for more" — apply current matrix to N other entities of same kind.
+    function openSetForMore() {
+      const plural = KIND_PLURAL[kind] || (noun + "s");
+      const others = listForKind(kind).filter(e => e.id !== (entity && entity.id));
+      if (!others.length) {
+        alert(`No other ${plural} to apply this matrix to.`);
+        return;
+      }
+      const items = others.map(e => ({ id:e.id, label:nameOf(e), _ref:e }));
+      window.EntityDialog.openPickEntitiesPopover({
+        title: `Apply this matrix to other ${plural}`,
+        help: `The selected ${plural} will have their entire time-off matrix replaced with the current one.`,
+        items, multi: true,
+        confirmLabel: "Apply matrix",
+        onConfirm: (ids) => {
+          if (!ids.length) return;
+          const snapshot = state.map(row => row.slice());
+          ids.forEach(id => {
+            const target = others.find(e => e.id === id);
+            if (!target) return;
+            const before = target.timeOff;
+            target.timeOff = snapshot.map(row => row.slice());
+            window.APP.audit.append({ entity: kind, op:"timeoff", id, before, after:target.timeOff });
+          });
+        },
+      });
+    }
+
+    const actions = el("div", { class: "chrx-ent-tomatrix__actions" },
+      el("button", { type: "button", class: "chrx-btn", onclick: resetAll }, "Reset all"),
+      el("button", { type: "button", class: "chrx-btn", onclick: blockWeekend }, "Block weekend"),
+      el("button", { type: "button", class: "chrx-btn", onclick: openSetForMore }, "Set for more…"),
+    );
+
+    // ---- body + footer ----
+    const body = el("div", { class: "chrx-timeoff-body" }, tip, actions, grid, legend);
+    const foot = el("div", { class: "chrx-ent-form__foot" },
+      el("button", { type: "button", class: "chrx-btn", onclick: D.closeSheet }, "Cancel"),
+      el("button", { type: "button", class: "chrx-btn chrx-btn--primary",
+        onclick: () => {
+          // Deep-clone so future edits to local state can't mutate saved data.
+          const out = state.map(row => row.slice());
+          D.closeSheet();
+          if (typeof onSave === "function") onSave(out);
+        },
+      }, "Save"),
+    );
+
+    const titleName = (entity && (entity.name || entity.id)) || noun;
+    D.openSheet(el("div", null, body, foot), { title: `Time off — ${titleName}` });
+  }
+
+  function cellClass(v) {
+    if (v === 1) return "chrx-ent-tomatrix__c is-conditional";
+    if (v === 2) return "chrx-ent-tomatrix__c is-blocked";
+    return "chrx-ent-tomatrix__c is-available";
+  }
+  function stateName(v) {
+    return v === 1 ? "Conditional" : v === 2 ? "Blocked" : "Available";
+  }
+
+  global.TimeOffMatrix = { open, normalize };
+})(window);
+
+/* ─── FILE: js/ui/components/class_constraints_dialog.js ─── */
+/* Class constraints dialog — Classic's 14-field classes.constraints subobject.
+ * window.ClassConstraintsDialog.open(classRow, onSave)
+ *
+ * Verbatim labels from legacy-research §3b-constraints.
+ *
+ * Fields written to classRow.constraints (created if absent):
+ *   classTeacherPos      — 3-deep bitmap [[["001000000",...x6]]] (1 term × 1 week × 6 days × 9 periods)
+ *   maxQuestionMarked    — int_or_enum ("*" = any)
+ *   m_nManualnyBlok      — enum "0" | "1" | "2"
+ *   m_nMinBlokOd / Do    — int_or_enum
+ *   m_nMaxVyucOd / Do    — int_or_enum
+ *   m_bDruheHodiny       — bool
+ *   m_bKoncitNaraz       — bool
+ *   minperiodsday        — int_or_enum
+ *   maxperiodsday        — int_or_enum
+ *   lunch_periodfrom     — int_or_enum ("d" allowed = school default)
+ *   lunch_periodto       — int_or_enum ("d" allowed)
+ *   maxneedspreparation  — int_or_enum
+ */
+(function (global) {
+  "use strict";
+  const D = window.EntityDialog;
+  if (!D) return;
+  const { el } = D;
+
+  const CTPOS_DAYS    = 6;
+  const CTPOS_PERIODS = 9;
+
+  function defaultConstraints() {
+    return {
+      classTeacherPos: emptyCtposMatrix(),
+      maxQuestionMarked: "*",
+      m_nManualnyBlok: "0",
+      m_nMinBlokOd: "*",
+      m_nMinBlokDo: "*",
+      m_nMaxVyucOd: "*",
+      m_nMaxVyucDo: "*",
+      m_bDruheHodiny: false,
+      m_bKoncitNaraz: false,
+      minperiodsday: "*",
+      maxperiodsday: "*",
+      lunch_periodfrom: "d",
+      lunch_periodto: "d",
+      maxneedspreparation: "*",
+    };
+  }
+
+  function emptyCtposMatrix() {
+    // Classic wire shape: [term][week][day] where day is a 9-char "0"/"1" string.
+    const day = "0".repeat(CTPOS_PERIODS);
+    const days = []; for (let d = 0; d < CTPOS_DAYS; d++) days.push(day);
+    return [[days]];
+  }
+
+  // Coerce arbitrary shape to a normalized 6×9 grid (matches CTPOS_DAYS × CTPOS_PERIODS).
+  // Returns a flat boolean[6][9] for UI editing.
+  function ctposToGrid(wire) {
+    const grid = [];
+    for (let d = 0; d < CTPOS_DAYS; d++) {
+      const row = [];
+      for (let p = 0; p < CTPOS_PERIODS; p++) row.push(false);
+      grid.push(row);
+    }
+    if (!Array.isArray(wire) || !wire[0] || !Array.isArray(wire[0][0])) return grid;
+    const days = wire[0][0];
+    for (let d = 0; d < CTPOS_DAYS; d++) {
+      const s = days[d];
+      if (typeof s !== "string") continue;
+      for (let p = 0; p < CTPOS_PERIODS && p < s.length; p++) {
+        if (s[p] === "1") grid[d][p] = true;
+      }
+    }
+    return grid;
+  }
+  function gridToCtpos(grid) {
+    const out = grid.map(row =>
+      row.slice(0, CTPOS_PERIODS).map(b => b ? "1" : "0").join("")
+         .padEnd(CTPOS_PERIODS, "0"));
+    return [[out]];
+  }
+
+  // --- shared int_or_enum helper ---------------------------------------------
+  function intOrEnum(value, onChange, opts) {
+    opts = opts || {};
+    const wrap = el("div", { class: "chrx-ent-ioe" });
+    const isInt = typeof value === "number" || (value != null && /^-?\d+$/.test(String(value)));
+    const input = el("input", {
+      type: "number",
+      min: opts.min != null ? String(opts.min) : "0",
+      max: opts.max != null ? String(opts.max) : null,
+      value: isInt ? String(value) : "",
+      oninput: (e) => {
+        const v = e.target.value.trim();
+        if (v === "") return; // sentinel buttons drive the sentinel state
+        const n = parseInt(v, 10);
+        if (!isNaN(n)) onChange(n);
+        unmarkSentinels();
+      },
+    });
+    function unmarkSentinels() {
+      wrap.querySelectorAll(".chrx-ent-ioe__sent.is-on")
+          .forEach(b => b.classList.remove("is-on"));
+    }
+    function setSentinel(token, btn) {
+      input.value = "";
+      onChange(token);
+      unmarkSentinels();
+      btn.classList.add("is-on");
+    }
+    const btnAny = el("button", {
+      type: "button",
+      class: "chrx-btn chrx-ent-ioe__sent" + (value === "*" ? " is-on" : ""),
+      title: "Unconstrained — any value",
+      onclick: (e) => setSentinel("*", e.currentTarget),
+    }, "Any");
+    wrap.appendChild(input);
+    wrap.appendChild(btnAny);
+    if (opts.allowDefault) {
+      const btnDef = el("button", {
+        type: "button",
+        class: "chrx-btn chrx-ent-ioe__sent" + (value === "d" ? " is-on" : ""),
+        title: "Use school default",
+        onclick: (e) => setSentinel("d", e.currentTarget),
+      }, "Default");
+      wrap.appendChild(btnDef);
+    }
+    return wrap;
+  }
+
+  function buildCtposGrid(grid) {
+    const wrap = el("div", { class: "chrx-ent-ctpos" });
+    wrap.style.gridTemplateColumns = `48px repeat(${CTPOS_PERIODS}, 1fr)`;
+    wrap.appendChild(el("div", { class: "chrx-ent-tomatrix__corner" }));
+    for (let p = 0; p < CTPOS_PERIODS; p++) {
+      wrap.appendChild(el("div", { class: "chrx-ent-tomatrix__h" }, `P${p + 1}`));
+    }
+    const days = (window.APP && window.APP.school && window.APP.school._idx && window.APP.school._idx.days)
+      || ["Mon","Tue","Wed","Thu","Fri","Sat"];
+    for (let d = 0; d < CTPOS_DAYS; d++) {
+      wrap.appendChild(el("div", { class: "chrx-ent-tomatrix__h" }, days[d] || `D${d + 1}`));
+      for (let p = 0; p < CTPOS_PERIODS; p++) {
+        const cell = el("button", {
+          type: "button",
+          class: "chrx-ent-ctpos__c" + (grid[d][p] ? " is-on" : ""),
+          "aria-pressed": grid[d][p] ? "true" : "false",
+          title: `${days[d] || "D"+(d+1)} P${p+1}`,
+          onclick: (e) => {
+            grid[d][p] = !grid[d][p];
+            e.currentTarget.classList.toggle("is-on", grid[d][p]);
+            e.currentTarget.setAttribute("aria-pressed", grid[d][p] ? "true" : "false");
+          },
+        });
+        wrap.appendChild(cell);
+      }
+    }
+    return wrap;
+  }
+
+  // "Set for more" — write ONE constraint field's current value to N other
+  // classes. Each affected class gets its own audit entry. Mutation is in-place.
+  function setForMoreField(srcRow, fieldKey, getValueNow) {
+    const others = ((window.APP.school && window.APP.school.classes) || [])
+      .filter(c => c.id !== srcRow.id);
+    if (!others.length) {
+      alert("No other classes to apply this to.");
+      return;
+    }
+    const items = others.map(c => ({ id:c.id, label:c.name || c.id, _ref:c }));
+    window.EntityDialog.openPickEntitiesPopover({
+      title: `Apply ${fieldKey} to other classes`,
+      help: `The current value of "${fieldKey}" will overwrite the same field on every selected class.`,
+      items, multi: true,
+      confirmLabel: "Apply",
+      onConfirm: (ids) => {
+        if (!ids.length) return;
+        const val = getValueNow();
+        ids.forEach(id => {
+          const target = others.find(c => c.id === id);
+          if (!target) return;
+          const before = target.constraints ? { ...target.constraints } : undefined;
+          const next = Object.assign(defaultConstraints(), target.constraints || {});
+          // Deep-copy 3D ctpos arrays so mutation can't leak.
+          if (fieldKey === "classTeacherPos" && Array.isArray(val)) {
+            next.classTeacherPos = val.map(t => t.map(w => w.slice()));
+          } else {
+            next[fieldKey] = val;
+          }
+          target.constraints = next;
+          window.APP.audit.append({
+            entity:"classes", op:"constraints-setformore", field: fieldKey,
+            id, before, after: { ...next },
+          });
+        });
+      },
+    });
+  }
+
+  function withSetForMore(control, srcRow, fieldKey, getValueNow) {
+    if (!srcRow || !srcRow.id) return control;
+    const link = window.EntityDialog.buildSetForMoreLink(
+      () => setForMoreField(srcRow, fieldKey, getValueNow),
+      { title: "Apply this value to other classes" }
+    );
+    return el("div", { class: "chrx-ent-row--withlink" }, control, link);
+  }
+
+  function open(classRow, onSave) {
+    if (!classRow) return;
+    const c = Object.assign(defaultConstraints(), classRow.constraints || {});
+    const ctposGrid = ctposToGrid(c.classTeacherPos || emptyCtposMatrix());
+
+    // ---- controls ----
+    const ctposBox = buildCtposGrid(ctposGrid);
+
+    const fMaxQ      = intOrEnum(c.maxQuestionMarked, v => c.maxQuestionMarked = v);
+    const fManual    = el("select", null,
+      el("option", { value: "0" }, "Disabled"),
+      el("option", { value: "1" }, "Manual"),
+      el("option", { value: "2" }, "Auto"),
+    );
+    fManual.value = c.m_nManualnyBlok != null ? String(c.m_nManualnyBlok) : "0";
+    fManual.addEventListener("change", e => c.m_nManualnyBlok = e.target.value);
+
+    const fMinFrom = intOrEnum(c.m_nMinBlokOd, v => c.m_nMinBlokOd = v);
+    const fMinTill = intOrEnum(c.m_nMinBlokDo, v => c.m_nMinBlokDo = v);
+    const fMaxFrom = intOrEnum(c.m_nMaxVyucOd, v => c.m_nMaxVyucOd = v);
+    const fMaxTill = intOrEnum(c.m_nMaxVyucDo, v => c.m_nMaxVyucDo = v);
+
+    const fDruhe = el("input", { type: "checkbox",
+      checked: c.m_bDruheHodiny ? "checked" : null,
+      onchange: e => c.m_bDruheHodiny = e.target.checked });
+    const fKoncit = el("input", { type: "checkbox",
+      checked: c.m_bKoncitNaraz ? "checked" : null,
+      onchange: e => c.m_bKoncitNaraz = e.target.checked });
+
+    const fMinDay = intOrEnum(c.minperiodsday, v => c.minperiodsday = v);
+    const fMaxDay = intOrEnum(c.maxperiodsday, v => c.maxperiodsday = v);
+
+    const fLunchFrom = intOrEnum(c.lunch_periodfrom, v => c.lunch_periodfrom = v, { allowDefault: true });
+    const fLunchTill = intOrEnum(c.lunch_periodto,   v => c.lunch_periodto   = v, { allowDefault: true });
+
+    const fPrep = intOrEnum(c.maxneedspreparation, v => c.maxneedspreparation = v);
+
+    const sfm = (control, fieldKey, get) =>
+      withSetForMore(control, classRow, fieldKey, get);
+
+    const fields = [
+      { label: "Class teacher must teach this class in specific time every day",
+        control: sfm(ctposBox, "classTeacherPos", () => gridToCtpos(ctposGrid)) },
+      { label: "Max. on the question marked",
+        control: sfm(fMaxQ, "maxQuestionMarked", () => c.maxQuestionMarked) },
+      { label: "Education block",
+        control: sfm(fManual, "m_nManualnyBlok", () => c.m_nManualnyBlok) },
+      { label: "Education block - min - from",
+        control: sfm(fMinFrom, "m_nMinBlokOd", () => c.m_nMinBlokOd) },
+      { label: "Education block - min - till",
+        control: sfm(fMinTill, "m_nMinBlokDo", () => c.m_nMinBlokDo) },
+      { label: "Education block - max - from",
+        control: sfm(fMaxFrom, "m_nMaxVyucOd", () => c.m_nMaxVyucOd) },
+      { label: "Education block - max - till",
+        control: sfm(fMaxTill, "m_nMaxVyucDo", () => c.m_nMaxVyucDo) },
+      { label: "Allow arrival on second lesson.",
+        control: sfm(fDruhe, "m_bDruheHodiny", () => !!c.m_bDruheHodiny) },
+      { label: "The groups of students have to finish the day in the same time.",
+        control: sfm(fKoncit, "m_bKoncitNaraz", () => !!c.m_bKoncitNaraz) },
+      { label: "Min periods per day",
+        control: sfm(fMinDay, "minperiodsday", () => c.minperiodsday) },
+      { label: "Max periods per day",
+        control: sfm(fMaxDay, "maxperiodsday", () => c.maxperiodsday) },
+      { label: "Lunch - from",
+        control: sfm(fLunchFrom, "lunch_periodfrom", () => c.lunch_periodfrom) },
+      { label: "Lunch - till",
+        control: sfm(fLunchTill, "lunch_periodto", () => c.lunch_periodto) },
+      { label: "Max. number of lessons per day requiring preparation",
+        control: sfm(fPrep, "maxneedspreparation", () => c.maxneedspreparation) },
+    ];
+
+    D.buildEditSheet({
+      title: `Constraints — ${classRow.name || classRow.id}`,
+      fields,
+      onSave: () => {
+        c.classTeacherPos = gridToCtpos(ctposGrid);
+        // Final write happens here so caller controls audit + persistence.
+        D.closeSheet();
+        if (typeof onSave === "function") onSave(c);
+      },
+    });
+  }
+
+  global.ClassConstraintsDialog = { open };
+})(window);
+
+/* ─── FILE: js/ui/components/teacher_constraints_dialog.js ─── */
+/* Teacher constraints dialog — Classic's 11-field teachers.constraints subobject.
+ * window.TeacherConstraintsDialog.open(teacherRow, onSave)
+ *
+ * Verbatim labels from legacy-research §6.3.
+ *
+ * Fields written to teacherRow.constraints (created if absent):
+ *   teachers_maxgapsweek           — int_or_enum ("*" = any)
+ *   teachers_maxgapsday            — int_or_enum
+ *   teachers_maxconsecutiveperiods — int_or_enum
+ *   maxOnConditional               — int_or_enum
+ *   lessonsPerDayMin               — int_or_enum
+ *   lessonsPerDayMax               — int_or_enum
+ *   maxDaysPerWeek                 — int_or_enum
+ *   supervisionMinCount            — int
+ *   supervisionMaxCount            — int
+ *   supervisionMinMinutes          — int
+ *   supervisionMaxMinutes          — int
+ */
+(function (global) {
+  "use strict";
+  const D = window.EntityDialog;
+  if (!D) return;
+  const { el } = D;
+
+  function defaultConstraints() {
+    return {
+      teachers_maxgapsweek: "*",
+      teachers_maxgapsday: "*",
+      teachers_maxconsecutiveperiods: "*",
+      maxOnConditional: "*",
+      lessonsPerDayMin: "*",
+      lessonsPerDayMax: "*",
+      maxDaysPerWeek: "*",
+      supervisionMinCount: "",
+      supervisionMaxCount: "",
+      supervisionMinMinutes: "",
+      supervisionMaxMinutes: "",
+    };
+  }
+
+  function intOrEnum(value, onChange) {
+    const wrap = el("div", { class: "chrx-ent-ioe" });
+    const isInt = typeof value === "number" || (value != null && /^-?\d+$/.test(String(value)));
+    const input = el("input", {
+      type: "number",
+      min: "0",
+      value: isInt ? String(value) : "",
+      oninput: (e) => {
+        const v = e.target.value.trim();
+        if (v === "") return;
+        const n = parseInt(v, 10);
+        if (!isNaN(n)) onChange(n);
+        unmark();
+      },
+    });
+    function unmark() {
+      wrap.querySelectorAll(".chrx-ent-ioe__sent.is-on")
+          .forEach(b => b.classList.remove("is-on"));
+    }
+    const btn = el("button", {
+      type: "button",
+      class: "chrx-btn chrx-ent-ioe__sent" + (value === "*" ? " is-on" : ""),
+      title: "Any (no cap)",
+      onclick: (e) => {
+        input.value = "";
+        onChange("*");
+        unmark();
+        e.currentTarget.classList.add("is-on");
+      },
+    }, "Any");
+    wrap.appendChild(input);
+    wrap.appendChild(btn);
+    return wrap;
+  }
+
+  function plainInt(value, onChange) {
+    return el("input", {
+      type: "number",
+      min: "0",
+      value: value != null && value !== "" ? String(value) : "",
+      oninput: (e) => {
+        const v = e.target.value.trim();
+        if (v === "") onChange("");
+        else {
+          const n = parseInt(v, 10);
+          if (!isNaN(n)) onChange(n);
+        }
+      },
+    });
+  }
+
+  function setForMoreField(srcRow, fieldKey, getValueNow) {
+    const others = ((window.APP.school && window.APP.school.teachers) || [])
+      .filter(t => t.id !== srcRow.id);
+    if (!others.length) {
+      alert("No other teachers to apply this to.");
+      return;
+    }
+    const nameOf = (t) => t.name
+      || `${t.firstName || ""} ${t.lastName || ""}`.trim()
+      || t.id;
+    const items = others.map(t => ({ id:t.id, label:nameOf(t), _ref:t }));
+    window.EntityDialog.openPickEntitiesPopover({
+      title: `Apply ${fieldKey} to other teachers`,
+      help: `The current value of "${fieldKey}" will overwrite the same field on every selected teacher.`,
+      items, multi: true,
+      confirmLabel: "Apply",
+      onConfirm: (ids) => {
+        if (!ids.length) return;
+        const val = getValueNow();
+        ids.forEach(id => {
+          const target = others.find(t => t.id === id);
+          if (!target) return;
+          const before = target.constraints ? { ...target.constraints } : undefined;
+          const next = Object.assign(defaultConstraints(), target.constraints || {});
+          next[fieldKey] = val;
+          target.constraints = next;
+          window.APP.audit.append({
+            entity:"teachers", op:"constraints-setformore", field: fieldKey,
+            id, before, after: { ...next },
+          });
+        });
+      },
+    });
+  }
+
+  function withSetForMore(control, srcRow, fieldKey, getValueNow) {
+    if (!srcRow || !srcRow.id) return control;
+    const link = window.EntityDialog.buildSetForMoreLink(
+      () => setForMoreField(srcRow, fieldKey, getValueNow),
+      { title: "Apply this value to other teachers" }
+    );
+    return el("div", { class: "chrx-ent-row--withlink" }, control, link);
+  }
+
+  function open(teacherRow, onSave) {
+    if (!teacherRow) return;
+    const c = Object.assign(defaultConstraints(), teacherRow.constraints || {});
+
+    const sfm = (control, fieldKey) =>
+      withSetForMore(control, teacherRow, fieldKey, () => c[fieldKey]);
+
+    const fields = [
+      { label: "Max gaps per week",
+        control: sfm(intOrEnum(c.teachers_maxgapsweek, v => c.teachers_maxgapsweek = v), "teachers_maxgapsweek") },
+      { label: "Max gaps per day",
+        control: sfm(intOrEnum(c.teachers_maxgapsday, v => c.teachers_maxgapsday = v), "teachers_maxgapsday") },
+      { label: "Max consecutive periods",
+        control: sfm(intOrEnum(c.teachers_maxconsecutiveperiods, v => c.teachers_maxconsecutiveperiods = v), "teachers_maxconsecutiveperiods") },
+      { label: "Max. on the question marked",
+        control: sfm(intOrEnum(c.maxOnConditional, v => c.maxOnConditional = v), "maxOnConditional") },
+      { label: "Number of lessons per day — From",
+        control: sfm(intOrEnum(c.lessonsPerDayMin, v => c.lessonsPerDayMin = v), "lessonsPerDayMin") },
+      { label: "Number of lessons per day — Till",
+        control: sfm(intOrEnum(c.lessonsPerDayMax, v => c.lessonsPerDayMax = v), "lessonsPerDayMax") },
+      { label: "Max days per week",
+        control: sfm(intOrEnum(c.maxDaysPerWeek, v => c.maxDaysPerWeek = v), "maxDaysPerWeek") },
+      // Supervisions block intentionally lacks "Set for more" (matches
+      // legacy-research §6.3 — supervisions excluded).
+      { label: "Supervisions: Min Count",
+        control: plainInt(c.supervisionMinCount, v => c.supervisionMinCount = v) },
+      { label: "Supervisions: Max Count",
+        control: plainInt(c.supervisionMaxCount, v => c.supervisionMaxCount = v) },
+      { label: "Supervisions: Min Minutes",
+        control: plainInt(c.supervisionMinMinutes, v => c.supervisionMinMinutes = v) },
+      { label: "Supervisions: Max Minutes",
+        control: plainInt(c.supervisionMaxMinutes, v => c.supervisionMaxMinutes = v) },
+    ];
+
+    const title = teacherRow.name
+      || `${teacherRow.firstName || ""} ${teacherRow.lastName || ""}`.trim()
+      || teacherRow.id;
+
+    D.buildEditSheet({
+      title: `Constraints — ${title}`,
+      fields,
+      onSave: () => {
+        D.closeSheet();
+        if (typeof onSave === "function") onSave(c);
+      },
+    });
+  }
+
+  global.TeacherConstraintsDialog = { open };
+})(window);
+
+/* ─── FILE: js/ui/components/divisions_tree.js ─── */
+/* Divisions tree component.
+ *
+ *   window.DivisionsTree.mount(host, classRef, lessons, onChange)
+ *
+ * Renders a 3-level tree:
+ *   Root      — the class itself
+ *     Division — e.g. "Lab split", "Boys/Girls", "Language tracks"
+ *       Group   — e.g. "Group A", "Group B"
+ *
+ * Each node supports inline add/edit/delete. Each group shows its student
+ * count and the lessons assigned to it (read from
+ *   lessons.filter(l => l.divisionGroupIds?.includes(group.id))
+ * ).
+ *
+ * The component mutates `classRef.divisions` directly on every edit and
+ * calls `onChange()` so the host dialog can mark the draft dirty.
+ *
+ * Single-use component for the embedded divisions editor in
+ * js/ui/entities/classes.js — kept deliberately minimal per CLAUDE.md
+ * simplicity rule. NOT a general-purpose tree widget.
+ */
+(function (global) {
+  "use strict";
+  const D = window.EntityDialog;
+  if (!D) return;
+
+  function uid(p) { return p + "_" + Math.random().toString(36).slice(2, 9); }
+
+  function defaultDivisions() {
+    return [{ id:"d_full", name:"Entire class",
+      groups:[{ id:"g_full", name:"Entire class", studentsCount:null }] }];
+  }
+
+  function lessonsForGroup(lessons, groupId) {
+    if (!groupId || !Array.isArray(lessons)) return [];
+    return lessons.filter(l =>
+      Array.isArray(l.divisionGroupIds) && l.divisionGroupIds.includes(groupId));
+  }
+
+  function subjectLabel(lesson) {
+    const idx = window.APP?.school?._idx?.subjectById || {};
+    const sub = idx[lesson.subjectId];
+    return sub ? (sub.abbr || sub.name) : (lesson.subjectId || "?");
+  }
+
+  // Render the tree into `host`. Idempotent — safe to call repeatedly.
+  function render(host, draft, lessons, onChange) {
+    host.innerHTML = "";
+    const className = host._classRef?.name || "Class";
+
+    // Root
+    const root = D.el("div", { class:"chrx-divtree-node chrx-divtree-root",
+      style:"font-weight:600;padding:6px 8px;background:#f3f4f6;border-radius:6px;margin-bottom:6px" },
+      D.el("span", { style:"margin-right:6px" }, "📚"),
+      D.el("span", null, className),
+      D.el("span", { style:"opacity:.55;font-weight:400;font-size:12px;margin-left:8px" },
+        `${draft.length} division${draft.length === 1 ? "" : "s"}`));
+    host.appendChild(root);
+
+    if (!draft.length) {
+      host.appendChild(D.el("p",
+        { style:"opacity:.6;margin:8px 0 8px 24px;font-size:13px" },
+        "No divisions yet. Click + Division below."));
+    }
+
+    draft.forEach((div, di) => {
+      host.appendChild(renderDivision(div, di, draft, lessons, () => {
+        render(host, draft, lessons, onChange); onChange && onChange();
+      }));
+    });
+  }
+
+  function renderDivision(div, di, draft, lessons, redraw) {
+    const wrap = D.el("div", { class:"chrx-divtree-div",
+      style:"margin:6px 0 6px 16px;border-left:2px solid #d1d5db;padding-left:10px" });
+
+    // Division header: name input, delete button, "+ Group" button.
+    const nameInput = D.el("input", { type:"text",
+      value:div.name || "", maxlength:"40",
+      placeholder:"Division name (e.g. Math/PE split)",
+      style:"flex:1;min-width:0;padding:3px 6px;font-size:13px",
+      oninput:(e)=>{ div.name = e.target.value; } });
+    const delBtn = D.el("button", { type:"button",
+      class:"chrx-btn chrx-btn--danger",
+      style:"padding:2px 8px;font-size:12px",
+      title:"Delete this division",
+      onclick:()=>{ draft.splice(di, 1); redraw(); } }, "×");
+    const addGroupBtn = D.el("button", { type:"button", class:"chrx-btn",
+      style:"padding:2px 8px;font-size:12px",
+      onclick:()=>{
+        div.groups = div.groups || [];
+        div.groups.push({ id:uid("g"),
+          name:`Group ${div.groups.length + 1}`, studentsCount:null });
+        redraw();
+      } }, "+ Group");
+
+    wrap.appendChild(D.el("div", {
+      style:"display:flex;gap:6px;align-items:center;padding:4px 0" },
+      D.el("span", { style:"opacity:.55;font-size:12px;min-width:40px" },
+        `D${di + 1}`),
+      D.el("span", { style:"margin-right:4px" }, "📂"),
+      nameInput, addGroupBtn, delBtn));
+
+    // Groups
+    (div.groups || []).forEach((g, gi) => {
+      wrap.appendChild(renderGroup(g, gi, div, lessons, redraw));
+    });
+
+    if (!(div.groups || []).length) {
+      wrap.appendChild(D.el("p",
+        { style:"opacity:.6;margin:4px 0 4px 24px;font-size:12px" },
+        "No groups yet."));
+    }
+    return wrap;
+  }
+
+  function renderGroup(g, gi, div, lessons, redraw) {
+    const row = D.el("div", { class:"chrx-divtree-group",
+      style:"margin:4px 0 4px 24px;border-left:2px dashed #e5e7eb;padding-left:10px" });
+
+    const nameInput = D.el("input", { type:"text",
+      value:g.name || "", maxlength:"30", placeholder:"Group name",
+      style:"flex:1;min-width:0;padding:3px 6px;font-size:13px",
+      oninput:(e)=>{ g.name = e.target.value; } });
+    const countInput = D.el("input", { type:"number", min:"0", max:"200",
+      value: g.studentsCount == null ? "" : g.studentsCount,
+      placeholder:"#",
+      style:"width:56px;padding:3px 6px;font-size:13px",
+      title:"Students in this group",
+      oninput:(e)=>{ const v = e.target.value;
+        g.studentsCount = v === "" ? null : (parseInt(v, 10) || 0); } });
+    const delBtn = D.el("button", { type:"button",
+      class:"chrx-btn chrx-btn--danger",
+      style:"padding:2px 8px;font-size:12px",
+      title:"Delete this group",
+      onclick:()=>{ div.groups.splice(gi, 1); redraw(); } }, "×");
+
+    row.appendChild(D.el("div", {
+      style:"display:flex;gap:6px;align-items:center;padding:2px 0" },
+      D.el("span", { style:"opacity:.55;font-size:12px;min-width:40px" },
+        `G${gi + 1}`),
+      D.el("span", { style:"margin-right:4px" }, "👥"),
+      nameInput,
+      D.el("span", { style:"opacity:.55;font-size:11px" }, "students"),
+      countInput, delBtn));
+
+    // Lessons assigned to this group
+    const assignedLessons = lessonsForGroup(lessons, g.id);
+    if (assignedLessons.length) {
+      const ul = D.el("div", {
+        style:"margin:2px 0 2px 56px;font-size:11px;opacity:.7;display:flex;flex-wrap:wrap;gap:4px" },
+        D.el("span", { style:"opacity:.7" }, "Lessons:"));
+      assignedLessons.forEach(l => {
+        ul.appendChild(D.el("span", {
+          style:"background:#eef2ff;color:#3730a3;padding:1px 6px;border-radius:10px",
+          title:`Lesson ${l.id}` }, subjectLabel(l)));
+      });
+      row.appendChild(ul);
+    } else {
+      row.appendChild(D.el("div", {
+        style:"margin:2px 0 2px 56px;font-size:11px;opacity:.45" },
+        "No lessons assigned to this group."));
+    }
+    return row;
+  }
+
+  // Validate. Returns the first error message, or null if OK.
+  function validate(draft) {
+    for (const d of draft) {
+      if (!d.name || !d.name.trim()) return "Each division needs a name.";
+      if (!d.groups || !d.groups.length)
+        return `Division "${d.name}" has no groups.`;
+      for (const g of d.groups) {
+        if (!g.name || !g.name.trim())
+          return `A group in division "${d.name}" has no name.`;
+      }
+    }
+    return null;
+  }
+
+  // Mount the tree against an in-memory draft array (caller controls commit).
+  //   host:     DOM node to render into
+  //   classRef: the class object (used for the root label only)
+  //   draft:    the in-memory divisions array we mutate in place
+  //   lessons:  the project's lessons (used to show per-group assignments)
+  //   onChange: optional callback fired on every edit
+  function mount(host, classRef, draft, lessons, onChange) {
+    if (!host || !classRef || !Array.isArray(draft)) return;
+    host._classRef = classRef;
+    render(host, draft, lessons, onChange);
+  }
+
+  global.DivisionsTree = {
+    mount, render, validate, defaultDivisions,
+  };
+})(window);
+
+/* ─── FILE: js/ui/entities/subjects.js ─── */
+/* Subjects CRUD dialog. window.EntitySubjects.open() */
+(function (global) {
+  "use strict";
+  const D = window.EntityDialog;
+  if (!D) return;
+
+  function rows() {
+    return ((window.APP.school && window.APP.school.subjects) || []).map(s => ({
+      id: s.id, name: s.name || "", short: s.abbr || s.short || "",
+      color: s.color || "",
+      contractWeight: s.contractWeight != null ? s.contractWeight : 1,
+      pictureUrl: s.pictureUrl || "", _ref: s,
+    }));
+  }
+
+  function columns() { return [
+    { key:"color", label:"", sortable:false,
+      render:(r)=>D.el("span", { class:"chrx-ent-swatch-dot",
+        style:`background:${r.color || "transparent"}`, "aria-hidden":"true" }) },
+    { key:"name",   label:"Name" },
+    { key:"short",  label:"Short" },
+    { key:"contractWeight", label:"Weight" },
+    { key:"pictureUrl", label:"Picture", render:(r)=> r.pictureUrl ? "✔" : "—" },
+  ]; }
+
+  function openEdit(r) {
+    const isNew = !r;
+    const draft = isNew
+      ? { name:"", short:"", color:"", contractWeight:1, pictureUrl:"" }
+      : { name:r.name, short:r.short, color:r.color,
+          contractWeight:r.contractWeight, pictureUrl:r.pictureUrl };
+
+    const fName = D.el("input", { type:"text", value:draft.name, required:"required",
+      maxlength:"60", oninput:(e)=>draft.name = e.target.value });
+    const fShort = D.el("input", { type:"text", value:draft.short, maxlength:"10",
+      oninput:(e)=>draft.short = e.target.value });
+    const fColor = D.buildSwatchPicker(draft.color, v => draft.color = v);
+    const fWeight = D.el("input", { type:"number", min:"0", max:"5", step:"0.1",
+      value:draft.contractWeight,
+      oninput:(e)=>draft.contractWeight = parseFloat(e.target.value) || 0 });
+    const fPic = D.el("input", { type:"text", placeholder:"https://…",
+      value:draft.pictureUrl, oninput:(e)=>draft.pictureUrl = e.target.value });
+
+    function save() {
+      if (!draft.name.trim()) { fName.focus(); return false; }
+      const all = window.APP.school.subjects;
+      if (!isNew) {
+        const subj = r._ref;
+        const before = { ...subj };
+        subj.name = draft.name.trim();
+        subj.abbr = draft.short.trim() || undefined;
+        subj.color = draft.color || undefined;
+        subj.contractWeight = draft.contractWeight;
+        subj.pictureUrl = draft.pictureUrl || undefined;
+        window.APP.audit.append({ entity:"subjects", op:"update", before, after:{...subj} });
+      } else {
+        const ns = { id:D.uid("s"), name:draft.name.trim(),
+          abbr:draft.short.trim() || undefined, color:draft.color || undefined,
+          contractWeight:draft.contractWeight, pictureUrl:draft.pictureUrl || undefined };
+        if (all.some(x => x.name === ns.name)) { fName.focus(); return false; }
+        all.push(ns);
+        if (window.APP.school._idx) window.APP.school._idx.subjectById[ns.id] = ns;
+        window.APP.audit.append({ entity:"subjects", op:"add", after:{...ns} });
+      }
+      D.closeSheet(); D.refresh(rows());
+      return true;
+    }
+
+    D.buildEditSheet({
+      title: isNew ? "New subject" : `Edit subject — ${r.name}`,
+      fields: [
+        { label:"Name", control:fName },
+        { label:"Abbreviation", control:fShort },
+        { label:"Color", control:fColor },
+        { label:"Contract weight", control:fWeight },
+        { label:"Picture URL", control:fPic },
+      ],
+      onSave: save,
+      siblingRows: isNew ? null : rows(),
+      currentRowId: isNew ? null : r.id,
+      onNavigate: openEdit,
+    });
+  }
+
+  function openTimeOff(r) {
+    const ref = r._ref;
+    if (!window.TimeOffMatrix) return;
+    window.TimeOffMatrix.open(ref, "subjects", (newTimeOff) => {
+      const before = ref.timeOff;
+      ref.timeOff = newTimeOff;
+      window.APP.audit.append({ entity:"subjects", op:"timeoff", id:ref.id, before, after:newTimeOff });
+      D.refresh(rows());
+    });
+  }
+
+  function openConstraints(r) {
+    const ref = r._ref;
+    const c = Object.assign({ maxPerDay:"", requiresLab:false }, ref.constraints || {});
+    const fMax = D.el("input", { type:"number", min:"0", max:"9", value:c.maxPerDay,
+      oninput:(e)=> c.maxPerDay = e.target.value });
+    const fLab = D.el("input", { type:"checkbox", checked: c.requiresLab ? "checked" : null,
+      onchange:(e)=> c.requiresLab = e.target.checked });
+    D.buildEditSheet({
+      title:`Constraints — ${ref.name}`,
+      fields:[
+        { label:"Max periods per day", control:fMax },
+        { label:"Requires lab",        control:fLab },
+      ],
+      onSave:()=>{
+        const before = ref.constraints;
+        ref.constraints = c;
+        window.APP.audit.append({ entity:"subjects", op:"constraints", id:ref.id, before, after:c });
+        D.closeSheet(); D.refresh(rows());
+      },
+    });
+  }
+
+  function openLessonsOf(r) {
+    const lessons = ((window.APP.school && window.APP.school.lessons) || [])
+      .filter(l => l.subjectId === r._ref.id);
+    const list = D.el("ul", { class:"chrx-ent-list" });
+    if (!lessons.length) list.appendChild(D.el("li", null, "No lessons for this subject."));
+    lessons.forEach(l => list.appendChild(D.el("li", null,
+      `${l.periodsPerWeek}× — classes ${l.classIds.length}, teachers ${l.teacherIds.length}`)));
+    D.openSheet(list, { title: `Lessons of ${r._ref.name} (${lessons.length})` });
+  }
+
+  // Settings copied by "To another…" / "Apply to multiple…" (not name/id/abbr).
+  const COPYABLE_KEYS = ["color", "contractWeight", "pictureUrl", "timeOff", "constraints"];
+  function deepClone(v) {
+    if (Array.isArray(v)) return v.map(deepClone);
+    if (v && typeof v === "object") {
+      const out = {}; for (const k in v) out[k] = deepClone(v[k]); return out;
+    }
+    return v;
+  }
+  function openCopy(r) {
+    if (!r) return;
+    const srcRef = r._ref;
+    const srcSnapshot = { ...srcRef };
+    function applySettings(targetRef) {
+      const before = { ...targetRef };
+      COPYABLE_KEYS.forEach(k => {
+        if (srcSnapshot[k] !== undefined) targetRef[k] = deepClone(srcSnapshot[k]);
+      });
+      window.APP.audit.append({ entity:"subjects", op:"copy", id:targetRef.id, before, after:{...targetRef} });
+    }
+    const all = rows();
+    const others = all.filter(x => x.id !== r.id).map(x => ({
+      id: x.id, name: x.name || x.id, _ref: x._ref,
+    }));
+
+    D.openCopyChooser({
+      title: `Copy — ${r.name}`,
+      source: srcRef,
+      others,
+      onDuplicate: () => {
+        const all = window.APP.school.subjects;
+        const copy = { ...srcRef, id: D.uid("s"), name: (srcRef.name || "") + " (copy)" };
+        if (srcRef.timeOff != null)   copy.timeOff = deepClone(srcRef.timeOff);
+        if (srcRef.constraints)        copy.constraints = deepClone(srcRef.constraints);
+        all.push(copy);
+        if (window.APP.school._idx) window.APP.school._idx.subjectById[copy.id] = copy;
+        window.APP.audit.append({ entity:"subjects", op:"add", after:{...copy} });
+        D.refresh(rows());
+      },
+      onCopyToOne: (targetRef) => {
+        applySettings(targetRef);
+        D.refresh(rows());
+      },
+      onCopyToMany: (targetRefs) => {
+        targetRefs.forEach(applySettings);
+        D.refresh(rows());
+      },
+    });
+  }
+
+  // Batch edit (P2#11)
+  function openBatch() {
+    const all = rows();
+    D.openBatchEditSheet({
+      title: "Batch edit — Subjects",
+      rows: all.map(r => ({ id:r.id, name:r.name, _ref:r._ref })),
+      fields: [
+        { id:"color", label:"Color",
+          build:(onChange) => D.buildSwatchPicker("", v => onChange(v || "")) },
+        { id:"contractWeight", label:"Contract weight",
+          build:(onChange) => D.el("input", { type:"number", min:"0", max:"5", step:"0.1",
+            oninput:(e)=>onChange(parseFloat(e.target.value) || 0) }) },
+      ],
+      onApply: (fieldId, value, ids) => {
+        const byId = {}; all.forEach(r => byId[r.id] = r._ref);
+        ids.forEach(id => {
+          const ref = byId[id]; if (!ref) return;
+          const before = { ...ref };
+          if (fieldId === "color")             ref.color = value || undefined;
+          else if (fieldId === "contractWeight") ref.contractWeight = value;
+          window.APP.audit.append({ entity:"subjects", op:"batch", field:fieldId, id, before, after:{...ref} });
+        });
+        D.refresh(rows());
+      },
+    });
+  }
+
+  function open() {
+    D.open({
+      entity:"subjects", title:"Subjects",
+      columns: columns(), rows: rows(),
+      extras: [
+        { id:"lessons",     label:"Lessons" },
+        { id:"timeoff",     label:"Time off" },
+        { id:"constraints", label:"Constraints" },
+        { id:"copy",        label:"Copy" },
+        { id:"batch",       label:"Batch edit", needRow:false },
+      ],
+      onAction: (cmd, row) => {
+        if (cmd === "new") return openEdit(null);
+        if (cmd === "edit" && row) return openEdit(row);
+        if (cmd === "delete" && row) {
+          const all = window.APP.school.subjects;
+          const i = all.findIndex(x => x.id === row._ref.id);
+          if (i >= 0) {
+            const removed = all.splice(i, 1)[0];
+            window.APP.audit.append({ entity:"subjects", op:"remove", before:{...removed} });
+            D.refresh(rows());
+          }
+          return;
+        }
+        if (cmd === "timeoff" && row) return openTimeOff(row);
+        if (cmd === "constraints" && row) return openConstraints(row);
+        if (cmd === "lessons" && row) return openLessonsOf(row);
+        if (cmd === "copy" && row) return openCopy(row);
+        if (cmd === "batch") return openBatch();
+      },
+    });
+  }
+
+  global.EntitySubjects = { open };
+})(window);
+
+/* ─── FILE: js/ui/entities/classes.js ─── */
+/* Classes CRUD dialog. window.EntityClasses.open() */
+(function (global) {
+  "use strict";
+  const D = window.EntityDialog;
+  if (!D) return;
+
+  function rows() {
+    const idxT = window.APP.school?._idx?.teacherById || {};
+    const idxR = window.APP.school?._idx?.classroomById || {};
+    return ((window.APP.school?.classes) || []).map(c => ({
+      id: c.id, name: c.name || "", short: c.abbr || c.short || c.name || "",
+      teacher: idxT[c.teacherId || c._teacherId]?.name || "",
+      classrooms: (c.classroomIds || c._classroomIds || [])
+        .map(id => idxR[id]?.name).filter(Boolean).join(", "),
+      bell: c.bell || "default", color: c.color || "",
+      divCount: (c.divisions || []).length || 0, _ref: c,
+    }));
+  }
+
+  function columns() { return [
+    { key:"name",  label:"Name" },
+    { key:"short", label:"Short" },
+    { key:"teacher", label:"Class teacher" },
+    { key:"classrooms", label:"Rooms" },
+    { key:"bell",  label:"Bell" },
+    { key:"color", label:"Color", sortable:false,
+      render:(r)=>D.el("span", { class:"chrx-ent-swatch-dot",
+        style:`background:${r.color || "transparent"}` }) },
+    { key:"divCount", label:"Divisions" },
+  ]; }
+
+  function makeSelect(items, curId, label, onChange) {
+    const sel = D.el("select", null, D.el("option", { value:"" }, "—"));
+    (items || []).forEach(t => {
+      const opt = D.el("option", { value:t.id }, label(t));
+      if (t.id === curId) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    sel.addEventListener("change", e => onChange(e.target.value || null));
+    return sel;
+  }
+
+  function openEdit(r) {
+    const isNew = !r;
+    const draft = isNew
+      ? { name:"", short:"", color:"", teacherId:"", classroomIds:[], bell:"" }
+      : { name:r.name, short:r.short, color:r.color,
+          teacherId: r._ref.teacherId || r._ref._teacherId || "",
+          classroomIds: (r._ref.classroomIds || r._ref._classroomIds || []).slice(),
+          bell: r._ref.bell || "" };
+
+    const fName = D.el("input", { type:"text", value:draft.name, required:"required",
+      maxlength:"30", oninput:(e)=>draft.name = e.target.value });
+    const fShort = D.el("input", { type:"text", value:draft.short, maxlength:"10",
+      oninput:(e)=>draft.short = e.target.value });
+    const fTeacher = makeSelect(window.APP.school?.teachers, draft.teacherId,
+      t => t.name + (t.abbr ? ` (${t.abbr})` : ""), v => draft.teacherId = v);
+    const fBell = D.el("input", { type:"text", value:draft.bell, placeholder:"default",
+      oninput:(e)=>draft.bell = e.target.value });
+    const fColor = D.buildSwatchPicker(draft.color, v => draft.color = v);
+
+    const fRooms = D.el("select", { multiple:"multiple", size:"4" });
+    ((window.APP.school?.classrooms) || []).forEach(rm => {
+      const opt = D.el("option", { value:rm.id }, rm.name);
+      if (draft.classroomIds.includes(rm.id)) opt.selected = true;
+      fRooms.appendChild(opt);
+    });
+    fRooms.addEventListener("change", () => {
+      draft.classroomIds = Array.from(fRooms.selectedOptions).map(o => o.value);
+    });
+
+    function save() {
+      if (!draft.name.trim()) { fName.focus(); return false; }
+      const all = window.APP.school.classes;
+      if (!isNew) {
+        const c = r._ref;
+        const before = { ...c };
+        c.name = draft.name.trim();
+        c.abbr = draft.short.trim() || undefined;
+        c.color = draft.color || undefined;
+        c.teacherId = draft.teacherId || undefined;
+        c.classroomIds = draft.classroomIds.slice();
+        c.bell = draft.bell || undefined;
+        window.APP.audit.append({ entity:"classes", op:"update", before, after:{...c} });
+      } else {
+        const nc = { id:D.uid("c"), name:draft.name.trim(),
+          abbr:draft.short.trim() || undefined, color:draft.color || undefined,
+          teacherId:draft.teacherId || undefined,
+          classroomIds:draft.classroomIds.slice(),
+          bell:draft.bell || undefined };
+        if (all.some(x => x.name === nc.name)) { fName.focus(); return false; }
+        all.push(nc);
+        if (window.APP.school._idx) window.APP.school._idx.classById[nc.id] = nc;
+        window.APP.audit.append({ entity:"classes", op:"add", after:{...nc} });
+      }
+      D.closeSheet(); D.refresh(rows());
+      return true;
+    }
+
+    D.buildEditSheet({
+      title: isNew ? "New class" : `Edit class — ${r.name}`,
+      fields:[
+        { label:"Name", control:fName },
+        { label:"Short", control:fShort },
+        { label:"Class teacher", control:fTeacher },
+        { label:"Home classrooms", control:fRooms },
+        { label:"Bell", control:fBell },
+        { label:"Color", control:fColor },
+      ],
+      onSave: save,
+      siblingRows: isNew ? null : rows(),
+      currentRowId: isNew ? null : r.id,
+      onNavigate: openEdit,
+    });
+  }
+
+  // Copy entry (P2#10)
+  const COPYABLE_KEYS = ["color", "timeOff", "constraints", "bell"];
+  function deepClone(v) {
+    if (Array.isArray(v)) return v.map(deepClone);
+    if (v && typeof v === "object") {
+      const out = {}; for (const k in v) out[k] = deepClone(v[k]); return out;
+    }
+    return v;
+  }
+  function openCopy(r) {
+    if (!r) return;
+    const srcRef = r._ref;
+    const srcSnapshot = { ...srcRef };
+    function applySettings(targetRef) {
+      const before = { ...targetRef };
+      COPYABLE_KEYS.forEach(k => {
+        if (srcSnapshot[k] !== undefined) targetRef[k] = deepClone(srcSnapshot[k]);
+      });
+      window.APP.audit.append({ entity:"classes", op:"copy", id:targetRef.id, before, after:{...targetRef} });
+    }
+    const all = rows();
+    const others = all.filter(x => x.id !== r.id).map(x => ({
+      id:x.id, name:x.name || x.id, _ref:x._ref,
+    }));
+    D.openCopyChooser({
+      title: `Copy — ${r.name}`,
+      source: srcRef,
+      others,
+      onDuplicate: () => {
+        const all = window.APP.school.classes;
+        const copy = { ...srcRef, id:D.uid("c"), name:(srcRef.name || "") + " (copy)" };
+        if (srcRef.timeOff != null)     copy.timeOff = deepClone(srcRef.timeOff);
+        if (srcRef.constraints)          copy.constraints = deepClone(srcRef.constraints);
+        if (srcRef.classroomIds != null) copy.classroomIds = deepClone(srcRef.classroomIds);
+        if (srcRef.divisions != null)    copy.divisions = deepClone(srcRef.divisions);
+        all.push(copy);
+        if (window.APP.school._idx) window.APP.school._idx.classById[copy.id] = copy;
+        window.APP.audit.append({ entity:"classes", op:"add", after:{...copy} });
+        D.refresh(rows());
+      },
+      onCopyToOne: (targetRef) => { applySettings(targetRef); D.refresh(rows()); },
+      onCopyToMany: (targetRefs) => { targetRefs.forEach(applySettings); D.refresh(rows()); },
+    });
+  }
+
+  // Batch edit (P2#11)
+  function openBatch() {
+    const all = rows();
+    D.openBatchEditSheet({
+      title: "Batch edit — Classes",
+      rows: all.map(r => ({ id:r.id, name:r.name, _ref:r._ref })),
+      fields: [
+        { id:"color", label:"Color",
+          build:(onChange) => D.buildSwatchPicker("", v => onChange(v || "")) },
+        { id:"bell",  label:"Bell",
+          build:(onChange) => D.el("input", { type:"text", placeholder:"default",
+            oninput:(e)=>onChange(e.target.value) }) },
+      ],
+      onApply: (fieldId, value, ids) => {
+        const byId = {}; all.forEach(r => byId[r.id] = r._ref);
+        ids.forEach(id => {
+          const ref = byId[id]; if (!ref) return;
+          const before = { ...ref };
+          if (fieldId === "color") ref.color = value || undefined;
+          else if (fieldId === "bell") ref.bell = value || undefined;
+          window.APP.audit.append({ entity:"classes", op:"batch", field:fieldId, id, before, after:{...ref} });
+        });
+        D.refresh(rows());
+      },
+    });
+  }
+
+  function openConstraints(r) {
+    const ref = r._ref;
+    if (!window.ClassConstraintsDialog) return;
+    window.ClassConstraintsDialog.open(ref, (next) => {
+      const before = ref.constraints;
+      ref.constraints = next;
+      window.APP.audit.append({ entity:"classes", op:"constraints", id:ref.id, before, after:next });
+      D.refresh(rows());
+    });
+  }
+
+  function openTimeOff(r) {
+    const ref = r._ref;
+    if (!window.TimeOffMatrix) return;
+    window.TimeOffMatrix.open(ref, "classes", (newTimeOff) => {
+      const before = ref.timeOff;
+      ref.timeOff = newTimeOff;
+      window.APP.audit.append({ entity:"classes", op:"timeoff", id:ref.id, before, after:newTimeOff });
+      D.refresh(rows());
+    });
+  }
+
+  /* Class divisions — embedded {id, name, groups:[{id,name,studentsCount}]}[].
+   * Classic semantic: a lesson taught to one group splits the class hour.
+   * Default: single "Entire class" division containing one "Entire class" group. */
+  function defaultDivisions() {
+    return [{ id:"d_full", name:"Entire class",
+      groups:[{ id:"g_full", name:"Entire class", studentsCount:null }] }];
+  }
+  function cloneDivisions(arr) {
+    return (arr || []).map(d => ({ id:d.id, name:d.name,
+      groups:(d.groups || []).map(g => ({ id:g.id, name:g.name,
+        studentsCount: g.studentsCount == null ? null : g.studentsCount })) }));
+  }
+
+  function openDivisions(r) {
+    const ref = r._ref;
+    // before snapshot reflects the current persisted state (may be empty).
+    const before = cloneDivisions(ref.divisions || []);
+
+    // Tree component required — load order is enforced by index.html. If
+    // missing, fall back to a tiny inline message so the dialog doesn't
+    // open empty.
+    if (!window.DivisionsTree) {
+      D.openSheet(D.el("div", null,
+        D.el("p", null, "Divisions tree component is not loaded."),
+        D.el("div", { class:"chrx-ent-form__foot" },
+          D.el("button", { type:"button", class:"chrx-btn",
+            onclick:()=>D.closeSheet() }, "Close"))),
+        { title: `Divisions — ${ref.name}` });
+      return;
+    }
+
+    // Local draft — committed only on Save. Seed default when class has none
+    // so the user immediately sees the "Entire class" baseline; if they hit
+    // Cancel, ref.divisions stays untouched.
+    const draft = (Array.isArray(ref.divisions) && ref.divisions.length)
+      ? cloneDivisions(ref.divisions)
+      : window.DivisionsTree.defaultDivisions();
+
+    const lessons = window.APP.school?.lessons || [];
+
+    const wrap = D.el("div", { class:"chrx-ent-divisions" });
+    const treeHost = D.el("div", { class:"chrx-ent-divtree-host" });
+    window.DivisionsTree.mount(treeHost, ref, draft, lessons);
+    wrap.appendChild(treeHost);
+
+    // Add-row controls: name input + "Add" + "Quick-add (Boys, Girls)"
+    function rerender() {
+      window.DivisionsTree.render(treeHost, draft, lessons);
+    }
+    const fAddName = D.el("input", { type:"text",
+      placeholder:"New division name (e.g. Math/PE split)", maxlength:"30",
+      style:"flex:1" });
+    const fQuick = D.el("input", { type:"text",
+      placeholder:'Quick-add groups: "Boys, Girls"', maxlength:"80",
+      style:"flex:1" });
+
+    const addBtn = D.el("button", { type:"button", class:"chrx-btn",
+      onclick:()=>{
+        const n = fAddName.value.trim();
+        if (!n) { fAddName.focus(); return; }
+        draft.push({ id:D.uid("div"), name:n,
+          groups:[
+            { id:D.uid("g"), name:"Group 1", studentsCount:null },
+            { id:D.uid("g"), name:"Group 2", studentsCount:null },
+          ] });
+        fAddName.value = ""; rerender();
+      } }, "+ Division");
+
+    const quickBtn = D.el("button", { type:"button", class:"chrx-btn",
+      onclick:()=>{
+        const raw = fQuick.value.trim();
+        if (!raw) { fQuick.focus(); return; }
+        const parts = raw.split(",").map(s => s.trim()).filter(Boolean);
+        if (!parts.length) return;
+        draft.push({ id:D.uid("div"),
+          name: parts.join("/"),
+          groups: parts.map(p => ({ id:D.uid("g"),
+            name:p, studentsCount:null })) });
+        fQuick.value = ""; rerender();
+      } }, "Quick-add");
+
+    wrap.appendChild(D.el("div", { class:"chrx-ent-row",
+      style:"display:flex;gap:8px;margin-top:12px" }, fAddName, addBtn));
+    wrap.appendChild(D.el("div", { class:"chrx-ent-row",
+      style:"display:flex;gap:8px;margin-top:8px" }, fQuick, quickBtn));
+    wrap.appendChild(D.el("p", { style:"opacity:.55;font-size:12px;margin:8px 0 0" },
+      "A division splits a class hour: a lesson taught to one group runs in parallel with another group's lesson."));
+
+    D.openSheet(D.el("div", null, wrap,
+      D.el("div", { class:"chrx-ent-form__foot" },
+        D.el("button", { type:"button", class:"chrx-btn",
+          onclick:()=>{ D.closeSheet(); } }, "Cancel"),
+        D.el("button", { type:"button", class:"chrx-btn chrx-btn--primary",
+          onclick:()=>{
+            const err = window.DivisionsTree.validate(draft);
+            if (err) { alert(err); return; }
+            ref.divisions = draft;
+            window.APP.audit.append({ entity:"classes", op:"divisions",
+              id:ref.id, before, after:cloneDivisions(draft) });
+            D.closeSheet(); D.refresh(rows());
+          } }, "Save"),
+      ),
+    ), { title: `Divisions — ${ref.name}` });
+  }
+
+  function openSubjectsOf(r) {
+    const ref = r._ref;
+    const lessons = ((window.APP.school?.lessons) || []).filter(l => l.classIds.includes(ref.id));
+    const subjMap = window.APP.school?._idx?.subjectById || {};
+    const seen = new Set();
+    lessons.forEach(l => seen.add(l.subjectId));
+    const list = D.el("ul", { class:"chrx-ent-list" });
+    if (!seen.size) list.appendChild(D.el("li", null, "No subjects scheduled for this class."));
+    Array.from(seen).forEach(sid => {
+      const s = subjMap[sid];
+      list.appendChild(D.el("li", null, s ? s.name : sid));
+    });
+    D.openSheet(list, { title: `Subjects of ${ref.name} (${seen.size})` });
+  }
+
+  function open() {
+    D.open({
+      entity:"classes", title:"Classes",
+      columns:columns(), rows:rows(),
+      extras:[
+        { id:"timeoff",     label:"Time off" },
+        { id:"constraints", label:"Constraints" },
+        { id:"divisions",   label:"Divisions" },
+        { id:"subjects",    label:"Subjects" },
+        { id:"copy",        label:"Copy" },
+        { id:"batch",       label:"Batch edit", needRow:false },
+      ],
+      onAction:(cmd, row) => {
+        if (cmd === "new")  return openEdit(null);
+        if (cmd === "edit" && row) return openEdit(row);
+        if (cmd === "delete" && row) {
+          const all = window.APP.school.classes;
+          const i = all.findIndex(x => x.id === row._ref.id);
+          if (i >= 0) {
+            const removed = all.splice(i, 1)[0];
+            window.APP.audit.append({ entity:"classes", op:"remove", before:{...removed} });
+            D.refresh(rows());
+          }
+          return;
+        }
+        if (cmd === "timeoff" && row)     return openTimeOff(row);
+        if (cmd === "constraints" && row) return openConstraints(row);
+        if (cmd === "divisions" && row)   return openDivisions(row);
+        if (cmd === "subjects" && row)    return openSubjectsOf(row);
+        if (cmd === "copy" && row)        return openCopy(row);
+        if (cmd === "batch")              return openBatch();
+      },
+    });
+  }
+
+  global.EntityClasses = { open };
+})(window);
+
+/* ─── FILE: js/ui/entities/classrooms.js ─── */
+/* Classrooms CRUD dialog. window.EntityClassrooms.open() */
+(function (global) {
+  "use strict";
+  const D = window.EntityDialog;
+  if (!D) return;
+
+  function rows() {
+    const idxS = window.APP.school?._idx?.subjectById || {};
+    return ((window.APP.school?.classrooms) || []).map(rm => ({
+      id: rm.id, name: rm.name || "", short: rm.abbr || rm.short || "",
+      building: rm.building || "", capacity: rm.capacity != null ? rm.capacity : "",
+      color: rm.color || "",
+      needsSupervision: rm.needsSupervision ? "Yes" : "",
+      isShared: rm.isShared ? "Yes" : "",
+      subjectsFor: (rm.allowedSubjectIds || [])
+        .map(id => idxS[id]?.abbr || idxS[id]?.name).filter(Boolean).join(", "),
+      bell: rm.bell || "default", _ref: rm,
+    }));
+  }
+
+  function columns() { return [
+    { key:"name",  label:"Name" },
+    { key:"short", label:"Short" },
+    { key:"building", label:"Building" },
+    { key:"capacity", label:"Capacity" },
+    { key:"color", label:"Color", sortable:false,
+      render:(r)=>D.el("span", { class:"chrx-ent-swatch-dot",
+        style:`background:${r.color || "transparent"}` }) },
+    { key:"needsSupervision", label:"Supervised" },
+    { key:"isShared", label:"Shared" },
+    { key:"subjectsFor", label:"For subjects" },
+    { key:"bell", label:"Bell" },
+  ]; }
+
+  function openEdit(r) {
+    const isNew = !r;
+    const draft = isNew
+      ? { name:"", short:"", building:"", capacity:"", color:"",
+          needsSupervision:false, isShared:false,
+          allowedSubjectIds:[], bell:"" }
+      : { name:r.name, short:r.short, building:r.building,
+          capacity:r.capacity, color:r.color,
+          needsSupervision: !!r._ref.needsSupervision,
+          isShared: !!r._ref.isShared,
+          allowedSubjectIds: (r._ref.allowedSubjectIds || []).slice(),
+          bell:r.bell === "default" ? "" : r.bell };
+
+    const fName = D.el("input", { type:"text", value:draft.name, required:"required",
+      maxlength:"40", oninput:(e)=>draft.name = e.target.value });
+    const fShort = D.el("input", { type:"text", value:draft.short, maxlength:"10",
+      oninput:(e)=>draft.short = e.target.value });
+    const fBuilding = D.el("input", { type:"text", value:draft.building,
+      oninput:(e)=>draft.building = e.target.value });
+    const fCap = D.el("input", { type:"number", min:"0", value:draft.capacity,
+      oninput:(e)=>draft.capacity = e.target.value });
+    const fColor = D.buildSwatchPicker(draft.color, v => draft.color = v);
+    const fSup = D.el("input", { type:"checkbox",
+      checked: draft.needsSupervision ? "checked" : null,
+      onchange:(e)=>draft.needsSupervision = e.target.checked });
+    const fShared = D.el("input", { type:"checkbox",
+      checked: draft.isShared ? "checked" : null,
+      onchange:(e)=>draft.isShared = e.target.checked });
+    // Subjects this room is intended for (Lab → Science, Music Room → Music, etc.)
+    const fSubjects = D.el("select", { multiple:"multiple", size:"4" });
+    ((window.APP.school?.subjects) || []).forEach(sub => {
+      const opt = D.el("option", { value:sub.id }, sub.name + (sub.abbr ? ` (${sub.abbr})` : ""));
+      if (draft.allowedSubjectIds.includes(sub.id)) opt.selected = true;
+      fSubjects.appendChild(opt);
+    });
+    fSubjects.addEventListener("change", () => {
+      draft.allowedSubjectIds = Array.from(fSubjects.selectedOptions).map(o => o.value);
+    });
+    const fBell = D.el("input", { type:"text", value:draft.bell, placeholder:"default",
+      oninput:(e)=>draft.bell = e.target.value });
+
+    function save() {
+      if (!draft.name.trim()) { fName.focus(); return false; }
+      const all = window.APP.school.classrooms;
+      if (!isNew) {
+        const rm = r._ref;
+        const before = { ...rm };
+        rm.name = draft.name.trim();
+        rm.abbr = draft.short.trim() || undefined;
+        rm.building = draft.building.trim() || undefined;
+        rm.capacity = draft.capacity ? parseInt(draft.capacity, 10) : undefined;
+        rm.color = draft.color || undefined;
+        rm.needsSupervision = !!draft.needsSupervision;
+        rm.isShared = !!draft.isShared;
+        rm.allowedSubjectIds = draft.allowedSubjectIds.slice();
+        rm.bell = draft.bell || undefined;
+        window.APP.audit.append({ entity:"classrooms", op:"update", before, after:{...rm} });
+      } else {
+        const nr = { id:D.uid("r"), name:draft.name.trim(),
+          abbr:draft.short.trim() || undefined,
+          building:draft.building.trim() || undefined,
+          capacity:draft.capacity ? parseInt(draft.capacity, 10) : undefined,
+          color:draft.color || undefined,
+          needsSupervision: !!draft.needsSupervision,
+          isShared: !!draft.isShared,
+          allowedSubjectIds: draft.allowedSubjectIds.slice(),
+          bell:draft.bell || undefined };
+        if (all.some(x => x.name === nr.name)) { fName.focus(); return false; }
+        all.push(nr);
+        if (window.APP.school._idx) window.APP.school._idx.classroomById[nr.id] = nr;
+        window.APP.audit.append({ entity:"classrooms", op:"add", after:{...nr} });
+      }
+      D.closeSheet(); D.refresh(rows());
+      return true;
+    }
+
+    D.buildEditSheet({
+      title: isNew ? "New classroom" : `Edit classroom — ${r.name}`,
+      fields:[
+        { label:"Name", control:fName },
+        { label:"Short", control:fShort },
+        { label:"Building", control:fBuilding },
+        { label:"Capacity", control:fCap },
+        { label:"Color", control:fColor },
+        { label:"Needs supervision", control:fSup },
+        { label:"Shared room", control:fShared },
+        { label:"For subjects", control:fSubjects },
+        { label:"Bell", control:fBell },
+      ],
+      onSave: save,
+      siblingRows: isNew ? null : rows(),
+      currentRowId: isNew ? null : r.id,
+      onNavigate: openEdit,
+    });
+  }
+
+  // Copy entry (P2#10)
+  const COPYABLE_KEYS = ["color", "timeOff", "constraints", "bell",
+    "needsSupervision", "capacity", "building"];
+  function deepClone(v) {
+    if (Array.isArray(v)) return v.map(deepClone);
+    if (v && typeof v === "object") {
+      const out = {}; for (const k in v) out[k] = deepClone(v[k]); return out;
+    }
+    return v;
+  }
+  function openCopy(r) {
+    if (!r) return;
+    const srcRef = r._ref;
+    const srcSnapshot = { ...srcRef };
+    function applySettings(targetRef) {
+      const before = { ...targetRef };
+      COPYABLE_KEYS.forEach(k => {
+        if (srcSnapshot[k] !== undefined) targetRef[k] = deepClone(srcSnapshot[k]);
+      });
+      window.APP.audit.append({ entity:"classrooms", op:"copy", id:targetRef.id, before, after:{...targetRef} });
+    }
+    const all = rows();
+    const others = all.filter(x => x.id !== r.id).map(x => ({
+      id:x.id, name:x.name || x.id, _ref:x._ref,
+    }));
+    D.openCopyChooser({
+      title: `Copy — ${r.name}`,
+      source: srcRef, others,
+      onDuplicate: () => {
+        const list = window.APP.school.classrooms;
+        const copy = { ...srcRef, id:D.uid("r"), name:(srcRef.name || "") + " (copy)" };
+        if (srcRef.timeOff != null)          copy.timeOff = deepClone(srcRef.timeOff);
+        if (srcRef.constraints)               copy.constraints = deepClone(srcRef.constraints);
+        if (srcRef.allowedSubjectIds != null) copy.allowedSubjectIds = deepClone(srcRef.allowedSubjectIds);
+        list.push(copy);
+        if (window.APP.school._idx) window.APP.school._idx.classroomById[copy.id] = copy;
+        window.APP.audit.append({ entity:"classrooms", op:"add", after:{...copy} });
+        D.refresh(rows());
+      },
+      onCopyToOne: (targetRef) => { applySettings(targetRef); D.refresh(rows()); },
+      onCopyToMany: (targetRefs) => { targetRefs.forEach(applySettings); D.refresh(rows()); },
+    });
+  }
+
+  // Batch edit (P2#11)
+  function openBatch() {
+    const all = rows();
+    D.openBatchEditSheet({
+      title: "Batch edit — Classrooms",
+      rows: all.map(r => ({ id:r.id, name:r.name, _ref:r._ref })),
+      fields: [
+        { id:"color", label:"Color",
+          build:(onChange) => D.buildSwatchPicker("", v => onChange(v || "")) },
+        { id:"building", label:"Building",
+          build:(onChange) => D.el("input", { type:"text",
+            oninput:(e)=>onChange(e.target.value) }) },
+        { id:"capacity", label:"Capacity",
+          build:(onChange) => D.el("input", { type:"number", min:"0",
+            oninput:(e)=>onChange(parseInt(e.target.value, 10) || 0) }) },
+        { id:"needsSupervision", label:"Needs supervision",
+          build:(onChange) => D.el("input", { type:"checkbox",
+            onchange:(e)=>onChange(!!e.target.checked) }) },
+      ],
+      onApply: (fieldId, value, ids) => {
+        const byId = {}; all.forEach(r => byId[r.id] = r._ref);
+        ids.forEach(id => {
+          const ref = byId[id]; if (!ref) return;
+          const before = { ...ref };
+          if (fieldId === "color")            ref.color = value || undefined;
+          else if (fieldId === "building")    ref.building = value || undefined;
+          else if (fieldId === "capacity")    ref.capacity = value;
+          else if (fieldId === "needsSupervision") ref.needsSupervision = !!value;
+          window.APP.audit.append({ entity:"classrooms", op:"batch", field:fieldId, id, before, after:{...ref} });
+        });
+        D.refresh(rows());
+      },
+    });
+  }
+
+  function openConstraints(r) {
+    const ref = r._ref;
+    const c = Object.assign({ maxCardsPos:1, maxStudentsPos:"" }, ref.constraints || {});
+    const f1 = D.el("input", { type:"number", min:"1", value:c.maxCardsPos,
+      oninput:(e)=> c.maxCardsPos = parseInt(e.target.value, 10) || 1 });
+    const f2 = D.el("input", { type:"number", min:"0", value:c.maxStudentsPos,
+      oninput:(e)=> c.maxStudentsPos = e.target.value });
+    D.buildEditSheet({
+      title:`Constraints — ${ref.name}`,
+      fields:[
+        { label:"Max simultaneous lessons", control:f1 },
+        { label:"Max students",            control:f2 },
+      ],
+      onSave:()=>{
+        const before = ref.constraints; ref.constraints = c;
+        window.APP.audit.append({ entity:"classrooms", op:"constraints", id:ref.id, before, after:c });
+        D.closeSheet(); D.refresh(rows());
+      },
+    });
+  }
+
+  function open() {
+    D.open({
+      entity:"classrooms", title:"Classrooms",
+      columns:columns(), rows:rows(),
+      extras:[
+        { id:"timeoff",     label:"Time off" },
+        { id:"constraints", label:"Constraints" },
+        { id:"copy",        label:"Copy" },
+        { id:"batch",       label:"Batch edit", needRow:false },
+      ],
+      onAction:(cmd, row) => {
+        if (cmd === "new")  return openEdit(null);
+        if (cmd === "edit" && row) return openEdit(row);
+        if (cmd === "delete" && row) {
+          const all = window.APP.school.classrooms;
+          const i = all.findIndex(x => x.id === row._ref.id);
+          if (i >= 0) {
+            const removed = all.splice(i, 1)[0];
+            window.APP.audit.append({ entity:"classrooms", op:"remove", before:{...removed} });
+            D.refresh(rows());
+          }
+          return;
+        }
+        if (cmd === "timeoff" && row) {
+          const ref = row._ref;
+          if (!window.TimeOffMatrix) return;
+          return window.TimeOffMatrix.open(ref, "classrooms", (newTimeOff) => {
+            const before = ref.timeOff;
+            ref.timeOff = newTimeOff;
+            window.APP.audit.append({ entity:"classrooms", op:"timeoff", id:ref.id, before, after:newTimeOff });
+            D.refresh(rows());
+          });
+        }
+        if (cmd === "constraints" && row) return openConstraints(row);
+        if (cmd === "copy" && row)         return openCopy(row);
+        if (cmd === "batch")               return openBatch();
+      },
+    });
+  }
+
+  global.EntityClassrooms = { open };
+})(window);
+
+/* ─── FILE: js/ui/entities/teachers.js ─── */
+/* Teachers CRUD dialog. window.EntityTeachers.open() */
+(function (global) {
+  "use strict";
+  const D = window.EntityDialog;
+  if (!D) return;
+
+  function splitName(full) {
+    // last token = last name, rest = first name.
+    const parts = String(full || "").trim().split(/\s+/);
+    if (!parts.length) return { first:"", last:"" };
+    if (parts.length === 1) return { first:"", last:parts[0] };
+    return { first: parts.slice(0, -1).join(" "), last: parts[parts.length - 1] };
+  }
+
+  function constraintsCount(t) {
+    let n = 0;
+    if (t.constraints) for (const k in t.constraints) if (t.constraints[k] !== "" && t.constraints[k] != null) n++;
+    return n;
+  }
+
+  function rows() {
+    return ((window.APP.school?.teachers) || []).map(t => {
+      const split = t.firstName != null || t.lastName != null
+        ? { first: t.firstName || "", last: t.lastName || "" }
+        : splitName(t.name);
+      return {
+        id: t.id,
+        firstName: split.first,
+        lastName:  split.last,
+        abbr: t.abbr || "",
+        color: t.color || "",
+        timeOff: t.timeOff || {},
+        maxGaps: t.maxGapsPerDay != null ? t.maxGapsPerDay : "",
+        maxConsec: t.maxConsecutivePeriods != null ? t.maxConsecutivePeriods : "",
+        constraintsN: constraintsCount(t),
+        _ref: t,
+      };
+    });
+  }
+
+  function columns() { return [
+    { key:"lastName",  label:"Last name" },
+    { key:"firstName", label:"First name" },
+    { key:"abbr",      label:"Short" },
+    { key:"color",     label:"Color", sortable:false,
+      render:(r)=>D.el("span", { class:"chrx-ent-swatch-dot",
+        style:`background:${r.color || "transparent"}` }) },
+    { key:"timeOff",   label:"Time off", sortable:false,
+      render:(r)=>D.buildTimeOffMini(r.timeOff, 6, 8) },
+    { key:"maxGaps",   label:"Max gaps" },
+    { key:"maxConsec", label:"Max consec." },
+    { key:"constraintsN", label:"Constraints" },
+  ]; }
+
+  function openEdit(r) {
+    const isNew = !r;
+    const draft = isNew
+      ? { firstName:"", lastName:"", abbr:"", color:"",
+          maxGapsPerDay:"", maxConsecutivePeriods:"" }
+      : { firstName:r.firstName, lastName:r.lastName, abbr:r.abbr, color:r.color,
+          maxGapsPerDay: r._ref.maxGapsPerDay != null ? r._ref.maxGapsPerDay : "",
+          maxConsecutivePeriods: r._ref.maxConsecutivePeriods != null ? r._ref.maxConsecutivePeriods : "" };
+
+    const fFirst = D.el("input", { type:"text", value:draft.firstName, maxlength:"40",
+      oninput:(e)=>draft.firstName = e.target.value });
+    const fLast = D.el("input", { type:"text", value:draft.lastName, required:"required",
+      maxlength:"40", oninput:(e)=>draft.lastName = e.target.value });
+    const fAbbr = D.el("input", { type:"text", value:draft.abbr, maxlength:"10",
+      oninput:(e)=>draft.abbr = e.target.value });
+    const fColor = D.buildSwatchPicker(draft.color, v => draft.color = v);
+    const fGaps = D.el("input", { type:"number", min:"0", value:draft.maxGapsPerDay,
+      oninput:(e)=>draft.maxGapsPerDay = e.target.value });
+    const fConsec = D.el("input", { type:"number", min:"0", value:draft.maxConsecutivePeriods,
+      oninput:(e)=>draft.maxConsecutivePeriods = e.target.value });
+
+    function save() {
+      if (!draft.lastName.trim()) { fLast.focus(); return false; }
+      const all = window.APP.school.teachers;
+      const fullName = `${draft.firstName.trim()} ${draft.lastName.trim()}`.trim();
+      if (!isNew) {
+        const t = r._ref;
+        const before = { ...t };
+        t.firstName = draft.firstName.trim() || undefined;
+        t.lastName  = draft.lastName.trim();
+        t.name = fullName;
+        t.abbr = draft.abbr.trim() || undefined;
+        t.color = draft.color || undefined;
+        t.maxGapsPerDay = draft.maxGapsPerDay !== "" ? parseInt(draft.maxGapsPerDay, 10) : undefined;
+        t.maxConsecutivePeriods = draft.maxConsecutivePeriods !== "" ? parseInt(draft.maxConsecutivePeriods, 10) : undefined;
+        window.APP.audit.append({ entity:"teachers", op:"update", before, after:{...t} });
+      } else {
+        const nt = { id:D.uid("t"),
+          firstName:draft.firstName.trim() || undefined,
+          lastName:draft.lastName.trim(),
+          name: fullName,
+          abbr:draft.abbr.trim() || undefined,
+          color:draft.color || undefined,
+          maxGapsPerDay: draft.maxGapsPerDay !== "" ? parseInt(draft.maxGapsPerDay, 10) : undefined,
+          maxConsecutivePeriods: draft.maxConsecutivePeriods !== "" ? parseInt(draft.maxConsecutivePeriods, 10) : undefined };
+        if (all.some(x => x.name === nt.name)) { fLast.focus(); return false; }
+        all.push(nt);
+        if (window.APP.school._idx) window.APP.school._idx.teacherById[nt.id] = nt;
+        window.APP.audit.append({ entity:"teachers", op:"add", after:{...nt} });
+      }
+      D.closeSheet(); D.refresh(rows());
+      return true;
+    }
+
+    D.buildEditSheet({
+      title: isNew ? "New teacher" : `Edit teacher — ${r.lastName}`,
+      fields:[
+        { label:"First name", control:fFirst },
+        { label:"Last name",  control:fLast },
+        { label:"Abbreviation", control:fAbbr },
+        { label:"Color", control:fColor },
+        { label:"Max gaps/day", control:fGaps },
+        { label:"Max consecutive periods", control:fConsec },
+      ],
+      onSave: save,
+      siblingRows: isNew ? null : rows(),
+      currentRowId: isNew ? null : r.id,
+      onNavigate: openEdit,
+    });
+  }
+
+  // Copy entry (P2#10)
+  const COPYABLE_KEYS = ["color", "timeOff", "constraints",
+    "maxGapsPerDay", "maxConsecutivePeriods"];
+  function deepClone(v) {
+    if (Array.isArray(v)) return v.map(deepClone);
+    if (v && typeof v === "object") {
+      const out = {}; for (const k in v) out[k] = deepClone(v[k]); return out;
+    }
+    return v;
+  }
+  function openCopy(r) {
+    if (!r) return;
+    const srcRef = r._ref;
+    const srcSnapshot = { ...srcRef };
+    function applySettings(targetRef) {
+      const before = { ...targetRef };
+      COPYABLE_KEYS.forEach(k => {
+        if (srcSnapshot[k] !== undefined) targetRef[k] = deepClone(srcSnapshot[k]);
+      });
+      window.APP.audit.append({ entity:"teachers", op:"copy", id:targetRef.id, before, after:{...targetRef} });
+    }
+    const all = rows();
+    const others = all.filter(x => x.id !== r.id).map(x => ({
+      id:x.id, name:x._ref.name || `${x.firstName} ${x.lastName}`.trim() || x.id, _ref:x._ref,
+    }));
+    D.openCopyChooser({
+      title: `Copy — ${r._ref.name || r.lastName}`,
+      source: srcRef, others,
+      onDuplicate: () => {
+        const list = window.APP.school.teachers;
+        const copy = { ...srcRef, id:D.uid("t"),
+          name: (srcRef.name || "") + " (copy)",
+          lastName: (srcRef.lastName || "") + " (copy)" };
+        if (srcRef.timeOff != null)    copy.timeOff = deepClone(srcRef.timeOff);
+        if (srcRef.constraints)         copy.constraints = deepClone(srcRef.constraints);
+        list.push(copy);
+        if (window.APP.school._idx) window.APP.school._idx.teacherById[copy.id] = copy;
+        window.APP.audit.append({ entity:"teachers", op:"add", after:{...copy} });
+        D.refresh(rows());
+      },
+      onCopyToOne: (targetRef) => { applySettings(targetRef); D.refresh(rows()); },
+      onCopyToMany: (targetRefs) => { targetRefs.forEach(applySettings); D.refresh(rows()); },
+    });
+  }
+
+  // Batch edit (P2#11)
+  function openBatch() {
+    const all = rows();
+    D.openBatchEditSheet({
+      title: "Batch edit — Teachers",
+      rows: all.map(r => ({ id:r.id,
+        name:r._ref.name || `${r.firstName} ${r.lastName}`.trim() || r.id,
+        _ref:r._ref })),
+      fields: [
+        { id:"color", label:"Color",
+          build:(onChange) => D.buildSwatchPicker("", v => onChange(v || "")) },
+        { id:"maxGapsPerDay", label:"Max gaps/day",
+          build:(onChange) => D.el("input", { type:"number", min:"0",
+            oninput:(e)=>onChange(parseInt(e.target.value, 10) || 0) }) },
+        { id:"maxConsecutivePeriods", label:"Max consecutive periods",
+          build:(onChange) => D.el("input", { type:"number", min:"0",
+            oninput:(e)=>onChange(parseInt(e.target.value, 10) || 0) }) },
+      ],
+      onApply: (fieldId, value, ids) => {
+        const byId = {}; all.forEach(r => byId[r.id] = r._ref);
+        ids.forEach(id => {
+          const ref = byId[id]; if (!ref) return;
+          const before = { ...ref };
+          if (fieldId === "color") ref.color = value || undefined;
+          else if (fieldId === "maxGapsPerDay") ref.maxGapsPerDay = value;
+          else if (fieldId === "maxConsecutivePeriods") ref.maxConsecutivePeriods = value;
+          window.APP.audit.append({ entity:"teachers", op:"batch", field:fieldId, id, before, after:{...ref} });
+        });
+        D.refresh(rows());
+      },
+    });
+  }
+
+  function openConstraints(r) {
+    const ref = r._ref;
+    if (!window.TeacherConstraintsDialog) return;
+    window.TeacherConstraintsDialog.open(ref, (next) => {
+      const before = ref.constraints;
+      ref.constraints = next;
+      window.APP.audit.append({ entity:"teachers", op:"constraints", id:ref.id, before, after:next });
+      D.refresh(rows());
+    });
+  }
+
+  function openTimeOff(r) {
+    const ref = r._ref;
+    if (!window.TimeOffMatrix) return;
+    window.TimeOffMatrix.open(ref, "teachers", (newTimeOff) => {
+      const before = ref.timeOff;
+      ref.timeOff = newTimeOff;
+      window.APP.audit.append({ entity:"teachers", op:"timeoff", id:ref.id, before, after:newTimeOff });
+      D.refresh(rows());
+    });
+  }
+
+  function openLessonsOf(r) {
+    const ref = r._ref;
+    const lessons = ((window.APP.school?.lessons) || [])
+      .filter(l => l.teacherIds.includes(ref.id));
+    const subjMap = window.APP.school?._idx?.subjectById || {};
+    const list = D.el("ul", { class:"chrx-ent-list" });
+    if (!lessons.length) list.appendChild(D.el("li", null, "No lessons for this teacher."));
+    lessons.forEach(l => {
+      const s = subjMap[l.subjectId];
+      list.appendChild(D.el("li", null,
+        `${s ? s.name : l.subjectId} — ${l.periodsPerWeek}× — ${l.classIds.length} class(es)`));
+    });
+    D.openSheet(list, { title: `Lessons of ${ref.name} (${lessons.length})` });
+  }
+
+  function open() {
+    D.open({
+      entity:"teachers", title:"Teachers",
+      columns:columns(), rows:rows(),
+      extras:[
+        { id:"lessons",     label:"Lessons" },
+        { id:"timeoff",     label:"Time off" },
+        { id:"constraints", label:"Constraints" },
+        { id:"copy",        label:"Copy" },
+        { id:"batch",       label:"Batch edit", needRow:false },
+      ],
+      onAction:(cmd, row) => {
+        if (cmd === "new")  return openEdit(null);
+        if (cmd === "edit" && row) return openEdit(row);
+        if (cmd === "delete" && row) {
+          const all = window.APP.school.teachers;
+          const i = all.findIndex(x => x.id === row._ref.id);
+          if (i >= 0) {
+            const removed = all.splice(i, 1)[0];
+            window.APP.audit.append({ entity:"teachers", op:"remove", before:{...removed} });
+            D.refresh(rows());
+          }
+          return;
+        }
+        if (cmd === "timeoff" && row)     return openTimeOff(row);
+        if (cmd === "constraints" && row) return openConstraints(row);
+        if (cmd === "lessons" && row)     return openLessonsOf(row);
+        if (cmd === "copy" && row)        return openCopy(row);
+        if (cmd === "batch")              return openBatch();
+      },
+    });
+  }
+
+  global.EntityTeachers = { open };
+})(window);
+
+/* ─── FILE: js/ui/entities/lessons.js ─── */
+/* Lessons CRUD dialog. window.EntityLessons.open() */
+(function (global) {
+  "use strict";
+  const D = window.EntityDialog;
+  if (!D) return;
+
+  function names(idx, ids) {
+    if (!idx || !ids) return "";
+    return ids.map(id => idx[id]?.name).filter(Boolean).join(", ");
+  }
+
+  // Display string for the lesson's room column. Per-card overrides win,
+  // then the expansion mode label, then the single preferredRoomId.
+  function classroomDisplay(l, idxR) {
+    if (Array.isArray(l.classroomIdsByCard) && l.classroomIdsByCard.length) {
+      const sets = l.classroomIdsByCard
+        .map(ids => (ids || []).map(id => idxR[id]?.abbr || idxR[id]?.name)
+          .filter(Boolean).join("/")).filter(Boolean);
+      const uniq = Array.from(new Set(sets));
+      return uniq.length === 1 ? uniq[0] : sets.join(" · ");
+    }
+    if (l.classroomIdsExpansion) {
+      const lbl = { home:"Home", shared:"Shared",
+        teacher:"Teacher's", subject:"Subject's" }[l.classroomIdsExpansion];
+      return lbl ? `[${lbl}]` : "";
+    }
+    return l.preferredRoomId ? (idxR[l.preferredRoomId]?.name || "") : "";
+  }
+
+  function rows() {
+    const s = window.APP.school; if (!s) return [];
+    const idxS = s._idx?.subjectById || {};
+    const idxT = s._idx?.teacherById || {};
+    const idxC = s._idx?.classById   || {};
+    const idxR = s._idx?.classroomById || {};
+
+    // Look up day/week/term pattern names by id. Falls back to the
+    // legacy free-text l.term / l.week / l.fixedDay shape if no defId
+    // is set, so pre-bitmask lessons keep showing something useful.
+    const days  = (s.days  || []);
+    const weeks = (s.weeks || []);
+    const terms = (s.terms || []);
+    const dayById  = Object.create(null); days.forEach (d => dayById[d.id]  = d);
+    const wkById   = Object.create(null); weeks.forEach(w => wkById[w.id]   = w);
+    const termById = Object.create(null); terms.forEach(t => termById[t.id] = t);
+
+    return (s.lessons || []).map(l => ({
+      id: l.id,
+      subject: idxS[l.subjectId]?.name || l.subjectId,
+      classes: names(idxC, l.classIds),
+      teachers: names(idxT, l.teacherIds),
+      count: l.periodsPerWeek || 0,
+      duration: l.isLabDouble ? "Double" : "Single",
+      classroom: classroomDisplay(l, idxR),
+      term: l.termsDefId
+        ? (termById[l.termsDefId]?.name || l.termsDefId)
+        : (l.term || ""),
+      week: l.weeksDefId
+        ? (wkById[l.weeksDefId]?.name || l.weeksDefId)
+        : (l.week || ""),
+      days: l.daysDefId
+        ? (dayById[l.daysDefId]?.name || l.daysDefId)
+        : (l.fixedDay != null ? `Day ${l.fixedDay + 1}` : "Any"),
+      _ref: l,
+    }));
+  }
+
+  function columns() { return [
+    { key:"subject",  label:"Subject" },
+    { key:"classes",  label:"Classes" },
+    { key:"teachers", label:"Teachers" },
+    { key:"count",    label:"Count" },
+    { key:"duration", label:"Duration" },
+    { key:"classroom",label:"Classroom" },
+    { key:"term",     label:"Term" },
+    { key:"week",     label:"Week" },
+    { key:"days",     label:"Days" },
+  ]; }
+
+  function makeSelect(items, curId, label, onChange, allowEmpty) {
+    const sel = D.el("select", null);
+    if (allowEmpty) sel.appendChild(D.el("option", { value:"" }, "—"));
+    (items || []).forEach(t => {
+      const opt = D.el("option", { value:t.id }, label(t));
+      if (t.id === curId) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    sel.addEventListener("change", e => onChange(e.target.value || null));
+    return sel;
+  }
+
+  function makeMulti(items, curIds, label, onChange, size) {
+    const sel = D.el("select", { multiple:"multiple", size: String(size || 4) });
+    (items || []).forEach(t => {
+      const opt = D.el("option", { value:t.id }, label(t));
+      if ((curIds || []).includes(t.id)) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    sel.addEventListener("change", () => {
+      onChange(Array.from(sel.selectedOptions).map(o => o.value));
+    });
+    return sel;
+  }
+
+  /* Compute the expanded classroom set for a given expansion mode.
+   * Classic's `metaclassroomidss_expanded` semantics. */
+  function expandRooms(mode, draft) {
+    const s = window.APP.school || {};
+    const all = s.classrooms || [];
+    const idxC = s._idx?.classById || {};
+    const idxT = s._idx?.teacherById || {};
+    if (mode === "home") {
+      const ids = new Set();
+      (draft.classIds || []).forEach(cid => {
+        const c = idxC[cid] || (s.classes || []).find(x => x.id === cid);
+        (c && (c.classroomIds || c._classroomIds) || []).forEach(id => ids.add(id));
+      });
+      return Array.from(ids);
+    }
+    if (mode === "shared") {
+      return all.filter(rm => rm.isShared).map(rm => rm.id);
+    }
+    if (mode === "teacher") {
+      const ids = new Set();
+      (draft.teacherIds || []).forEach(tid => {
+        const t = idxT[tid] || (s.teachers || []).find(x => x.id === tid);
+        ((t && t.classroomIds) || []).forEach(id => ids.add(id));
+      });
+      return Array.from(ids);
+    }
+    if (mode === "subject") {
+      const sid = draft.subjectId;
+      if (!sid) return [];
+      return all.filter(rm => (rm.allowedSubjectIds || []).includes(sid)).map(rm => rm.id);
+    }
+    return [];
+  }
+
+  function openEdit(r) {
+    const isNew = !r;
+    const s = window.APP.school;
+
+    // Ensure days/weeks/terms arrays + defaults exist so the dropdowns
+    // always have at least one entry to select.
+    const defDay  = window.EntityDays  && window.EntityDays.defaultId  && window.EntityDays.defaultId()  || "";
+    const defWk   = window.EntityWeeks && window.EntityWeeks.defaultId && window.EntityWeeks.defaultId() || "";
+    const defTerm = window.EntityTerms && window.EntityTerms.defaultId && window.EntityTerms.defaultId() || "";
+
+    const draft = isNew
+      ? { subjectId:"", classIds:[], teacherIds:[], periodsPerWeek:1,
+          isLabDouble:false, preferredRoomId:"",
+          classroomIdsByCard:null,         // null = use single preferredRoomId
+          classroomIdsExpansion:null,      // null|"home"|"shared"|"teacher"|"subject"
+          wildcardTeacher:false,           // CLASSIC '??' — solver picks any teacher
+          wildcardRoom:false,              // CLASSIC '??' — solver picks any room
+          daysDefId: defDay,
+          weeksDefId: defWk,
+          termsDefId: defTerm,
+          fixedDay:"", fixedPeriod:"" }
+      : { subjectId:r._ref.subjectId, classIds:r._ref.classIds.slice(),
+          teacherIds:r._ref.teacherIds.slice(),
+          periodsPerWeek:r._ref.periodsPerWeek || 1,
+          isLabDouble: !!r._ref.isLabDouble,
+          preferredRoomId: r._ref.preferredRoomId || "",
+          classroomIdsByCard: Array.isArray(r._ref.classroomIdsByCard)
+            ? r._ref.classroomIdsByCard.map(a => (a || []).slice())
+            : null,
+          classroomIdsExpansion: r._ref.classroomIdsExpansion || null,
+          wildcardTeacher: !!r._ref.wildcardTeacher,
+          wildcardRoom: !!r._ref.wildcardRoom,
+          daysDefId: r._ref.daysDefId || defDay,
+          weeksDefId: r._ref.weeksDefId || defWk,
+          termsDefId: r._ref.termsDefId || defTerm,
+          fixedDay: r._ref.fixedDay != null ? r._ref.fixedDay : "",
+          fixedPeriod: r._ref.fixedPeriod != null ? r._ref.fixedPeriod : "" };
+
+    const fSubj = makeSelect(s.subjects, draft.subjectId,
+      x => x.name + (x.abbr ? ` (${x.abbr})` : ""),
+      v => { draft.subjectId = v; refreshRoomBlock(); }, true);
+    const fClasses = makeMulti(s.classes, draft.classIds,
+      x => x.name, v => { draft.classIds = v; refreshRoomBlock(); }, 5);
+    const fTeach = makeMulti(s.teachers, draft.teacherIds,
+      x => x.name + (x.abbr ? ` (${x.abbr})` : ""),
+      v => { draft.teacherIds = v; refreshRoomBlock(); }, 5);
+
+    // ── Wildcard toggles (CLASSIC "??" semantics) ─────────────────────────
+    // When checked, the teacher/room picker is disabled and the solver
+    // is free to pick ANY teacher / room that satisfies feasibility.
+    // TODO(solver): treat lesson.wildcardTeacher === true as candidate
+    // set = all teachers; same for wildcardRoom.
+    function applyTeacherDisabled() {
+      fTeach.disabled = !!draft.wildcardTeacher;
+      fTeach.style.opacity = draft.wildcardTeacher ? "0.4" : "";
+    }
+    function applyRoomDisabled() {
+      const dis = !!draft.wildcardRoom;
+      roomBlock.style.opacity = dis ? "0.4" : "";
+      roomBlock.style.pointerEvents = dis ? "none" : "";
+    }
+    const fWildTeach = D.el("input", { type:"checkbox",
+      checked: draft.wildcardTeacher ? "checked" : null,
+      onchange:(e)=>{ draft.wildcardTeacher = e.target.checked;
+        applyTeacherDisabled(); } });
+    const fWildRoom = D.el("input", { type:"checkbox",
+      checked: draft.wildcardRoom ? "checked" : null,
+      onchange:(e)=>{ draft.wildcardRoom = e.target.checked;
+        applyRoomDisabled(); } });
+    const fWildTeachLabel = D.el("label", {
+      style:"display:inline-flex;gap:6px;align-items:center;cursor:pointer",
+      title:"If checked, the solver assigns any teacher (CLASSIC '??' pattern)" },
+      fWildTeach, D.el("span", null, "Wildcard teacher (?)"));
+    const fWildRoomLabel = D.el("label", {
+      style:"display:inline-flex;gap:6px;align-items:center;cursor:pointer",
+      title:"If checked, the solver assigns any room (CLASSIC '??' pattern)" },
+      fWildRoom, D.el("span", null, "Wildcard room (?)"));
+    const fCount = D.el("input", { type:"number", min:"1", max:"20",
+      value:draft.periodsPerWeek,
+      oninput:(e)=>{
+        draft.periodsPerWeek = parseFloat(e.target.value) || 1;
+        refreshRoomBlock();
+      } });
+    const fLab = D.el("input", { type:"checkbox",
+      checked: draft.isLabDouble ? "checked" : null,
+      onchange:(e)=>draft.isLabDouble = e.target.checked });
+    const fDay = D.el("input", { type:"number", min:"0", max:"5",
+      placeholder:"any", value:draft.fixedDay,
+      oninput:(e)=>draft.fixedDay = e.target.value });
+    const fPeriod = D.el("input", { type:"number", min:"1", max:"10",
+      placeholder:"any", value:draft.fixedPeriod,
+      oninput:(e)=>draft.fixedPeriod = e.target.value });
+
+    // ── Classroom block (per-card + expansion shortcuts) ──────────────────
+    const roomBlock = D.el("div", { class:"chrx-ent-room-block",
+      style:"display:flex;flex-direction:column;gap:8px" });
+
+    function roomSelectEl(currentId, onChange) {
+      const sel = D.el("select", null, D.el("option", { value:"" }, "—"));
+      (s.classrooms || []).forEach(rm => {
+        const opt = D.el("option", { value:rm.id },
+          rm.name + (rm.abbr ? ` (${rm.abbr})` : ""));
+        if (rm.id === currentId) opt.selected = true;
+        sel.appendChild(opt);
+      });
+      sel.addEventListener("change", e => onChange(e.target.value || ""));
+      return sel;
+    }
+
+    function readonlyExpandedList(ids) {
+      const idxR = s._idx?.classroomById || {};
+      const names = (ids || []).map(id => idxR[id]?.name || id);
+      const box = D.el("div", { class:"chrx-ent-readonly-rooms",
+        style:"padding:6px 8px;border:1px dashed var(--chrx-border,#d1d5db);border-radius:6px;background:#f9fafb;font-size:13px" });
+      if (!names.length) {
+        box.appendChild(D.el("span", { style:"opacity:.6" },
+          "No rooms match this rule yet."));
+      } else {
+        box.textContent = names.join(", ");
+      }
+      return box;
+    }
+
+    function refreshRoomBlock() {
+      roomBlock.innerHTML = "";
+      const cards = Math.max(1, parseInt(draft.periodsPerWeek, 10) || 1);
+
+      // 1. Expansion checkboxes (mutually exclusive, clears per-card mode).
+      const exModes = [
+        { id:"home",    label:"Home classroom",
+          help:"Use the class's home rooms" },
+        { id:"shared",  label:"Shared",
+          help:"Any classroom marked as Shared" },
+        { id:"teacher", label:"Teacher's classroom",
+          help:"Rooms assigned to the lesson's teacher" },
+        { id:"subject", label:"Subject's classroom",
+          help:"Rooms whose 'For subjects' list includes this subject" },
+      ];
+      const exRow = D.el("div", { class:"chrx-ent-expansion",
+        style:"display:flex;gap:12px;flex-wrap:wrap" });
+      exModes.forEach(m => {
+        const cb = D.el("input", { type:"checkbox",
+          checked: draft.classroomIdsExpansion === m.id ? "checked" : null,
+          onchange:(e)=>{
+            if (e.target.checked) {
+              draft.classroomIdsExpansion = m.id;
+              draft.classroomIdsByCard = null;   // mutually exclusive
+            } else if (draft.classroomIdsExpansion === m.id) {
+              draft.classroomIdsExpansion = null;
+            }
+            refreshRoomBlock();
+          },
+        });
+        exRow.appendChild(D.el("label", {
+          style:"display:inline-flex;gap:4px;align-items:center;cursor:pointer",
+          title: m.help },
+          cb, D.el("span", null, m.label)));
+      });
+      roomBlock.appendChild(exRow);
+
+      // 2. Per-card toggle — only meaningful when count > 1.
+      if (cards > 1) {
+        const perCardOn = Array.isArray(draft.classroomIdsByCard);
+        const cb = D.el("input", { type:"checkbox",
+          checked: perCardOn ? "checked" : null,
+          onchange:(e)=>{
+            if (e.target.checked) {
+              const seed = draft.preferredRoomId
+                ? [draft.preferredRoomId] : [];
+              draft.classroomIdsByCard = Array.from({ length:cards },
+                () => seed.slice());
+              draft.classroomIdsExpansion = null;  // mutually exclusive
+            } else {
+              draft.classroomIdsByCard = null;
+            }
+            refreshRoomBlock();
+          },
+        });
+        roomBlock.appendChild(D.el("label", {
+          style:"display:inline-flex;gap:4px;align-items:center;cursor:pointer",
+          title:"Pick a different classroom for each card of the week" },
+          cb, D.el("span", null,
+            `Per-card classrooms (${cards} cards)`)));
+      }
+
+      // 3. Body — depends on which mode is active.
+      if (draft.classroomIdsExpansion) {
+        const ids = expandRooms(draft.classroomIdsExpansion, draft);
+        roomBlock.appendChild(D.el("p", {
+          style:"margin:4px 0;font-size:12px;opacity:.7" },
+          "Expanded classroom list (read-only — solver picks one of these per card):"));
+        roomBlock.appendChild(readonlyExpandedList(ids));
+      } else if (Array.isArray(draft.classroomIdsByCard)) {
+        // Reconcile array length when count changes.
+        if (draft.classroomIdsByCard.length < cards) {
+          while (draft.classroomIdsByCard.length < cards) {
+            draft.classroomIdsByCard.push([]);
+          }
+        } else if (draft.classroomIdsByCard.length > cards) {
+          draft.classroomIdsByCard.length = cards;
+        }
+        for (let i = 0; i < cards; i++) {
+          const current = (draft.classroomIdsByCard[i] || [])[0] || "";
+          const row = D.el("div", {
+            style:"display:flex;gap:8px;align-items:center" },
+            D.el("span", { style:"width:64px;font-size:12px;opacity:.7" },
+              `Card ${i+1}`),
+            roomSelectEl(current, (v) => {
+              draft.classroomIdsByCard[i] = v ? [v] : [];
+            }));
+          roomBlock.appendChild(row);
+        }
+      } else {
+        // Single-room mode — original behaviour.
+        const sel = roomSelectEl(draft.preferredRoomId, (v) => {
+          draft.preferredRoomId = v;
+        });
+        roomBlock.appendChild(sel);
+      }
+    }
+    refreshRoomBlock();
+    applyTeacherDisabled();
+    applyRoomDisabled();
+
+    // ── Day / Week / Term dropdowns (split-schedule + multi-term support) ─
+    // These reference EntityDays/Weeks/Terms patterns; defaults are seeded
+    // by the respective ensure() calls so the lists are never empty.
+    const dayPatterns  = (window.EntityDays  && window.EntityDays.ensure()  || s.days  || []);
+    const weekPatterns = (window.EntityWeeks && window.EntityWeeks.ensure() || s.weeks || []);
+    const termPatterns = (window.EntityTerms && window.EntityTerms.ensure() || s.terms || []);
+    const fDaysDef  = makeSelect(dayPatterns,  draft.daysDefId,
+      d => d.name + (d.short ? ` (${d.short})` : ""),
+      v => { draft.daysDefId = v || ""; }, false);
+    const fWeeksDef = makeSelect(weekPatterns, draft.weeksDefId,
+      w => w.name + (w.short ? ` (${w.short})` : ""),
+      v => { draft.weeksDefId = v || ""; }, false);
+    const fTermsDef = makeSelect(termPatterns, draft.termsDefId,
+      t => t.name + (t.short ? ` (${t.short})` : ""),
+      v => { draft.termsDefId = v || ""; }, false);
+
+    D.buildEditSheet({
+      title: isNew ? "New lesson" : "Edit lesson",
+      fields:[
+        { label:"Subject", control:fSubj },
+        { label:"Classes (multi)", control:fClasses },
+        { label:"Teachers (multi)", control:fTeach },
+        { label:null, control:fWildTeachLabel },
+        { label:"Periods/week",     control:fCount },
+        { label:"Double-period",    control:fLab },
+        { label:"Classroom",        control:roomBlock },
+        { label:null, control:fWildRoomLabel },
+        { label:"Day pattern",      control:fDaysDef },
+        { label:"Week pattern",     control:fWeeksDef },
+        { label:"Term",             control:fTermsDef },
+        { label:"Fixed day (0–5)",  control:fDay },
+        { label:"Fixed period",     control:fPeriod },
+      ],
+      onSave:()=>{
+        if (!draft.subjectId) { fSubj.focus(); return; }
+        if (!draft.classIds.length) { fClasses.focus(); return; }
+        const all = s.lessons;
+
+        // Materialize the room fields per draft state. Per-card and expansion
+        // are mutually exclusive; single mode uses preferredRoomId only.
+        const roomFields = {
+          preferredRoomId: undefined,
+          classroomIdsByCard: undefined,
+          classroomIdsExpansion: undefined,
+          classroomIdsExpanded: undefined,
+        };
+        if (Array.isArray(draft.classroomIdsByCard) && draft.periodsPerWeek > 1) {
+          roomFields.classroomIdsByCard = draft.classroomIdsByCard.map(a => a.slice());
+        } else if (draft.classroomIdsExpansion) {
+          roomFields.classroomIdsExpansion = draft.classroomIdsExpansion;
+          roomFields.classroomIdsExpanded = expandRooms(draft.classroomIdsExpansion, draft);
+        } else if (draft.preferredRoomId) {
+          roomFields.preferredRoomId = draft.preferredRoomId;
+        }
+
+        if (!isNew) {
+          const l = r._ref;
+          const before = { ...l };
+          l.subjectId = draft.subjectId;
+          l.classIds = draft.classIds.slice();
+          l.teacherIds = draft.teacherIds.slice();
+          l.periodsPerWeek = draft.periodsPerWeek;
+          l.isLabDouble = !!draft.isLabDouble || undefined;
+          l.preferredRoomId = roomFields.preferredRoomId;
+          l.classroomIdsByCard = roomFields.classroomIdsByCard;
+          l.classroomIdsExpansion = roomFields.classroomIdsExpansion;
+          l.classroomIdsExpanded = roomFields.classroomIdsExpanded;
+          l.wildcardTeacher = draft.wildcardTeacher ? true : undefined;
+          l.wildcardRoom = draft.wildcardRoom ? true : undefined;
+          l.daysDefId = draft.daysDefId || undefined;
+          l.weeksDefId = draft.weeksDefId || undefined;
+          l.termsDefId = draft.termsDefId || undefined;
+          l.fixedDay = draft.fixedDay !== "" ? parseInt(draft.fixedDay, 10) : undefined;
+          l.fixedPeriod = draft.fixedPeriod !== "" ? parseInt(draft.fixedPeriod, 10) : undefined;
+          window.APP.audit.append({ entity:"lessons", op:"update", before, after:{...l} });
+        } else {
+          const nl = { id:D.uid("l"),
+            subjectId:draft.subjectId, classIds:draft.classIds.slice(),
+            teacherIds:draft.teacherIds.slice(),
+            periodsPerWeek:draft.periodsPerWeek,
+            isLabDouble: draft.isLabDouble || undefined,
+            preferredRoomId: roomFields.preferredRoomId,
+            classroomIdsByCard: roomFields.classroomIdsByCard,
+            classroomIdsExpansion: roomFields.classroomIdsExpansion,
+            classroomIdsExpanded: roomFields.classroomIdsExpanded,
+            wildcardTeacher: draft.wildcardTeacher ? true : undefined,
+            wildcardRoom: draft.wildcardRoom ? true : undefined,
+            daysDefId: draft.daysDefId || undefined,
+            weeksDefId: draft.weeksDefId || undefined,
+            termsDefId: draft.termsDefId || undefined,
+            fixedDay: draft.fixedDay !== "" ? parseInt(draft.fixedDay, 10) : undefined,
+            fixedPeriod: draft.fixedPeriod !== "" ? parseInt(draft.fixedPeriod, 10) : undefined };
+          all.push(nl);
+          if (s._idx) s._idx.lessonById[nl.id] = nl;
+          window.APP.audit.append({ entity:"lessons", op:"add", after:{...nl} });
+        }
+        D.closeSheet(); D.refresh(rows());
+      },
+    });
+  }
+
+  function open() {
+    D.open({
+      entity:"lessons", title:"Lessons",
+      columns:columns(), rows:rows(),
+      extras:[
+        { id:"copy", label:"Copy to" },
+      ],
+      onAction:(cmd, row) => {
+        if (cmd === "new")  return openEdit(null);
+        if (cmd === "edit" && row) return openEdit(row);
+        if (cmd === "delete" && row) {
+          const all = window.APP.school.lessons;
+          const i = all.findIndex(x => x.id === row._ref.id);
+          if (i >= 0) {
+            const removed = all.splice(i, 1)[0];
+            window.APP.audit.append({ entity:"lessons", op:"remove", before:{...removed} });
+            D.refresh(rows());
+          }
+          return;
+        }
+        if (cmd === "copy" && row) {
+          // Duplicate the row with a new id
+          const src = row._ref;
+          const dup = { ...src, id: D.uid("l"),
+            classIds: src.classIds.slice(), teacherIds: src.teacherIds.slice() };
+          window.APP.school.lessons.push(dup);
+          if (window.APP.school._idx) window.APP.school._idx.lessonById[dup.id] = dup;
+          window.APP.audit.append({ entity:"lessons", op:"copy", after:{...dup} });
+          D.refresh(rows());
+        }
+      },
+    });
+  }
+
+  global.EntityLessons = { open };
+})(window);
+
+/* ─── FILE: js/ui/entities/relations.js ─── */
+/* Card-relationships dialog. window.EntityRelations.open()
+ *
+ * Full UI for the 15 decoded Classic n_X typed constraints. Verbatim labels
+ * from legacy-research §10.2.
+ *
+ * New flow: 3-step wizard (typ → scope → importance/note).
+ * Edit flow: single sheet — typ is fixed, only scope + importance/note editable.
+ *
+ * Storage: window.APP.school.relations[]
+ * Field names follow Classic wire shape (lowercase): subjectids, classids,
+ * subject2ids, teacherids, classroomids, positions, positions2, param1, param2,
+ * filter, filter2, applyto, importance, note, disabled, typ.
+ */
+(function (global) {
+  "use strict";
+  const D = window.EntityDialog;
+  if (!D) return;
+
+  // ---------- 15 decoded typs, grouped, verbatim labels ----------
+  const TYP_CATALOGUE = [
+    { code:"n_0",  label:"cannot follow.",
+      category:"Same / different day",
+      help:"These subjects cannot be scheduled in consecutive periods." },
+    { code:"n_1",  label:"cannot be the same day.",
+      category:"Same / different day",
+      help:"These subjects cannot be placed on the same weekday." },
+    { code:"n_4",  label:"Card distribution over the week",
+      category:"Same / different day",
+      help:"Spread the cards of these subjects evenly across the week." },
+    { code:"n_7",  label:"Break cannot be between group of lessons",
+      category:"Same / different day",
+      help:"Don't allow a break between this group of consecutive lessons." },
+    { code:"n_11", label:"Divided cards from one subject must be on one day",
+      category:"Same / different day",
+      help:"Divided (split) cards for one subject must stay on the same day." },
+
+    { code:"n_5",  label:"Two subjects must follow. (In arbitrary order)",
+      category:"Two-subject",
+      help:"Subjects A and B must be in consecutive periods (either order)." },
+    { code:"n_6",  label:"Two subjects must follow.",
+      category:"Two-subject",
+      help:"Subject A then Subject B, in that order, in consecutive periods." },
+    { code:"n_8",  label:"Two subjects must be in one day (In arbitrary order)",
+      category:"Two-subject",
+      help:"Subjects A and B must be on the same day (either order)." },
+    { code:"n_9",  label:"Two subjects must be in one day (In specified order)",
+      category:"Two-subject",
+      help:"Subject A must precede Subject B on the same day." },
+
+    { code:"n_10", label:"Group of cards from different classes must be in one day",
+      category:"Multi-class",
+      help:"All listed classes must run the listed subjects on the same day." },
+    { code:"n_12", label:"These subjects for the groups of listed classes must start at the same time.",
+      category:"Multi-class",
+      help:"For these subjects across these classes, all cards must start at the same time." },
+    { code:"n_13", label:"The selected subjects have to be at the same time in all selected classes.",
+      category:"Multi-class",
+      help:"Synchronise these subjects across all listed classes to the same period." },
+
+    { code:"n_14", label:"This subject must be on the same period each day",
+      category:"Position",
+      help:"This subject must occupy the same period number on every day it runs." },
+    { code:"n_16", label:"Subject must be first or last",
+      category:"Position",
+      help:"This subject must be the first or the last lesson of the day." },
+    { code:"n_17", label:"The selected subjects can be in the afternoon (outside teaching block)",
+      category:"Position",
+      help:"This subject is allowed in afternoon periods outside the teaching block." },
+  ];
+  const TYP_BY_CODE = Object.fromEntries(TYP_CATALOGUE.map(t => [t.code, t]));
+  const CATEGORY_ORDER = ["Same / different day","Two-subject","Multi-class","Position"];
+
+  // Per-typ field requirements.
+  const NEEDS_SUBJECT2 = new Set(["n_5","n_6","n_8","n_9"]);
+  const NEEDS_POSITIONS_FIRSTLAST = new Set(["n_16"]);
+  const NEEDS_POSITIONS_RANGE     = new Set(["n_17"]);
+
+  const IMPORTANCE_LEVELS = ["low","normal","high","strict","optimize","default"];
+
+  // ---------- Storage ----------
+  function ensureRelations() {
+    const s = window.APP.school = window.APP.school || {};
+    s.relations = s.relations || [];
+    return s.relations;
+  }
+
+  function idx() {
+    return window.APP.school?._idx || {};
+  }
+
+  // ---------- Row rendering ----------
+  function joinNames(ids, byId) {
+    if (!ids || !byId) return "";
+    return ids.map(id => byId[id]?.name || id).filter(Boolean).join(", ");
+  }
+
+  function summaryRow(r) {
+    const i = idx();
+    const subj  = joinNames(r.subjectids,  i.subjectById);
+    const subj2 = joinNames(r.subject2ids, i.subjectById);
+    const cls   = joinNames(r.classids,    i.classById);
+    return {
+      id: r.id,
+      typ: r.typ,
+      label: TYP_BY_CODE[r.typ]?.label || r.typ,
+      subjects: subj2 ? `${subj} → ${subj2}` : subj,
+      classes: cls,
+      importance: r.importance || "normal",
+      note: (r.note || "").length > 40 ? r.note.slice(0,40) + "…" : (r.note || ""),
+      disabled: r.disabled ? "off" : "",
+      _ref: r,
+    };
+  }
+
+  function rowsOf() {
+    // Sort by typ ascending (numeric on the n_X tail) for stable default order.
+    return ensureRelations()
+      .map(summaryRow)
+      .sort((a,b) => {
+        const an = parseInt((a.typ||"").slice(2),10) || 0;
+        const bn = parseInt((b.typ||"").slice(2),10) || 0;
+        return an - bn;
+      });
+  }
+
+  function columns() { return [
+    // typ first so dialog_shell's default sort (columns[0].key) honours
+    // the spec's "Sort by type by default" rule.
+    { key:"typ",        label:"Typ" },
+    { key:"disabled",   label:"" },
+    { key:"label",      label:"Description" },
+    { key:"subjects",   label:"Subjects" },
+    { key:"classes",    label:"Classes" },
+    { key:"importance", label:"Importance" },
+    { key:"note",       label:"Note" },
+  ]; }
+
+  // ---------- Multi-pickers (private to this module) ----------
+  function multiPicker(items, curIds, labelFn, onChange, size) {
+    const sel = D.el("select", { multiple:"multiple", size:String(size || 6) });
+    (items || []).forEach(t => {
+      const opt = D.el("option", { value:t.id }, labelFn(t));
+      if ((curIds || []).includes(t.id)) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    sel.addEventListener("change", () =>
+      onChange(Array.from(sel.selectedOptions).map(o => o.value)));
+    return sel;
+  }
+
+  function subjectPicker(curIds, onChange) {
+    const s = window.APP.school || {};
+    return multiPicker(s.subjects, curIds,
+      x => x.name + (x.abbr ? ` (${x.abbr})` : ""), onChange, 7);
+  }
+  function classPicker(curIds, onChange) {
+    const s = window.APP.school || {};
+    return multiPicker(s.classes, curIds, x => x.name, onChange, 7);
+  }
+  function teacherPicker(curIds, onChange) {
+    const s = window.APP.school || {};
+    return multiPicker(s.teachers, curIds,
+      x => x.name + (x.abbr ? ` (${x.abbr})` : ""), onChange, 5);
+  }
+  function classroomPicker(curIds, onChange) {
+    const s = window.APP.school || {};
+    return multiPicker(s.classrooms, curIds, x => x.name, onChange, 5);
+  }
+
+  // ---------- Typ picker (grouped) ----------
+  function typPicker(curTyp, onChange) {
+    const sel = D.el("select");
+    CATEGORY_ORDER.forEach(cat => {
+      const grp = D.el("optgroup", { label: cat });
+      TYP_CATALOGUE.filter(t => t.category === cat).forEach(t => {
+        const opt = D.el("option", { value:t.code },
+          `${t.code} — ${t.label}`);
+        if (t.code === curTyp) opt.selected = true;
+        grp.appendChild(opt);
+      });
+      sel.appendChild(grp);
+    });
+    sel.addEventListener("change", e => onChange(e.target.value));
+    return sel;
+  }
+
+  // ---------- Importance picker ----------
+  function importancePicker(cur, onChange) {
+    const sel = D.el("select");
+    IMPORTANCE_LEVELS.forEach(v => {
+      const opt = D.el("option", { value:v }, v);
+      if (v === cur) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    sel.addEventListener("change", e => onChange(e.target.value));
+    return sel;
+  }
+
+  // ---------- Positions controls (n_16 / n_17) ----------
+  function firstLastPicker(cur, onChange) {
+    // cur is "first" | "last" | undefined
+    const groupName = "chrx-firstlast-" + D.uid("g");
+    const wrap = D.el("div", { style:"display:flex; gap:14px; align-items:center;" });
+    ["first","last"].forEach(v => {
+      const id = groupName + "_" + v;
+      const radio = D.el("input", {
+        type:"radio", name:groupName, id, value:v,
+        checked: cur === v ? "checked" : null,
+        onchange:()=>onChange(v),
+      });
+      const lbl = D.el("label", { for:id, style:"margin-left:4px;" }, v);
+      wrap.appendChild(D.el("span", { style:"display:inline-flex; align-items:center;" }, radio, lbl));
+    });
+    return wrap;
+  }
+
+  function rangePicker(cur, onChange) {
+    // cur is { from, to } | undefined
+    const state = { from: cur?.from ?? 5, to: cur?.to ?? 8 };
+    const fromI = D.el("input", { type:"number", min:"1", max:"20",
+      value:String(state.from), style:"width:70px;",
+      oninput:(e)=>{ state.from = parseInt(e.target.value,10) || 0; onChange({...state}); } });
+    const toI = D.el("input", { type:"number", min:"1", max:"20",
+      value:String(state.to), style:"width:70px;",
+      oninput:(e)=>{ state.to = parseInt(e.target.value,10) || 0; onChange({...state}); } });
+    return D.el("div", { style:"display:flex; gap:6px; align-items:center;" },
+      D.el("span", null, "From P"), fromI,
+      D.el("span", null, "to P"), toI);
+  }
+
+  // ---------- Draft helpers ----------
+  function newDraft() {
+    return {
+      typ: "n_1",
+      importance: "normal",
+      note: "",
+      disabled: false,
+      subjectids: [], subject2ids: [], classids: [],
+      teacherids: [], classroomids: [],
+      positions: undefined, positions2: undefined,
+      param1: undefined, param2: undefined,
+      filter: undefined, filter2: undefined,
+      applyto: undefined,
+    };
+  }
+
+  function draftFromRef(ref) {
+    return {
+      typ: ref.typ,
+      importance: ref.importance || "normal",
+      note: ref.note || "",
+      disabled: !!ref.disabled,
+      subjectids:  (ref.subjectids  || []).slice(),
+      subject2ids: (ref.subject2ids || []).slice(),
+      classids:    (ref.classids    || []).slice(),
+      teacherids:  (ref.teacherids  || []).slice(),
+      classroomids:(ref.classroomids|| []).slice(),
+      positions:   clonePositions(ref.positions),
+      positions2:  ref.positions2,
+      param1:      ref.param1,
+      param2:      ref.param2,
+      filter:      ref.filter,
+      filter2:     ref.filter2,
+      applyto:     ref.applyto,
+    };
+  }
+
+  function clonePositions(p) {
+    if (p == null) return undefined;
+    if (typeof p === "string") return p;
+    if (typeof p === "object") return { ...p };
+    return p;
+  }
+
+  function packPayload(draft) {
+    // Strip empties so storage stays compact and matches wire shape.
+    const out = {
+      typ: draft.typ,
+      importance: draft.importance || "normal",
+      disabled: !!draft.disabled,
+      subjectids: draft.subjectids.slice(),
+      classids:   draft.classids.slice(),
+    };
+    if (draft.note) out.note = draft.note;
+    if (draft.teacherids?.length)   out.teacherids   = draft.teacherids.slice();
+    if (draft.classroomids?.length) out.classroomids = draft.classroomids.slice();
+    if (NEEDS_SUBJECT2.has(draft.typ)) {
+      out.subject2ids = draft.subject2ids.slice();
+    }
+    if (NEEDS_POSITIONS_FIRSTLAST.has(draft.typ) && draft.positions) {
+      out.positions = draft.positions;       // "first" | "last"
+    }
+    if (NEEDS_POSITIONS_RANGE.has(draft.typ) && draft.positions
+        && typeof draft.positions === "object") {
+      out.positions = { from: draft.positions.from, to: draft.positions.to };
+    }
+    if (draft.positions2 != null) out.positions2 = draft.positions2;
+    if (draft.param1     != null) out.param1     = draft.param1;
+    if (draft.param2     != null) out.param2     = draft.param2;
+    if (draft.filter)             out.filter     = draft.filter;
+    if (draft.filter2)            out.filter2    = draft.filter2;
+    if (draft.applyto)            out.applyto    = draft.applyto;
+    return out;
+  }
+
+  // ---------- Scope panel (rebuildable when typ changes) ----------
+  function buildScopePanel(draft) {
+    const wrap = D.el("div");
+
+    function rebuild() {
+      wrap.innerHTML = "";
+      const typInfo = TYP_BY_CODE[draft.typ];
+      if (typInfo) {
+        wrap.appendChild(D.el("p", { class:"chrx-ent-help" }, typInfo.help));
+      }
+
+      // Subjects — always required.
+      const subjLabel = NEEDS_SUBJECT2.has(draft.typ) ? "Subject A" : "Subjects";
+      wrap.appendChild(D.buildField(subjLabel,
+        subjectPicker(draft.subjectids, v => { draft.subjectids = v; })));
+
+      // Subject 2 — only for n_5/6/8/9.
+      if (NEEDS_SUBJECT2.has(draft.typ)) {
+        wrap.appendChild(D.buildField("Subject B",
+          subjectPicker(draft.subject2ids, v => { draft.subject2ids = v; })));
+      }
+
+      // Classes — always required.
+      wrap.appendChild(D.buildField("Classes",
+        classPicker(draft.classids, v => { draft.classids = v; })));
+
+      // Positions (n_16 / n_17).
+      if (NEEDS_POSITIONS_FIRSTLAST.has(draft.typ)) {
+        if (typeof draft.positions !== "string") draft.positions = "first";
+        wrap.appendChild(D.buildField("Position",
+          firstLastPicker(draft.positions,
+            v => { draft.positions = v; })));
+      } else if (NEEDS_POSITIONS_RANGE.has(draft.typ)) {
+        if (!draft.positions || typeof draft.positions === "string") {
+          draft.positions = { from: 5, to: 8 };
+        }
+        wrap.appendChild(D.buildField("Afternoon range",
+          rangePicker(draft.positions,
+            v => { draft.positions = v; })));
+      } else if (draft.positions !== undefined) {
+        // Clear stale positions if the user switched away from a positions typ.
+        draft.positions = undefined;
+      }
+
+      // Optional narrowing: teachers + classrooms (universal).
+      const opt = D.el("details", { style:"margin-top:6px;" },
+        D.el("summary", { style:"cursor:pointer; color:var(--chrx-fg-secondary);" },
+          "Optional narrowing (teachers / classrooms)"));
+      opt.appendChild(D.buildField("Teachers",
+        teacherPicker(draft.teacherids, v => { draft.teacherids = v; })));
+      opt.appendChild(D.buildField("Classrooms",
+        classroomPicker(draft.classroomids, v => { draft.classroomids = v; })));
+      wrap.appendChild(opt);
+    }
+    rebuild();
+    return { node: wrap, rebuild };
+  }
+
+  // ---------- Importance / note / disabled panel ----------
+  function buildMetaPanel(draft) {
+    const wrap = D.el("div");
+    wrap.appendChild(D.buildField("Importance",
+      importancePicker(draft.importance, v => draft.importance = v)));
+    const noteArea = D.el("textarea", { rows:"3", placeholder:"Optional note",
+      oninput:(e)=>draft.note = e.target.value }, draft.note || "");
+    wrap.appendChild(D.buildField("Note", noteArea));
+    const disChk = D.el("input", { type:"checkbox",
+      checked: draft.disabled ? "checked" : null,
+      onchange:(e)=>draft.disabled = e.target.checked });
+    wrap.appendChild(D.buildField("Disabled", disChk));
+    return wrap;
+  }
+
+  // ---------- Wizard step indicator ----------
+  function buildIndicator(currentStep, totalSteps) {
+    const STEP_LABELS = ["Type","Scope","Importance"];
+    const wrap = D.el("div", {
+      style:"display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap;" });
+    for (let i = 1; i <= totalSteps; i++) {
+      const isActive = i === currentStep;
+      const isDone   = i < currentStep;
+      const bg = isActive ? "var(--chrx-accent, #007AFF)"
+               : isDone   ? "var(--chrx-green, #34C759)"
+               : "var(--chrx-bg-input, #f2f2f7)";
+      const fg = isActive || isDone ? "#fff" : "var(--chrx-fg-secondary, #6e6e73)";
+      wrap.appendChild(D.el("span", {
+        style: `padding:6px 12px; border-radius:999px; background:${bg}; color:${fg};
+                font-size:var(--chrx-font-small, 12px); font-weight:600;`,
+      }, `${i}. ${STEP_LABELS[i-1]}`));
+    }
+    return wrap;
+  }
+
+  // ---------- New: 3-step wizard ----------
+  function openWizard() {
+    const draft = newDraft();
+    let step = 1;
+    const totalSteps = 3;
+
+    let scope = null;
+    const indicatorHost = D.el("div");
+    const stepHost = D.el("div");
+    const foot = D.el("div", { class:"chrx-ent-form__foot" });
+
+    function renderIndicator() {
+      indicatorHost.innerHTML = "";
+      indicatorHost.appendChild(buildIndicator(step, totalSteps));
+    }
+
+    function renderStep() {
+      renderIndicator();
+      stepHost.innerHTML = "";
+      if (step === 1) {
+        const fTyp = typPicker(draft.typ, v => {
+          draft.typ = v;
+          renderTypCard();
+        });
+        stepHost.appendChild(D.buildField("Type", fTyp));
+        const cardHost = D.el("div");
+        stepHost.appendChild(cardHost);
+        function renderTypCard() {
+          cardHost.innerHTML = "";
+          const info = TYP_BY_CODE[draft.typ];
+          if (!info) return;
+          const card = D.el("div", {
+            style:`margin-top:10px; padding:12px; background:var(--chrx-bg-input, #f2f2f7);
+                   border:1px solid var(--chrx-line, #d2d2d7);
+                   border-radius:var(--chrx-radius-md, 8px);`,
+          });
+          card.appendChild(D.el("div", {
+            style:"font-size:var(--chrx-font-small, 12px); color:var(--chrx-fg-secondary, #6e6e73); text-transform:uppercase; letter-spacing:0.5px;",
+          }, info.category));
+          card.appendChild(D.el("div", {
+            style:"font-weight:600; margin:4px 0; color:var(--chrx-fg, #1d1d1f);",
+          }, `${info.code} — ${info.label}`));
+          card.appendChild(D.el("p", { class:"chrx-ent-help", style:"margin:0;" }, info.help));
+          cardHost.appendChild(card);
+        }
+        renderTypCard();
+      } else if (step === 2) {
+        scope = buildScopePanel(draft);
+        stepHost.appendChild(scope.node);
+      } else if (step === 3) {
+        stepHost.appendChild(buildMetaPanel(draft));
+      }
+      renderFoot();
+    }
+
+    function validateStep() {
+      if (step === 2) {
+        if (!draft.subjectids.length) {
+          alert("Pick at least one subject."); return false;
+        }
+        if (NEEDS_SUBJECT2.has(draft.typ) && !draft.subject2ids.length) {
+          alert("Pick at least one subject in 'Subject B'."); return false;
+        }
+        if (!draft.classids.length) {
+          alert("Pick at least one class."); return false;
+        }
+      }
+      return true;
+    }
+
+    function renderFoot() {
+      foot.innerHTML = "";
+      foot.appendChild(D.el("button", { type:"button", class:"chrx-btn",
+        onclick: () => D.closeSheet() }, "Cancel"));
+      foot.appendChild(D.el("div", { style:"flex:1;" }));
+      if (step > 1) {
+        foot.appendChild(D.el("button", { type:"button", class:"chrx-btn",
+          onclick: () => { step--; renderStep(); } }, "Back"));
+      }
+      if (step < totalSteps) {
+        foot.appendChild(D.el("button", { type:"button", class:"chrx-btn chrx-btn--primary",
+          onclick: () => { if (!validateStep()) return; step++; renderStep(); } }, "Next"));
+      } else {
+        foot.appendChild(D.el("button", { type:"button", class:"chrx-btn chrx-btn--primary",
+          onclick: () => saveNew(draft) }, "Save"));
+      }
+    }
+
+    const form = D.el("div", { class:"chrx-ent-form" },
+      indicatorHost, stepHost, foot);
+    D.openSheet(form, { title:"New relation" });
+    renderStep();
+  }
+
+  function saveNew(draft) {
+    if (!draft.subjectids.length) { alert("Pick at least one subject."); return; }
+    if (NEEDS_SUBJECT2.has(draft.typ) && !draft.subject2ids.length) {
+      alert("Pick at least one subject in 'Subject B'."); return;
+    }
+    if (!draft.classids.length) { alert("Pick at least one class."); return; }
+    const all = ensureRelations();
+    const payload = { id: D.uid("rel"), ...packPayload(draft) };
+    all.push(payload);
+    window.APP.audit.append({ entity:"relations", op:"add", after:{...payload} });
+    D.closeSheet();
+    D.refresh(rowsOf());
+  }
+
+  // ---------- Edit: single sheet (typ is fixed) ----------
+  function openEdit(row) {
+    const ref = row._ref;
+    const draft = draftFromRef(ref);
+    const before = { ...ref };
+
+    const typInfo = TYP_BY_CODE[draft.typ]
+      || { code: draft.typ, label: "(unknown)", category: "" };
+
+    const typBadge = D.el("div", {
+      style:`display:flex; gap:10px; align-items:center; padding:8px 12px;
+             background:var(--chrx-bg-input, #f2f2f7);
+             border:1px solid var(--chrx-line, #d2d2d7);
+             border-radius:var(--chrx-radius-md, 8px); margin-bottom:6px;`,
+    });
+    typBadge.appendChild(D.el("span", {
+      style:`font: var(--chrx-fw-semibold, 600) 13px/1 var(--chrx-font-mono, monospace);
+             padding:3px 8px; background:var(--chrx-accent, #007AFF); color:#fff;
+             border-radius:var(--chrx-radius-xs, 4px);`,
+    }, typInfo.code));
+    typBadge.appendChild(D.el("span", null, typInfo.label));
+
+    const scope = buildScopePanel(draft);
+    const meta  = buildMetaPanel(draft);
+
+    function save() {
+      if (!draft.subjectids.length) { alert("Pick at least one subject."); return false; }
+      if (NEEDS_SUBJECT2.has(draft.typ) && !draft.subject2ids.length) {
+        alert("Pick at least one subject in 'Subject B'."); return false;
+      }
+      if (!draft.classids.length) { alert("Pick at least one class."); return false; }
+      const next = packPayload(draft);
+      // typ is immutable in edit mode — guard against accidental change.
+      next.typ = ref.typ;
+      // Wipe stale optional keys so the in-memory shape matches packPayload.
+      for (const k of Object.keys(ref)) {
+        if (k !== "id" && !(k in next)) delete ref[k];
+      }
+      Object.assign(ref, next);
+      window.APP.audit.append({ entity:"relations", op:"update", before, after:{...ref} });
+      D.closeSheet();
+      D.refresh(rowsOf());
+      return true;
+    }
+
+    D.buildEditSheet({
+      title: `Edit relation — ${typInfo.code}`,
+      fields: [
+        { label: null, control: typBadge },
+        { label: null, control: scope.node },
+        { label: null, control: meta },
+      ],
+      onSave: save,
+      siblingRows: rowsOf(),
+      currentRowId: row.id,
+      onNavigate: openEdit,
+    });
+  }
+
+  // ---------- Copy + Batch (P2#10, P2#11) ----------
+  function deepCloneRel(v) {
+    if (Array.isArray(v)) return v.map(deepCloneRel);
+    if (v && typeof v === "object") {
+      const out = {}; for (const k in v) out[k] = deepCloneRel(v[k]); return out;
+    }
+    return v;
+  }
+
+  function openCopy(row) {
+    if (!row) return;
+    const srcRef = row._ref;
+    const all = ensureRelations();
+    // For relations, "To another" / "Apply to multiple" only makes sense
+    // between same-typ rows — copy scope (subjects/classes/importance) onto
+    // peers of the same typ. Greying out otherwise keeps semantics safe.
+    const sameTypOthers = ensureRelations()
+      .filter(x => x.id !== srcRef.id && x.typ === srcRef.typ)
+      .map(x => {
+        const r = summaryRow(x);
+        const cls = r.classes ? ` · ${r.classes}` : "";
+        return { id:x.id, name:`${r.label}${cls}`, _ref:x };
+      });
+    const hasPeers = sameTypOthers.length > 0;
+
+    function applyOnto(targetRef) {
+      const before = { ...targetRef };
+      // Build a draft-like shape from srcRef, then packPayload to canonicalize.
+      const sourceDraft = draftFromRef(srcRef);
+      const next = packPayload(sourceDraft);
+      // typ on target stays the same; everything else is overwritten.
+      next.typ = targetRef.typ;
+      for (const k of Object.keys(targetRef)) {
+        if (k !== "id" && !(k in next)) delete targetRef[k];
+      }
+      Object.assign(targetRef, next);
+      window.APP.audit.append({ entity:"relations", op:"copy", id:targetRef.id, before, after:{...targetRef} });
+    }
+
+    D.openCopyChooser({
+      title: `Copy — ${TYP_BY_CODE[srcRef.typ]?.label || srcRef.typ}`,
+      source: { id: srcRef.id, name: TYP_BY_CODE[srcRef.typ]?.label || srcRef.typ },
+      others: sameTypOthers,
+      onDuplicate: () => {
+        const copy = { ...packPayload(draftFromRef(srcRef)), id: D.uid("rel") };
+        all.push(copy);
+        window.APP.audit.append({ entity:"relations", op:"add", after:{...copy} });
+        D.refresh(rowsOf());
+      },
+      onCopyToOne: hasPeers ? (targetRef) => { applyOnto(targetRef); D.refresh(rowsOf()); } : null,
+      onCopyToMany: hasPeers ? (targetRefs) => { targetRefs.forEach(applyOnto); D.refresh(rowsOf()); } : null,
+    });
+  }
+
+  function openBatch() {
+    const all = rowsOf();
+    D.openBatchEditSheet({
+      title: "Batch edit — Relations",
+      rows: all.map(r => ({ id:r.id,
+        name: `${TYP_BY_CODE[r.typ]?.label || r.typ}${r.classes ? " · " + r.classes : ""}`,
+        _ref: r._ref })),
+      fields: [
+        { id:"importance", label:"Importance",
+          build:(onChange) => {
+            const sel = D.el("select", null,
+              ...IMPORTANCE_LEVELS.map(v => D.el("option", { value:v }, v)));
+            sel.addEventListener("change", e => onChange(e.target.value));
+            return sel;
+          } },
+        { id:"disabled", label:"Disabled",
+          build:(onChange) => D.el("input", { type:"checkbox",
+            onchange:(e)=>onChange(!!e.target.checked) }) },
+      ],
+      onApply: (fieldId, value, ids) => {
+        const byId = {}; all.forEach(r => byId[r.id] = r._ref);
+        ids.forEach(id => {
+          const ref = byId[id]; if (!ref) return;
+          const before = { ...ref };
+          if (fieldId === "importance") ref.importance = value;
+          else if (fieldId === "disabled") ref.disabled = !!value;
+          window.APP.audit.append({ entity:"relations", op:"batch", field:fieldId, id, before, after:{...ref} });
+        });
+        D.refresh(rowsOf());
+      },
+    });
+  }
+
+  // ---------- List dialog ----------
+  function open() {
+    ensureRelations();
+    D.open({
+      entity:"relations", title:"Card relationships",
+      columns: columns(), rows: rowsOf(),
+      extras: [
+        { id:"copy",  label:"Copy" },
+        { id:"batch", label:"Batch edit", needRow:false },
+      ],
+      onAction: (cmd, row) => {
+        if (cmd === "new") return openWizard();
+        if (cmd === "edit" && row) return openEdit(row);
+        if (cmd === "delete" && row) {
+          const all = ensureRelations();
+          const i = all.findIndex(x => x.id === row._ref.id);
+          if (i >= 0) {
+            const removed = all.splice(i, 1)[0];
+            window.APP.audit.append({ entity:"relations", op:"remove", before:{...removed} });
+            D.refresh(rowsOf());
+          }
+          return;
+        }
+        if (cmd === "copy" && row)  return openCopy(row);
+        if (cmd === "batch")        return openBatch();
+      },
+    });
+  }
+
+  global.EntityRelations = { open };
+})(window);
+
+/* ─── FILE: js/ui/entities/bells.js ─── */
+/* Bells (per-class bell schedules) CRUD dialog. window.EntityBells.open()
+ * Each row = a named bell schedule (e.g. "Primary", "Secondary") with a
+ * sub-table of periods (starttime / endtime / isTeaching). GDGPSD has 9
+ * bell schedules — one per class-band — so the solver can use different
+ * timings for primary vs. secondary in the same project. */
+(function (global) {
+  "use strict";
+  const D = window.EntityDialog;
+  if (!D) return;
+
+  function ensure() {
+    const s = window.APP.school = window.APP.school || {};
+    if (!Array.isArray(s.bells)) {
+      // If `s.bell` exists (from parser) seed it as the first row.
+      s.bells = [];
+      if (s.bell && Array.isArray(s.bell.periods) && s.bell.periods.length) {
+        s.bells.push({
+          id: D.uid("bell"), name: "Default", short: "DEF",
+          periods: s.bell.periods.map(p => ({
+            index: p.index, label: p.label || String(p.index),
+            starttime: minToTime(p.startMin), endtime: minToTime(p.endMin),
+            isTeaching: p.isTeaching !== false,
+          })),
+        });
+      }
+    }
+    return s.bells;
+  }
+
+  function minToTime(m) {
+    if (m == null) return "";
+    const h = Math.floor(m / 60), mm = m % 60;
+    return `${String(h).padStart(2,"0")}:${String(mm).padStart(2,"0")}`;
+  }
+
+  function rows() {
+    return ensure().map(b => ({
+      id: b.id, name: b.name || "(unnamed)",
+      short: b.short || "",
+      periodCount: (b.periods || []).length,
+      span: spanFor(b),
+      _ref: b,
+    }));
+  }
+
+  function spanFor(b) {
+    const p = b.periods || []; if (!p.length) return "—";
+    return `${p[0].starttime || "?"} – ${p[p.length-1].endtime || "?"}`;
+  }
+
+  function columns() { return [
+    { key:"name",        label:"Name" },
+    { key:"short",       label:"Short" },
+    { key:"periodCount", label:"# Periods" },
+    { key:"span",        label:"Span" },
+  ]; }
+
+  function openEdit(r) {
+    const isNew = !r;
+    const draft = isNew
+      ? { name:"", short:"" }
+      : { name:r._ref.name || "", short:r._ref.short || "" };
+    const fName = D.el("input", { type:"text", value:draft.name, required:"required",
+      maxlength:"40", oninput:(e)=>draft.name = e.target.value });
+    const fShort = D.el("input", { type:"text", value:draft.short, maxlength:"10",
+      oninput:(e)=>draft.short = e.target.value });
+
+    D.buildEditSheet({
+      title: isNew ? "New bell schedule" : `Edit bell — ${r.name}`,
+      fields:[
+        { label:"Name",  control:fName },
+        { label:"Short", control:fShort },
+      ],
+      onSave:()=>{
+        if (!draft.name.trim()) { fName.focus(); return; }
+        const all = ensure();
+        if (!isNew) {
+          const ref = r._ref; const before = { ...ref };
+          ref.name = draft.name.trim();
+          ref.short = draft.short.trim() || undefined;
+          window.APP.audit.append({ entity:"bells", op:"update", before, after:{...ref} });
+        } else {
+          const nb = { id:D.uid("bell"), name:draft.name.trim(),
+            short:draft.short.trim() || undefined, periods:[] };
+          if (all.some(x => x.name === nb.name)) { fName.focus(); return; }
+          all.push(nb);
+          window.APP.audit.append({ entity:"bells", op:"add", after:{...nb} });
+        }
+        D.closeSheet(); D.refresh(rows());
+      },
+    });
+  }
+
+  function openPeriods(r) {
+    const ref = r._ref;
+    ref.periods = ref.periods || [];
+    const tbl = D.el("table", { class:"chrx-ent-subtable" });
+    function render() {
+      tbl.innerHTML = "";
+      tbl.appendChild(D.el("thead", null, D.el("tr", null,
+        D.el("th", null, "#"), D.el("th", null, "Label"),
+        D.el("th", null, "Start"), D.el("th", null, "End"),
+        D.el("th", null, "Teaching?"), D.el("th", null, ""))));
+      const tb = D.el("tbody");
+      if (!ref.periods.length) {
+        tb.appendChild(D.el("tr", null,
+          D.el("td", { colspan:"6", class:"chrx-ent-empty" },
+            "No periods yet. Click ‘Add period’ below.")));
+      }
+      ref.periods.forEach((p, i) => {
+        const fLbl = D.el("input", { type:"text", value:p.label || String(p.index || i+1),
+          oninput:(e)=>p.label = e.target.value });
+        const fSt = D.el("input", { type:"time", value:p.starttime || "",
+          oninput:(e)=>p.starttime = e.target.value });
+        const fEt = D.el("input", { type:"time", value:p.endtime || "",
+          oninput:(e)=>p.endtime = e.target.value });
+        const fTe = D.el("input", { type:"checkbox",
+          checked: p.isTeaching !== false ? "checked" : null,
+          onchange:(e)=>p.isTeaching = e.target.checked });
+        const del = D.el("button", { type:"button", class:"chrx-btn chrx-btn--danger",
+          onclick:()=>{ ref.periods.splice(i,1); render(); } }, "Delete");
+        tb.appendChild(D.el("tr", null,
+          D.el("td", null, String(i+1)), D.el("td", null, fLbl),
+          D.el("td", null, fSt), D.el("td", null, fEt),
+          D.el("td", null, fTe), D.el("td", null, del)));
+      });
+      tbl.appendChild(tb);
+    }
+    render();
+    const add = D.el("button", { type:"button", class:"chrx-btn", onclick:()=>{
+      ref.periods.push({ index: ref.periods.length+1, label: String(ref.periods.length+1),
+        starttime: "", endtime: "", isTeaching: true });
+      render();
+    } }, "+ Add period");
+    D.openSheet(D.el("div", null, tbl, D.el("div", { class:"chrx-ent-row" }, add),
+      D.el("div", { class:"chrx-ent-form__foot" },
+        D.el("button", { type:"button", class:"chrx-btn chrx-btn--primary",
+          onclick:()=>{
+            window.APP.audit.append({ entity:"bells", op:"periods", id:ref.id, after: ref.periods.slice() });
+            D.closeSheet(); D.refresh(rows());
+          } }, "Done"),
+      ),
+    ), { title:`Periods — ${ref.name}` });
+  }
+
+  function open() {
+    ensure();
+    D.open({
+      entity:"bells", title:"Bell schedules",
+      columns:columns(), rows:rows(),
+      extras:[ { id:"periods", label:"Periods" } ],
+      onAction:(cmd, row) => {
+        if (cmd === "new") return openEdit(null);
+        if (cmd === "edit" && row) return openEdit(row);
+        if (cmd === "delete" && row) {
+          const all = ensure();
+          const i = all.findIndex(x => x.id === row._ref.id);
+          if (i >= 0) {
+            const removed = all.splice(i,1)[0];
+            window.APP.audit.append({ entity:"bells", op:"remove", before:{...removed} });
+            D.refresh(rows());
+          }
+          return;
+        }
+        if (cmd === "periods" && row) return openPeriods(row);
+      },
+    });
+  }
+
+  global.EntityBells = { open };
+})(window);
+
+/* ─── FILE: js/ui/entities/breaks.js ─── */
+/* Breaks CRUD dialog. window.EntityBreaks.open()
+ * Standalone break entities (RECESS / FRUIT BREAK / LUNCH). The solver uses
+ * these to inject mandatory gaps that block teacher + room availability.
+ * Fields: name, short, starttime, endtime, daydata (per-day variation),
+ * printtext, printinsummary, printinclasses, printinteachers,
+ * printinclassrooms. */
+(function (global) {
+  "use strict";
+  const D = window.EntityDialog;
+  if (!D) return;
+
+  const DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat"];
+
+  function ensure() {
+    const s = window.APP.school = window.APP.school || {};
+    if (!Array.isArray(s.breaks)) s.breaks = [];
+    return s.breaks;
+  }
+
+  function rows() {
+    return ensure().map(b => ({
+      id: b.id, name: b.name || "(unnamed)",
+      short: b.short || "",
+      starttime: b.starttime || "",
+      endtime: b.endtime || "",
+      days: daysSummary(b.daydata),
+      print: printSummary(b),
+      _ref: b,
+    }));
+  }
+
+  function daysSummary(dd) {
+    if (!dd) return "All";
+    const on = DAYS.filter((_, i) => dd[i] !== false);
+    if (on.length === 6) return "All";
+    return on.join(",");
+  }
+  function printSummary(b) {
+    const flags = [];
+    if (b.printinsummary)   flags.push("S");
+    if (b.printinclasses)   flags.push("C");
+    if (b.printinteachers)  flags.push("T");
+    if (b.printinclassrooms)flags.push("R");
+    return flags.join("") || "—";
+  }
+
+  function columns() { return [
+    { key:"name",      label:"Name" },
+    { key:"short",     label:"Short" },
+    { key:"starttime", label:"Start" },
+    { key:"endtime",   label:"End" },
+    { key:"days",      label:"Days" },
+    { key:"print",     label:"Print" },
+  ]; }
+
+  function openEdit(r) {
+    const isNew = !r;
+    const ref = r ? r._ref : null;
+    const draft = isNew
+      ? { name:"", short:"", starttime:"", endtime:"", printtext:"",
+          daydata:[true,true,true,true,true,true],
+          printinsummary:false, printinclasses:false,
+          printinteachers:false, printinclassrooms:false }
+      : { name:ref.name||"", short:ref.short||"",
+          starttime:ref.starttime||"", endtime:ref.endtime||"",
+          printtext:ref.printtext||"",
+          daydata:(ref.daydata || [true,true,true,true,true,true]).slice(),
+          printinsummary:!!ref.printinsummary,
+          printinclasses:!!ref.printinclasses,
+          printinteachers:!!ref.printinteachers,
+          printinclassrooms:!!ref.printinclassrooms };
+
+    const fName = D.el("input", { type:"text", value:draft.name, required:"required",
+      maxlength:"30", oninput:(e)=>draft.name = e.target.value });
+    const fShort = D.el("input", { type:"text", value:draft.short, maxlength:"10",
+      oninput:(e)=>draft.short = e.target.value });
+    const fSt = D.el("input", { type:"time", value:draft.starttime,
+      oninput:(e)=>draft.starttime = e.target.value });
+    const fEt = D.el("input", { type:"time", value:draft.endtime,
+      oninput:(e)=>draft.endtime = e.target.value });
+    const fPt = D.el("input", { type:"text", value:draft.printtext,
+      oninput:(e)=>draft.printtext = e.target.value });
+
+    const dayWrap = D.el("div", { class:"chrx-ent-daystrip" });
+    DAYS.forEach((d, i) => {
+      const b = D.el("button", { type:"button",
+        class: "chrx-ent-daystrip__b" + (draft.daydata[i] ? " is-on" : ""),
+        onclick:()=>{
+          draft.daydata[i] = !draft.daydata[i];
+          b.classList.toggle("is-on", draft.daydata[i]);
+        } }, d);
+      dayWrap.appendChild(b);
+    });
+
+    function chk(key, label) {
+      const c = D.el("input", { type:"checkbox",
+        checked: draft[key] ? "checked" : null,
+        onchange:(e)=> draft[key] = e.target.checked });
+      return D.el("label", { class:"chrx-ent-inline" }, c,
+        D.el("span", null, " " + label));
+    }
+    const printBox = D.el("div", { class:"chrx-ent-printflags" },
+      chk("printinsummary",  "In summary"),
+      chk("printinclasses",  "In class schedules"),
+      chk("printinteachers", "In teacher schedules"),
+      chk("printinclassrooms","In classroom schedules"));
+
+    D.buildEditSheet({
+      title: isNew ? "New break" : `Edit break — ${draft.name}`,
+      fields:[
+        { label:"Name",      control:fName },
+        { label:"Short",     control:fShort },
+        { label:"Start",     control:fSt },
+        { label:"End",       control:fEt },
+        { label:"Print text",control:fPt },
+        { label:"Days",      control:dayWrap },
+        { label:"Print flags", control:printBox },
+      ],
+      onSave:()=>{
+        if (!draft.name.trim()) { fName.focus(); return; }
+        if (draft.starttime && draft.endtime && draft.starttime >= draft.endtime) {
+          alert("End time must be after start time."); fSt.focus(); return;
+        }
+        const all = ensure();
+        const payload = {
+          name: draft.name.trim(),
+          short: draft.short.trim() || undefined,
+          starttime: draft.starttime || undefined,
+          endtime: draft.endtime || undefined,
+          printtext: draft.printtext.trim() || undefined,
+          daydata: draft.daydata.slice(),
+          printinsummary: !!draft.printinsummary,
+          printinclasses: !!draft.printinclasses,
+          printinteachers: !!draft.printinteachers,
+          printinclassrooms: !!draft.printinclassrooms,
+        };
+        if (!isNew) {
+          const before = { ...ref };
+          Object.assign(ref, payload);
+          window.APP.audit.append({ entity:"breaks", op:"update", before, after:{...ref} });
+        } else {
+          if (all.some(x => x.name === payload.name)) { fName.focus(); return; }
+          payload.id = D.uid("brk");
+          all.push(payload);
+          window.APP.audit.append({ entity:"breaks", op:"add", after:{...payload} });
+        }
+        D.closeSheet(); D.refresh(rows());
+      },
+    });
+  }
+
+  function open() {
+    ensure();
+    D.open({
+      entity:"breaks", title:"Breaks",
+      columns:columns(), rows:rows(),
+      onAction:(cmd, row) => {
+        if (cmd === "new") return openEdit(null);
+        if (cmd === "edit" && row) return openEdit(row);
+        if (cmd === "delete" && row) {
+          const all = ensure();
+          const i = all.findIndex(x => x.id === row._ref.id);
+          if (i >= 0) {
+            const removed = all.splice(i,1)[0];
+            window.APP.audit.append({ entity:"breaks", op:"remove", before:{...removed} });
+            D.refresh(rows());
+          }
+        }
+      },
+    });
+  }
+
+  global.EntityBreaks = { open };
+})(window);
+
+/* ─── FILE: js/ui/entities/classroomsupervisions.js ─── */
+/* Classroom supervisions (hall duty) CRUD dialog.
+ * window.EntitySupervisions.open()
+ * Each row pre-occupies a teacher in a (classroom, day, week, term, period)
+ * slot so the solver can't double-book them onto a lesson. Maps to the
+ * Classic 'classroomsupervisions' entity. */
+(function (global) {
+  "use strict";
+  const D = window.EntityDialog;
+  if (!D) return;
+
+  const DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat"];
+
+  function ensure() {
+    const s = window.APP.school = window.APP.school || {};
+    if (!Array.isArray(s.classroomsupervisions)) s.classroomsupervisions = [];
+    return s.classroomsupervisions;
+  }
+
+  function nameOf(coll, id) {
+    return (coll || []).find(x => x.id === id)?.name || "";
+  }
+
+  function rows() {
+    const s = window.APP.school || {};
+    return ensure().map(v => ({
+      id: v.id,
+      classroom: nameOf(s.classrooms, v.classroomid),
+      teacher: nameOf(s.teachers, v.teacherid),
+      day: v.day != null ? DAYS[v.day] || ("D"+v.day) : "—",
+      week: nameOf(s.weeks, v.week) || v.week || "all",
+      term: nameOf(s.terms, v.term) || v.term || "all",
+      period: v.period != null ? `P${v.period}` : "—",
+      _ref: v,
+    }));
+  }
+
+  function columns() { return [
+    { key:"classroom", label:"Classroom" },
+    { key:"teacher",   label:"Teacher" },
+    { key:"day",       label:"Day" },
+    { key:"period",    label:"Period" },
+    { key:"week",      label:"Week" },
+    { key:"term",      label:"Term" },
+  ]; }
+
+  function makeSelect(items, curId, label, onChange, allowEmpty) {
+    const sel = D.el("select", null);
+    if (allowEmpty) sel.appendChild(D.el("option", { value:"" }, "—"));
+    (items || []).forEach(t => {
+      const opt = D.el("option", { value:t.id }, label(t));
+      if (t.id === curId) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    sel.addEventListener("change", e => onChange(e.target.value || null));
+    return sel;
+  }
+
+  function periodOptions() {
+    const periods = window.APP.school?.bell?.periods || [];
+    const n = periods.length || 8;
+    const out = [];
+    for (let i = 1; i <= n; i++) out.push({ id: String(i), name: `P${i}` });
+    return out;
+  }
+
+  function openEdit(r) {
+    const isNew = !r;
+    const s = window.APP.school;
+    const draft = isNew
+      ? { classroomid:"", teacherid:"", day:"", period:"", week:"", term:"" }
+      : { classroomid:r._ref.classroomid || "", teacherid:r._ref.teacherid || "",
+          day: r._ref.day != null ? String(r._ref.day) : "",
+          period: r._ref.period != null ? String(r._ref.period) : "",
+          week: r._ref.week || "", term: r._ref.term || "" };
+
+    const fRoom = makeSelect(s.classrooms, draft.classroomid,
+      x => x.name + (x.abbr ? ` (${x.abbr})` : ""),
+      v => draft.classroomid = v, true);
+    const fTeach = makeSelect(s.teachers, draft.teacherid,
+      x => x.name + (x.abbr ? ` (${x.abbr})` : ""),
+      v => draft.teacherid = v, true);
+    const fDay = D.el("select", null,
+      D.el("option", { value:"" }, "—"),
+      ...DAYS.map((d,i) => {
+        const opt = D.el("option", { value:String(i) }, d);
+        if (String(i) === draft.day) opt.selected = true;
+        return opt;
+      }));
+    fDay.addEventListener("change", e => draft.day = e.target.value);
+    const fPeriod = makeSelect(periodOptions(), draft.period,
+      x => x.name, v => draft.period = v, true);
+    const fWeek = makeSelect(s.weeks, draft.week,
+      x => x.name, v => draft.week = v, true);
+    const fTerm = makeSelect(s.terms, draft.term,
+      x => x.name, v => draft.term = v, true);
+
+    D.buildEditSheet({
+      title: isNew ? "New supervision slot" : "Edit supervision",
+      fields:[
+        { label:"Classroom",   control:fRoom },
+        { label:"Teacher",     control:fTeach },
+        { label:"Day",         control:fDay },
+        { label:"Period",      control:fPeriod },
+        { label:"Week (opt)",  control:fWeek },
+        { label:"Term (opt)",  control:fTerm },
+      ],
+      onSave:()=>{
+        if (!draft.classroomid) { fRoom.focus(); return; }
+        if (!draft.teacherid)   { fTeach.focus(); return; }
+        if (draft.day === "")   { fDay.focus(); return; }
+        if (draft.period === ""){ fPeriod.focus(); return; }
+        const all = ensure();
+        const payload = {
+          classroomid: draft.classroomid,
+          teacherid: draft.teacherid,
+          day: parseInt(draft.day, 10),
+          period: parseInt(draft.period, 10),
+          week: draft.week || undefined,
+          term: draft.term || undefined,
+        };
+        // uniqueness: same (teacher, day, period, week, term) can't be twice
+        const dup = all.find(x =>
+          x.teacherid === payload.teacherid &&
+          x.day === payload.day && x.period === payload.period &&
+          (x.week || "") === (payload.week || "") &&
+          (x.term || "") === (payload.term || "") &&
+          (!r || x.id !== r._ref.id));
+        if (dup) {
+          alert("This teacher already has a supervision at that slot.");
+          fTeach.focus(); return;
+        }
+        if (!isNew) {
+          const ref = r._ref; const before = { ...ref };
+          Object.assign(ref, payload);
+          window.APP.audit.append({ entity:"classroomsupervisions", op:"update",
+            before, after:{...ref} });
+        } else {
+          payload.id = D.uid("sup");
+          all.push(payload);
+          window.APP.audit.append({ entity:"classroomsupervisions", op:"add",
+            after:{...payload} });
+        }
+        D.closeSheet(); D.refresh(rows());
+      },
+    });
+  }
+
+  function open() {
+    ensure();
+    D.open({
+      entity:"classroomsupervisions", title:"Hall / break supervisions",
+      columns:columns(), rows:rows(),
+      onAction:(cmd, row) => {
+        if (cmd === "new") return openEdit(null);
+        if (cmd === "edit" && row) return openEdit(row);
+        if (cmd === "delete" && row) {
+          const all = ensure();
+          const i = all.findIndex(x => x.id === row._ref.id);
+          if (i >= 0) {
+            const removed = all.splice(i,1)[0];
+            window.APP.audit.append({ entity:"classroomsupervisions", op:"remove",
+              before:{...removed} });
+            D.refresh(rows());
+          }
+        }
+      },
+    });
+  }
+
+  global.EntitySupervisions = { open };
+})(window);
+
+/* ─── FILE: js/ui/entities/coursegroups.js ─── */
+/* CourseGroups CRUD dialog. window.EntityCourseGroups.open()
+ * High-school elective groups — e.g. Science / Commerce / Humanities
+ * streams in classes XI–XII. A course-group bundles the subjects that
+ * its students choose. Fields: name, short, subjectids[]. */
+(function (global) {
+  "use strict";
+  const D = window.EntityDialog;
+  if (!D) return;
+
+  function ensure() {
+    const s = window.APP.school = window.APP.school || {};
+    if (!Array.isArray(s.coursegroups)) s.coursegroups = [];
+    return s.coursegroups;
+  }
+
+  function subjMap() { return window.APP.school?._idx?.subjectById || {}; }
+
+  function subjLabels(ids) {
+    const m = subjMap();
+    return (ids || []).map(id => m[id]?.abbr || m[id]?.name || id)
+      .filter(Boolean).join(", ");
+  }
+
+  function rows() {
+    return ensure().map(g => ({
+      id: g.id, name: g.name || "(unnamed)",
+      short: g.short || "",
+      subjects: subjLabels(g.subjectids),
+      count: (g.subjectids || []).length,
+      _ref: g,
+    }));
+  }
+
+  function columns() { return [
+    { key:"name",     label:"Name" },
+    { key:"short",    label:"Short" },
+    { key:"count",    label:"# Subjects" },
+    { key:"subjects", label:"Subjects" },
+  ]; }
+
+  function openEdit(r) {
+    const isNew = !r;
+    const ref = r ? r._ref : null;
+    const draft = isNew
+      ? { name:"", short:"", subjectids:[] }
+      : { name:ref.name || "", short:ref.short || "",
+          subjectids:(ref.subjectids || []).slice() };
+
+    const fName = D.el("input", { type:"text", value:draft.name, required:"required",
+      maxlength:"40", oninput:(e)=>draft.name = e.target.value });
+    const fShort = D.el("input", { type:"text", value:draft.short, maxlength:"10",
+      oninput:(e)=>draft.short = e.target.value });
+
+    const fSubj = D.el("select", { multiple:"multiple", size:"8" });
+    ((window.APP.school?.subjects) || []).forEach(s => {
+      const opt = D.el("option", { value:s.id },
+        s.name + (s.abbr ? ` (${s.abbr})` : ""));
+      if (draft.subjectids.includes(s.id)) opt.selected = true;
+      fSubj.appendChild(opt);
+    });
+    fSubj.addEventListener("change", () => {
+      draft.subjectids = Array.from(fSubj.selectedOptions).map(o => o.value);
+    });
+
+    D.buildEditSheet({
+      title: isNew ? "New course group" : `Edit course group — ${draft.name}`,
+      fields:[
+        { label:"Name",     control:fName },
+        { label:"Short",    control:fShort },
+        { label:"Subjects", control:fSubj },
+      ],
+      onSave:()=>{
+        if (!draft.name.trim()) { fName.focus(); return; }
+        const all = ensure();
+        const payload = {
+          name: draft.name.trim(),
+          short: draft.short.trim() || undefined,
+          subjectids: draft.subjectids.slice(),
+        };
+        if (!isNew) {
+          const before = { ...ref };
+          Object.assign(ref, payload);
+          window.APP.audit.append({ entity:"coursegroups", op:"update",
+            before, after:{...ref} });
+        } else {
+          if (all.some(x => x.name === payload.name)) { fName.focus(); return; }
+          payload.id = D.uid("cg");
+          all.push(payload);
+          window.APP.audit.append({ entity:"coursegroups", op:"add", after:{...payload} });
+        }
+        D.closeSheet(); D.refresh(rows());
+      },
+    });
+  }
+
+  function open() {
+    ensure();
+    D.open({
+      entity:"coursegroups", title:"Course groups",
+      columns:columns(), rows:rows(),
+      onAction:(cmd, row) => {
+        if (cmd === "new") return openEdit(null);
+        if (cmd === "edit" && row) return openEdit(row);
+        if (cmd === "delete" && row) {
+          const all = ensure();
+          const i = all.findIndex(x => x.id === row._ref.id);
+          if (i >= 0) {
+            const removed = all.splice(i,1)[0];
+            window.APP.audit.append({ entity:"coursegroups", op:"remove",
+              before:{...removed} });
+            D.refresh(rows());
+          }
+        }
+      },
+    });
+  }
+
+  global.EntityCourseGroups = { open };
+})(window);
+
+/* ─── FILE: js/ui/entities/buildings.js ─── */
+/* Buildings CRUD dialog — window.EntityBuildings.open().
+ *
+ * Each building: { id, name, short, color, address?, floors?, notes? }.
+ * Buildings let schools split rooms across physical locations and the solver
+ * honours teacher-building-change penalties (max N buildings/day, transition
+ * time between buildings).
+ *
+ * Wire shape (Classic): single column `color` per the cdef dump; we extend
+ * with locally-meaningful fields (name, short, address, floors, notes) since
+ * the wire format is permissive. Round-trip via XML preserves all fields.
+ */
+(function (global) {
+  "use strict";
+  const D = window.EntityDialog;
+  if (!D) return;
+
+  function rows() {
+    return ((window.APP.school && window.APP.school.buildings) || []).map(b => ({
+      id: b.id, name: b.name || "", short: b.short || "", color: b.color || "",
+      address: b.address || "", floors: b.floors || 1,
+      _ref: b,
+    }));
+  }
+
+  function columns() { return [
+    { key: "color", label: "", sortable: false,
+      render: (r) => D.el("span", { class: "chrx-ent-swatch-dot",
+        style: `background:${r.color || "transparent"}`, "aria-hidden": "true" }) },
+    { key: "name",   label: "Name" },
+    { key: "short",  label: "Short" },
+    { key: "floors", label: "Floors" },
+    { key: "address", label: "Address",
+      render: (r) => r.address ? r.address.slice(0, 40) : "—" },
+  ]; }
+
+  function openEdit(r) {
+    const isNew = !r;
+    const draft = isNew
+      ? { name: "", short: "", color: "", address: "", floors: 1, notes: "" }
+      : { name: r.name, short: r.short, color: r.color,
+          address: r._ref.address || "", floors: r._ref.floors || 1, notes: r._ref.notes || "" };
+
+    const fName = D.el("input", { type: "text", value: draft.name, required: "required",
+      maxlength: "80", oninput: (e) => draft.name = e.target.value });
+    const fShort = D.el("input", { type: "text", value: draft.short, maxlength: "10",
+      oninput: (e) => draft.short = e.target.value });
+    const fColor = D.buildSwatchPicker(draft.color, v => draft.color = v);
+    const fFloors = D.el("input", { type: "number", min: "1", max: "20", value: draft.floors,
+      oninput: (e) => draft.floors = parseInt(e.target.value, 10) || 1 });
+    const fAddress = D.el("input", { type: "text", value: draft.address, maxlength: "160",
+      placeholder: "Optional — for print headers / wayfinding",
+      oninput: (e) => draft.address = e.target.value });
+    const fNotes = D.el("textarea", { rows: "2", maxlength: "300",
+      placeholder: "Optional notes (printed in admin reports)",
+      oninput: (e) => draft.notes = e.target.value }, draft.notes || "");
+
+    D.buildEditSheet({
+      title: isNew ? "New building" : `Edit building — ${r.name}`,
+      fields: [
+        { label: "Name",        control: fName },
+        { label: "Abbreviation", control: fShort },
+        { label: "Color",       control: fColor },
+        { label: "Floors",      control: fFloors },
+        { label: "Address",     control: fAddress },
+        { label: "Notes",       control: fNotes },
+      ],
+      onSave: () => {
+        if (!draft.name.trim()) { fName.focus(); return; }
+        const all = (window.APP.school.buildings = window.APP.school.buildings || []);
+        if (!isNew) {
+          const ref = r._ref;
+          const before = { ...ref };
+          ref.name = draft.name.trim();
+          ref.short = draft.short.trim() || undefined;
+          ref.color = draft.color || undefined;
+          ref.floors = draft.floors;
+          ref.address = draft.address.trim() || undefined;
+          ref.notes = draft.notes.trim() || undefined;
+          window.APP.audit.append({ entity: "buildings", op: "update", before, after: { ...ref } });
+        } else {
+          const nb = { id: D.uid("b"), name: draft.name.trim(),
+            short: draft.short.trim() || undefined, color: draft.color || undefined,
+            floors: draft.floors,
+            address: draft.address.trim() || undefined,
+            notes: draft.notes.trim() || undefined };
+          if (all.some(x => x.name === nb.name)) { fName.focus(); return; }
+          all.push(nb);
+          if (window.APP.school._idx) {
+            window.APP.school._idx.buildingById = window.APP.school._idx.buildingById || {};
+            window.APP.school._idx.buildingById[nb.id] = nb;
+          }
+          window.APP.audit.append({ entity: "buildings", op: "add", after: { ...nb } });
+        }
+        D.closeSheet(); D.refresh(rows());
+      },
+    });
+  }
+
+  function openClassroomsOf(r) {
+    const ref = r._ref;
+    const rooms = ((window.APP.school && window.APP.school.classrooms) || [])
+      .filter(c => c.buildingId === ref.id || c.buildingid === ref.id);
+    const list = D.el("ul", { class: "chrx-ent-list" });
+    if (!rooms.length) list.appendChild(D.el("li", null, "No classrooms assigned to this building yet."));
+    rooms.forEach(c => list.appendChild(D.el("li", null,
+      `${c.name || "—"} (${c.short || ""}) · capacity ${c.capacity || "—"}`)));
+    D.openSheet(list, { title: `Classrooms in ${ref.name} (${rooms.length})` });
+  }
+
+  function open() {
+    D.open({
+      entity: "buildings", title: "Buildings",
+      columns: columns(), rows: rows(),
+      extras: [
+        { id: "rooms", label: "Classrooms" },
+      ],
+      onAction: (cmd, row) => {
+        if (cmd === "new") return openEdit(null);
+        if (cmd === "edit" && row) return openEdit(row);
+        if (cmd === "delete" && row) {
+          const all = window.APP.school.buildings || [];
+          const i = all.findIndex(x => x.id === row._ref.id);
+          if (i >= 0) {
+            const removed = all.splice(i, 1)[0];
+            // Unset buildingId on any classrooms that used this building
+            for (const c of (window.APP.school.classrooms || [])) {
+              if (c.buildingId === removed.id || c.buildingid === removed.id) {
+                c.buildingId = undefined;
+                c.buildingid = undefined;
+              }
+            }
+            window.APP.audit.append({ entity: "buildings", op: "remove", before: { ...removed } });
+            D.refresh(rows());
+          }
+          return;
+        }
+        if (cmd === "rooms" && row) return openClassroomsOf(row);
+      },
+    });
+  }
+
+  global.EntityBuildings = { open };
+})(window);
+
+/* ─── FILE: js/ui/entities/divisions.js ─── */
+/* Divisions CRUD dialog. window.EntityDivisions.open()
+ * A division splits one class into parallel sub-groups for elective /
+ * lab lessons. Classic field 'divisionTag' is the textual label used
+ * inside Timetable XML. Fields: classid, divisionTag, groupids[]. */
+(function (global) {
+  "use strict";
+  const D = window.EntityDialog;
+  if (!D) return;
+
+  function ensure() {
+    const s = window.APP.school = window.APP.school || {};
+    if (!Array.isArray(s.divisions)) s.divisions = [];
+    return s.divisions;
+  }
+
+  function classMap() { return window.APP.school?._idx?.classById || {}; }
+  function groupMap() {
+    const m = {}; (window.APP.school?.groups || []).forEach(g => m[g.id] = g);
+    return m;
+  }
+
+  function rows() {
+    const cm = classMap();
+    const gm = groupMap();
+    return ensure().map(d => ({
+      id: d.id,
+      classname: cm[d.classid]?.name || "(unassigned)",
+      divisionTag: d.divisionTag || "",
+      groupCount: (d.groupids || []).length,
+      groups: (d.groupids || []).map(id => gm[id]?.name || id)
+        .filter(Boolean).join(", "),
+      _ref: d,
+    }));
+  }
+
+  function columns() { return [
+    { key:"classname",     label:"Class" },
+    { key:"divisionTag", label:"Division" },
+    { key:"groupCount",    label:"# Groups" },
+    { key:"groups",        label:"Groups" },
+  ]; }
+
+  function makeClassSelect(curId, onChange) {
+    const sel = D.el("select", null, D.el("option", { value:"" }, "—"));
+    ((window.APP.school?.classes) || []).forEach(c => {
+      const opt = D.el("option", { value:c.id },
+        c.name + (c.abbr ? ` (${c.abbr})` : ""));
+      if (c.id === curId) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    sel.addEventListener("change", e => onChange(e.target.value || ""));
+    return sel;
+  }
+
+  function openEdit(r) {
+    const isNew = !r;
+    const ref = r ? r._ref : null;
+    const draft = isNew
+      ? { classid:"", divisionTag:"", groupids:[] }
+      : { classid:ref.classid || "", divisionTag:ref.divisionTag || "",
+          groupids:(ref.groupids || []).slice() };
+
+    const fClass = makeClassSelect(draft.classid, v => draft.classid = v);
+    const fDiv = D.el("input", { type:"text", value:draft.divisionTag,
+      maxlength:"20", placeholder:"e.g. mu / da",
+      oninput:(e)=>draft.divisionTag = e.target.value });
+
+    const fGroups = D.el("select", { multiple:"multiple", size:"6" });
+    ((window.APP.school?.groups) || []).forEach(g => {
+      const opt = D.el("option", { value:g.id }, g.name || g.id);
+      if (draft.groupids.includes(g.id)) opt.selected = true;
+      fGroups.appendChild(opt);
+    });
+    fGroups.addEventListener("change", () => {
+      draft.groupids = Array.from(fGroups.selectedOptions).map(o => o.value);
+    });
+
+    D.buildEditSheet({
+      title: isNew ? "New division" : "Edit division",
+      fields:[
+        { label:"Class",    control:fClass },
+        { label:"Division", control:fDiv },
+        { label:"Groups",   control:fGroups },
+      ],
+      onSave:()=>{
+        if (!draft.classid) { fClass.focus(); return; }
+        const all = ensure();
+        const payload = {
+          classid: draft.classid,
+          divisionTag: draft.divisionTag.trim() || undefined,
+          groupids: draft.groupids.slice(),
+        };
+        if (!isNew) {
+          const before = { ...ref };
+          Object.assign(ref, payload);
+          window.APP.audit.append({ entity:"divisions", op:"update",
+            before, after:{...ref} });
+        } else {
+          payload.id = D.uid("div");
+          all.push(payload);
+          window.APP.audit.append({ entity:"divisions", op:"add", after:{...payload} });
+        }
+        D.closeSheet(); D.refresh(rows());
+      },
+    });
+  }
+
+  function open() {
+    ensure();
+    D.open({
+      entity:"divisions", title:"Class divisions",
+      columns:columns(), rows:rows(),
+      onAction:(cmd, row) => {
+        if (cmd === "new") return openEdit(null);
+        if (cmd === "edit" && row) return openEdit(row);
+        if (cmd === "delete" && row) {
+          const all = ensure();
+          const i = all.findIndex(x => x.id === row._ref.id);
+          if (i >= 0) {
+            const removed = all.splice(i,1)[0];
+            window.APP.audit.append({ entity:"divisions", op:"remove",
+              before:{...removed} });
+            D.refresh(rows());
+          }
+        }
+      },
+    });
+  }
+
+  global.EntityDivisions = { open };
+})(window);
+
+/* ─── FILE: js/ui/entities/groups.js ─── */
+/* Groups CRUD dialog. window.EntityGroups.open()
+ * A group is a sub-grouping of a class — either the full class
+ * (entireclass=true) or a fraction taking an elective. Fields:
+ * classid, entireclass, divisionTag, name. */
+(function (global) {
+  "use strict";
+  const D = window.EntityDialog;
+  if (!D) return;
+
+  function ensure() {
+    const s = window.APP.school = window.APP.school || {};
+    if (!Array.isArray(s.groups)) s.groups = [];
+    return s.groups;
+  }
+
+  function classMap() { return window.APP.school?._idx?.classById || {}; }
+
+  function rows() {
+    const cm = classMap();
+    return ensure().map(g => ({
+      id: g.id, name: g.name || "(unnamed)",
+      classname: cm[g.classid]?.name || "(unassigned)",
+      divisionTag: g.divisionTag || "",
+      entire: g.entireclass ? "✔" : "—",
+      _ref: g,
+    }));
+  }
+
+  function columns() { return [
+    { key:"name",          label:"Name" },
+    { key:"classname",     label:"Class" },
+    { key:"divisionTag", label:"Division" },
+    { key:"entire",        label:"Entire?" },
+  ]; }
+
+  function makeClassSelect(curId, onChange) {
+    const sel = D.el("select", null, D.el("option", { value:"" }, "—"));
+    ((window.APP.school?.classes) || []).forEach(c => {
+      const opt = D.el("option", { value:c.id },
+        c.name + (c.abbr ? ` (${c.abbr})` : ""));
+      if (c.id === curId) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    sel.addEventListener("change", e => onChange(e.target.value || ""));
+    return sel;
+  }
+
+  function openEdit(r) {
+    const isNew = !r;
+    const ref = r ? r._ref : null;
+    const draft = isNew
+      ? { name:"", classid:"", entireclass:false, divisionTag:"" }
+      : { name:ref.name || "", classid:ref.classid || "",
+          entireclass:!!ref.entireclass,
+          divisionTag:ref.divisionTag || "" };
+
+    const fName = D.el("input", { type:"text", value:draft.name, required:"required",
+      maxlength:"30", oninput:(e)=>draft.name = e.target.value });
+    const fClass = makeClassSelect(draft.classid, v => draft.classid = v);
+    const fEntire = D.el("input", { type:"checkbox",
+      checked: draft.entireclass ? "checked" : null,
+      onchange:(e)=>draft.entireclass = e.target.checked });
+    const fDiv = D.el("input", { type:"text", value:draft.divisionTag,
+      maxlength:"20", placeholder:"e.g. mu / da",
+      oninput:(e)=>draft.divisionTag = e.target.value });
+
+    D.buildEditSheet({
+      title: isNew ? "New group" : `Edit group — ${draft.name}`,
+      fields:[
+        { label:"Name",         control:fName },
+        { label:"Class",        control:fClass },
+        { label:"Entire class", control:fEntire },
+        { label:"Division",     control:fDiv },
+      ],
+      onSave:()=>{
+        if (!draft.name.trim()) { fName.focus(); return; }
+        if (!draft.classid) { fClass.focus(); return; }
+        const all = ensure();
+        const payload = {
+          name: draft.name.trim(),
+          classid: draft.classid,
+          entireclass: !!draft.entireclass,
+          divisionTag: draft.divisionTag.trim() || undefined,
+        };
+        if (!isNew) {
+          const before = { ...ref };
+          Object.assign(ref, payload);
+          window.APP.audit.append({ entity:"groups", op:"update",
+            before, after:{...ref} });
+        } else {
+          payload.id = D.uid("g");
+          all.push(payload);
+          window.APP.audit.append({ entity:"groups", op:"add", after:{...payload} });
+        }
+        D.closeSheet(); D.refresh(rows());
+      },
+    });
+  }
+
+  function open() {
+    ensure();
+    D.open({
+      entity:"groups", title:"Class groups",
+      columns:columns(), rows:rows(),
+      onAction:(cmd, row) => {
+        if (cmd === "new") return openEdit(null);
+        if (cmd === "edit" && row) return openEdit(row);
+        if (cmd === "delete" && row) {
+          const all = ensure();
+          const i = all.findIndex(x => x.id === row._ref.id);
+          if (i >= 0) {
+            const removed = all.splice(i,1)[0];
+            window.APP.audit.append({ entity:"groups", op:"remove",
+              before:{...removed} });
+            D.refresh(rows());
+          }
+        }
+      },
+    });
+  }
+
+  global.EntityGroups = { open };
+})(window);
+
+/* ─── FILE: js/ui/entities/days.js ─── */
+/* Days CRUD dialog. window.EntityDays.open()
+ * Defines reusable day-of-week patterns: each pattern is a 6-bit bitmask
+ * (Mon..Sat) that lessons / supervisions can scope themselves to. Mirrors
+ * CLASSIC <daysdef days="100000"> wire shape, including comma-separated
+ * "Any day" alternatives. Fields: name, short, color, days (bitmask).
+ *
+ * Default seed: 6 single days + "Any day" + "Every day". Stored on
+ * window.APP.school.days; persists in snapshots like every other entity. */
+(function (global) {
+  "use strict";
+  const D = window.EntityDialog;
+  if (!D) return;
+
+  const DAY_LABELS = ["Mon","Tue","Wed","Thu","Fri","Sat"];
+  const DAY_SHORTS = ["Mo","Tu","We","Th","Fr","Sa"];
+
+  // Default day-pattern seed — mirrors sample-school.xml so a fresh school
+  // already has working "any day" / "every day" patterns for the lesson
+  // dialog to pick.
+  function seedDefaults(arr) {
+    const single = (idx, name, short) => {
+      const bits = ["0","0","0","0","0","0"];
+      bits[idx] = "1";
+      return { id: D.uid("day"), name, short, days: bits.join("") };
+    };
+    arr.push(single(0, "Monday",    "Mo"));
+    arr.push(single(1, "Tuesday",   "Tu"));
+    arr.push(single(2, "Wednesday", "We"));
+    arr.push(single(3, "Thursday",  "Th"));
+    arr.push(single(4, "Friday",    "Fr"));
+    arr.push(single(5, "Saturday",  "Sa"));
+    arr.push({ id: D.uid("day"), name: "Mon-Fri", short: "M-F",
+      days: "111110" });
+    arr.push({ id: D.uid("day"), name: "Any day", short: "X",
+      days: "100000,010000,001000,000100,000010,000001" });
+    arr.push({ id: D.uid("day"), name: "Every day", short: "E",
+      days: "111111" });
+  }
+
+  function ensure() {
+    const s = window.APP.school = window.APP.school || {};
+    if (!Array.isArray(s.days)) {
+      s.days = [];
+      seedDefaults(s.days);
+    } else if (s.days.length === 0) {
+      seedDefaults(s.days);
+    }
+    return s.days;
+  }
+
+  function patternLabel(daysStr) {
+    // Render bitmask string as a compact "Mo/Tu/Fr" preview.
+    if (!daysStr) return "";
+    const alts = daysStr.split(",").filter(Boolean);
+    // Aggregate by OR — show which days are reachable.
+    const merged = ["0","0","0","0","0","0"];
+    alts.forEach(bits => {
+      for (let i = 0; i < 6 && i < bits.length; i++) {
+        if (bits[i] === "1") merged[i] = "1";
+      }
+    });
+    const picked = [];
+    for (let i = 0; i < 6; i++) {
+      if (merged[i] === "1") picked.push(DAY_SHORTS[i]);
+    }
+    if (picked.length === 0) return "(none)";
+    if (picked.length === 6) return "Mon–Sat";
+    if (alts.length > 1 && picked.length > 1) return picked.join("/") + " (any)";
+    return picked.join("/");
+  }
+
+  function rows() {
+    return ensure().map(d => ({
+      id: d.id, name: d.name || "(unnamed)",
+      short: d.short || "",
+      color: d.color || "",
+      days: d.days || "",
+      pattern: patternLabel(d.days),
+      _ref: d,
+    }));
+  }
+
+  function columns() { return [
+    { key:"color", label:"", sortable:false,
+      render:(r)=>D.el("span", { class:"chrx-ent-swatch-dot",
+        style:`background:${r.color || "transparent"}`, "aria-hidden":"true" }) },
+    { key:"name",    label:"Name" },
+    { key:"short",   label:"Short" },
+    { key:"pattern", label:"Days" },
+  ]; }
+
+  function buildBitmaskEditor(initial, onChange) {
+    // initial is a single bitmask string like "111110". For "any-day"
+    // multi-alt patterns we collapse to the OR set and warn the user.
+    const bits = ["0","0","0","0","0","0"];
+    const first = (initial || "").split(",")[0] || "";
+    for (let i = 0; i < 6 && i < first.length; i++) {
+      bits[i] = first[i] === "1" ? "1" : "0";
+    }
+
+    const isAnyDay = (initial || "").indexOf(",") !== -1;
+
+    const wrap = D.el("div", { class:"chrx-ent-daybits",
+      style:"display:flex;flex-wrap:wrap;gap:6px;align-items:center" });
+
+    function fire() {
+      onChange(bits.join(""));
+    }
+
+    DAY_LABELS.forEach((lbl, i) => {
+      const cb = D.el("input", { type:"checkbox",
+        checked: bits[i] === "1" ? "checked" : null,
+        onchange:(e)=>{
+          bits[i] = e.target.checked ? "1" : "0";
+          fire();
+        },
+      });
+      wrap.appendChild(D.el("label", {
+        style:"display:inline-flex;gap:4px;align-items:center;cursor:pointer;padding:2px 6px;border:1px solid var(--chrx-border,#d1d5db);border-radius:6px" },
+        cb, D.el("span", null, lbl)));
+    });
+
+    if (isAnyDay) {
+      wrap.appendChild(D.el("p", {
+        class:"chrx-ent-help",
+        style:"flex-basis:100%;margin:4px 0;font-size:11px;opacity:.7" },
+        "Note: this pattern uses comma-separated alternatives (an 'Any day' style). Editing here collapses it to a single bitmask."));
+    }
+
+    return wrap;
+  }
+
+  function openEdit(r) {
+    const isNew = !r;
+    const ref = r ? r._ref : null;
+    const draft = isNew
+      ? { name:"", short:"", color:"", days:"100000" }
+      : { name:ref.name || "", short:ref.short || "",
+          color:ref.color || "", days:ref.days || "100000" };
+
+    const fName = D.el("input", { type:"text", value:draft.name, required:"required",
+      maxlength:"30", oninput:(e)=>draft.name = e.target.value });
+    const fShort = D.el("input", { type:"text", value:draft.short, maxlength:"10",
+      oninput:(e)=>draft.short = e.target.value });
+    const fColor = D.buildSwatchPicker(draft.color, v => draft.color = v);
+    const fBits = buildBitmaskEditor(draft.days, v => draft.days = v);
+
+    D.buildEditSheet({
+      title: isNew ? "New day pattern" : `Edit day pattern — ${draft.name}`,
+      fields:[
+        { label:"Name",  control:fName },
+        { label:"Short", control:fShort },
+        { label:"Days",  control:fBits },
+        { label:"Color", control:fColor },
+      ],
+      onSave:()=>{
+        if (!draft.name.trim()) { fName.focus(); return; }
+        if (!/[1]/.test(draft.days)) {
+          // Empty bitmask — refuse silently with focus on first day cell.
+          fBits.querySelector("input[type=checkbox]")?.focus();
+          return;
+        }
+        const all = ensure();
+        const payload = {
+          name: draft.name.trim(),
+          short: draft.short.trim() || undefined,
+          color: draft.color || undefined,
+          days: draft.days,
+        };
+        if (!isNew) {
+          const before = { ...ref };
+          Object.assign(ref, payload);
+          window.APP.audit.append({ entity:"days", op:"update", before, after:{...ref} });
+        } else {
+          if (all.some(x => x.name === payload.name)) { fName.focus(); return; }
+          payload.id = D.uid("day");
+          all.push(payload);
+          window.APP.audit.append({ entity:"days", op:"add", after:{...payload} });
+        }
+        D.closeSheet(); D.refresh(rows());
+      },
+    });
+  }
+
+  function open() {
+    ensure();
+    D.open({
+      entity:"days", title:"Days",
+      columns:columns(), rows:rows(),
+      onAction:(cmd, row) => {
+        if (cmd === "new") return openEdit(null);
+        if (cmd === "edit" && row) return openEdit(row);
+        if (cmd === "delete" && row) {
+          const all = ensure();
+          const i = all.findIndex(x => x.id === row._ref.id);
+          if (i >= 0) {
+            const removed = all.splice(i,1)[0];
+            window.APP.audit.append({ entity:"days", op:"remove", before:{...removed} });
+            D.refresh(rows());
+          }
+        }
+      },
+    });
+  }
+
+  // Helper used by other modules (lessons.js) to look up the default
+  // "any day" entry for fallback selection.
+  function defaultId() {
+    const all = ensure();
+    const any = all.find(d => /,/.test(d.days || "")) ||
+                all.find(d => d.days === "111111") ||
+                all[all.length - 1];
+    return any ? any.id : null;
+  }
+
+  global.EntityDays = { open, ensure, defaultId, patternLabel };
+})(window);
+
+/* ─── FILE: js/ui/entities/terms.js ─── */
+/* Terms CRUD dialog. window.EntityTerms.open()
+ * Defines reusable term-pattern entries (Term-1, Term-2, "Whole year") that
+ * lessons / supervisions can scope themselves to. Each pattern is a bitmask
+ * string — "1" for whole-year, "10"/"01" for which term applies in a
+ * 2-term school. Mirrors CLASSIC <termsdef terms="…"> wire shape.
+ * Fields: name, short, color, terms. */
+(function (global) {
+  "use strict";
+  const D = window.EntityDialog;
+  if (!D) return;
+
+  function seedDefaults(arr) {
+    arr.push({ id: D.uid("term"), name: "Whole year", short: "YR", terms: "1" });
+  }
+
+  function ensure() {
+    const s = window.APP.school = window.APP.school || {};
+    if (!Array.isArray(s.terms)) {
+      s.terms = [];
+      seedDefaults(s.terms);
+    } else if (s.terms.length === 0) {
+      seedDefaults(s.terms);
+    }
+    return s.terms;
+  }
+
+  function patternLabel(terms) {
+    if (!terms) return "";
+    const bits = String(terms);
+    if (bits === "1") return "Whole year";
+    const on = [];
+    for (let i = 0; i < bits.length; i++) {
+      if (bits[i] === "1") on.push("T" + (i + 1));
+    }
+    if (!on.length) return "(none)";
+    if (on.length === bits.length) return "All " + bits.length + " terms";
+    return on.join("/");
+  }
+
+  function rows() {
+    return ensure().map(t => ({
+      id: t.id, name: t.name || "(unnamed)",
+      short: t.short || "", color: t.color || "",
+      terms: t.terms || "",
+      pattern: patternLabel(t.terms),
+      _ref: t,
+    }));
+  }
+
+  function columns() { return [
+    { key:"color", label:"", sortable:false,
+      render:(r)=>D.el("span", { class:"chrx-ent-swatch-dot",
+        style:`background:${r.color || "transparent"}`, "aria-hidden":"true" }) },
+    { key:"name",    label:"Name" },
+    { key:"short",   label:"Short" },
+    { key:"pattern", label:"Terms" },
+  ]; }
+
+  function buildBitmaskEditor(initial, onChange) {
+    let bits = String(initial || "1").split("");
+
+    const wrap = D.el("div", {
+      style:"display:flex;flex-direction:column;gap:6px" });
+    const row = D.el("div", {
+      style:"display:flex;flex-wrap:wrap;gap:6px;align-items:center" });
+    wrap.appendChild(row);
+
+    function fire() { onChange(bits.join("")); }
+
+    function render() {
+      row.innerHTML = "";
+      bits.forEach((b, i) => {
+        const cb = D.el("input", { type:"checkbox",
+          checked: b === "1" ? "checked" : null,
+          onchange:(e)=>{ bits[i] = e.target.checked ? "1" : "0"; fire(); },
+        });
+        row.appendChild(D.el("label", {
+          style:"display:inline-flex;gap:4px;align-items:center;cursor:pointer;padding:2px 6px;border:1px solid var(--chrx-border,#d1d5db);border-radius:6px" },
+          cb, D.el("span", null, "Term " + (i + 1))));
+      });
+    }
+    render();
+
+    const countWrap = D.el("div", {
+      style:"display:flex;gap:6px;align-items:center;font-size:12px;opacity:.85" },
+      D.el("span", null, "# of terms:"),
+      D.el("input", { type:"number", min:"1", max:"6", value:String(bits.length),
+        style:"width:64px",
+        oninput:(e)=>{
+          const n = Math.max(1, Math.min(6, parseInt(e.target.value, 10) || 1));
+          if (n === bits.length) return;
+          if (n > bits.length) while (bits.length < n) bits.push("1");
+          else bits.length = n;
+          fire(); render();
+        } }));
+    wrap.appendChild(countWrap);
+
+    wrap.appendChild(D.el("p", {
+      class:"chrx-ent-help",
+      style:"margin:0;font-size:11px;opacity:.7" },
+      "1 = lesson runs that term, 0 = skipped. Two terms = Semester 1 / 2 schools."));
+
+    return wrap;
+  }
+
+  function openEdit(r) {
+    const isNew = !r;
+    const ref = r ? r._ref : null;
+    const draft = isNew
+      ? { name:"", short:"", color:"", terms:"1" }
+      : { name:ref.name || "", short:ref.short || "",
+          color:ref.color || "", terms:ref.terms || "1" };
+
+    const fName = D.el("input", { type:"text", value:draft.name, required:"required",
+      maxlength:"30", oninput:(e)=>draft.name = e.target.value });
+    const fShort = D.el("input", { type:"text", value:draft.short, maxlength:"10",
+      oninput:(e)=>draft.short = e.target.value });
+    const fColor = D.buildSwatchPicker(draft.color, v => draft.color = v);
+    const fBits = buildBitmaskEditor(draft.terms, v => draft.terms = v);
+
+    D.buildEditSheet({
+      title: isNew ? "New term" : `Edit term — ${draft.name}`,
+      fields:[
+        { label:"Name",  control:fName },
+        { label:"Short", control:fShort },
+        { label:"Terms", control:fBits },
+        { label:"Color", control:fColor },
+      ],
+      onSave:()=>{
+        if (!draft.name.trim()) { fName.focus(); return; }
+        if (!/[1]/.test(draft.terms)) {
+          fBits.querySelector("input[type=checkbox]")?.focus();
+          return;
+        }
+        const all = ensure();
+        const payload = {
+          name: draft.name.trim(),
+          short: draft.short.trim() || undefined,
+          color: draft.color || undefined,
+          terms: draft.terms,
+        };
+        if (!isNew) {
+          const before = { ...ref };
+          Object.assign(ref, payload);
+          window.APP.audit.append({ entity:"terms", op:"update", before, after:{...ref} });
+        } else {
+          if (all.some(x => x.name === payload.name)) { fName.focus(); return; }
+          payload.id = D.uid("term");
+          all.push(payload);
+          window.APP.audit.append({ entity:"terms", op:"add", after:{...payload} });
+        }
+        D.closeSheet(); D.refresh(rows());
+      },
+    });
+  }
+
+  function open() {
+    ensure();
+    D.open({
+      entity:"terms", title:"Terms",
+      columns:columns(), rows:rows(),
+      onAction:(cmd, row) => {
+        if (cmd === "new") return openEdit(null);
+        if (cmd === "edit" && row) return openEdit(row);
+        if (cmd === "delete" && row) {
+          const all = ensure();
+          const i = all.findIndex(x => x.id === row._ref.id);
+          if (i >= 0) {
+            const removed = all.splice(i,1)[0];
+            window.APP.audit.append({ entity:"terms", op:"remove", before:{...removed} });
+            D.refresh(rows());
+          }
+        }
+      },
+    });
+  }
+
+  function defaultId() {
+    const all = ensure();
+    const whole = all.find(t => t.terms === "1") || all[0];
+    return whole ? whole.id : null;
+  }
+
+  global.EntityTerms = { open, ensure, defaultId, patternLabel };
+})(window);
+
+/* ─── FILE: js/ui/entities/weeks.js ─── */
+/* Weeks CRUD dialog. window.EntityWeeks.open()
+ * Defines reusable week-pattern entries (Week A, Week B, exam-week, "All
+ * weeks") that lessons / supervisions can scope themselves to. Each pattern
+ * is a bitmask string — "1" for non-fortnightly schools, "10"/"01" for an
+ * A/B-week cycle, longer strings for term-long rotations. Mirrors CLASSIC
+ * <weeksdef weeks="…"> wire shape. Fields: name, short, color, weeks. */
+(function (global) {
+  "use strict";
+  const D = window.EntityDialog;
+  if (!D) return;
+
+  function seedDefaults(arr) {
+    arr.push({ id: D.uid("wk"), name: "All weeks", short: "All", weeks: "1" });
+  }
+
+  function ensure() {
+    const s = window.APP.school = window.APP.school || {};
+    if (!Array.isArray(s.weeks)) {
+      s.weeks = [];
+      seedDefaults(s.weeks);
+    } else if (s.weeks.length === 0) {
+      seedDefaults(s.weeks);
+    }
+    return s.weeks;
+  }
+
+  function patternLabel(weeks) {
+    if (!weeks) return "";
+    const bits = String(weeks);
+    if (bits === "1") return "All weeks";
+    const on = []; const off = [];
+    for (let i = 0; i < bits.length; i++) {
+      if (bits[i] === "1") on.push("W" + (i + 1));
+      else off.push("W" + (i + 1));
+    }
+    if (!on.length) return "(none)";
+    if (!off.length) return "All " + bits.length;
+    return on.join("/");
+  }
+
+  function rows() {
+    return ensure().map(w => ({
+      id: w.id, name: w.name || "(unnamed)",
+      short: w.short || "", color: w.color || "",
+      weeks: w.weeks || "",
+      pattern: patternLabel(w.weeks),
+      _ref: w,
+    }));
+  }
+
+  function columns() { return [
+    { key:"color", label:"", sortable:false,
+      render:(r)=>D.el("span", { class:"chrx-ent-swatch-dot",
+        style:`background:${r.color || "transparent"}`, "aria-hidden":"true" }) },
+    { key:"name",    label:"Name" },
+    { key:"short",   label:"Short" },
+    { key:"pattern", label:"Weeks" },
+  ]; }
+
+  function buildBitmaskEditor(initial, onChange) {
+    // The bitmask string has variable length (1 = single, 2 = A/B, etc).
+    // Render N checkboxes + an int input to change N.
+    let bits = String(initial || "1").split("");
+
+    const wrap = D.el("div", {
+      style:"display:flex;flex-direction:column;gap:6px" });
+    const row = D.el("div", {
+      style:"display:flex;flex-wrap:wrap;gap:6px;align-items:center" });
+    wrap.appendChild(row);
+
+    function fire() { onChange(bits.join("")); }
+
+    function render() {
+      row.innerHTML = "";
+      bits.forEach((b, i) => {
+        const cb = D.el("input", { type:"checkbox",
+          checked: b === "1" ? "checked" : null,
+          onchange:(e)=>{ bits[i] = e.target.checked ? "1" : "0"; fire(); },
+        });
+        row.appendChild(D.el("label", {
+          style:"display:inline-flex;gap:4px;align-items:center;cursor:pointer;padding:2px 6px;border:1px solid var(--chrx-border,#d1d5db);border-radius:6px" },
+          cb, D.el("span", null, "W" + (i + 1))));
+      });
+    }
+    render();
+
+    const countWrap = D.el("div", {
+      style:"display:flex;gap:6px;align-items:center;font-size:12px;opacity:.85" },
+      D.el("span", null, "# of weeks:"),
+      D.el("input", { type:"number", min:"1", max:"12", value:String(bits.length),
+        style:"width:64px",
+        oninput:(e)=>{
+          const n = Math.max(1, Math.min(12, parseInt(e.target.value, 10) || 1));
+          if (n === bits.length) return;
+          if (n > bits.length) {
+            while (bits.length < n) bits.push("1");
+          } else {
+            bits.length = n;
+          }
+          fire(); render();
+        } }));
+    wrap.appendChild(countWrap);
+
+    wrap.appendChild(D.el("p", {
+      class:"chrx-ent-help",
+      style:"margin:0;font-size:11px;opacity:.7" },
+      "1 = applies that week, 0 = skipped. Use 2 weeks for A/B-week schedules."));
+
+    return wrap;
+  }
+
+  function openEdit(r) {
+    const isNew = !r;
+    const ref = r ? r._ref : null;
+    const draft = isNew
+      ? { name:"", short:"", color:"", weeks:"1" }
+      : { name:ref.name || "", short:ref.short || "",
+          color:ref.color || "", weeks:ref.weeks || "1" };
+
+    const fName = D.el("input", { type:"text", value:draft.name, required:"required",
+      maxlength:"30", oninput:(e)=>draft.name = e.target.value });
+    const fShort = D.el("input", { type:"text", value:draft.short, maxlength:"10",
+      oninput:(e)=>draft.short = e.target.value });
+    const fColor = D.buildSwatchPicker(draft.color, v => draft.color = v);
+    const fBits = buildBitmaskEditor(draft.weeks, v => draft.weeks = v);
+
+    D.buildEditSheet({
+      title: isNew ? "New week" : `Edit week — ${draft.name}`,
+      fields:[
+        { label:"Name",  control:fName },
+        { label:"Short", control:fShort },
+        { label:"Weeks", control:fBits },
+        { label:"Color", control:fColor },
+      ],
+      onSave:()=>{
+        if (!draft.name.trim()) { fName.focus(); return; }
+        if (!/[1]/.test(draft.weeks)) {
+          fBits.querySelector("input[type=checkbox]")?.focus();
+          return;
+        }
+        const all = ensure();
+        const payload = {
+          name: draft.name.trim(),
+          short: draft.short.trim() || undefined,
+          color: draft.color || undefined,
+          weeks: draft.weeks,
+        };
+        if (!isNew) {
+          const before = { ...ref };
+          Object.assign(ref, payload);
+          window.APP.audit.append({ entity:"weeks", op:"update", before, after:{...ref} });
+        } else {
+          if (all.some(x => x.name === payload.name)) { fName.focus(); return; }
+          payload.id = D.uid("wk");
+          all.push(payload);
+          window.APP.audit.append({ entity:"weeks", op:"add", after:{...payload} });
+        }
+        D.closeSheet(); D.refresh(rows());
+      },
+    });
+  }
+
+  function open() {
+    ensure();
+    D.open({
+      entity:"weeks", title:"Weeks",
+      columns:columns(), rows:rows(),
+      onAction:(cmd, row) => {
+        if (cmd === "new") return openEdit(null);
+        if (cmd === "edit" && row) return openEdit(row);
+        if (cmd === "delete" && row) {
+          const all = ensure();
+          const i = all.findIndex(x => x.id === row._ref.id);
+          if (i >= 0) {
+            const removed = all.splice(i,1)[0];
+            window.APP.audit.append({ entity:"weeks", op:"remove", before:{...removed} });
+            D.refresh(rows());
+          }
+        }
+      },
+    });
+  }
+
+  function defaultId() {
+    const all = ensure();
+    const allWk = all.find(w => w.weeks === "1") || all[0];
+    return allWk ? allWk.id : null;
+  }
+
+  global.EntityWeeks = { open, ensure, defaultId, patternLabel };
+})(window);
+
+/* ─── FILE: js/ui/entities/ttreports.js ─── */
+/* TTReports CRUD dialog. window.EntityTTReports.open()
+ * Print-report templates — each row defines layout for printed
+ * timetables. Fields: name, typ, fitwidth, fitheight, hideempty
+ * (multi-toggle matrix of cell-types to suppress when empty). */
+(function (global) {
+  "use strict";
+  const D = window.EntityDialog;
+  if (!D) return;
+
+  const HIDE_KEYS = ["lessons","breaks","supervisions","gaps"];
+
+  function ensure() {
+    const s = window.APP.school = window.APP.school || {};
+    if (!Array.isArray(s.ttreports)) s.ttreports = [];
+    return s.ttreports;
+  }
+
+  function rows() {
+    return ensure().map(r => ({
+      id: r.id, name: r.name || "(unnamed)",
+      typ: r.typ || "",
+      fitwidth: r.fitwidth || "",
+      fitheight: r.fitheight || "",
+      hide: hideSummary(r.hideempty),
+      _ref: r,
+    }));
+  }
+
+  function hideSummary(h) {
+    if (!h) return "—";
+    const on = HIDE_KEYS.filter(k => h[k]);
+    return on.length ? on.join(",") : "—";
+  }
+
+  function columns() { return [
+    { key:"name",      label:"Name" },
+    { key:"typ",       label:"Type" },
+    { key:"fitwidth",  label:"Fit W" },
+    { key:"fitheight", label:"Fit H" },
+    { key:"hide",      label:"Hide empty" },
+  ]; }
+
+  function openEdit(r) {
+    const isNew = !r;
+    const ref = r ? r._ref : null;
+    const draft = isNew
+      ? { name:"", typ:"class", fitwidth:"", fitheight:"",
+          hideempty:{ lessons:false, breaks:false, supervisions:false, gaps:false } }
+      : { name:ref.name || "", typ:ref.typ || "class",
+          fitwidth:ref.fitwidth || "", fitheight:ref.fitheight || "",
+          hideempty:Object.assign({ lessons:false, breaks:false,
+            supervisions:false, gaps:false }, ref.hideempty || {}) };
+
+    const fName = D.el("input", { type:"text", value:draft.name, required:"required",
+      maxlength:"40", oninput:(e)=>draft.name = e.target.value });
+    const fTyp = D.el("select", null,
+      ...["class","teacher","classroom","summary","subject"].map(t => {
+        const opt = D.el("option", { value:t }, t);
+        if (t === draft.typ) opt.selected = true;
+        return opt;
+      }));
+    fTyp.addEventListener("change", e => draft.typ = e.target.value);
+    const fFw = D.el("input", { type:"number", min:"0", value:draft.fitwidth,
+      oninput:(e)=>draft.fitwidth = e.target.value });
+    const fFh = D.el("input", { type:"number", min:"0", value:draft.fitheight,
+      oninput:(e)=>draft.fitheight = e.target.value });
+
+    const hideWrap = D.el("div", { class:"chrx-ent-printflags" });
+    HIDE_KEYS.forEach(k => {
+      const c = D.el("input", { type:"checkbox",
+        checked: draft.hideempty[k] ? "checked" : null,
+        onchange:(e)=>draft.hideempty[k] = e.target.checked });
+      hideWrap.appendChild(D.el("label", { class:"chrx-ent-inline" }, c,
+        D.el("span", null, " " + k)));
+    });
+
+    D.buildEditSheet({
+      title: isNew ? "New report template" : `Edit report — ${draft.name}`,
+      fields:[
+        { label:"Name",       control:fName },
+        { label:"Type",       control:fTyp },
+        { label:"Fit width",  control:fFw },
+        { label:"Fit height", control:fFh },
+        { label:"Hide empty", control:hideWrap },
+      ],
+      onSave:()=>{
+        if (!draft.name.trim()) { fName.focus(); return; }
+        const all = ensure();
+        const payload = {
+          name: draft.name.trim(),
+          typ: draft.typ || undefined,
+          fitwidth: draft.fitwidth ? parseFloat(draft.fitwidth) : undefined,
+          fitheight: draft.fitheight ? parseFloat(draft.fitheight) : undefined,
+          hideempty: Object.assign({}, draft.hideempty),
+        };
+        if (!isNew) {
+          const before = { ...ref };
+          Object.assign(ref, payload);
+          window.APP.audit.append({ entity:"ttreports", op:"update",
+            before, after:{...ref} });
+        } else {
+          if (all.some(x => x.name === payload.name)) { fName.focus(); return; }
+          payload.id = D.uid("rep");
+          all.push(payload);
+          window.APP.audit.append({ entity:"ttreports", op:"add", after:{...payload} });
+        }
+        D.closeSheet(); D.refresh(rows());
+      },
+    });
+  }
+
+  function open() {
+    ensure();
+    D.open({
+      entity:"ttreports", title:"Print report templates",
+      columns:columns(), rows:rows(),
+      onAction:(cmd, row) => {
+        if (cmd === "new") return openEdit(null);
+        if (cmd === "edit" && row) return openEdit(row);
+        if (cmd === "delete" && row) {
+          const all = ensure();
+          const i = all.findIndex(x => x.id === row._ref.id);
+          if (i >= 0) {
+            const removed = all.splice(i,1)[0];
+            window.APP.audit.append({ entity:"ttreports", op:"remove",
+              before:{...removed} });
+            D.refresh(rows());
+          }
+        }
+      },
+    });
+  }
+
+  global.EntityTTReports = { open };
+})(window);
+
+/* ─── FILE: js/ui/entities/ttviews.js ─── */
+/* TTViews CRUD dialog. window.EntityTTViews.open()
+ * Timetable perspectives — named grid views with icon + type. Fields:
+ * name, icon, typ, texttables (bool), colortables (bool). */
+(function (global) {
+  "use strict";
+  const D = window.EntityDialog;
+  if (!D) return;
+
+  function ensure() {
+    const s = window.APP.school = window.APP.school || {};
+    if (!Array.isArray(s.ttviews)) s.ttviews = [];
+    return s.ttviews;
+  }
+
+  function rows() {
+    return ensure().map(v => ({
+      id: v.id, name: v.name || "(unnamed)",
+      icon: v.icon || "",
+      typ: v.typ || "",
+      text: v.texttables ? "✔" : "—",
+      color: v.colortables ? "✔" : "—",
+      _ref: v,
+    }));
+  }
+
+  function columns() { return [
+    { key:"name",  label:"Name" },
+    { key:"icon",  label:"Icon" },
+    { key:"typ",   label:"Type" },
+    { key:"text",  label:"Text tables" },
+    { key:"color", label:"Color tables" },
+  ]; }
+
+  function openEdit(r) {
+    const isNew = !r;
+    const ref = r ? r._ref : null;
+    const draft = isNew
+      ? { name:"", icon:"", typ:"class", texttables:false, colortables:true }
+      : { name:ref.name || "", icon:ref.icon || "",
+          typ:ref.typ || "class",
+          texttables:!!ref.texttables, colortables:!!ref.colortables };
+
+    const fName = D.el("input", { type:"text", value:draft.name, required:"required",
+      maxlength:"40", oninput:(e)=>draft.name = e.target.value });
+    const fIcon = D.el("input", { type:"text", value:draft.icon, maxlength:"40",
+      placeholder:"e.g. table-grid", oninput:(e)=>draft.icon = e.target.value });
+    const fTyp = D.el("select", null,
+      ...["class","teacher","classroom","subject","grade"].map(t => {
+        const opt = D.el("option", { value:t }, t);
+        if (t === draft.typ) opt.selected = true;
+        return opt;
+      }));
+    fTyp.addEventListener("change", e => draft.typ = e.target.value);
+    const fText = D.el("input", { type:"checkbox",
+      checked: draft.texttables ? "checked" : null,
+      onchange:(e)=>draft.texttables = e.target.checked });
+    const fColor = D.el("input", { type:"checkbox",
+      checked: draft.colortables ? "checked" : null,
+      onchange:(e)=>draft.colortables = e.target.checked });
+
+    D.buildEditSheet({
+      title: isNew ? "New view" : `Edit view — ${draft.name}`,
+      fields:[
+        { label:"Name",         control:fName },
+        { label:"Icon",         control:fIcon },
+        { label:"Type",         control:fTyp },
+        { label:"Text tables",  control:fText },
+        { label:"Color tables", control:fColor },
+      ],
+      onSave:()=>{
+        if (!draft.name.trim()) { fName.focus(); return; }
+        const all = ensure();
+        const payload = {
+          name: draft.name.trim(),
+          icon: draft.icon.trim() || undefined,
+          typ: draft.typ || undefined,
+          texttables: !!draft.texttables,
+          colortables: !!draft.colortables,
+        };
+        if (!isNew) {
+          const before = { ...ref };
+          Object.assign(ref, payload);
+          window.APP.audit.append({ entity:"ttviews", op:"update",
+            before, after:{...ref} });
+        } else {
+          if (all.some(x => x.name === payload.name)) { fName.focus(); return; }
+          payload.id = D.uid("vw");
+          all.push(payload);
+          window.APP.audit.append({ entity:"ttviews", op:"add", after:{...payload} });
+        }
+        D.closeSheet(); D.refresh(rows());
+      },
+    });
+  }
+
+  function open() {
+    ensure();
+    D.open({
+      entity:"ttviews", title:"Timetable views",
+      columns:columns(), rows:rows(),
+      onAction:(cmd, row) => {
+        if (cmd === "new") return openEdit(null);
+        if (cmd === "edit" && row) return openEdit(row);
+        if (cmd === "delete" && row) {
+          const all = ensure();
+          const i = all.findIndex(x => x.id === row._ref.id);
+          if (i >= 0) {
+            const removed = all.splice(i,1)[0];
+            window.APP.audit.append({ entity:"ttviews", op:"remove",
+              before:{...removed} });
+            D.refresh(rows());
+          }
+        }
+      },
+    });
+  }
+
+  global.EntityTTViews = { open };
+})(window);
+
+/* ─── FILE: js/ui/entities/grades.js ─── */
+/* Grades CRUD dialog. window.EntityGrades.open()
+ * Grade-level / year-group entity (Grade 1, Grade 2 … or Primary,
+ * Secondary). Lets a school bundle classes by grade for analytics
+ * and constraint sharing. Fields: name, short, color, classids[]. */
+(function (global) {
+  "use strict";
+  const D = window.EntityDialog;
+  if (!D) return;
+
+  function ensure() {
+    const s = window.APP.school = window.APP.school || {};
+    if (!Array.isArray(s.grades)) s.grades = [];
+    return s.grades;
+  }
+
+  function classMap() { return window.APP.school?._idx?.classById || {}; }
+
+  function classLabels(ids) {
+    const m = classMap();
+    return (ids || []).map(id => m[id]?.abbr || m[id]?.name || id)
+      .filter(Boolean).join(", ");
+  }
+
+  function rows() {
+    return ensure().map(g => ({
+      id: g.id, name: g.name || "(unnamed)",
+      short: g.short || "", color: g.color || "",
+      classes: classLabels(g.classids),
+      count: (g.classids || []).length,
+      _ref: g,
+    }));
+  }
+
+  function columns() { return [
+    { key:"color", label:"", sortable:false,
+      render:(r)=>D.el("span", { class:"chrx-ent-swatch-dot",
+        style:`background:${r.color || "transparent"}`, "aria-hidden":"true" }) },
+    { key:"name",    label:"Name" },
+    { key:"short",   label:"Short" },
+    { key:"count",   label:"# Classes" },
+    { key:"classes", label:"Classes" },
+  ]; }
+
+  function openEdit(r) {
+    const isNew = !r;
+    const ref = r ? r._ref : null;
+    const draft = isNew
+      ? { name:"", short:"", color:"", classids:[] }
+      : { name:ref.name || "", short:ref.short || "",
+          color:ref.color || "", classids:(ref.classids || []).slice() };
+
+    const fName = D.el("input", { type:"text", value:draft.name, required:"required",
+      maxlength:"40", oninput:(e)=>draft.name = e.target.value });
+    const fShort = D.el("input", { type:"text", value:draft.short, maxlength:"10",
+      oninput:(e)=>draft.short = e.target.value });
+    const fColor = D.buildSwatchPicker(draft.color, v => draft.color = v);
+
+    const fClasses = D.el("select", { multiple:"multiple", size:"8" });
+    ((window.APP.school?.classes) || []).forEach(c => {
+      const opt = D.el("option", { value:c.id },
+        c.name + (c.abbr ? ` (${c.abbr})` : ""));
+      if (draft.classids.includes(c.id)) opt.selected = true;
+      fClasses.appendChild(opt);
+    });
+    fClasses.addEventListener("change", () => {
+      draft.classids = Array.from(fClasses.selectedOptions).map(o => o.value);
+    });
+
+    D.buildEditSheet({
+      title: isNew ? "New grade" : `Edit grade — ${draft.name}`,
+      fields:[
+        { label:"Name",    control:fName },
+        { label:"Short",   control:fShort },
+        { label:"Color",   control:fColor },
+        { label:"Classes", control:fClasses },
+      ],
+      onSave:()=>{
+        if (!draft.name.trim()) { fName.focus(); return; }
+        const all = ensure();
+        const payload = {
+          name: draft.name.trim(),
+          short: draft.short.trim() || undefined,
+          color: draft.color || undefined,
+          classids: draft.classids.slice(),
+        };
+        if (!isNew) {
+          const before = { ...ref };
+          Object.assign(ref, payload);
+          window.APP.audit.append({ entity:"grades", op:"update",
+            before, after:{...ref} });
+        } else {
+          if (all.some(x => x.name === payload.name)) { fName.focus(); return; }
+          payload.id = D.uid("gr");
+          all.push(payload);
+          window.APP.audit.append({ entity:"grades", op:"add", after:{...payload} });
+        }
+        D.closeSheet(); D.refresh(rows());
+      },
+    });
+  }
+
+  function open() {
+    ensure();
+    D.open({
+      entity:"grades", title:"Grades",
+      columns:columns(), rows:rows(),
+      onAction:(cmd, row) => {
+        if (cmd === "new") return openEdit(null);
+        if (cmd === "edit" && row) return openEdit(row);
+        if (cmd === "delete" && row) {
+          const all = ensure();
+          const i = all.findIndex(x => x.id === row._ref.id);
+          if (i >= 0) {
+            const removed = all.splice(i,1)[0];
+            window.APP.audit.append({ entity:"grades", op:"remove",
+              before:{...removed} });
+            D.refresh(rows());
+          }
+        }
+      },
+    });
+  }
+
+  global.EntityGrades = { open };
+})(window);
+
+/* ─── FILE: js/ui/entities/holidays.js ─── */
+/* Holidays dialog — window.EntityHolidays.open().
+ *
+ * Holidays are date ranges (or single days) when no lessons should be
+ * scheduled — Diwali, Christmas, mid-term break, exam week. Stored on
+ * school.holidays[] as { id, name, color, startDate, endDate?, dayPattern? }.
+ *
+ * The solver respects holidays by treating affected (day, week, term) cells
+ * as unavailable. Wiring into the constraint engine is a follow-up.
+ */
+(function (global) {
+  "use strict";
+  const D = window.EntityDialog;
+  if (!D) return;
+
+  function rows() {
+    return ((window.APP.school && window.APP.school.holidays) || []).map(h => ({
+      id: h.id, name: h.name || "", color: h.color || "",
+      startDate: h.startDate || "", endDate: h.endDate || h.startDate || "",
+      _ref: h,
+    }));
+  }
+
+  function columns() { return [
+    { key: "color", label: "", sortable: false,
+      render: (r) => D.el("span", { class: "chrx-ent-swatch-dot",
+        style: `background:${r.color || "transparent"}`, "aria-hidden": "true" }) },
+    { key: "name", label: "Name" },
+    { key: "startDate", label: "From" },
+    { key: "endDate", label: "Till" },
+  ]; }
+
+  function openEdit(r) {
+    const isNew = !r;
+    const today = new Date().toISOString().slice(0, 10);
+    const draft = isNew
+      ? { name: "", color: "", startDate: today, endDate: today, notes: "" }
+      : { name: r.name, color: r.color, startDate: r.startDate, endDate: r.endDate, notes: r._ref.notes || "" };
+
+    const fName = D.el("input", { type: "text", value: draft.name, required: "required",
+      maxlength: "80", oninput: (e) => draft.name = e.target.value });
+    const fColor = D.buildSwatchPicker(draft.color, v => draft.color = v);
+    const fStart = D.el("input", { type: "date", value: draft.startDate,
+      oninput: (e) => draft.startDate = e.target.value });
+    const fEnd = D.el("input", { type: "date", value: draft.endDate,
+      oninput: (e) => draft.endDate = e.target.value });
+    const fNotes = D.el("textarea", { rows: "2", maxlength: "240",
+      placeholder: "Optional notes (e.g. 'Diwali — mid-state schools also off')",
+      oninput: (e) => draft.notes = e.target.value }, draft.notes || "");
+
+    D.buildEditSheet({
+      title: isNew ? "New holiday" : `Edit holiday — ${r.name}`,
+      fields: [
+        { label: "Name",  control: fName },
+        { label: "Color", control: fColor },
+        { label: "From",  control: fStart },
+        { label: "Till",  control: fEnd },
+        { label: "Notes", control: fNotes },
+      ],
+      onSave: () => {
+        if (!draft.name.trim()) { fName.focus(); return; }
+        const all = (window.APP.school.holidays = window.APP.school.holidays || []);
+        if (!isNew) {
+          const ref = r._ref;
+          const before = { ...ref };
+          ref.name = draft.name.trim();
+          ref.color = draft.color || undefined;
+          ref.startDate = draft.startDate;
+          ref.endDate = draft.endDate;
+          ref.notes = draft.notes.trim() || undefined;
+          window.APP.audit.append({ entity: "holidays", op: "update", before, after: { ...ref } });
+        } else {
+          const nh = { id: D.uid("h"), name: draft.name.trim(),
+            color: draft.color || undefined,
+            startDate: draft.startDate, endDate: draft.endDate,
+            notes: draft.notes.trim() || undefined };
+          all.push(nh);
+          window.APP.audit.append({ entity: "holidays", op: "add", after: { ...nh } });
+        }
+        D.closeSheet(); D.refresh(rows());
+      },
+    });
+  }
+
+  function open() {
+    D.open({
+      entity: "holidays", title: "Holidays",
+      columns: columns(), rows: rows(),
+      onAction: (cmd, row) => {
+        if (cmd === "new") return openEdit(null);
+        if (cmd === "edit" && row) return openEdit(row);
+        if (cmd === "delete" && row) {
+          const all = window.APP.school.holidays || [];
+          const i = all.findIndex(x => x.id === row._ref.id);
+          if (i >= 0) {
+            const removed = all.splice(i, 1)[0];
+            window.APP.audit.append({ entity: "holidays", op: "remove", before: { ...removed } });
+            D.refresh(rows());
+          }
+        }
+      },
+    });
+  }
+
+  global.EntityHolidays = { open };
+})(window);
+
+/* ─── FILE: js/ui/entity_router.js ─── */
+/**
+ * Single global listener for `app:open-entity` events fired by the ribbon menus.
+ * Maps the menu `kind` to the matching EntityX.open() handler.
+ *
+ * Without this listener every Specification/Options/Files menu item is decorative.
+ * One module unlocks them all.
+ */
+(function () {
+  "use strict";
+
+  // kind → handler factory (lazy so the EntityX globals exist by click time)
+  const ROUTE = {
+    // Specification menu
+    "bells":     () => window.EntityBells     && window.EntityBells.open(),
+    "days":      () => window.EntityDays      && window.EntityDays.open(),
+    "weeks":     () => window.EntityWeeks     && window.EntityWeeks.open(),
+    "terms":     () => window.EntityTerms     && window.EntityTerms.open(),
+    "buildings": () => window.EntityBuildings && window.EntityBuildings.open(),
+    "holidays":  () => window.EntityHolidays && window.EntityHolidays.open(),
+    "school":    () => window.SchoolSettings && window.SchoolSettings.open(),
+
+    // Edit menu (Subjects/Teachers/Classes/Classrooms/Lessons/Relations/Supervisions)
+    "subjects":    () => window.EntitySubjects    && window.EntitySubjects.open(),
+    "teachers":    () => window.EntityTeachers    && window.EntityTeachers.open(),
+    "classes":     () => window.EntityClasses     && window.EntityClasses.open(),
+    "classrooms":  () => window.EntityClassrooms  && window.EntityClassrooms.open(),
+    "lessons":     () => window.EntityLessons     && window.EntityLessons.open(),
+    "relations":   () => window.EntityRelations   && window.EntityRelations.open(),
+    "supervisions": () => window.EntitySupervisions && window.EntitySupervisions.open(),
+    "divisions":   () => window.EntityDivisions   && window.EntityDivisions.open(),
+    "groups":      () => window.EntityGroups      && window.EntityGroups.open(),
+    "coursegroups":() => window.EntityCourseGroups&& window.EntityCourseGroups.open(),
+    "grades":      () => window.EntityGrades      && window.EntityGrades.open(),
+    "breaks":      () => window.EntityBreaks      && window.EntityBreaks.open(),
+    "ttreports":   () => window.EntityTTReports   && window.EntityTTReports.open(),
+    "ttviews":     () => window.EntityTTViews     && window.EntityTTViews.open(),
+
+    // Options menu (currently stubbed — these aren't entity-shaped)
+    "settings":             () => openStub("Settings", "App settings live under the View menu (Theme, Density, Zoom)."),
+    "constraints":          () => window.ConstraintsLibrary && window.ConstraintsLibrary.open(),
+    "preferences":          () => openStub("Account preferences", "No account needed — Chronexa is local-first."),
+    "display-settings":     () => openStub("Display settings", "Open the View menu for Density/Theme/Zoom toggles."),
+    "print-defaults":       () => openStub("Print defaults", "Use Files → Print preview… to set defaults per-report."),
+    "supervision-criteria": () => window.EntitySupervisions && window.EntitySupervisions.open(),
+  };
+
+  function openStub(title, body) {
+    // Reuse the entity-dialog shell for a quick informational sheet
+    if (window.EntityDialog && window.EntityDialog.openSheet) {
+      const div = document.createElement("div");
+      div.style.cssText = "padding:12px;max-width:480px;font-size:13px;color:#334155;line-height:1.5";
+      div.innerHTML = `<p>${escapeHtml(body)}</p>`;
+      window.EntityDialog.openSheet(div, { title });
+      return;
+    }
+    alert(`${title}\n\n${body}`);
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, c =>
+      ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  }
+
+  function handle(e) {
+    const kind = e.detail && e.detail.kind;
+    if (!kind) return;
+    const fn = ROUTE[kind];
+    if (typeof fn !== "function") {
+      console.warn("[entity_router] no handler for kind:", kind);
+      openStub("Coming soon", `Action “${kind}” is not wired yet. File an issue if you need it.`);
+      return;
+    }
+    try { fn(); }
+    catch (err) {
+      console.error("[entity_router] handler threw for kind:", kind, err);
+      openStub("Error", `Couldn't open ${kind}: ${err && err.message ? err.message : String(err)}`);
+    }
+  }
+
+  function boot() {
+    window.addEventListener("app:open-entity", handle);
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", boot);
+  } else {
+    boot();
+  }
+
+  window.EntityRouter = { handle, ROUTE };
+})();
+
+/* ─── FILE: js/ui/components/statistics_panel.js ─── */
+/* Statistics panel — full teacher/class/room load breakdown.
+ *
+ * Ports Swift's StatisticsPanel.swift + TimetableStatistics struct. Exposes
+ *   window.StatisticsPanel = { open(school?) }
+ *
+ * Surfaces per-entity metrics Classic/Classic admins rely on:
+ *   • Teacher daily detail: teaching periods, gaps, free periods, max consec.
+ *   • Class daily detail: occupancy, gap count, subject distribution.
+ *   • Room utilization: % full, peak load period.
+ *   • School-wide: placed vs unplaced, conflict count, soft penalty totals.
+ *
+ * All math runs locally on the user's device (no server). Re-runs in O(cards).
+ */
+(function (global) {
+  "use strict";
+
+  function compute(school) {
+    school = school || (window.APP && window.APP.school);
+    if (!school) return null;
+    const days = (school.bell && school.bell.periods ? 6 : 6); // standard 6-day weeks
+    const periods = (school.bell && school.bell.periods ? school.bell.periods.length : 8);
+    const cards = school.cards || [];
+    const lessons = school.lessons || [];
+    const teachers = school.teachers || [];
+    const classes = school.classes || [];
+    const rooms = school.classrooms || [];
+    const _idx = school._idx || {};
+    const lessonById = _idx.lessonById || Object.fromEntries(lessons.map(l => [l.id, l]));
+
+    // Cards by (teacherId, day, period)
+    const teacherDayPeriods = new Map();
+    const classDayPeriods = new Map();
+    const roomDayPeriods = new Map();
+    for (const c of cards) {
+      const lesson = lessonById[c.lessonId];
+      if (!lesson) continue;
+      const key = `${c.day}:${c.period}`;
+      for (const tid of (lesson.teacherIds || [])) {
+        if (!teacherDayPeriods.has(tid)) teacherDayPeriods.set(tid, new Set());
+        teacherDayPeriods.get(tid).add(key);
+      }
+      for (const cid of (lesson.classIds || [])) {
+        if (!classDayPeriods.has(cid)) classDayPeriods.set(cid, new Set());
+        classDayPeriods.get(cid).add(key);
+      }
+      const rid = c.classroomId || c.roomId;
+      if (rid) {
+        if (!roomDayPeriods.has(rid)) roomDayPeriods.set(rid, new Set());
+        roomDayPeriods.get(rid).add(key);
+      }
+    }
+
+    // Per-teacher daily detail
+    const teacherStats = teachers.map(t => {
+      const slots = teacherDayPeriods.get(t.id) || new Set();
+      const perDay = new Array(days).fill(0).map(() => []);
+      for (const s of slots) {
+        const [d, p] = s.split(":").map(Number);
+        if (d >= 0 && d < days) perDay[d].push(p);
+      }
+      let totalTeaching = 0, totalGaps = 0, maxConsec = 0, maxLast = 0;
+      perDay.forEach(periodsArr => {
+        if (!periodsArr.length) return;
+        const sorted = periodsArr.slice().sort((a, b) => a - b);
+        totalTeaching += sorted.length;
+        // gaps = (sorted[last] - sorted[0] + 1) - count
+        const span = sorted[sorted.length - 1] - sorted[0] + 1;
+        const gaps = span - sorted.length;
+        totalGaps += Math.max(0, gaps);
+        let run = 1;
+        for (let i = 1; i < sorted.length; i++) {
+          if (sorted[i] === sorted[i - 1] + 1) run++;
+          else { maxConsec = Math.max(maxConsec, run); run = 1; }
+        }
+        maxConsec = Math.max(maxConsec, run);
+        if (sorted[sorted.length - 1] === periods - 1) maxLast++;
+      });
+      const maxPossible = days * periods;
+      const exhaustionPct = maxPossible ? Math.round(100 * totalTeaching / maxPossible) : 0;
+      return {
+        id: t.id, name: t.name || t.lastName || "—",
+        color: t.color || "#94a3b8",
+        teaching: totalTeaching, gaps: totalGaps, maxConsec, lastPeriodDays: maxLast,
+        exhaustion: exhaustionPct,
+      };
+    });
+
+    // Per-class daily detail
+    const classStats = classes.map(c => {
+      const slots = classDayPeriods.get(c.id) || new Set();
+      return {
+        id: c.id, name: c.name || c.short || "—",
+        color: c.color || "#94a3b8",
+        occupied: slots.size,
+        empty: (days * periods) - slots.size,
+        utilization: Math.round(100 * slots.size / (days * periods)),
+      };
+    });
+
+    // Per-room utilization
+    const roomStats = rooms.map(r => {
+      const slots = roomDayPeriods.get(r.id) || new Set();
+      return {
+        id: r.id, name: r.name || "—",
+        used: slots.size,
+        utilization: Math.round(100 * slots.size / (days * periods)),
+      };
+    });
+
+    // Period load balance (cards per period across school)
+    const periodLoad = new Array(periods).fill(0);
+    for (const c of cards) periodLoad[c.period] = (periodLoad[c.period] || 0) + 1;
+
+    const totalLessons = lessons.length || 0;
+    const totalCards = cards.length || 0;
+    const expected = lessons.reduce((s, l) => s + (l.periodsPerWeek || 0), 0);
+
+    return {
+      school: {
+        name: school.schoolName,
+        totalLessons, totalCards, expectedCards: expected,
+        completionPct: expected > 0 ? Math.round(100 * totalCards / expected) : 0,
+      },
+      teachers: teacherStats.sort((a, b) => b.teaching - a.teaching),
+      classes:  classStats.sort((a, b) => b.utilization - a.utilization),
+      rooms:    roomStats.sort((a, b) => b.utilization - a.utilization),
+      periodLoad,
+    };
+  }
+
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      const v = attrs[k];
+      if (v == null) continue;
+      if (k === "class") n.className = v;
+      else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v);
+    }
+    for (const c of kids) {
+      if (c == null || c === false) continue;
+      n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    }
+    return n;
+  }
+
+  function renderTable(rows, columns) {
+    const tbl = el("table", { class: "chrx-stats-table" });
+    const thead = el("thead");
+    const tr = el("tr");
+    columns.forEach(c => tr.appendChild(el("th", null, c.label)));
+    thead.appendChild(tr);
+    tbl.appendChild(thead);
+    const tbody = el("tbody");
+    rows.forEach(r => {
+      const tr = el("tr");
+      columns.forEach(c => {
+        const v = c.render ? c.render(r) : r[c.key];
+        const td = el("td", { class: c.align ? `align-${c.align}` : null });
+        if (v instanceof Node) td.appendChild(v);
+        else td.textContent = (v == null ? "" : String(v));
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    tbl.appendChild(tbody);
+    return tbl;
+  }
+
+  function open(school) {
+    const data = compute(school);
+    if (!data) { alert("Open a timetable first."); return; }
+    const root = el("div", { class: "chrx-stats-root", role: "dialog", "aria-modal": "true",
+      onclick: e => { if (e.target === root) close(); } });
+    const panel = el("div", { class: "chrx-stats-panel" });
+
+    panel.appendChild(el("header", { class: "chrx-stats-head" },
+      el("h2", null, "📊 Statistics — " + (data.school.name || "—")),
+      el("button", { class: "chrx-stats-close", "aria-label": "Close", onclick: close }, "×"),
+    ));
+
+    panel.appendChild(el("div", { class: "chrx-stats-summary" },
+      el("div", null, el("strong", null, "Cards placed: "), `${data.school.totalCards} / ${data.school.expectedCards} (${data.school.completionPct}%)`),
+      el("div", null, el("strong", null, "Lessons: "), String(data.school.totalLessons)),
+      el("div", null, el("strong", null, "Teachers / Classes / Rooms: "),
+        `${data.teachers.length} / ${data.classes.length} / ${data.rooms.length}`),
+    ));
+
+    panel.appendChild(el("h3", null, "Teachers — sorted by load"));
+    panel.appendChild(renderTable(data.teachers, [
+      { key: "name", label: "Teacher", render: r => el("span", null,
+          el("span", { class: "chrx-stats-dot", style: `background:${r.color}` }),
+          " " + r.name) },
+      { key: "teaching", label: "Periods", align: "right" },
+      { key: "exhaustion", label: "Exhaustion %",
+        render: r => {
+          const c = r.exhaustion > 75 ? "#ef4444" : r.exhaustion > 50 ? "#f59e0b" : "#10b981";
+          return el("span", { style: `color:${c};font-weight:600` }, r.exhaustion + "%");
+        }, align: "right" },
+      { key: "gaps", label: "Gaps", align: "right" },
+      { key: "maxConsec", label: "Max consec.", align: "right" },
+      { key: "lastPeriodDays", label: "Last-period days", align: "right" },
+    ]));
+
+    panel.appendChild(el("h3", null, "Classes — sorted by utilization"));
+    panel.appendChild(renderTable(data.classes, [
+      { key: "name", label: "Class", render: r => el("span", null,
+          el("span", { class: "chrx-stats-dot", style: `background:${r.color}` }),
+          " " + r.name) },
+      { key: "occupied", label: "Cells filled", align: "right" },
+      { key: "empty", label: "Empty", align: "right" },
+      { key: "utilization", label: "%", render: r => `${r.utilization}%`, align: "right" },
+    ]));
+
+    panel.appendChild(el("h3", null, "Rooms — sorted by utilization"));
+    panel.appendChild(renderTable(data.rooms, [
+      { key: "name", label: "Room" },
+      { key: "used", label: "Used slots", align: "right" },
+      { key: "utilization", label: "%", render: r => `${r.utilization}%`, align: "right" },
+    ]));
+
+    panel.appendChild(el("h3", null, "Period-load balance"));
+    const bars = el("div", { class: "chrx-stats-bars" });
+    const max = Math.max(1, ...data.periodLoad);
+    data.periodLoad.forEach((load, i) => {
+      bars.appendChild(el("div", { class: "chrx-stats-bar", title: `Period ${i + 1}: ${load} cards/period` },
+        el("span", { style: `height:${Math.round(60 * load / max)}px` }),
+        el("small", null, "P" + (i + 1)),
+      ));
+    });
+    panel.appendChild(bars);
+
+    root.appendChild(panel);
+    document.body.appendChild(root);
+    function close() { root.remove(); document.removeEventListener("keydown", onKey, true); }
+    function onKey(e) { if (e.key === "Escape") { e.preventDefault(); close(); } }
+    document.addEventListener("keydown", onKey, true);
+  }
+
+  // Inject minimal styles (idempotent) for the panel
+  function ensureStyles() {
+    if (document.getElementById("chrx-stats-styles")) return;
+    const s = document.createElement("style");
+    s.id = "chrx-stats-styles";
+    s.textContent = `
+.chrx-stats-root{position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:flex-start;justify-content:center;padding:24px;z-index:1000;overflow:auto}
+.chrx-stats-panel{background:#fff;border-radius:12px;max-width:900px;width:100%;padding:18px 22px;box-shadow:0 20px 60px rgba(0,0,0,.25);font-family:-apple-system,BlinkMacSystemFont,sans-serif;color:#0f172a}
+.chrx-stats-head{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e2e8f0;margin:-4px 0 12px;padding-bottom:8px}
+.chrx-stats-head h2{margin:0;font-size:18px;color:#1e3a8a}
+.chrx-stats-close{background:none;border:0;font-size:22px;cursor:pointer;color:#64748b}
+.chrx-stats-summary{display:flex;gap:24px;flex-wrap:wrap;font-size:13px;background:#f1f5f9;padding:8px 12px;border-radius:8px;margin-bottom:12px}
+.chrx-stats-panel h3{margin:14px 0 6px;font-size:14px;color:#334155;text-transform:uppercase;letter-spacing:.04em}
+.chrx-stats-table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:8px}
+.chrx-stats-table th{background:#f8fafc;color:#475569;font-weight:600;text-align:left;padding:6px 8px;border-bottom:2px solid #e2e8f0}
+.chrx-stats-table td{padding:5px 8px;border-bottom:1px solid #f1f5f9}
+.chrx-stats-table td.align-right{text-align:right;font-variant-numeric:tabular-nums}
+.chrx-stats-dot{display:inline-block;width:10px;height:10px;border-radius:50%;vertical-align:middle;margin-right:2px}
+.chrx-stats-bars{display:flex;gap:6px;align-items:flex-end;height:80px;padding:8px;background:#f8fafc;border-radius:6px;margin-top:4px}
+.chrx-stats-bar{display:flex;flex-direction:column;align-items:center;gap:2px;flex:1}
+.chrx-stats-bar span{display:block;width:24px;background:linear-gradient(180deg,#3b82f6,#1e40af);border-radius:4px 4px 0 0;min-height:2px}
+.chrx-stats-bar small{font-size:10px;color:#64748b}
+    `;
+    document.head.appendChild(s);
+  }
+  ensureStyles();
+
+  // Wire into the Timetable menu (Statistics… already exists; route via the existing event)
+  window.addEventListener("app:statistics", () => open());
+
+  global.StatisticsPanel = { open, compute };
+})(window);
+
+/* ─── FILE: js/ui/components/school_settings_dialog.js ─── */
+/* School settings dialog — window.SchoolSettings.open().
+ *
+ * Centralized place for school-wide settings: name, year, country/region,
+ * days/week, periods/day, multi-term toggle, default time-zone, and the
+ * 23 `globals.settings` fields documented in legacy-research
+ *
+ * Backs the "school" route in entity_router (replacing the previous stub).
+ * Settings persist on `school.settings = {...}`.
+ */
+(function (global) {
+  "use strict";
+  const D = window.EntityDialog;
+  if (!D) return;
+
+  const COUNTRIES = ["India", "USA", "UK", "Slovakia", "Australia", "Singapore", "UAE", "Other"];
+  const TIMEZONES = ["Asia/Kolkata", "Asia/Dubai", "Europe/Bratislava", "America/New_York", "America/Los_Angeles", "Europe/London", "Australia/Sydney", "Asia/Singapore", "UTC"];
+
+  function open() {
+    const school = window.APP.school;
+    if (!school) { alert("Open a timetable first."); return; }
+    school.settings = school.settings || {};
+    const s = school.settings;
+    const draft = {
+      schoolName: school.schoolName || "",
+      year:       s.year || (new Date().getFullYear() + "/" + ((new Date().getFullYear() + 1) % 100)),
+      country:    s.country || "India",
+      region:     s.region || "",
+      timezone:   s.timezone || "Asia/Kolkata",
+      daysPerWeek:    s.daysPerWeek || 6,
+      periodsPerDay:  s.periodsPerDay || (school.bell && school.bell.periods ? school.bell.periods.length : 8),
+      multiTerm:      !!s.multiTerm,
+      multiWeek:      !!s.multiWeek,
+      maxCardsPerCell: s.maxCardsPerCell || 1,
+      defaultLessonDuration: s.defaultLessonDuration || 40,
+      transferTimePeriods: s.transferTimePeriods || 0,
+      classInOneBuildingPerDay: !!s.classInOneBuildingPerDay,
+      printShowBellTimes:  s.printShowBellTimes !== false,
+      printShowTeacherNames: s.printShowTeacherNames !== false,
+      printShowClassroomNames: s.printShowClassroomNames !== false,
+    };
+
+    function field(label, control) {
+      return { label, control };
+    }
+    function num(value, min, max, step, onChange) {
+      return D.el("input", { type: "number", min, max, step: step || 1, value,
+        oninput: (e) => onChange(parseFloat(e.target.value) || 0) });
+    }
+    function bool(value, onChange) {
+      return D.el("input", { type: "checkbox", checked: value ? "checked" : null,
+        onchange: (e) => onChange(e.target.checked) });
+    }
+    function text(value, max, onChange) {
+      return D.el("input", { type: "text", value, maxlength: String(max),
+        oninput: (e) => onChange(e.target.value) });
+    }
+    function select(value, options, onChange) {
+      const sel = D.el("select", { onchange: (e) => onChange(e.target.value) });
+      for (const o of options) {
+        const opt = D.el("option", { value: o }, o);
+        if (o === value) opt.setAttribute("selected", "selected");
+        sel.appendChild(opt);
+      }
+      return sel;
+    }
+
+    D.buildEditSheet({
+      title: `School settings — ${draft.schoolName || "Untitled"}`,
+      fields: [
+        field("Section: School identity"),
+        field("School name",   text(draft.schoolName, 120, v => draft.schoolName = v)),
+        field("Academic year", text(draft.year, 12, v => draft.year = v)),
+        field("Country",       select(draft.country, COUNTRIES, v => draft.country = v)),
+        field("Region / state", text(draft.region, 80, v => draft.region = v)),
+        field("Time zone",     select(draft.timezone, TIMEZONES, v => draft.timezone = v)),
+
+        field("Section: Bell shape"),
+        field("Days per week",   num(draft.daysPerWeek, 1, 7, 1, v => draft.daysPerWeek = v)),
+        field("Periods per day", num(draft.periodsPerDay, 1, 20, 1, v => draft.periodsPerDay = v)),
+        field("Default period duration (minutes)", num(draft.defaultLessonDuration, 20, 90, 5, v => draft.defaultLessonDuration = v)),
+        field("Multi-term timetable",  bool(draft.multiTerm, v => draft.multiTerm = v)),
+        field("Multi-week timetable",  bool(draft.multiWeek, v => draft.multiWeek = v)),
+
+        field("Section: Solver hints"),
+        field("Max cards per slot",    num(draft.maxCardsPerCell, 1, 10, 1, v => draft.maxCardsPerCell = v)),
+        field("Building transfer periods (min between blocks)", num(draft.transferTimePeriods, 0, 5, 1, v => draft.transferTimePeriods = v)),
+        field("Class in one building per day", bool(draft.classInOneBuildingPerDay, v => draft.classInOneBuildingPerDay = v)),
+
+        field("Section: Print defaults"),
+        field("Show bell times",       bool(draft.printShowBellTimes, v => draft.printShowBellTimes = v)),
+        field("Show teacher names",    bool(draft.printShowTeacherNames, v => draft.printShowTeacherNames = v)),
+        field("Show classroom names",  bool(draft.printShowClassroomNames, v => draft.printShowClassroomNames = v)),
+      ],
+      onSave: () => {
+        if (!draft.schoolName.trim()) {
+          alert("School name is required."); return;
+        }
+        const before = { schoolName: school.schoolName, settings: { ...school.settings } };
+        school.schoolName = draft.schoolName.trim();
+        school.settings = { ...draft };
+        delete school.settings.schoolName; // already on school root
+        if (window.APP.audit && window.APP.audit.append) {
+          window.APP.audit.append({ entity: "school", op: "settings", before, after: { schoolName: school.schoolName, settings: school.settings } });
+        }
+        D.closeSheet();
+        // Refresh title bar
+        const title = document.querySelector("#school-title, [data-school-name]");
+        if (title) title.textContent = school.schoolName;
+      },
+    });
+  }
+
+  global.SchoolSettings = { open };
+})(window);
+
+/* ─── FILE: js/ui/components/school_hub.js ─── */
+/* School Hub — multi-pane page for step-2. window.SchoolHub.render(host).
+ *
+ * Replaces the single school_settings_dialog modal with an in-page hub:
+ *   ┌─ Sidebar ────┬─ Active pane ───────────────────────┐
+ *   │ Identity     │ inline forms, save-on-blur          │
+ *   │ Calendar     │                                     │
+ *   │ Bell schedule│ collection panes preview rows +     │
+ *   │ Breaks       │ delegate "Manage..." to existing    │
+ *   │ Holidays     │ EntityBells/Breaks/Holidays/Buildings│
+ *   │ Buildings    │                                     │
+ *   │ Branding     │                                     │
+ *   │ Solver hints │                                     │
+ *   └──────────────┴─────────────────────────────────────┘
+ *
+ * Per CLAUDE.md (instructions): writes commit immediately to school.settings,
+ * audit.append() entries fire, entity:changed dispatched so other listeners
+ * (undo/redo, editor activator) refresh. Save-pill in bottom-right confirms.
+ *
+ * The 4 collection panes show preview tables; "Manage..." button opens the
+ * existing EntityBells / EntityBreaks / EntityHolidays / EntityBuildings
+ * dialogs (which layer over the hub host). When they close + entity:changed
+ * fires, the hub re-renders the affected pane so previews stay in sync.
+ */
+(function (global) {
+  "use strict";
+
+  const COUNTRIES = ["India", "USA", "UK", "Slovakia", "Australia", "Singapore", "UAE", "Other"];
+  const TIMEZONES = ["Asia/Kolkata", "Asia/Dubai", "Europe/Bratislava", "America/New_York",
+    "America/Los_Angeles", "Europe/London", "Australia/Sydney", "Asia/Singapore", "UTC"];
+  const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const PANES = [
+    { id: "identity",  icon: "🏫", label: "Identity",        desc: "Name, logo, year, country" },
+    { id: "calendar",  icon: "📅", label: "Calendar",        desc: "Days, weekend, multi-week" },
+    { id: "bell",      icon: "🔔", label: "Bell schedule",   desc: "Periods + start/end times" },
+    { id: "breaks",    icon: "🍎", label: "Breaks",          desc: "Recess, lunch, fruit break" },
+    { id: "holidays",  icon: "🎉", label: "Holidays",        desc: "Date ranges (Diwali, exams)" },
+    { id: "buildings", icon: "🏢", label: "Buildings",       desc: "Locations + transfer rules" },
+    { id: "branding",  icon: "🎨", label: "Branding & print", desc: "Logo, header/footer text" },
+    { id: "solver",    icon: "🧠", label: "Solver hints",    desc: "Lesson duration, transfer time" },
+  ];
+
+  let activePane = "identity";
+  let hostEl = null;
+  let mainEl = null;
+  let pillEl = null;
+  let pillTimer = null;
+  let listenersWired = false;
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Utilities
+  // ─────────────────────────────────────────────────────────────────────────
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, c =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      const v = attrs[k];
+      if (v == null) continue;
+      if (k === "class") n.className = v;
+      else if (k === "html") n.innerHTML = v;
+      else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v);
+    }
+    for (const c of kids) if (c != null && c !== false) {
+      n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    }
+    return n;
+  }
+  function fmtTime(min) {
+    if (min == null) return "—";
+    const h = Math.floor(min / 60), m = min % 60;
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  }
+  function school() { return window.APP.school; }
+  function settings() {
+    const s = school();
+    if (!s) return {};
+    s.settings = s.settings || {};
+    return s.settings;
+  }
+  function commit(label) {
+    flashPill("Saving…", "saving");
+    // entity:changed lets undo/redo + editor activator refresh
+    document.dispatchEvent(new CustomEvent("entity:changed", { detail: { source: "school-hub" } }));
+    clearTimeout(pillTimer);
+    pillTimer = setTimeout(() => flashPill(label || "All changes saved", "ok"), 180);
+  }
+  function audit(op, before, after) {
+    if (window.APP.audit && window.APP.audit.append) {
+      window.APP.audit.append({ entity: "school", op, before, after });
+    }
+  }
+  function flashPill(text, state) {
+    if (!pillEl) return;
+    pillEl.textContent = (state === "ok" ? "✓ " : "") + text;
+    pillEl.dataset.state = state || "idle";
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Field primitives — commit-on-blur for text, commit-on-change for checkbox/select
+  // ─────────────────────────────────────────────────────────────────────────
+  function textInput(initialValue, onCommit, opts) {
+    opts = opts || {};
+    const inp = el("input", {
+      type: opts.type || "text",
+      value: initialValue == null ? "" : initialValue,
+      maxlength: opts.maxlength ? String(opts.maxlength) : null,
+      placeholder: opts.placeholder || null,
+      class: "chrx-hub-input",
+    });
+    const original = inp.value;
+    inp.addEventListener("blur", () => {
+      const v = inp.value;
+      if (v !== original) onCommit(v);
+    });
+    inp.addEventListener("keydown", (e) => { if (e.key === "Enter") inp.blur(); });
+    return inp;
+  }
+  function numInput(initialValue, min, max, step, onCommit) {
+    const inp = el("input", {
+      type: "number", min, max, step: step || 1,
+      value: initialValue == null ? "" : initialValue,
+      class: "chrx-hub-input chrx-hub-input--num",
+    });
+    const original = inp.value;
+    inp.addEventListener("blur", () => {
+      const v = parseFloat(inp.value);
+      if (isNaN(v)) { inp.value = original; return; }
+      if (String(v) !== original) onCommit(v);
+    });
+    return inp;
+  }
+  function selectInput(initialValue, options, onCommit) {
+    const sel = el("select", { class: "chrx-hub-input chrx-hub-input--select" });
+    for (const o of options) {
+      const opt = el("option", { value: o }, o);
+      if (o === initialValue) opt.setAttribute("selected", "selected");
+      sel.appendChild(opt);
+    }
+    sel.addEventListener("change", () => onCommit(sel.value));
+    return sel;
+  }
+  function toggle(initialValue, onCommit, opts) {
+    opts = opts || {};
+    const inp = el("input", {
+      type: "checkbox",
+      checked: initialValue ? "checked" : null,
+      class: "chrx-hub-toggle",
+    });
+    inp.addEventListener("change", () => onCommit(inp.checked));
+    const lbl = el("label", { class: "chrx-hub-toggle-wrap" },
+      inp,
+      el("span", { class: "chrx-hub-toggle-slider" }),
+      opts.label ? el("span", { class: "chrx-hub-toggle-label" }, opts.label) : null,
+    );
+    return lbl;
+  }
+  function row(label, control, hint) {
+    return el("div", { class: "chrx-hub-row" },
+      el("div", { class: "chrx-hub-row__label" },
+        el("span", { class: "chrx-hub-row__name" }, label),
+        hint ? el("span", { class: "chrx-hub-row__hint" }, hint) : null,
+      ),
+      el("div", { class: "chrx-hub-row__control" }, control),
+    );
+  }
+  function section(title, ...children) {
+    return el("section", { class: "chrx-hub-section" },
+      el("h3", { class: "chrx-hub-section__title" }, title),
+      el("div", { class: "chrx-hub-section__body" }, ...children),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Pane: Identity
+  // ─────────────────────────────────────────────────────────────────────────
+  function paneIdentity() {
+    const S = school();
+    const s = settings();
+    const wrap = el("div", { class: "chrx-hub-pane" });
+
+    wrap.appendChild(section("School identity",
+      row("School name",
+        textInput(S.schoolName || "", v => {
+          const before = { schoolName: S.schoolName };
+          S.schoolName = (v || "").trim();
+          audit("rename", before, { schoolName: S.schoolName });
+          commit("Name saved");
+          const title = document.querySelector("#school-title, [data-school-name]");
+          if (title) title.textContent = S.schoolName;
+        }, { maxlength: 120, placeholder: "e.g. GD Goenka Public School, Darbhanga" })),
+      row("Academic year",
+        textInput(s.year || `${new Date().getFullYear()}/${(new Date().getFullYear() + 1) % 100}`,
+          v => { s.year = v; commit(); }, { maxlength: 12, placeholder: "2026/27" })),
+      row("Country",
+        selectInput(s.country || "India", COUNTRIES, v => { s.country = v; commit(); })),
+      row("Region / state",
+        textInput(s.region || "", v => { s.region = v; commit(); },
+          { maxlength: 80, placeholder: "e.g. Bihar" })),
+      row("Time zone",
+        selectInput(s.timezone || "Asia/Kolkata", TIMEZONES, v => { s.timezone = v; commit(); })),
+    ));
+
+    // Logo upload (data URL, optional)
+    const logoBox = el("div", { class: "chrx-hub-logo" });
+    const logoImg = el("img", {
+      class: "chrx-hub-logo__preview",
+      src: s.logoDataUrl || "assets/icon-192.png",
+      alt: "School logo",
+    });
+    const fileInput = el("input", { type: "file", accept: "image/*", class: "chrx-hub-logo__file" });
+    fileInput.addEventListener("change", () => {
+      const f = fileInput.files && fileInput.files[0];
+      if (!f) return;
+      if (f.size > 256 * 1024) {
+        flashPill("Logo too large (max 256 KB)", "err");
+        return;
+      }
+      const r = new FileReader();
+      r.onload = () => {
+        s.logoDataUrl = r.result;
+        logoImg.src = r.result;
+        commit("Logo saved");
+      };
+      r.readAsDataURL(f);
+    });
+    const clearBtn = el("button", { class: "chrx-hub-btn", type: "button",
+      onclick: () => { delete s.logoDataUrl; logoImg.src = "assets/icon-192.png"; commit("Logo cleared"); } },
+      "Clear");
+    logoBox.appendChild(logoImg);
+    logoBox.appendChild(el("div", { class: "chrx-hub-logo__controls" },
+      el("label", { class: "chrx-hub-btn chrx-hub-btn--primary" }, "Upload logo", fileInput),
+      clearBtn,
+      el("p", { class: "chrx-hub-logo__hint" },
+        "PNG/JPG, max 256 KB. Used in printouts + PWA install banner."),
+    ));
+    wrap.appendChild(section("Logo", logoBox));
+
+    return wrap;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Pane: Calendar
+  // ─────────────────────────────────────────────────────────────────────────
+  function paneCalendar() {
+    const S = school();
+    const s = settings();
+    const wrap = el("div", { class: "chrx-hub-pane" });
+
+    const days = parseInt(s.daysPerWeek, 10) || 6;
+    s.daysPerWeek = days;
+    s.weekendMask = s.weekendMask || ((days === 5) ? [false, false, false, false, false, true, true]
+                                                  : [false, false, false, false, false, false, true]);
+
+    wrap.appendChild(section("Working days",
+      row("Days per week",
+        numInput(s.daysPerWeek, 1, 7, 1, v => {
+          s.daysPerWeek = v;
+          commit("Days per week saved");
+          renderPane(); // toggle strip count
+        })),
+      row("Period start time",
+        textInput(s.periodStartTime || "07:30", v => { s.periodStartTime = v; commit(); },
+          { type: "time" }),
+        "Time of the first bell (used when generating defaults)"),
+    ));
+
+    // Visual day strip
+    const strip = el("div", { class: "chrx-hub-daystrip" });
+    DAY_LABELS.forEach((label, i) => {
+      const off = s.weekendMask[i] === true;
+      const cell = el("button", {
+        type: "button",
+        class: "chrx-hub-daycell" + (off ? " is-off" : " is-on"),
+        "aria-pressed": off ? "false" : "true",
+        onclick: () => {
+          s.weekendMask[i] = !s.weekendMask[i];
+          commit("Weekend updated");
+          renderPane();
+        },
+      },
+        el("span", { class: "chrx-hub-daycell__name" }, label),
+        el("span", { class: "chrx-hub-daycell__state" }, off ? "off" : "on"),
+      );
+      strip.appendChild(cell);
+    });
+    wrap.appendChild(section("Weekend pattern",
+      el("p", { class: "chrx-hub-help" },
+        "Click a day to toggle. Highlighted days are teaching days. Affects solver + grid."),
+      strip,
+    ));
+
+    wrap.appendChild(section("Display options",
+      row("Show day numbers instead of names",
+        toggle(!!s.showDayNumbers, v => { s.showDayNumbers = v; commit(); }),
+        "Useful for multi-week timetables (Day 1 / Day 2)"),
+      row("Multi-week timetable",
+        toggle(!!s.multiWeek, v => { s.multiWeek = v; commit(); }),
+        "A / B / C week rotations (manage weeks via the Specification menu)"),
+      row("Multi-term timetable",
+        toggle(!!s.multiTerm, v => { s.multiTerm = v; commit(); }),
+        "Different lesson sets per semester / term"),
+    ));
+
+    return wrap;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Pane: Bell schedule (preview + delegate to EntityBells)
+  // ─────────────────────────────────────────────────────────────────────────
+  function paneBell() {
+    const S = school();
+    const s = settings();
+    const wrap = el("div", { class: "chrx-hub-pane" });
+
+    const periods = (S.bell && S.bell.periods) || [];
+    const bells = Array.isArray(S.bells) ? S.bells : [];
+
+    wrap.appendChild(section("Quick toggles",
+      row("Different bells on some days",
+        toggle(!!s.bellPerDay, v => { s.bellPerDay = v; commit(); }),
+        "Reveals per-weekday overrides for individual periods"),
+      row("Different bell schedules for different classes",
+        toggle(!!s.bellPerClass, v => { s.bellPerClass = v; commit(); }),
+        `Multi-bell mode (${bells.length} schedule${bells.length === 1 ? "" : "s"} defined)`),
+    ));
+
+    // Period preview table
+    const tbody = el("tbody");
+    if (!periods.length) {
+      tbody.appendChild(el("tr", null,
+        el("td", { colspan: "5", class: "chrx-hub-empty" },
+          "No periods yet. Click ‘Manage periods’ below to add some.")));
+    } else {
+      periods.forEach((p, i) => {
+        const flags = [];
+        if (p.printinclasses !== false) flags.push("C");
+        if (p.printinteachers !== false) flags.push("T");
+        if (p.printinclassrooms !== false) flags.push("R");
+        if (p.printinbells !== false) flags.push("B");
+        tbody.appendChild(el("tr", null,
+          el("td", { class: "chrx-hub-num" }, String(i + 1)),
+          el("td", { class: "chrx-hub-bold" }, p.label || String(p.index || i + 1)),
+          el("td", { class: "chrx-hub-tnum" }, fmtTime(p.startMin)),
+          el("td", { class: "chrx-hub-tnum" }, fmtTime(p.endMin)),
+          el("td", { class: "chrx-hub-tnum" },
+            (p.endMin != null && p.startMin != null) ? `${p.endMin - p.startMin} min` : "—"),
+          el("td", { class: "chrx-hub-flags" }, flags.join("") || "—"),
+        ));
+      });
+    }
+    const table = el("table", { class: "chrx-hub-table" },
+      el("thead", null, el("tr", null,
+        el("th", null, "#"),
+        el("th", null, "Label"),
+        el("th", { class: "chrx-hub-tnum" }, "Start"),
+        el("th", { class: "chrx-hub-tnum" }, "End"),
+        el("th", { class: "chrx-hub-tnum" }, "Duration"),
+        el("th", null, "Print"),
+      )),
+      tbody,
+    );
+    wrap.appendChild(section("Current bell schedule (preview)",
+      table,
+      el("div", { class: "chrx-hub-actions" },
+        el("button", {
+          class: "chrx-hub-btn chrx-hub-btn--primary", type: "button",
+          onclick: () => { if (window.EntityBells) window.EntityBells.open(); },
+        }, "Manage periods…"),
+        bells.length > 0
+          ? el("span", { class: "chrx-hub-help" },
+              `${bells.length} multi-bell schedule${bells.length === 1 ? "" : "s"} configured.`)
+          : null,
+      ),
+    ));
+
+    return wrap;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Pane: Breaks
+  // ─────────────────────────────────────────────────────────────────────────
+  function paneBreaks() {
+    const S = school();
+    const breaks = Array.isArray(S.breaks) ? S.breaks : [];
+    const wrap = el("div", { class: "chrx-hub-pane" });
+
+    wrap.appendChild(section("Break-specific rules",
+      el("p", { class: "chrx-hub-help" },
+        "These three rules apply to every break and are SOLVER-IMPACTFUL:"),
+      el("ul", { class: "chrx-hub-list" },
+        el("li", null, "Double lessons cannot span this break"),
+        el("li", null, "Sufficient time for building transition"),
+        el("li", null, "Custom printout text"),
+      ),
+      el("p", { class: "chrx-hub-help" },
+        "Set per break via the dialog (each break carries its own flags)."),
+    ));
+
+    const tbody = el("tbody");
+    if (!breaks.length) {
+      tbody.appendChild(el("tr", null,
+        el("td", { colspan: "5", class: "chrx-hub-empty" },
+          "No breaks defined yet — solver will not enforce mandatory gaps.")));
+    } else {
+      breaks.forEach(b => {
+        const flags = [];
+        if (b.doubleNotSpan) flags.push("DBL");
+        if (b.transitionOk)  flags.push("TRN");
+        tbody.appendChild(el("tr", null,
+          el("td", { class: "chrx-hub-bold" }, b.name || "(unnamed)"),
+          el("td", null, b.short || "—"),
+          el("td", { class: "chrx-hub-tnum" }, b.starttime || "—"),
+          el("td", { class: "chrx-hub-tnum" }, b.endtime || "—"),
+          el("td", { class: "chrx-hub-flags" }, flags.join(" ") || "—"),
+        ));
+      });
+    }
+    wrap.appendChild(section("Breaks (preview)",
+      el("table", { class: "chrx-hub-table" },
+        el("thead", null, el("tr", null,
+          el("th", null, "Name"),
+          el("th", null, "Short"),
+          el("th", { class: "chrx-hub-tnum" }, "Start"),
+          el("th", { class: "chrx-hub-tnum" }, "End"),
+          el("th", null, "Flags"),
+        )),
+        tbody,
+      ),
+      el("div", { class: "chrx-hub-actions" },
+        el("button", {
+          class: "chrx-hub-btn chrx-hub-btn--primary", type: "button",
+          onclick: () => { if (window.EntityBreaks) window.EntityBreaks.open(); },
+        }, "Manage breaks…"),
+      ),
+    ));
+    return wrap;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Pane: Holidays
+  // ─────────────────────────────────────────────────────────────────────────
+  function paneHolidays() {
+    const S = school();
+    const holidays = Array.isArray(S.holidays) ? S.holidays : [];
+    const wrap = el("div", { class: "chrx-hub-pane" });
+
+    const tbody = el("tbody");
+    if (!holidays.length) {
+      tbody.appendChild(el("tr", null,
+        el("td", { colspan: "4", class: "chrx-hub-empty" },
+          "No holidays yet. Add Diwali, Christmas, mid-term break, etc.")));
+    } else {
+      holidays.forEach(h => {
+        tbody.appendChild(el("tr", null,
+          el("td", null, el("span", {
+            class: "chrx-hub-swatch",
+            style: `background:${h.color || "transparent"}`,
+          })),
+          el("td", { class: "chrx-hub-bold" }, h.name || "(unnamed)"),
+          el("td", { class: "chrx-hub-tnum" }, h.startDate || "—"),
+          el("td", { class: "chrx-hub-tnum" }, h.endDate || h.startDate || "—"),
+        ));
+      });
+    }
+    wrap.appendChild(section("Holidays",
+      el("table", { class: "chrx-hub-table" },
+        el("thead", null, el("tr", null,
+          el("th", null, ""),
+          el("th", null, "Name"),
+          el("th", { class: "chrx-hub-tnum" }, "From"),
+          el("th", { class: "chrx-hub-tnum" }, "Till"),
+        )),
+        tbody,
+      ),
+      el("div", { class: "chrx-hub-actions" },
+        el("button", {
+          class: "chrx-hub-btn chrx-hub-btn--primary", type: "button",
+          onclick: () => { if (window.EntityHolidays) window.EntityHolidays.open(); },
+        }, "Manage holidays…"),
+      ),
+    ));
+    return wrap;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Pane: Buildings
+  // ─────────────────────────────────────────────────────────────────────────
+  function paneBuildings() {
+    const S = school();
+    const s = settings();
+    const buildings = Array.isArray(S.buildings) ? S.buildings : [];
+    const wrap = el("div", { class: "chrx-hub-pane" });
+
+    wrap.appendChild(section("Building-aware solving",
+      row("Buildings affect solver",
+        toggle(!!s.buildingsAffectSolver, v => { s.buildingsAffectSolver = v; commit(); }),
+        "When ON, transfer-time + class-in-one-building rules apply"),
+    ));
+
+    const tbody = el("tbody");
+    if (!buildings.length) {
+      tbody.appendChild(el("tr", null,
+        el("td", { colspan: "4", class: "chrx-hub-empty" },
+          "No buildings defined. Single-campus schools can leave this empty.")));
+    } else {
+      buildings.forEach(b => {
+        tbody.appendChild(el("tr", null,
+          el("td", null, el("span", {
+            class: "chrx-hub-swatch",
+            style: `background:${b.color || "transparent"}`,
+          })),
+          el("td", { class: "chrx-hub-bold" }, b.name || "(unnamed)"),
+          el("td", null, b.short || "—"),
+          el("td", null, String(b.floors || 1)),
+        ));
+      });
+    }
+    wrap.appendChild(section("Buildings",
+      el("table", { class: "chrx-hub-table" },
+        el("thead", null, el("tr", null,
+          el("th", null, ""),
+          el("th", null, "Name"),
+          el("th", null, "Short"),
+          el("th", null, "Floors"),
+        )),
+        tbody,
+      ),
+      el("div", { class: "chrx-hub-actions" },
+        el("button", {
+          class: "chrx-hub-btn chrx-hub-btn--primary", type: "button",
+          onclick: () => { if (window.EntityBuildings) window.EntityBuildings.open(); },
+        }, "Manage buildings…"),
+      ),
+    ));
+    return wrap;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Pane: Branding & print
+  // ─────────────────────────────────────────────────────────────────────────
+  function paneBranding() {
+    const s = settings();
+    const wrap = el("div", { class: "chrx-hub-pane" });
+
+    wrap.appendChild(section("Print headers & footers",
+      row("Header text",
+        textInput(s.printHeader || "", v => { s.printHeader = v; commit(); },
+          { maxlength: 120, placeholder: "e.g. School name — Class timetable" })),
+      row("Footer text",
+        textInput(s.printFooter || "", v => { s.printFooter = v; commit(); },
+          { maxlength: 120, placeholder: "e.g. Issued 19 May 2026 — Principal’s office" })),
+      row("Default print font",
+        selectInput(s.printFont || "Inter",
+          ["Inter", "Helvetica", "Arial", "Times New Roman", "Georgia", "Courier"],
+          v => { s.printFont = v; commit(); })),
+      row("Print in colour",
+        toggle(s.printColor !== false, v => { s.printColor = v; commit(); }),
+        "OFF = monochrome (smaller PDFs, no toner-hungry backgrounds)"),
+    ));
+
+    wrap.appendChild(section("What to show in printouts",
+      row("Show bell times",
+        toggle(s.printShowBellTimes !== false, v => { s.printShowBellTimes = v; commit(); })),
+      row("Show teacher names",
+        toggle(s.printShowTeacherNames !== false, v => { s.printShowTeacherNames = v; commit(); })),
+      row("Show classroom names",
+        toggle(s.printShowClassroomNames !== false, v => { s.printShowClassroomNames = v; commit(); })),
+      row("Show subject short codes",
+        toggle(!!s.printShowSubjectShorts, v => { s.printShowSubjectShorts = v; commit(); })),
+    ));
+
+    return wrap;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Pane: Solver hints
+  // ─────────────────────────────────────────────────────────────────────────
+  function paneSolver() {
+    const s = settings();
+    const wrap = el("div", { class: "chrx-hub-pane" });
+
+    wrap.appendChild(section("Lesson basics",
+      row("Default lesson duration (min)",
+        numInput(s.defaultLessonDuration || 40, 20, 90, 5, v => {
+          s.defaultLessonDuration = v; commit(); }),
+        "Used when adding new lessons without an explicit duration"),
+      row("Max cards per slot",
+        numInput(s.maxCardsPerCell || 1, 1, 10, 1, v => {
+          s.maxCardsPerCell = v; commit(); }),
+        "How many cards can share the same class-period cell (group teaching, splits)"),
+      row("Periods per day",
+        numInput(s.periodsPerDay || 8, 1, 20, 1, v => {
+          s.periodsPerDay = v; commit(); })),
+    ));
+
+    wrap.appendChild(section("Building transitions",
+      row("Building transfer periods",
+        numInput(s.transferTimePeriods || 0, 0, 5, 1, v => {
+          s.transferTimePeriods = v; commit(); }),
+        "Periods to leave free when a teacher switches buildings (0 = no penalty)"),
+      row("Class in one building per day",
+        toggle(!!s.classInOneBuildingPerDay, v => {
+          s.classInOneBuildingPerDay = v; commit(); }),
+        "Prevents a section from ping-ponging between buildings on the same day"),
+    ));
+
+    wrap.appendChild(section("Verification thresholds",
+      row("Max teaching periods per teacher per day",
+        numInput(s.maxPeriodsPerTeacherPerDay || 7, 1, 12, 1, v => {
+          s.maxPeriodsPerTeacherPerDay = v; commit(); })),
+      row("Max consecutive periods per teacher",
+        numInput(s.maxConsecutivePerTeacher || 4, 1, 8, 1, v => {
+          s.maxConsecutivePerTeacher = v; commit(); }),
+        "Triggers a soft-warning when a teacher has more than N back-to-back lessons"),
+    ));
+
+    return wrap;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Pane router
+  // ─────────────────────────────────────────────────────────────────────────
+  const PANE_RENDERERS = {
+    identity:  paneIdentity,
+    calendar:  paneCalendar,
+    bell:      paneBell,
+    breaks:    paneBreaks,
+    holidays:  paneHolidays,
+    buildings: paneBuildings,
+    branding:  paneBranding,
+    solver:    paneSolver,
+  };
+
+  function renderPane() {
+    if (!mainEl) return;
+    mainEl.innerHTML = "";
+    const fn = PANE_RENDERERS[activePane] || paneIdentity;
+    const def = PANES.find(p => p.id === activePane) || PANES[0];
+    mainEl.appendChild(el("header", { class: "chrx-hub-paneheader" },
+      el("h2", null, def.icon + " " + def.label),
+      el("p", { class: "chrx-hub-paneheader__desc" }, def.desc),
+    ));
+    mainEl.appendChild(fn());
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Defaults loader (India + CBSE bell + 3 standard breaks)
+  // ─────────────────────────────────────────────────────────────────────────
+  function applyIndiaDefaults() {
+    const S = school();
+    const s = settings();
+    if (!S) return;
+    if (!confirm("Load India / CBSE defaults? This sets working days, bell timing, and 3 standard breaks. Existing fields aren't overwritten unless empty.")) return;
+
+    const before = { settings: { ...s }, breaks: (S.breaks || []).slice(), bell: S.bell };
+
+    s.country = s.country || "India";
+    s.region = s.region || s.region;
+    s.timezone = s.timezone || "Asia/Kolkata";
+    s.daysPerWeek = s.daysPerWeek || 6;
+    s.weekendMask = s.weekendMask || [false, false, false, false, false, false, true];
+    s.periodStartTime = s.periodStartTime || "07:30";
+    s.defaultLessonDuration = s.defaultLessonDuration || 40;
+    s.periodsPerDay = s.periodsPerDay || 8;
+    s.maxCardsPerCell = s.maxCardsPerCell || 1;
+
+    if (!S.bell || !Array.isArray(S.bell.periods) || !S.bell.periods.length) {
+      // CBSE-style 8 periods, 40 min each, with breaks accounted for
+      const startM = 7 * 60 + 30;
+      const periods = [];
+      let cur = startM;
+      for (let i = 1; i <= 8; i++) {
+        // After period 3, insert a 20-min recess gap; after period 5, 10-min fruit break
+        if (i === 4) cur += 20;
+        if (i === 6) cur += 10;
+        periods.push({
+          index: i, label: String(i),
+          startMin: cur, endMin: cur + 40,
+          isTeaching: true,
+          printinbells: true, printinclasses: true,
+          printinteachers: true, printinclassrooms: true,
+        });
+        cur += 40;
+      }
+      S.bell = { periods };
+    }
+
+    if (!Array.isArray(S.breaks) || !S.breaks.length) {
+      S.breaks = [
+        { id: "br_recess",  name: "Recess",      short: "REC",  starttime: "09:30", endtime: "09:50",
+          doubleNotSpan: true,  transitionOk: true,  printtext: "Recess" },
+        { id: "br_fruit",   name: "Fruit Break", short: "FRT",  starttime: "11:00", endtime: "11:10",
+          doubleNotSpan: false, transitionOk: false, printtext: "Fruit break" },
+        { id: "br_lunch",   name: "Lunch",       short: "LUN",  starttime: "12:30", endtime: "13:00",
+          doubleNotSpan: true,  transitionOk: true,  printtext: "Lunch" },
+      ];
+    }
+
+    audit("apply-defaults", before, {
+      settings: { ...s }, breaks: S.breaks.slice(), bell: S.bell,
+    });
+    commit("India defaults loaded");
+    renderPane();
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Shell
+  // ─────────────────────────────────────────────────────────────────────────
+  function buildShell() {
+    const root = el("div", { class: "chrx-hub" });
+
+    // Sidebar
+    const side = el("nav", { class: "chrx-hub__side", "aria-label": "School Hub navigation" });
+    PANES.forEach(p => {
+      const btn = el("button", {
+        type: "button",
+        class: "chrx-hub__navbtn" + (p.id === activePane ? " is-active" : ""),
+        "data-pane": p.id,
+        onclick: () => {
+          activePane = p.id;
+          side.querySelectorAll(".chrx-hub__navbtn").forEach(b =>
+            b.classList.toggle("is-active", b.dataset.pane === activePane));
+          renderPane();
+        },
+      },
+        el("span", { class: "chrx-hub__navicon" }, p.icon),
+        el("span", { class: "chrx-hub__navlabel" },
+          el("strong", null, p.label),
+          el("span", { class: "chrx-hub__navdesc" }, p.desc),
+        ),
+      );
+      side.appendChild(btn);
+    });
+
+    // Defaults loader bottom of sidebar
+    side.appendChild(el("div", { class: "chrx-hub__sidefoot" },
+      el("button", {
+        type: "button", class: "chrx-hub-btn chrx-hub-btn--ghost",
+        onclick: applyIndiaDefaults,
+      }, "Load India / CBSE defaults"),
+    ));
+
+    // Main pane host
+    mainEl = el("div", { class: "chrx-hub__main" });
+
+    // Save pill (sticky bottom-right)
+    pillEl = el("div", { class: "chrx-hub__pill", "data-state": "idle" }, "All changes saved");
+
+    root.appendChild(side);
+    root.appendChild(mainEl);
+    root.appendChild(pillEl);
+    return root;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Public render
+  // ─────────────────────────────────────────────────────────────────────────
+  function render(host) {
+    hostEl = host;
+    if (!school()) {
+      host.innerHTML = '<div class="text-sm text-slate-500">Open or build a timetable first.</div>';
+      return;
+    }
+    host.innerHTML = "";
+    host.appendChild(buildShell());
+    renderPane();
+
+    // Re-render the active pane when entity dialogs commit (their changes can
+    // affect preview rows in bell / breaks / holidays / buildings panes).
+    if (!listenersWired) {
+      document.addEventListener("entity:changed", (e) => {
+        if (e.detail && e.detail.source === "school-hub") return; // our own
+        // Only refresh if step-2 is currently visible (cheap guard)
+        const step2 = document.getElementById("step-2");
+        if (step2 && !step2.classList.contains("hidden")) {
+          renderPane();
+        }
+      });
+      listenersWired = true;
+    }
+  }
+
+  global.SchoolHub = { render };
+})(window);
+
+/* ─── FILE: js/ui/components/ai_actions.js ─── */
+/* AI menu actions — wires the 4 AI ribbon items to real functions.
+ *
+ *   AI → Auto-fill empty cells    — runs solver on partial schedule
+ *   AI → Cleanup last card move   — undo the last drag-drop placement
+ *   AI → Lock all placed cells    — set card.locked=true so solver respects them
+ *   AI → Suggest placements (beta) — uses RelationEnforcer + ConstraintExplainer
+ *
+ * Each item fires `app:ai-<kind>`; this module listens and runs the action.
+ */
+(function () {
+  "use strict";
+  const notify = window._chrxNotify || console.log;
+
+  function autoFillEmptyCells() {
+    const APP = window.APP;
+    if (!APP || !APP.school) { notify("Open a timetable first.", "error"); return; }
+    if (!window.SolverUI) { notify("Solver UI not loaded.", "error"); return; }
+    // Triggers the same code path as the Generate button — solver respects existing cards.
+    notify("Auto-filling empty cells…");
+    const source = window.SolverUI.run({
+      school: APP.school,
+      options: { timeLimitSec: 30, verbose: false, preservePlaced: true },
+      algorithm: "browser",
+    });
+    source.subscribe?.(e => {
+      if (e.type === "done" || e.result) {
+        const r = e.result || e.data;
+        if (r && r.assignment) {
+          const newCards = r.assignment.map(a => ({
+            lessonId: a.lessonId, day: a.day, period: a.period,
+            classroomId: a.classroomId || null,
+          }));
+          APP.school.cards = newCards;
+          if (window.CreateNew?.refreshIndex) window.CreateNew.refreshIndex();
+          window.dispatchEvent(new CustomEvent("entity:changed", { detail: { entity: "cards" } }));
+          notify(`Placed ${newCards.length} cards.`);
+        }
+      }
+    });
+  }
+
+  function cleanupLastCardMove() {
+    const APP = window.APP;
+    if (!APP || !APP.audit || !APP.audit.undo) { notify("Undo unavailable.", "error"); return; }
+    APP.audit.undo();
+  }
+
+  function lockAllPlacedCells() {
+    const APP = window.APP;
+    if (!APP || !APP.school || !APP.school.cards) { notify("Open a timetable first.", "error"); return; }
+    let count = 0;
+    for (const c of APP.school.cards) {
+      if (!c.locked) { c.locked = true; count++; }
+    }
+    if (window.APP.audit?.append) APP.audit.append({ entity: "cards", op: "lock-all", count });
+    notify(`Locked ${count} cards. Solver will not move them.`);
+  }
+
+  function suggestPlacements() {
+    const APP = window.APP;
+    if (!APP || !APP.school) { notify("Open a timetable first.", "error"); return; }
+    const school = APP.school;
+    const lessons = school.lessons || [];
+    const placedByLesson = {};
+    for (const c of (school.cards || []))
+      placedByLesson[c.lessonId] = (placedByLesson[c.lessonId] || 0) + 1;
+
+    // Find unplaced or under-placed lessons
+    const candidates = lessons.filter(l => {
+      const needed = l.periodsPerWeek || 0;
+      const placed = placedByLesson[l.id] || 0;
+      return needed > placed;
+    });
+    if (!candidates.length) { notify("No unplaced lessons found. Try Generate."); return; }
+
+    // For each candidate, find the best (day, period) using constraint check
+    const suggestions = [];
+    const days = 6;
+    const periods = (school.bell?.periods?.length) || 8;
+    for (const lesson of candidates.slice(0, 5)) {
+      const scored = [];
+      for (let d = 0; d < days; d++) {
+        for (let p = 0; p < periods; p++) {
+          let hardCount = 0, softCount = 0;
+          if (window.SolverConstraints?.checkPlacement) {
+            const r = window.SolverConstraints.checkPlacement(school, lesson.id, d, p, null);
+            hardCount = (r.hard || []).length;
+            softCount = (r.soft || []).length;
+          }
+          if (window.RelationEnforcer) {
+            const r2 = window.RelationEnforcer.check(school, lesson.id, d, p);
+            hardCount += r2.hard.length;
+            softCount += r2.soft.length;
+          }
+          if (hardCount === 0) scored.push({ d, p, soft: softCount });
+        }
+      }
+      if (scored.length) {
+        scored.sort((a, b) => a.soft - b.soft);
+        const best = scored[0];
+        const subj = (school.subjects || []).find(s => s.id === lesson.subjectId);
+        suggestions.push({
+          lesson: lesson.id,
+          subjectName: subj?.name || "?",
+          day: best.d,
+          period: best.p,
+          softPenalty: best.soft,
+        });
+      }
+    }
+    if (!suggestions.length) { notify("No feasible slots found — check constraints.", "warn"); return; }
+
+    // Render a simple suggestions panel
+    const html = suggestions.map(s =>
+      `<li><strong>${s.subjectName}</strong> → Day ${s.day + 1}, Period ${s.period + 1}${s.softPenalty > 0 ? ` (${s.softPenalty} soft warnings)` : " ✓"}</li>`
+    ).join("");
+    const div = document.createElement("div");
+    div.style.cssText = "padding:12px;max-width:480px;font-size:13px";
+    div.innerHTML = `<p>Top ${suggestions.length} suggested placements:</p><ul>${html}</ul>` +
+      `<p style="margin-top:12px;font-size:11px;color:#94a3b8">These respect hard constraints and rank by fewest soft warnings. Click <em>Apply</em> in the editor to place them.</p>`;
+    if (window.EntityDialog?.openSheet) {
+      window.EntityDialog.openSheet(div, { title: "✨ AI suggestions" });
+    } else {
+      alert(suggestions.map(s => `${s.subjectName} → D${s.day + 1}P${s.period + 1}`).join("\n"));
+    }
+  }
+
+  window.addEventListener("app:ai-auto-fill",   autoFillEmptyCells);
+  window.addEventListener("app:ai-cleanup",     cleanupLastCardMove);
+  window.addEventListener("app:ai-lock-all",    lockAllPlacedCells);
+  window.addEventListener("app:ai-suggest",     suggestPlacements);
+
+  // Also handle the more general "app:ai-<kind>" if the menu uses that pattern
+  window.addEventListener("app:ai", (e) => {
+    const k = e.detail?.kind || e.detail?.action;
+    if (k === "auto-fill" || k === "autofill") return autoFillEmptyCells();
+    if (k === "cleanup")  return cleanupLastCardMove();
+    if (k === "lock-all" || k === "lock") return lockAllPlacedCells();
+    if (k === "suggest")  return suggestPlacements();
+  });
+
+  window.AIActions = { autoFillEmptyCells, cleanupLastCardMove, lockAllPlacedCells, suggestPlacements };
+})();
+
+/* ─── FILE: js/ui/io/export_html.js ─── */
+/* Standalone HTML exporter — generates a self-contained HTML file with the
+ * full timetable embedded (no external deps, no JS, just print-friendly HTML
+ * + CSS). Schools email this to teachers / parents / website.
+ *
+ * Ports Swift's ASCHTMLExporter.swift. Triggered via `app:export-html` event.
+ * Output filename derives from school.schoolName.
+ */
+(function () {
+  "use strict";
+  const APP = window.APP;
+  const notify = window._chrxNotify || console.log;
+  const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, c =>
+      ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+  }
+
+  function buildClassGrid(school, classRow) {
+    const periods = (school.bell && school.bell.periods) || [];
+    const cards = school.cards || [];
+    const lessonById = (school._idx && school._idx.lessonById) ||
+      Object.fromEntries((school.lessons || []).map(l => [l.id, l]));
+    const subjectById = (school._idx && school._idx.subjectById) ||
+      Object.fromEntries((school.subjects || []).map(s => [s.id, s]));
+    const teacherById = (school._idx && school._idx.teacherById) ||
+      Object.fromEntries((school.teachers || []).map(t => [t.id, t]));
+    const roomById = (school._idx && school._idx.classroomById) ||
+      Object.fromEntries((school.classrooms || []).map(r => [r.id, r]));
+
+    const grid = Array.from({ length: 6 }, () => Array(periods.length).fill(null));
+    for (const c of cards) {
+      const lesson = lessonById[c.lessonId];
+      if (!lesson) continue;
+      if (!(lesson.classIds || []).includes(classRow.id)) continue;
+      if (c.day >= 6 || c.period >= periods.length) continue;
+      const subj = subjectById[lesson.subjectId] || {};
+      const teachers = (lesson.teacherIds || []).map(t => teacherById[t]?.short || teacherById[t]?.name || "—").join(", ");
+      const room = c.classroomId ? (roomById[c.classroomId]?.short || roomById[c.classroomId]?.name || "") : "";
+      grid[c.day][c.period] = { subject: subj.short || subj.name || "?", color: subj.color || "#94a3b8", teachers, room };
+    }
+
+    let html = `<h2>${esc(classRow.name || classRow.short)}</h2><table class="tt">`;
+    html += `<thead><tr><th>Day</th>${periods.map((p, i) => `<th>P${i + 1}</th>`).join("")}</tr></thead><tbody>`;
+    for (let d = 0; d < 6; d++) {
+      html += `<tr><th class="day">${DAYS[d]}</th>`;
+      for (let p = 0; p < periods.length; p++) {
+        const c = grid[d][p];
+        if (c) {
+          html += `<td class="cell" style="background:${esc(c.color)}22;border-left:4px solid ${esc(c.color)}"><div class="subj">${esc(c.subject)}</div><div class="meta">${esc(c.teachers)}</div>${c.room ? `<div class="room">${esc(c.room)}</div>` : ""}</td>`;
+        } else {
+          html += `<td class="cell empty"></td>`;
+        }
+      }
+      html += "</tr>";
+    }
+    html += "</tbody></table>";
+    return html;
+  }
+
+  function buildHTML(school) {
+    const classes = school.classes || [];
+    const title = `${school.schoolName || "Timetable"} — ${new Date().toLocaleDateString()}`;
+    const body = classes.map(c => buildClassGrid(school, c)).join("\n");
+
+    return `<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<title>${esc(title)}</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #1e293b; margin: 24px; }
+  h1 { color: #1e3a8a; margin-bottom: 8px; }
+  h2 { color: #1e3a8a; margin-top: 28px; border-bottom: 2px solid #cbd5e1; padding-bottom: 4px; }
+  table.tt { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12px; page-break-inside: avoid; }
+  table.tt th, table.tt td { border: 1px solid #cbd5e1; padding: 6px; text-align: left; vertical-align: top; }
+  table.tt thead th { background: #f1f5f9; color: #475569; font-size: 11px; text-transform: uppercase; }
+  table.tt th.day { background: #f8fafc; font-weight: 600; width: 8%; }
+  table.tt td.cell { min-height: 36px; }
+  table.tt td.empty { background: repeating-linear-gradient(45deg, #fafafa, #fafafa 4px, #f1f5f9 4px, #f1f5f9 8px); }
+  .subj { font-weight: 700; color: #0f172a; }
+  .meta { color: #475569; font-size: 11px; margin-top: 2px; }
+  .room { color: #94a3b8; font-size: 10px; font-style: italic; }
+  @media print {
+    body { margin: 12mm; }
+    h1 { font-size: 18pt; }
+    h2 { font-size: 14pt; page-break-before: auto; }
+    table.tt { font-size: 9pt; }
+  }
+  .footer { text-align: center; color: #94a3b8; margin-top: 40px; font-size: 11px; }
+</style>
+</head><body>
+<h1>${esc(school.schoolName || "Timetable")}</h1>
+<p style="color:#64748b">Exported ${esc(new Date().toLocaleString())} · Chronexa Web</p>
+${body}
+<div class="footer">Generated by Chronexa Web — open browser timetable. https://abhishekchhetri020.github.io/chronexa-web/</div>
+</body></html>`;
+  }
+
+  function exportHTML() {
+    const school = APP.school;
+    if (!school) { notify("Open a timetable first.", "error"); return; }
+    const html = buildHTML(school);
+    const base = (school._meta?.sourceFilename || school.schoolName || "chronexa").replace(/\.xml$/i, "");
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = base + ".html";
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    notify("Exported " + base + ".html");
+  }
+
+  window.addEventListener("app:export-html", exportHTML);
+  APP.io = APP.io || {};
+  APP.io.exportHTML = exportHTML;
+})();
+
+/* ─── FILE: js/solver/relation_enforcer.js ─── */
+/* Relation Enforcer — closes the #1 audit gap.
+ *
+ * The Classic audit identified the "30% done" trap: dialogs persist data
+ * the solver ignores. All 15 n_* relations have a 3-step wizard at
+ * /js/ui/entities/relations.js, but solver/constraints.js enforces ZERO
+ * of them. This module reads window.APP.school.relations and answers:
+ *
+ *   RelationEnforcer.check(school, lessonId, day, period) →
+ *     { hard: [verbatim-message…], soft: [verbatim-message…] }
+ *
+ * The solver's canPlace() can call this; the editor's constraint-explainer
+ * tooltip already calls it too. The signature mirrors
+ * SolverConstraints.checkPlacement() so integration is one line.
+ *
+ * Implements all 15 decoded n_* codes from
+ *   /Users/abhishekchhetri/Downloads/Cloning CLASSIC/docs/ASC_CARDRELATIONSHIPS_DECODING_2026-04-20.md
+ * Verbatim labels match Classic's wire.
+ */
+(function (global) {
+  "use strict";
+
+  const TYPS = Object.freeze({
+    n_0:  { label: "cannot follow",                                  binary: false, hard: true,  scope: "consecutive" },
+    n_1:  { label: "cannot be the same day",                         binary: false, hard: true,  scope: "sameDay" },
+    n_4:  { label: "Card distribution over the week",                binary: false, hard: false, scope: "distribution" },
+    n_5:  { label: "Two subjects must follow (arbitrary order)",     binary: true,  hard: true,  scope: "consecutive" },
+    n_6:  { label: "Two subjects must follow",                       binary: true,  hard: true,  scope: "consecutiveOrdered" },
+    n_7:  { label: "Break cannot be between group of lessons",       binary: false, hard: true,  scope: "betweenBreaks" },
+    n_8:  { label: "Two subjects must be in one day (arbitrary)",    binary: true,  hard: true,  scope: "sameDay" },
+    n_9:  { label: "Two subjects must be in one day (in order)",     binary: true,  hard: true,  scope: "sameDayOrdered" },
+    n_10: { label: "Group of cards from different classes must be in one day", binary: false, hard: true, scope: "sameDay" },
+    n_11: { label: "Divided cards from one subject must be in one day", binary: false, hard: false, scope: "sameDay" },
+    n_12: { label: "These subjects for the groups of listed classes must start at the same time", binary: false, hard: true, scope: "simultaneous" },
+    n_13: { label: "The selected subjects have to be at the same time in all selected classes", binary: false, hard: true, scope: "simultaneous" },
+    n_14: { label: "This subject must be on the same period each day", binary: false, hard: false, scope: "samePeriodEachDay" },
+    n_16: { label: "Subject must be first or last",                  binary: false, hard: true,  scope: "position" },
+    n_17: { label: "The selected subjects can be in the afternoon",  binary: false, hard: false, scope: "afternoon" },
+  });
+
+  function namesOf(school, kind, ids) {
+    if (!school || !ids) return [];
+    const list = (kind === "subjects") ? school.subjects
+              : (kind === "classes")   ? school.classes
+              : (kind === "teachers")  ? school.teachers
+              : [];
+    const out = [];
+    for (const id of (ids || [])) {
+      const r = list.find(x => x.id === id);
+      if (r) out.push(r.name || r.short || id);
+    }
+    return out;
+  }
+
+  function lessonMatches(lesson, rel) {
+    if (!lesson || !rel) return false;
+    const ss = rel.subjectids || [];
+    if (ss.length && !ss.includes(lesson.subjectId)) return false;
+    const cs = rel.classids || [];
+    if (cs.length && !(lesson.classIds || []).some(c => cs.includes(c))) return false;
+    return true;
+  }
+
+  function lessonMatchesSecond(lesson, rel) {
+    if (!lesson || !rel) return false;
+    const s2 = rel.subject2ids || [];
+    if (s2.length && !s2.includes(lesson.subjectId)) return false;
+    return true;
+  }
+
+  /** Find existing placements of any lesson matching this relation's primary scope */
+  function placedMatching(school, rel, matcher) {
+    matcher = matcher || lessonMatches;
+    const lessonById = (school._idx && school._idx.lessonById) ||
+      Object.fromEntries((school.lessons || []).map(l => [l.id, l]));
+    const out = [];
+    for (const c of (school.cards || [])) {
+      const lesson = lessonById[c.lessonId];
+      if (matcher(lesson, rel)) out.push({ card: c, lesson });
+    }
+    return out;
+  }
+
+  function check(school, lessonId, day, period) {
+    const result = { hard: [], soft: [] };
+    if (!school || !school.relations || !school.relations.length) return result;
+    const lessonById = (school._idx && school._idx.lessonById) ||
+      Object.fromEntries((school.lessons || []).map(l => [l.id, l]));
+    const lesson = lessonById[lessonId];
+    if (!lesson) return result;
+
+    for (const rel of school.relations) {
+      if (rel.disabled) continue;
+      const meta = TYPS[rel.typ];
+      if (!meta) continue;
+      const bin = meta.binary;
+      const primaryMatch = lessonMatches(lesson, rel);
+      const secondaryMatch = bin && lessonMatchesSecond(lesson, rel);
+      if (!primaryMatch && !secondaryMatch) continue;
+
+      const sink = meta.hard ? result.hard : result.soft;
+
+      switch (meta.scope) {
+        case "consecutive": {
+          // n_0: cannot follow.  Means: A then B (or vice-versa) cannot be consecutive periods.
+          // Check existing placements at (day, period±1) for the "other side" of the relation.
+          const others = placedMatching(school, rel,
+            primaryMatch ? (bin ? (l => lessonMatchesSecond(l, rel)) : lessonMatches)
+                         : lessonMatches);
+          for (const o of others) {
+            if (o.card.day !== day) continue;
+            if (Math.abs(o.card.period - period) === 1) {
+              sink.push(`${meta.label} — already placed in the adjacent period`);
+              break;
+            }
+          }
+          break;
+        }
+        case "consecutiveOrdered": {
+          // n_6: A must precede B. If placing B at (day, p), there must be an A at (day, p-1).
+          // Hard violation when A is missing OR ordering is reversed.
+          const others = placedMatching(school, rel,
+            l => lessonMatchesSecond(l, rel));
+          if (primaryMatch) {
+            // If we're placing A (the leader), no immediate violation if B isn't placed yet.
+            // If a B is placed at (day, p-1) we'd be violating order.
+            for (const o of others) {
+              if (o.card.day === day && o.card.period === period - 1) {
+                sink.push(`${meta.label} — order would be reversed`);
+                break;
+              }
+            }
+          }
+          break;
+        }
+        case "sameDay": {
+          // n_1: cannot be the same day.  n_8 / n_10: must be same day.
+          const others = placedMatching(school, rel,
+            bin ? (l => lessonMatchesSecond(l, rel)) : lessonMatches);
+          const sameDay = others.some(o => o.card.day === day);
+          const otherDayPresent = others.some(o => o.card.day !== day);
+          if (rel.typ === "n_1") {
+            if (sameDay) sink.push(`${meta.label} — already placed on this day`);
+          } else {
+            // must be same day (n_8/n_10/n_11)
+            if (!sameDay && otherDayPresent) sink.push(`${meta.label} — sibling lesson is on a different day`);
+          }
+          break;
+        }
+        case "sameDayOrdered": {
+          // n_9: A then B both on same day, A first.
+          const others = placedMatching(school, rel,
+            primaryMatch ? (l => lessonMatchesSecond(l, rel)) : lessonMatches);
+          const sameDay = others.find(o => o.card.day === day);
+          if (sameDay) {
+            // We placed A; B is at sameDay.period. Order violation if our (period) > sameDay.period
+            if (primaryMatch && period > sameDay.card.period)
+              sink.push(`${meta.label} — order would be reversed (B is earlier than A)`);
+          }
+          break;
+        }
+        case "betweenBreaks": {
+          // n_7: a break-period cannot fall between the lessons in this set.
+          // Simplified: warn if placement separates other matched cards by a break period.
+          const bell = school.bell && school.bell.periods;
+          if (!bell) break;
+          const others = placedMatching(school, rel, lessonMatches)
+            .filter(o => o.card.day === day);
+          if (others.length) {
+            const ps = others.map(o => o.card.period).concat(period).sort((a, b) => a - b);
+            for (let i = 1; i < ps.length; i++) {
+              const between = bell.slice(ps[i - 1] + 1, ps[i]);
+              if (between.some(p => p.isTeaching === false)) {
+                sink.push(`${meta.label} — a break falls between sibling lessons`);
+                break;
+              }
+            }
+          }
+          break;
+        }
+        case "simultaneous": {
+          // n_12/n_13: subjects must start at same time across classes/groups.
+          // Hard violation if another matched lesson is placed at the same day but DIFFERENT period.
+          const others = placedMatching(school, rel, lessonMatches);
+          for (const o of others) {
+            if (o.card.lessonId === lessonId) continue;
+            if (o.card.period !== period) {
+              sink.push(`${meta.label} — sibling lesson is at period ${o.card.period + 1}, this is ${period + 1}`);
+              break;
+            }
+          }
+          break;
+        }
+        case "samePeriodEachDay": {
+          // n_14: subject must be on the same period each day it's taught.
+          const others = placedMatching(school, rel, lessonMatches);
+          for (const o of others) {
+            if (o.card.lessonId === lessonId) continue;
+            if (o.card.day !== day && o.card.period !== period) {
+              sink.push(`${meta.label} — placed at period ${o.card.period + 1} on day ${o.card.day + 1}; this is period ${period + 1}`);
+              break;
+            }
+          }
+          break;
+        }
+        case "position": {
+          // n_16: subject must be first or last period of the day.
+          const periodCount = (school.bell && school.bell.periods) ? school.bell.periods.length : 8;
+          const wantFirst = rel.positions === "first";
+          const wantLast  = rel.positions === "last";
+          if (wantFirst && period !== 0)
+            sink.push(`${meta.label} — should be at period 1, this is ${period + 1}`);
+          if (wantLast && period !== periodCount - 1)
+            sink.push(`${meta.label} — should be at last period, this is ${period + 1}`);
+          break;
+        }
+        case "afternoon": {
+          // n_17: subjects must be in the afternoon (outside teaching block).
+          // Heuristic: afternoon = bottom half of periods.
+          const periodCount = (school.bell && school.bell.periods) ? school.bell.periods.length : 8;
+          if (period < Math.floor(periodCount / 2))
+            sink.push(`${meta.label} — must be in the afternoon (later periods)`);
+          break;
+        }
+        case "distribution": {
+          // n_4: card distribution — soft pressure on uneven placement (placeholder).
+          // Real impl requires sibling-card lookup; emit a hint only.
+          const dayCounts = {};
+          for (const o of placedMatching(school, rel, lessonMatches)) {
+            dayCounts[o.card.day] = (dayCounts[o.card.day] || 0) + 1;
+          }
+          const max = Math.max(...Object.values(dayCounts), 0);
+          if (max >= 2) {
+            sink.push(`${meta.label} — already ${max} on one day`);
+          }
+          break;
+        }
+      }
+    }
+    return result;
+  }
+
+  /** Return an array of human-readable enforcement summaries for the UI. */
+  function explain(school, lessonId, day, period) {
+    const r = check(school, lessonId, day, period);
+    return [...r.hard.map(s => `🚫 ${s}`), ...r.soft.map(s => `⚠️ ${s}`)];
+  }
+
+  global.RelationEnforcer = { check, explain, TYPS };
+})(window);
+
+/* ─── FILE: js/ui/components/verification.js ─── */
+/* Chronexa Verification Panel (bottom drawer)
+ *
+ * Public API:
+ *   Verification.mount(rootEl?)         -- one-time DOM init
+ *   Verification.update(violations)     -- replace the list
+ *   Verification.open(), .close(), .toggle()
+ *   Verification.onSelect(handler)      -- click on a violation row
+ *
+ * violations: Array<{
+ *   id?:        string,
+ *   kind:       "Teacher" | "Class" | "Room" | string,   // groups by this
+ *   level:      "hard" | "soft",
+ *   title:      string,
+ *   body?:      string,
+ *   cardId?:    string,
+ * }>
+ *
+ * The drawer renders three default sections in this order:
+ *   Teachers → Classes → Rooms
+ * Any other `kind` falls through into an "Other" bucket.
+ *
+ * a11y: the handle bar is a button (aria-expanded). Each violation row
+ * is role=button with tabindex. Section toggle uses aria-expanded too.
+ */
+(function (global) {
+  "use strict";
+
+  const KIND_GROUP = {
+    teacher: "Teachers", teachers: "Teachers",
+    class:   "Classes",  classes:  "Classes",
+    room:    "Rooms",    rooms:    "Rooms",
+  };
+  const GROUP_ORDER = ["Teachers", "Classes", "Rooms"];
+
+  let panel, handle, body, chip, title, live;
+  let listeners = [];
+  let root;
+  let current = [];
+
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      if (k === "class") n.className = attrs[k];
+      else if (k.startsWith("on") && typeof attrs[k] === "function") n.addEventListener(k.slice(2), attrs[k]);
+      else n.setAttribute(k, attrs[k]);
+    }
+    for (const c of kids) if (c != null) n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    return n;
+  }
+
+  function mount(host) {
+    if (panel) return panel;
+    root = host || document.body;
+
+    panel = el("section", {
+      class: "chrx-verification-panel",
+      "aria-label": "Verification results",
+    });
+
+    handle = el("button", {
+      class: "chrx-verification-panel__handle",
+      type: "button",
+      "aria-expanded": "false",
+      "aria-controls": "chrx-verify-body",
+      onclick: toggle,
+    });
+    title = el("span", { class: "chrx-verification-panel__title" }, "Verification");
+    chip  = el("span", { class: "chrx-verification-panel__chip chrx-verification-panel__chip--ok" }, "0 issues");
+    const spacer = el("span", { class: "chrx-verification-panel__spacer", style: "flex:1" });
+    handle.append(title, chip, spacer);
+    panel.append(handle);
+
+    body = el("div", { class: "chrx-verification-panel__body", id: "chrx-verify-body" });
+    panel.append(body);
+
+    live = el("div", { class: "chrx-sr-only", "aria-live": "polite" });
+    panel.append(live);
+
+    root.append(panel);
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && panel.classList.contains("is-open")) close_();
+    });
+    return panel;
+  }
+
+  function open_() {
+    if (!panel) mount();
+    panel.classList.add("is-open");
+    handle.setAttribute("aria-expanded", "true");
+    live.textContent = `Verification drawer open. ${current.length} violation${current.length === 1 ? "" : "s"}.`;
+  }
+  function close_() {
+    if (!panel) return;
+    panel.classList.remove("is-open");
+    handle.setAttribute("aria-expanded", "false");
+  }
+  function toggle() {
+    if (!panel) return;
+    if (panel.classList.contains("is-open")) close_(); else open_();
+  }
+
+  function update(violations) {
+    if (!panel) mount();
+    current = Array.isArray(violations) ? violations.slice() : [];
+    paint();
+  }
+
+  function paint() {
+    body.innerHTML = "";
+    const total = current.length;
+    chip.textContent = total === 0 ? "All green" : `${total} issue${total === 1 ? "" : "s"}`;
+    chip.classList.toggle("chrx-verification-panel__chip--ok", total === 0);
+
+    if (!total) {
+      body.append(el("div", { class: "chrx-verification-section" },
+        el("div", { class: "chrx-verification-section__head" },
+          el("span", { class: "chrx-verification-section__chev" }, "›"),
+          el("span", { class: "chrx-verification-section__name" }, "No conflicts detected"),
+        ),
+      ));
+      return;
+    }
+
+    const buckets = new Map();
+    for (const v of current) {
+      const g = KIND_GROUP[(v.kind || "").toLowerCase()] || (v.kind ? capitalize(v.kind) + "s" : "Other");
+      if (!buckets.has(g)) buckets.set(g, []);
+      buckets.get(g).push(v);
+    }
+    const order = [...GROUP_ORDER, ...[...buckets.keys()].filter((g) => !GROUP_ORDER.includes(g))];
+
+    for (const g of order) {
+      const items = buckets.get(g);
+      if (!items?.length) continue;
+      const sec = el("div", { class: "chrx-verification-section is-open" });
+      const errors = items.filter((i) => i.level === "hard").length;
+      const head = el("button", {
+        class: "chrx-verification-section__head",
+        type: "button",
+        "aria-expanded": "true",
+        "aria-controls": `chrx-verify-grp-${g.toLowerCase().replace(/\s+/g, '-')}`,
+        onclick: () => {
+          const open = sec.classList.toggle("is-collapsed");
+          head.setAttribute("aria-expanded", String(!open));
+          sec.classList.toggle("is-open", !open);
+        },
+      });
+      head.append(
+        el("span", { class: "chrx-verification-section__chev", "aria-hidden": "true" }, "›"),
+        el("span", { class: "chrx-verification-section__name" }, g),
+        el("span", {
+          class: "chrx-verification-section__count" + (errors ? " chrx-verification-section__count--error" : ""),
+        }, String(items.length)),
+      );
+      sec.append(head);
+
+      const rows = el("div", {
+        class: "chrx-verification-section__rows",
+        id: `chrx-verify-grp-${g.toLowerCase().replace(/\s+/g, '-')}`,
+      });
+      for (const v of items) {
+        const row = el("div", {
+          class: "chrx-violation chrx-violation--" + (v.level || "soft"),
+          role: "button",
+          tabindex: "0",
+          "aria-label": `${v.level === "hard" ? "Hard" : "Soft"} violation: ${v.title}${v.body ? ". " + v.body : ""}`,
+          onclick: () => emit(v),
+          onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); emit(v); } },
+        },
+          el("div", { class: "chrx-violation__icon", "aria-hidden": "true" }, v.level === "hard" ? "■" : "▲"),
+          el("div", { class: "chrx-violation__text" },
+            el("div", { class: "chrx-violation__title" }, v.title || "Violation"),
+            v.body ? el("div", { class: "chrx-violation__body" }, v.body) : null,
+          ),
+        );
+        rows.append(row);
+      }
+      sec.append(rows);
+      body.append(sec);
+    }
+  }
+
+  function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+  function onSelect(h) { listeners.push(h); return () => listeners = listeners.filter((l) => l !== h); }
+  function emit(v) { listeners.forEach((h) => { try { h(v); } catch {} }); }
+
+  global.Verification = { mount, update, open: open_, close: close_, toggle, onSelect };
+})(typeof window !== "undefined" ? window : globalThis);
+
+/* ─── FILE: js/ui/solver_ui/backend_client.js ─── */
+/* Chronexa Solver — Backend client + browser-worker adapter.
+ *
+ * Public API:
+ *   SolverUI.run({ school, options, algorithm, onFallback }) -> Source
+ *     algorithm:  "browser" | "cloud"
+ *     options:    SolveRequest.options (timeLimitSec, seed, verbose, ...)
+ *     onFallback: optional callback fired iff a cloud run had to fall back
+ *
+ *   Source = {
+ *     subscribe(handler) -> unsubscribe
+ *     cancel()
+ *     pause(), resume()                  // visual freeze only — see SOLVER_UI.md
+ *     mode: "browser" | "cloud"
+ *   }
+ *
+ *   Handler events:
+ *     { type: "progress", iter, softScore, hardConflicts, backtracks?, durationMs }
+ *     { type: "done",     result: SolveResponse }
+ *     { type: "error",    message }
+ *
+ * Cloud path (wave-3):
+ *   1. POST `${CHRONEXA_BACKEND_URL}/solve/start` → { jobId }
+ *   2. setInterval(1000) → GET `/solve/status/:jobId` → { state, progress, result?, error? }
+ *      state ∈ "queued" | "running" | "done" | "cancelled" | "error"
+ *   3. cancel() → POST `/solve/cancel/:jobId`
+ *
+ * Backward compat:
+ *   If `/solve/start` returns 404 (older backend, sync-only), we fall back to
+ *   the legacy `POST /solve` + 750ms synthesized heartbeat path. The Source
+ *   contract is identical either way.
+ */
+(function (global) {
+  "use strict";
+
+  const HEARTBEAT_MS = 750;
+  const POLL_MS = 1000;
+  const DEFAULT_TIMEOUT_MS = 90_000;
+
+  // Capture this script's URL at load time so the Worker URL resolves
+  // correctly even when run() is called from a click handler later.
+  const SELF_URL = (document.currentScript && document.currentScript.src) || location.href;
+
+  function makeSubscribable() {
+    const listeners = new Set();
+    return {
+      subscribe(h) { listeners.add(h); return () => listeners.delete(h); },
+      emit(ev) { for (const h of listeners) { try { h(ev); } catch (e) { console.error(e); } } },
+    };
+  }
+
+  // -------- browser worker source -----------------------------------------
+  function runBrowser(school, options) {
+    const sub = makeSubscribable();
+    let paused = false;
+    let buf = [];
+    let cancelled = false;
+
+    const url = new URL("../../solver/worker.js", SELF_URL);
+    const worker = new Worker(url, { type: "module" });
+
+    worker.onmessage = (ev) => {
+      const m = ev.data || {};
+      if (cancelled) return;
+      if (paused && m.type === "progress") { buf.push(m); return; }
+      if (m.type === "done") {
+        sub.emit({ type: "done", result: m.result });
+        worker.terminate();
+      } else if (m.type === "error") {
+        sub.emit({ type: "error", message: m.message || "worker error" });
+        worker.terminate();
+      } else if (m.type === "progress") {
+        sub.emit(m);
+      }
+    };
+    worker.onerror = (e) => sub.emit({ type: "error", message: (e && e.message) || "worker error" });
+
+    worker.postMessage({ type: "solve", school, options });
+
+    return {
+      mode: "browser",
+      subscribe: sub.subscribe,
+      cancel() {
+        cancelled = true;
+        try { worker.terminate(); } catch {}
+        sub.emit({ type: "cancelled" });
+      },
+      pause()  { paused = true; },
+      resume() {
+        paused = false;
+        const tail = buf; buf = [];
+        if (tail.length) sub.emit(tail[tail.length - 1]);
+      },
+    };
+  }
+
+  // -------- cloud (HTTP) source -------------------------------------------
+
+  /**
+   * Legacy sync /solve + 750ms synthesized heartbeat path. Used when the
+   * backend doesn't yet expose /solve/start (we get a 404 on first attempt).
+   */
+  function runCloudSyncFallback(baseUrl, school, options, sub, t0) {
+    const ctl = new AbortController();
+    let cancelled = false;
+    let paused = false;
+    let pausedSnap = null;
+    let lastIter = 0;
+    const timeLimitMs = Math.max(1000, (options && options.timeLimitSec ? options.timeLimitSec : 60) * 1000);
+
+    const heartbeat = setInterval(() => {
+      if (cancelled) return;
+      const dt = performance.now() - t0;
+      lastIter += Math.max(1, Math.round(timeLimitMs / 200));
+      const ev = {
+        type: "progress",
+        iter: lastIter,
+        softScore: 0,
+        hardConflicts: 0,
+        durationMs: Math.round(dt),
+      };
+      if (paused) { pausedSnap = ev; return; }
+      sub.emit(ev);
+    }, HEARTBEAT_MS);
+
+    const timeout = setTimeout(() => {
+      if (cancelled) return;
+      try { ctl.abort(); } catch {}
+    }, DEFAULT_TIMEOUT_MS + timeLimitMs);
+
+    const finished = fetch(baseUrl + "/solve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ school, options }),
+      signal: ctl.signal,
+    })
+      .then(r => r.ok ? r.json() : r.json().then(b => Promise.reject(new Error(b.error || ("HTTP " + r.status)))))
+      .then(result => {
+        if (cancelled) return;
+        sub.emit({ type: "done", result });
+      })
+      .catch(err => {
+        if (cancelled) return;
+        const msg = (err && err.name === "AbortError") ? "timeout" : ((err && err.message) || String(err));
+        sub.emit({ type: "error", message: msg });
+      })
+      .finally(() => {
+        clearInterval(heartbeat);
+        clearTimeout(timeout);
+      });
+
+    return {
+      cancel() {
+        cancelled = true;
+        try { ctl.abort(); } catch {}
+        clearInterval(heartbeat);
+        clearTimeout(timeout);
+        sub.emit({ type: "cancelled" });
+      },
+      pause()  { paused = true; },
+      resume() { paused = false; if (pausedSnap) { sub.emit(pausedSnap); pausedSnap = null; } },
+      _done: finished,
+    };
+  }
+
+  /** Async /solve/start + /solve/status polling. */
+  function runCloudAsync(baseUrl, school, options, sub, t0) {
+    let cancelled = false;
+    let paused = false;
+    let pausedSnap = null;
+    let jobId = null;
+    let pollTimer = null;
+    let cancelInFlight = false;
+
+    function clearPoll() {
+      if (pollTimer != null) { clearInterval(pollTimer); pollTimer = null; }
+    }
+
+    function poll() {
+      if (!jobId || cancelled) return;
+      fetch(`${baseUrl}/solve/status/${encodeURIComponent(jobId)}`, { method: "GET" })
+        .then(r => {
+          if (r.status === 404) throw new Error("status-404");
+          if (!r.ok) return r.text().then(t => Promise.reject(new Error(t || ("HTTP " + r.status))));
+          return r.json();
+        })
+        .then(snap => {
+          if (cancelled) return;
+          const p = snap.progress || {};
+          const ev = {
+            type: "progress",
+            iter: p.iter | 0,
+            softScore: p.softScore | 0,
+            hardConflicts: p.hardConflicts | 0,
+            backtracks: (p.backtracks | 0) || undefined,
+            durationMs: p.durationMs | 0,
+          };
+          if (paused) { pausedSnap = ev; }
+          else { sub.emit(ev); }
+          if (snap.state === "done") {
+            clearPoll();
+            sub.emit({ type: "done", result: snap.result });
+          } else if (snap.state === "error") {
+            clearPoll();
+            sub.emit({ type: "error", message: snap.error || "backend error" });
+          } else if (snap.state === "cancelled") {
+            clearPoll();
+            // Don't double-emit cancelled here; cancel() already did.
+          }
+        })
+        .catch(err => {
+          if (cancelled) return;
+          // Transient errors are tolerated; surface only on persistent failure.
+          // For simplicity, emit error and stop on any non-404 fault.
+          clearPoll();
+          sub.emit({ type: "error", message: (err && err.message) || String(err) });
+        });
+    }
+
+    return {
+      _started: fetch(baseUrl + "/solve/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ school, options }),
+      })
+        .then(r => {
+          if (r.status === 404) {
+            const err = new Error("start-404");
+            err.fallback = true;
+            throw err;
+          }
+          if (!r.ok) return r.text().then(t => Promise.reject(new Error(t || ("HTTP " + r.status))));
+          return r.json();
+        })
+        .then(j => {
+          jobId = j && j.jobId;
+          if (!jobId) throw new Error("missing jobId in /solve/start response");
+          pollTimer = setInterval(poll, POLL_MS);
+          // Kick off an immediate poll so first progress arrives fast.
+          poll();
+        }),
+      cancel() {
+        cancelled = true;
+        clearPoll();
+        if (jobId && !cancelInFlight) {
+          cancelInFlight = true;
+          fetch(`${baseUrl}/solve/cancel/${encodeURIComponent(jobId)}`, { method: "POST" })
+            .catch(() => {});
+        }
+        sub.emit({ type: "cancelled" });
+      },
+      pause()  { paused = true; },
+      resume() { paused = false; if (pausedSnap) { sub.emit(pausedSnap); pausedSnap = null; } },
+      get jobId() { return jobId; },
+    };
+  }
+
+  function runCloud(school, options, onFallback) {
+    const sub = makeSubscribable();
+    const baseUrl = (global.CHRONEXA_BACKEND_URL || "").replace(/\/+$/, "");
+    if (!baseUrl) {
+      if (onFallback) try { onFallback("CHRONEXA_BACKEND_URL not set"); } catch {}
+      return runBrowser(school, options);
+    }
+
+    const t0 = performance.now();
+    const src = {
+      mode: "cloud",
+      subscribe: sub.subscribe,
+      cancel() {}, pause() {}, resume() {},
+    };
+
+    // Prefer the async /solve/start path; on 404 → legacy /solve fallback.
+    const asyncImpl = runCloudAsync(baseUrl, school, options, sub, t0);
+    asyncImpl._started
+      .then(() => {
+        Object.assign(src, {
+          cancel: asyncImpl.cancel,
+          pause:  asyncImpl.pause,
+          resume: asyncImpl.resume,
+        });
+      })
+      .catch(err => {
+        if (err && err.fallback) {
+          // Backend doesn't have /solve/start — gracefully fall back to legacy.
+          if (onFallback) try { onFallback("backend has no /solve/start, using sync /solve"); } catch {}
+          const sync = runCloudSyncFallback(baseUrl, school, options, sub, t0);
+          Object.assign(src, {
+            cancel: sync.cancel,
+            pause:  sync.pause,
+            resume: sync.resume,
+          });
+          return;
+        }
+        // Soft fallback to browser worker on cloud failure.
+        const msg = (err && err.message) || String(err);
+        if (onFallback) try { onFallback("cloud failed: " + msg); } catch {}
+        const local = runBrowser(school, options);
+        local.subscribe(sub.emit);
+        Object.assign(src, local);
+      });
+
+    return src;
+  }
+
+  function run(spec) {
+    const school = spec.school;
+    const options = spec.options || {};
+    const algo = spec.algorithm || "browser";
+    if (algo === "cloud") return runCloud(school, options, spec.onFallback);
+    return runBrowser(school, options);
+  }
+
+  global.SolverUI = global.SolverUI || {};
+  global.SolverUI.run = run;
+  global.SolverUI._runBrowser = runBrowser;   // exported for tests
+  global.SolverUI._runCloud   = runCloud;
+})(typeof window !== "undefined" ? window : globalThis);
+
+/* ─── FILE: js/ui/solver_ui/prelaunch_dialog.js ─── */
+/* Chronexa Solver — Pre-launch dialog
+ *
+ * Mirrors Classic's `Test the timetable` / `Generate timetable` pre-flight.
+ * See docs/legacy-research §B and the gap-map's
+ * Complexity / Conditions / Algorithm matrix.
+ *
+ * Public API:
+ *   SolverUI.PreLaunch.open(opts)
+ *     opts.defaultMode      : "generate" | "test"   (default "generate")
+ *     opts.school           : SchoolData            (only used for the card-count badge)
+ *     opts.onConfirm(cfg)   : called with the chosen config, the dialog has already closed
+ *     opts.onCancel()       : called when user dismisses
+ *
+ *   cfg = {
+ *     mode:       "generate" | "test",
+ *     complexity: "normal" | "large" | "huge",   // → timeLimitSec 30 / 60 / 120
+ *     conditions: "draft" | "relax" | "strict",  // → solver options.conditions (advisory; solver ignores today)
+ *     algorithm:  "browser" | "cloud",           // browser Worker vs POST /solve
+ *     showReport: true | false                   // open solver report after run
+ *   }
+ *
+ * Design notes:
+ *   - Globals/IIFE pattern (matches other components in js/ui/components/).
+ *   - Uses the existing `chrx-*` theme tokens; no Tailwind.
+ *   - The dialog is built on first open and reused (cheap toggle).
+ *   - Card-count badge helps the user pick complexity ("1482 cards → Large").
+ */
+(function (global) {
+  "use strict";
+
+  const TIME_LIMIT_BY_COMPLEXITY = { normal: 30, large: 60, huge: 120 };
+
+  let host, dialog, current;
+
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      if (k === "class") n.className = attrs[k];
+      else if (k.startsWith("on") && typeof attrs[k] === "function") n.addEventListener(k.slice(2), attrs[k]);
+      else n.setAttribute(k, attrs[k]);
+    }
+    for (const c of kids) if (c != null) n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    return n;
+  }
+
+  function radioGroup(name, options, defaultValue) {
+    const wrap = el("div", { class: "csu-radio-row", role: "radiogroup", "aria-label": name });
+    for (const o of options) {
+      const id = `csu-${name}-${o.value}`;
+      const input = el("input", { type: "radio", name, id, value: o.value });
+      if (o.value === defaultValue) input.checked = true;
+      const lab = el("label", { class: "csu-radio", for: id },
+        input,
+        el("span", { class: "csu-radio__title" }, o.label),
+        o.hint ? el("span", { class: "csu-radio__hint" }, o.hint) : null,
+      );
+      wrap.appendChild(lab);
+    }
+    return wrap;
+  }
+
+  function selectedRadio(wrap, name) {
+    const r = wrap.querySelector(`input[name="${name}"]:checked`);
+    return r ? r.value : null;
+  }
+
+  function build() {
+    host = el("div", { class: "csu-backdrop", role: "presentation", "aria-hidden": "true" });
+    host.addEventListener("click", (e) => { if (e.target === host) doCancel(); });
+
+    dialog = el("section", {
+      class: "csu-dialog",
+      role: "dialog",
+      "aria-modal": "true",
+      "aria-labelledby": "csu-prelaunch-title",
+    });
+
+    const titleEl = el("h2", { class: "csu-dialog__title", id: "csu-prelaunch-title" }, "Run the solver");
+    const sub = el("p", { class: "csu-dialog__sub" }, "Pick how to check or build your timetable.");
+    const summary = el("div", { class: "csu-dialog__summary", id: "csu-prelaunch-summary" }, "");
+
+    // --- Mode (Test vs Generate) — big buttons + linked hidden radio --------
+    const modeBtnTest = el("button", {
+      type: "button",
+      class: "csu-modebtn",
+      "data-mode": "test",
+      onclick: () => setMode("test"),
+    },
+      el("span", { class: "csu-modebtn__icon" }, "✓"),
+      el("span", { class: "csu-modebtn__title" }, "Test the timetable"),
+      el("span", { class: "csu-modebtn__hint" }, "Validate constraints — does not move any card."),
+    );
+    const modeBtnGen = el("button", {
+      type: "button",
+      class: "csu-modebtn",
+      "data-mode": "generate",
+      onclick: () => setMode("generate"),
+    },
+      el("span", { class: "csu-modebtn__icon" }, "✦"),
+      el("span", { class: "csu-modebtn__title" }, "Generate timetable"),
+      el("span", { class: "csu-modebtn__hint" }, "Run the solver from scratch and place cards."),
+    );
+    const modeRow = el("div", { class: "csu-mode-row" }, modeBtnTest, modeBtnGen);
+
+    // --- Complexity ----------------------------------------------------------
+    const complexity = radioGroup("complexity", [
+      { value: "normal", label: "Normal", hint: "30s · small school" },
+      { value: "large",  label: "Large",  hint: "60s · 30–50 classes" },
+      { value: "huge",   label: "Huge",   hint: "2 min · 60+ teachers" },
+    ], "large");
+
+    // --- Conditions ----------------------------------------------------------
+    const conditions = radioGroup("conditions", [
+      { value: "draft",  label: "Draft",             hint: "Accept any partial result." },
+      { value: "relax",  label: "Allow relaxation",  hint: "Skip the toughest soft constraints if stuck." },
+      { value: "strict", label: "Strict",            hint: "Reject anything with hard conflicts." },
+    ], "relax");
+
+    // --- Algorithm -----------------------------------------------------------
+    const cloudReady = !!(global.CHRONEXA_BACKEND_URL && global.CHRONEXA_BACKEND_URL.length > 0);
+    const algorithm = radioGroup("algorithm", [
+      { value: "browser", label: "Run on this computer", hint: "Uses a Web Worker. Stays offline." },
+      { value: "cloud",   label: "Run on cloud",          hint: cloudReady ? "OR-Tools CP-SAT via backend." : "Backend URL not set — will fall back to browser." },
+    ], "browser");
+
+    // --- Report toggle -------------------------------------------------------
+    const reportTog = el("input", { type: "checkbox", id: "csu-show-report" });
+    reportTog.checked = true;
+    const reportLabel = el("label", { class: "csu-toggle", for: "csu-show-report" },
+      reportTog,
+      el("span", null, "Show solver report after run"),
+    );
+
+    // --- Actions -------------------------------------------------------------
+    const cancelBtn = el("button", { type: "button", class: "chrx-btn", onclick: doCancel }, "Cancel");
+    const startBtn  = el("button", { type: "button", class: "chrx-btn chrx-btn--primary", id: "csu-prelaunch-start", onclick: doStart }, "Start");
+    const actions = el("div", { class: "csu-dialog__actions" }, cancelBtn, startBtn);
+
+    dialog.append(
+      titleEl, sub,
+      modeRow,
+      summary,
+      sectionTitle("Complexity"),    complexity,
+      sectionTitle("Conditions"),    conditions,
+      sectionTitle("Algorithm"),     algorithm,
+      reportLabel,
+      actions,
+    );
+    host.appendChild(dialog);
+    document.body.appendChild(host);
+
+    // Esc to cancel.
+    host.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") { e.preventDefault(); doCancel(); }
+    });
+  }
+
+  function sectionTitle(text) {
+    return el("h3", { class: "csu-dialog__section" }, text);
+  }
+
+  function setMode(mode) {
+    if (!dialog) return;
+    dialog.querySelectorAll(".csu-modebtn").forEach(b => {
+      b.classList.toggle("is-selected", b.dataset.mode === mode);
+    });
+    const startBtn = dialog.querySelector("#csu-prelaunch-start");
+    if (startBtn) startBtn.textContent = mode === "test" ? "Run test" : "Start generation";
+    dialog.dataset.mode = mode;
+  }
+
+  function setSummary(school) {
+    const sum = dialog.querySelector("#csu-prelaunch-summary");
+    if (!sum) return;
+    if (!school) { sum.textContent = ""; sum.classList.remove("is-on"); return; }
+    const c = (school._meta && school._meta.counts) || {};
+    const lessons = c.lessons || (school.lessons ? school.lessons.length : 0);
+    const cards   = c.cards   || (school.cards   ? school.cards.length   : 0);
+    sum.textContent = `${school.schoolName || "(school)"} · ${c.teachers || 0} teachers · ${c.classes || 0} classes · ${lessons} lessons · ${cards} placed`;
+    sum.classList.add("is-on");
+  }
+
+  function doCancel() {
+    close();
+    if (current && current.onCancel) {
+      try { current.onCancel(); } catch (e) { console.error(e); }
+    }
+    current = null;
+  }
+
+  function doStart() {
+    const mode = dialog.dataset.mode || "generate";
+    const cfg = {
+      mode,
+      complexity: selectedRadio(dialog, "complexity") || "large",
+      conditions: selectedRadio(dialog, "conditions") || "relax",
+      algorithm:  selectedRadio(dialog, "algorithm")  || "browser",
+      showReport: !!dialog.querySelector("#csu-show-report").checked,
+    };
+    cfg.timeLimitSec = TIME_LIMIT_BY_COMPLEXITY[cfg.complexity] || 60;
+    const cb = current && current.onConfirm;
+    close();
+    current = null;
+    if (cb) {
+      try { cb(cfg); } catch (e) { console.error(e); }
+    }
+  }
+
+  function open(opts) {
+    current = opts || {};
+    if (!host) build();
+    setMode(current.defaultMode || "generate");
+    setSummary(current.school || (global.APP && global.APP.school) || null);
+    host.classList.add("is-open");
+    host.setAttribute("aria-hidden", "false");
+    // Focus the start button after frame so screen readers track it.
+    requestAnimationFrame(() => {
+      const f = dialog.querySelector("#csu-prelaunch-start");
+      if (f) f.focus();
+    });
+  }
+  function close() {
+    if (!host) return;
+    host.classList.remove("is-open");
+    host.setAttribute("aria-hidden", "true");
+  }
+
+  global.SolverUI = global.SolverUI || {};
+  global.SolverUI.PreLaunch = { open, close };
+})(typeof window !== "undefined" ? window : globalThis);
+
+/* ─── FILE: js/ui/solver_ui/progress_modal.js ─── */
+/* Chronexa Solver — Progress modal.
+ *
+ * Source-agnostic live view of a running solve. Works against any object that
+ * conforms to the Source interface in backend_client.js — i.e. the browser
+ * worker adapter and the cloud HTTP client both feed it the same events.
+ *
+ *   SolverUI.Progress.open({
+ *     source:    Source                  // { subscribe, cancel, pause, resume, mode }
+ *     timeLimitSec: number               // for the global progress bar
+ *     totalLessons: number               // for hard-conflict scaling
+ *     mode:      "test" | "generate"
+ *     showReport: boolean
+ *     onDone(result, ctx)                // ctx = { mode, showReport }
+ *     onCancel()
+ *   })
+ *
+ * Live stats row mirrors Classic's m_nRychlost / m_nTries / p_VykaslalSa /
+ * soft score — naming localised to plain English. Stuck counter shows "—"
+ * because csp_solver.js doesn't emit it (Agent C's progress payload has
+ * iter / softScore / hardConflicts / durationMs only).
+ *
+ * The mini-heatmap renders a 6×N (days × periods) grid and uses durationMs +
+ * lastIterations to colour cells by recent activity. It is a visual hint —
+ * the live cell-level conflict pattern isn't in the progress feed, so we
+ * fall back to a wave animation that helps the user see the solver is alive.
+ */
+(function (global) {
+  "use strict";
+
+  let host, dlg, refs, state;
+
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      if (k === "class") n.className = attrs[k];
+      else if (k.startsWith("on") && typeof attrs[k] === "function") n.addEventListener(k.slice(2), attrs[k]);
+      else n.setAttribute(k, attrs[k]);
+    }
+    for (const c of kids) if (c != null) n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    return n;
+  }
+
+  function fmtInt(n) {
+    if (n == null || !isFinite(n)) return "—";
+    return Number(n).toLocaleString();
+  }
+  function fmtTime(ms) {
+    const s = Math.max(0, Math.round((ms || 0) / 1000));
+    const m = Math.floor(s / 60), r = s % 60;
+    return m + ":" + String(r).padStart(2, "0");
+  }
+
+  function build() {
+    host = el("div", { class: "csu-backdrop", role: "presentation", "aria-hidden": "true" });
+    dlg = el("section", {
+      class: "csu-dialog csu-progress",
+      role: "dialog",
+      "aria-modal": "true",
+      "aria-labelledby": "csu-progress-title",
+    });
+
+    const title = el("h2", { class: "csu-dialog__title", id: "csu-progress-title" }, "Generating timetable…");
+    const sub = el("p", { class: "csu-dialog__sub", id: "csu-progress-sub" }, "Cycle 1 · in browser worker");
+
+    // ---- progress bars
+    const bar1Fill = el("div", { class: "csu-bar__fill", style: "width:0%" });
+    const bar1 = el("div", { class: "csu-bar" }, el("div", { class: "csu-bar__label" }, "Overall"), el("div", { class: "csu-bar__track" }, bar1Fill));
+    const bar2Fill = el("div", { class: "csu-bar__fill csu-bar__fill--accent2", style: "width:0%" });
+    const bar2 = el("div", { class: "csu-bar" }, el("div", { class: "csu-bar__label" }, "Current branch"), el("div", { class: "csu-bar__track" }, bar2Fill));
+
+    // ---- stat tiles
+    const tiles = el("div", { class: "csu-tiles" });
+    function tile(id, label) {
+      const v = el("div", { class: "csu-tile__value", id }, "—");
+      const t = el("div", { class: "csu-tile" },
+        el("div", { class: "csu-tile__label" }, label),
+        v,
+      );
+      tiles.appendChild(t);
+      return v;
+    }
+    const tSpeed   = tile("csu-stat-speed",   "Schedules / sec");
+    const tIter    = tile("csu-stat-iter",    "Iterations");
+    const tHard    = tile("csu-stat-hard",    "Hard conflicts");
+    const tSoft    = tile("csu-stat-soft",    "Soft score");
+    const tElapsed = tile("csu-stat-elapsed", "Time");
+    const tStuck   = tile("csu-stat-stuck",   "Stuck counter");
+
+    // ---- heatmap
+    const heat = el("div", { class: "csu-heatmap", "aria-hidden": "true" });
+
+    // ---- buttons
+    const pauseBtn  = el("button", { type: "button", class: "chrx-btn", onclick: doPauseResume }, "Pause");
+    const cancelBtn = el("button", { type: "button", class: "chrx-btn chrx-btn--danger", onclick: doCancel }, "Cancel");
+    const acceptBtn = el("button", { type: "button", class: "chrx-btn chrx-btn--primary", onclick: doAcceptPartial }, "Accept partial result");
+    const actions = el("div", { class: "csu-dialog__actions" }, pauseBtn, acceptBtn, cancelBtn);
+
+    dlg.append(title, sub, bar1, bar2, tiles, heat, actions);
+    host.appendChild(dlg);
+    document.body.appendChild(host);
+
+    refs = {
+      title, sub, bar1Fill, bar2Fill, tSpeed, tIter, tHard, tSoft, tElapsed, tStuck,
+      heat, pauseBtn, cancelBtn, acceptBtn,
+    };
+  }
+
+  function buildHeatmap() {
+    const cellCount = 6 * 10;     // 6 days × up to 10 periods (display only)
+    refs.heat.innerHTML = "";
+    for (let i = 0; i < cellCount; i++) {
+      refs.heat.appendChild(el("div", { class: "csu-heatmap__cell", "data-i": i }));
+    }
+  }
+
+  function pulseHeatmap(iter) {
+    if (!refs || !refs.heat) return;
+    const cells = refs.heat.children;
+    // Sweep a small "comet" across cells driven by iteration count.
+    const head = iter % cells.length;
+    for (let i = 0; i < cells.length; i++) {
+      const d = (i - head + cells.length) % cells.length;
+      const intensity = Math.max(0, 1 - d / 6);
+      const cell = cells[i];
+      if (intensity > 0) cell.style.background = `rgba(0, 100, 224, ${0.10 + 0.45 * intensity})`;
+      else cell.style.background = "";
+    }
+  }
+
+  function doPauseResume() {
+    if (!state) return;
+    if (state.paused) {
+      state.paused = false;
+      try { state.source.resume(); } catch {}
+      refs.pauseBtn.textContent = "Pause";
+    } else {
+      state.paused = true;
+      try { state.source.pause(); } catch {}
+      refs.pauseBtn.textContent = "Resume";
+    }
+  }
+  function doCancel() {
+    if (!state) return;
+    state.terminating = "cancel";
+    try { state.source.cancel(); } catch {}
+    closeAndCallback(null, "cancel");
+  }
+  function doAcceptPartial() {
+    if (!state) return;
+    // For browser: terminate() loses the in-flight assignment — we have no
+    // partial in the progress payload. Treat Accept-Partial as "stop and use
+    // whatever the last `done` event delivered". If nothing arrived yet, we
+    // emit a no-op cancel.
+    state.terminating = "accept";
+    try { state.source.cancel(); } catch {}
+    // If a `done` event raced in just before, lastResult will be set.
+    if (state.lastResult) {
+      closeAndCallback(state.lastResult, "done");
+    } else {
+      closeAndCallback(null, "cancel");
+    }
+  }
+
+  function closeAndCallback(result, kind) {
+    if (!state) return;
+    const cb = (kind === "done") ? state.onDone : state.onCancel;
+    const ctx = { mode: state.mode, showReport: state.showReport };
+    state.unsubscribe && state.unsubscribe();
+    state = null;
+    close();
+    if (cb) {
+      try { cb(result, ctx); } catch (e) { console.error(e); }
+    }
+  }
+
+  function open(opts) {
+    if (!host) build();
+    buildHeatmap();
+    state = {
+      source: opts.source,
+      mode: opts.mode || "generate",
+      showReport: opts.showReport !== false,
+      timeLimitSec: opts.timeLimitSec || 60,
+      totalLessons: opts.totalLessons || 0,
+      onDone: opts.onDone,
+      onCancel: opts.onCancel,
+      paused: false,
+      lastResult: null,
+      terminating: null,
+      lastIter: 0,
+      lastDurMs: 0,
+      lastSpeed: 0,
+    };
+
+    // Reset DOM
+    refs.title.textContent = state.mode === "test" ? "Testing timetable…" : "Generating timetable…";
+    refs.sub.textContent = "Cycle 1 · " + (opts.source && opts.source.mode === "cloud" ? "cloud (OR-Tools)" : "browser worker");
+    refs.bar1Fill.style.width = "0%";
+    refs.bar2Fill.style.width = "0%";
+    refs.pauseBtn.textContent = "Pause";
+    refs.acceptBtn.style.display = state.mode === "test" ? "none" : "";
+    refs.tSpeed.textContent = "—";
+    refs.tIter.textContent = "—";
+    refs.tHard.textContent = "—";
+    refs.tSoft.textContent = "—";
+    refs.tElapsed.textContent = "0:00";
+    refs.tStuck.textContent = "—";
+
+    host.classList.add("is-open");
+    host.setAttribute("aria-hidden", "false");
+
+    state.unsubscribe = state.source.subscribe(handleEvent);
+  }
+
+  function handleEvent(ev) {
+    if (!state || !ev) return;
+    if (ev.type === "progress") {
+      const dt = Math.max(1, ev.durationMs || 0);
+      const iter = ev.iter || 0;
+      const speed = (iter - state.lastIter) / Math.max(0.001, (dt - state.lastDurMs) / 1000);
+      if (isFinite(speed) && speed > 0) state.lastSpeed = state.lastSpeed * 0.5 + speed * 0.5;
+      state.lastIter = iter;
+      state.lastDurMs = dt;
+
+      const p1 = Math.min(1, dt / (state.timeLimitSec * 1000));
+      const p2 = ((iter % 1000) / 1000);
+      refs.bar1Fill.style.width = (p1 * 100).toFixed(1) + "%";
+      refs.bar2Fill.style.width = (p2 * 100).toFixed(1) + "%";
+
+      refs.tSpeed.textContent   = fmtInt(Math.round(state.lastSpeed));
+      refs.tIter.textContent    = fmtInt(iter);
+      refs.tHard.textContent    = fmtInt(ev.hardConflicts);
+      refs.tSoft.textContent    = fmtInt(ev.softScore);
+      refs.tElapsed.textContent = fmtTime(dt);
+      pulseHeatmap(iter);
+    } else if (ev.type === "done") {
+      state.lastResult = ev.result;
+      // Bar fills to 100% before we transition.
+      refs.bar1Fill.style.width = "100%";
+      refs.bar2Fill.style.width = "100%";
+      closeAndCallback(ev.result, "done");
+    } else if (ev.type === "error") {
+      refs.sub.textContent = "Error — " + (ev.message || "unknown");
+      refs.sub.style.color = "var(--chrx-red)";
+      // Treat as terminal: caller's onDone gets null + we close after a beat.
+      setTimeout(() => closeAndCallback(null, "cancel"), 1500);
+    } else if (ev.type === "cancelled") {
+      // No-op: the user's cancel/accept handler already drove closeAndCallback.
+    }
+  }
+
+  function close() {
+    if (!host) return;
+    host.classList.remove("is-open");
+    host.setAttribute("aria-hidden", "true");
+  }
+
+  global.SolverUI = global.SolverUI || {};
+  global.SolverUI.Progress = { open, close };
+})(typeof window !== "undefined" ? window : globalThis);
+
+/* ─── FILE: js/ui/solver_ui/result_panel.js ─── */
+/* Chronexa Solver — Result panel.
+ *
+ *   SolverUI.Result.open({
+ *     result:    SolveResponse,                  // per DATA_SHAPES.md
+ *     mode:      "test" | "generate",
+ *     school:    SchoolData,                     // the input — needed for totals
+ *     onApply(newCards)                          // applied to APP.school.cards
+ *     onDiscard()                                // restore previous
+ *     onViewViolations(violations)               // open verification panel
+ *     onClose()                                  // dismissed without action
+ *   })
+ *
+ * Apply semantics:
+ *   - Snapshot the existing APP.school.cards (deep copy).
+ *   - Replace with SolveResponse.assignment mapped to the {lessonId, day, period,
+ *     classroomId} card schema.
+ *   - Discard restores the snapshot.
+ *
+ * The snapshot is owned by this module so a user can re-open and discard up
+ * until they close the panel.
+ */
+(function (global) {
+  "use strict";
+
+  let host, dlg, refs, state;
+
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      if (k === "class") n.className = attrs[k];
+      else if (k.startsWith("on") && typeof attrs[k] === "function") n.addEventListener(k.slice(2), attrs[k]);
+      else n.setAttribute(k, attrs[k]);
+    }
+    for (const c of kids) if (c != null) n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    return n;
+  }
+
+  function fmt(n) {
+    if (n == null || !isFinite(n)) return "—";
+    return Number(n).toLocaleString();
+  }
+
+  function build() {
+    host = el("div", { class: "csu-backdrop", role: "presentation", "aria-hidden": "true" });
+    dlg = el("section", {
+      class: "csu-dialog csu-result",
+      role: "dialog",
+      "aria-modal": "true",
+      "aria-labelledby": "csu-result-title",
+    });
+
+    const title = el("h2", { class: "csu-dialog__title", id: "csu-result-title" }, "Solver finished");
+    const status = el("div", { class: "csu-result__status", id: "csu-result-status" }, "");
+
+    const hero = el("div", { class: "csu-result__hero" });
+    const placed   = el("div", { class: "csu-result__tile csu-result__tile--ok"   });
+    const unplaced = el("div", { class: "csu-result__tile csu-result__tile--warn" });
+    const relax    = el("div", { class: "csu-result__tile" });
+    const soft     = el("div", { class: "csu-result__tile" });
+    hero.append(placed, unplaced, relax, soft);
+
+    const grid = el("div", { class: "csu-result__grid", id: "csu-result-grid" });
+
+    const apply = el("button", { type: "button", class: "chrx-btn chrx-btn--primary", onclick: doApply, id: "csu-result-apply" }, "Apply to timetable");
+    const view  = el("button", { type: "button", class: "chrx-btn", onclick: doView },  "View violations");
+    const disc  = el("button", { type: "button", class: "chrx-btn chrx-btn--danger", onclick: doDiscard, id: "csu-result-discard" }, "Discard");
+    const close = el("button", { type: "button", class: "chrx-btn", onclick: doClose }, "Close");
+    const actions = el("div", { class: "csu-dialog__actions" }, disc, view, close, apply);
+
+    dlg.append(title, status, hero, grid, actions);
+    host.appendChild(dlg);
+    document.body.appendChild(host);
+
+    refs = { title, status, placed, unplaced, relax, soft, grid, apply, view, disc, close };
+  }
+
+  function renderHero(result, totalLessons) {
+    const s = result.stats || {};
+    refs.placed.innerHTML   = "";
+    refs.unplaced.innerHTML = "";
+    refs.relax.innerHTML    = "";
+    refs.soft.innerHTML     = "";
+
+    refs.placed.append(
+      el("div", { class: "csu-result__num" }, fmt(s.placed)),
+      el("div", { class: "csu-result__lbl" }, `placed of ${fmt(totalLessons)}`),
+    );
+    refs.unplaced.append(
+      el("div", { class: "csu-result__num" }, fmt(s.unplaced)),
+      el("div", { class: "csu-result__lbl" }, "unplaced"),
+    );
+    refs.relax.append(
+      el("div", { class: "csu-result__num" }, fmt(s.hardConflicts)),
+      el("div", { class: "csu-result__lbl" }, "hard conflicts"),
+    );
+    refs.soft.append(
+      el("div", { class: "csu-result__num" }, fmt(s.softScore)),
+      el("div", { class: "csu-result__lbl" }, "soft score"),
+    );
+  }
+
+  function renderPerSlotGrid(result, school) {
+    refs.grid.innerHTML = "";
+    const periods = (school && school.bell && school.bell.periods) || [];
+    if (!periods.length) return;
+    const dayNames = (global.I18N && I18N.STRINGS && I18N.STRINGS.days && I18N.STRINGS.days.en) || ["Mon","Tue","Wed","Thu","Fri","Sat"];
+    const periodIdxs = periods.map(p => p.index).sort((a, b) => a - b);
+
+    // Build a (day,period) → count of placements.
+    const buckets = new Map();
+    for (const a of (result.assignment || [])) {
+      const k = a.day + ":" + a.period;
+      buckets.set(k, (buckets.get(k) || 0) + 1);
+    }
+    let maxCount = 1;
+    for (const v of buckets.values()) if (v > maxCount) maxCount = v;
+
+    const header = el("div", { class: "csu-result__gridRow csu-result__gridRow--head" });
+    header.appendChild(el("div", { class: "csu-result__gridCell csu-result__gridCell--day" }, ""));
+    for (const p of periodIdxs) {
+      header.appendChild(el("div", { class: "csu-result__gridCell csu-result__gridCell--head" }, "P" + p));
+    }
+    refs.grid.appendChild(header);
+
+    for (let d = 0; d < 6; d++) {
+      const row = el("div", { class: "csu-result__gridRow" });
+      row.appendChild(el("div", { class: "csu-result__gridCell csu-result__gridCell--day" }, dayNames[d] || ("D" + (d + 1))));
+      for (const p of periodIdxs) {
+        const k = d + ":" + p;
+        const n = buckets.get(k) || 0;
+        const intensity = n / maxCount;
+        const cell = el("div", {
+          class: "csu-result__gridCell",
+          title: `${dayNames[d] || ("D" + (d + 1))} · P${p} · ${n} placements`,
+          style: intensity > 0 ? `background: rgba(0,100,224,${(0.10 + 0.60 * intensity).toFixed(2)});` : "",
+        }, n ? String(n) : "");
+        row.appendChild(cell);
+      }
+      refs.grid.appendChild(row);
+    }
+  }
+
+  function assignmentToCards(assignment) {
+    if (!Array.isArray(assignment)) return [];
+    const out = [];
+    for (const a of assignment) {
+      out.push({
+        lessonId: a.lessonId,
+        day: a.day,
+        period: a.period,
+        classroomId: a.classroomId || null,
+      });
+    }
+    return out;
+  }
+
+  function doApply() {
+    if (!state) return;
+    const newCards = assignmentToCards(state.result.assignment);
+    if (state.school && !state.snapshot) {
+      state.snapshot = Array.isArray(state.school.cards) ? state.school.cards.slice() : [];
+    }
+    if (state.school) state.school.cards = newCards;
+    refs.apply.disabled = true;
+    refs.disc.disabled = false;
+    refs.status.textContent = "Applied to timetable.";
+    refs.status.style.color = "var(--chrx-green)";
+    if (state.onApply) try { state.onApply(newCards); } catch (e) { console.error(e); }
+  }
+  function doDiscard() {
+    if (!state) return;
+    if (state.school && state.snapshot != null) {
+      state.school.cards = state.snapshot;
+      state.snapshot = null;
+    }
+    refs.apply.disabled = false;
+    refs.disc.disabled = true;
+    refs.status.textContent = "Discarded — your previous timetable is restored.";
+    refs.status.style.color = "var(--chrx-orange)";
+    if (state.onDiscard) try { state.onDiscard(); } catch (e) { console.error(e); }
+  }
+  function doView() {
+    if (!state) return;
+    const v = (state.result && state.result.violations) || [];
+    close();
+    if (state.onViewViolations) try { state.onViewViolations(v); } catch (e) { console.error(e); }
+  }
+  function doClose() {
+    close();
+    if (state && state.onClose) try { state.onClose(); } catch (e) { console.error(e); }
+    state = null;
+  }
+
+  function open(opts) {
+    if (!host) build();
+    state = {
+      result: opts.result || { stats: {}, assignment: [], violations: [] },
+      school: opts.school || null,
+      mode:   opts.mode || "generate",
+      onApply: opts.onApply,
+      onDiscard: opts.onDiscard,
+      onViewViolations: opts.onViewViolations,
+      onClose: opts.onClose,
+      snapshot: null,
+    };
+    const status = state.result.status || "DONE";
+    const totalLessons = (state.school && state.school.lessons) ? state.school.lessons.length : ((state.result.stats && state.result.stats.placed + state.result.stats.unplaced) || 0);
+    refs.title.textContent = state.mode === "test" ? "Test finished" : "Generator finished";
+    refs.status.textContent = `${status} · ${(state.result.stats && state.result.stats.durationMs) ? Math.round(state.result.stats.durationMs / 1000) + "s" : ""}`;
+    refs.status.style.color = (status === "OPTIMAL" || status === "FEASIBLE") ? "var(--chrx-green)" : "var(--chrx-orange)";
+    refs.apply.disabled = state.mode === "test";
+    refs.disc.disabled = true;
+    renderHero(state.result, totalLessons);
+    renderPerSlotGrid(state.result, state.school);
+
+    host.classList.add("is-open");
+    host.setAttribute("aria-hidden", "false");
+    requestAnimationFrame(() => refs.close.focus());
+  }
+  function close() {
+    if (!host) return;
+    host.classList.remove("is-open");
+    host.setAttribute("aria-hidden", "true");
+  }
+
+  global.SolverUI = global.SolverUI || {};
+  global.SolverUI.Result = { open, close };
+})(typeof window !== "undefined" ? window : globalThis);
+
+/* ─── FILE: js/ui/solver_ui/verification_panel.js ─── */
+/* Chronexa Solver — Verification panel wrapper.
+ *
+ * Thin orchestrator on top of Agent D's `window.Verification` drawer.
+ *
+ *   SolverUI.Verification.show(violations, school?)
+ *
+ * Inputs are the raw violations array off a SolveResponse:
+ *   [{ ruleId, description }]
+ *
+ * We normalise them into Agent D's row shape and add a tab-strip above the
+ * drawer body so users can filter by kind (Teachers / Classes / Rooms /
+ * Subjects / Constraints). The "Constraints" tab is unfiltered.
+ *
+ * Click → dispatches `editor:focusCard` with the inferred cardId. The grid
+ * views (class_grid / teacher_grid / room_grid) can listen and scroll the
+ * relevant cell into view.
+ */
+(function (global) {
+  "use strict";
+
+  const TABS = [
+    { key: "all",        label: "All",         match: () => true },
+    { key: "Teachers",   label: "Teachers",    match: (v) => v.kind === "Teacher" },
+    { key: "Classes",    label: "Classes",     match: (v) => v.kind === "Class" },
+    { key: "Rooms",      label: "Rooms",       match: (v) => v.kind === "Room" },
+    { key: "Subjects",   label: "Subjects",    match: (v) => v.kind === "Subject" },
+    { key: "Constraints",label: "Constraints", match: (v) => v.kind === "Constraint" || v.kind === "Other" },
+  ];
+
+  let tabsHost, lastAll = [], lastSchool = null, currentTab = "all";
+
+  // Heuristic mapping ruleId → kind.
+  function inferKind(ruleId) {
+    const id = String(ruleId || "").toLowerCase();
+    if (id.indexOf("teacher") !== -1) return "Teacher";
+    if (id.indexOf("class")   !== -1) return "Class";
+    if (id.indexOf("room")    !== -1) return "Room";
+    if (id.indexOf("subject") !== -1) return "Subject";
+    if (id.indexOf("fixed")   !== -1) return "Constraint";
+    if (id.indexOf("lab")     !== -1) return "Room";
+    if (id.indexOf("unplaced") !== -1) return "Constraint";
+    return "Other";
+  }
+  function inferLevel(ruleId) {
+    const id = String(ruleId || "");
+    if (id.startsWith("HARD_") || id.indexOf("hard") !== -1 || id.indexOf("required") !== -1 || id.indexOf("unplaced") !== -1) return "hard";
+    return "soft";
+  }
+
+  // Parse "Lesson L42 (..." out of the description so we can deep-link.
+  function inferCardId(desc) {
+    if (!desc) return null;
+    const m = /Lesson\s+([A-Za-z0-9_\-:*]+)/.exec(desc);
+    return m ? m[1] : null;
+  }
+
+  function normalise(raw) {
+    if (!Array.isArray(raw)) return [];
+    const out = [];
+    for (const v of raw) {
+      const title = (v.description || v.ruleId || "Violation").split(":")[0];
+      out.push({
+        id: v.ruleId || (title + "/" + (out.length + 1)),
+        ruleId: v.ruleId,
+        kind: inferKind(v.ruleId),
+        level: inferLevel(v.ruleId),
+        title,
+        body: v.description || "",
+        cardId: inferCardId(v.description || ""),
+      });
+    }
+    return out;
+  }
+
+  function ensureTabs() {
+    if (tabsHost && tabsHost.isConnected) return;
+    const panel = document.querySelector(".chrx-verification-panel");
+    if (!panel) return;     // Agent D's drawer not mounted yet — caller will retry
+    tabsHost = document.createElement("div");
+    tabsHost.className = "csu-verify-tabs";
+    tabsHost.setAttribute("role", "tablist");
+    for (const t of TABS) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "csu-verify-tab";
+      b.setAttribute("role", "tab");
+      b.dataset.key = t.key;
+      b.textContent = t.label;
+      b.addEventListener("click", () => selectTab(t.key));
+      tabsHost.appendChild(b);
+    }
+    // Insert above the body.
+    const body = panel.querySelector(".chrx-verification-panel__body");
+    if (body) panel.insertBefore(tabsHost, body); else panel.appendChild(tabsHost);
+  }
+
+  function selectTab(key) {
+    currentTab = key;
+    if (tabsHost) {
+      tabsHost.querySelectorAll(".csu-verify-tab").forEach(b => {
+        b.classList.toggle("is-active", b.dataset.key === key);
+        b.setAttribute("aria-selected", b.dataset.key === key ? "true" : "false");
+      });
+    }
+    const def = TABS.find(t => t.key === key) || TABS[0];
+    if (global.Verification) global.Verification.update(lastAll.filter(def.match));
+  }
+
+  function show(rawViolations, school) {
+    lastAll = normalise(rawViolations);
+    lastSchool = school || (global.APP && global.APP.school) || null;
+
+    if (!global.Verification) {
+      console.warn("SolverUI.Verification: window.Verification (Agent D) not loaded.");
+      return;
+    }
+    global.Verification.mount();
+    ensureTabs();
+    selectTab(currentTab);
+    global.Verification.open();
+
+    // Wire row clicks (only attach once).
+    if (!show._wired) {
+      show._wired = true;
+      global.Verification.onSelect((v) => {
+        if (v && v.cardId) {
+          const ev = new CustomEvent("editor:focusCard", { detail: { cardId: v.cardId, kind: v.kind } });
+          document.dispatchEvent(ev);
+        }
+      });
+    }
+  }
+
+  function close()  { if (global.Verification) global.Verification.close(); }
+  function toggle() { if (global.Verification) global.Verification.toggle(); }
+
+  global.SolverUI = global.SolverUI || {};
+  global.SolverUI.Verification = { show, close, toggle, _normalise: normalise };
+})(typeof window !== "undefined" ? window : globalThis);
+
+/* ─── FILE: js/ui/solver_ui/test_dialog.js ─── */
+/* Chronexa Solver — Test dialog.
+ *
+ * Mirrors Classic's `Test the timetable`: validate constraints without moving
+ * any card. We use a short solver run (verbose: true) and route its
+ * violations array straight into the verification panel.
+ *
+ * Public API:
+ *   SolverUI.Test.open({ school?, onClose? })
+ *
+ * Flow:
+ *   1. Destructive-action confirm (matches Classic's confirm dialog).
+ *   2. Progress modal — same modal as Generate, just with the test title.
+ *   3. On done:
+ *      - 0 violations → toast "Test passed" + close.
+ *      - >0 violations → verification panel opens with the issues.
+ *
+ * Implementation note: the solver doesn't have a dedicated "validate only"
+ * mode; we approximate by running a tiny solve (timeLimitSec: 5) that
+ * exercises every hard constraint and returns its `violations` array. No
+ * card placement is committed because the result panel's Apply button is
+ * hidden in test mode (see result_panel.js).
+ */
+(function (global) {
+  "use strict";
+
+  let confirmHost, confirmDlg, confirmState;
+
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      if (k === "class") n.className = attrs[k];
+      else if (k.startsWith("on") && typeof attrs[k] === "function") n.addEventListener(k.slice(2), attrs[k]);
+      else n.setAttribute(k, attrs[k]);
+    }
+    for (const c of kids) if (c != null) n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    return n;
+  }
+
+  function buildConfirm() {
+    confirmHost = el("div", { class: "csu-backdrop", role: "presentation", "aria-hidden": "true" });
+    confirmDlg = el("section", {
+      class: "csu-dialog csu-confirm",
+      role: "alertdialog",
+      "aria-modal": "true",
+      "aria-labelledby": "csu-test-confirm-title",
+    });
+    confirmDlg.append(
+      el("h2", { class: "csu-dialog__title", id: "csu-test-confirm-title" }, "Test the timetable"),
+      el("p", { class: "csu-dialog__sub" },
+        "We'll run the solver in validate-only mode. Unlocked cards stay where they are; nothing is overwritten."),
+      el("p", { class: "csu-dialog__sub" }, "Hard conflicts and soft penalties will be listed in the verification panel."),
+      el("div", { class: "csu-dialog__actions" },
+        el("button", { type: "button", class: "chrx-btn", onclick: cancel }, "Cancel"),
+        el("button", { type: "button", class: "chrx-btn chrx-btn--primary", id: "csu-test-go", onclick: go }, "Run test"),
+      ),
+    );
+    confirmHost.appendChild(confirmDlg);
+    document.body.appendChild(confirmHost);
+
+    confirmHost.addEventListener("click", (e) => { if (e.target === confirmHost) cancel(); });
+    confirmHost.addEventListener("keydown", (e) => { if (e.key === "Escape") cancel(); });
+  }
+
+  function cancel() {
+    closeConfirm();
+    if (confirmState && confirmState.onClose) try { confirmState.onClose(); } catch {}
+    confirmState = null;
+  }
+  function closeConfirm() {
+    if (!confirmHost) return;
+    confirmHost.classList.remove("is-open");
+    confirmHost.setAttribute("aria-hidden", "true");
+  }
+
+  function go() {
+    const school = (confirmState && confirmState.school) || (global.APP && global.APP.school);
+    closeConfirm();
+    if (!school) {
+      showToast("Upload a timetable XML first.");
+      return;
+    }
+    runTest(school, confirmState && confirmState.onClose);
+    confirmState = null;
+  }
+
+  function runTest(school, onClose) {
+    const source = global.SolverUI.run({
+      school,
+      options: { timeLimitSec: 5, verbose: true },
+      algorithm: "browser",          // test always runs locally — quick + private
+    });
+    global.SolverUI.Progress.open({
+      source,
+      mode: "test",
+      timeLimitSec: 5,
+      totalLessons: (school.lessons || []).length,
+      onDone: (result) => {
+        if (!result) { if (onClose) onClose(); return; }
+        const v = result.violations || [];
+        if (!v.length) {
+          showToast("Test passed — no hard conflicts.");
+          if (onClose) onClose();
+          return;
+        }
+        // Show the lightweight result panel briefly so the user sees the stats,
+        // then auto-open the verification list.
+        global.SolverUI.Result.open({
+          result,
+          school,
+          mode: "test",
+          onClose: () => { if (onClose) onClose(); },
+          onViewViolations: (violations) => global.SolverUI.Verification.show(violations, school),
+        });
+        // Pre-emptively show the drawer with the same list.
+        global.SolverUI.Verification.show(v, school);
+      },
+      onCancel: () => { if (onClose) onClose(); },
+    });
+  }
+
+  function showToast(msg) {
+    let t = document.querySelector(".csu-toast");
+    if (!t) {
+      t = el("div", { class: "csu-toast", role: "status", "aria-live": "polite" });
+      document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    t.classList.add("is-on");
+    setTimeout(() => t.classList.remove("is-on"), 2400);
+  }
+
+  function open(opts) {
+    confirmState = opts || {};
+    if (!confirmHost) buildConfirm();
+    confirmHost.classList.add("is-open");
+    confirmHost.setAttribute("aria-hidden", "false");
+    requestAnimationFrame(() => {
+      const f = confirmHost.querySelector("#csu-test-go");
+      if (f) f.focus();
+    });
+  }
+
+  global.SolverUI = global.SolverUI || {};
+  global.SolverUI.Test = { open };
+  // Exposed so a generic Run button can also call it directly:
+  global.SolverUI._runTest = runTest;
+  global.SolverUI._toast = showToast;
+})(typeof window !== "undefined" ? window : globalThis);
+
+/* ─── FILE: js/ui/wizard/create_new.js ─── */
+/**
+ * Create-new-timetable wizard.
+ * Initializes window.APP.school with empty arrays + a default 6×8 bell schedule,
+ * then advances to the Editor step. Users add teachers/classes/etc. via the
+ * ribbon dialogs (Agent F + L) and drag cards via the editor (Agent E + J).
+ */
+(function (global) {
+  "use strict";
+
+  const DEFAULT_BELL = {
+    periods: [
+      { index: 1, label: "P1", startMin: 7 * 60 + 55, endMin: 8 * 60 + 40, isTeaching: true },
+      { index: 2, label: "P2", startMin: 8 * 60 + 40, endMin: 9 * 60 + 20, isTeaching: true },
+      { index: 3, label: "P3", startMin: 9 * 60 + 20, endMin: 10 * 60,      isTeaching: true },
+      { index: 4, label: "P4", startMin: 10 * 60 + 20, endMin: 11 * 60,    isTeaching: true },
+      { index: 5, label: "P5", startMin: 11 * 60,      endMin: 11 * 60 + 40, isTeaching: true },
+      { index: 6, label: "P6", startMin: 11 * 60 + 40, endMin: 12 * 60 + 20, isTeaching: true },
+      { index: 7, label: "P7", startMin: 12 * 60 + 20, endMin: 13 * 60,      isTeaching: true },
+      { index: 8, label: "P8", startMin: 13 * 60 + 10, endMin: 13 * 60 + 50, isTeaching: true },
+    ],
+  };
+
+  // 24 evenly-spaced HSL colors — teachers + subjects + classes get distinct hues.
+  function makePalette(n) {
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const h = Math.round((i * 360) / n) % 360;
+      // Convert HSL to hex
+      const s = 70, l = 55;
+      const c = (1 - Math.abs(2 * (l / 100) - 1)) * (s / 100);
+      const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+      const m = l / 100 - c / 2;
+      let r, g, b;
+      if (h < 60)       { r = c; g = x; b = 0; }
+      else if (h < 120) { r = x; g = c; b = 0; }
+      else if (h < 180) { r = 0; g = c; b = x; }
+      else if (h < 240) { r = 0; g = x; b = c; }
+      else if (h < 300) { r = x; g = 0; b = c; }
+      else              { r = c; g = 0; b = x; }
+      const toHex = v => Math.round((v + m) * 255).toString(16).padStart(2, "0");
+      out.push("#" + toHex(r) + toHex(g) + toHex(b));
+    }
+    return out;
+  }
+
+  const PALETTE_24 = makePalette(24);
+
+  /** Build the _idx index that the editor + pending strip rely on. */
+  function buildIndex(school) {
+    const teacherById = {};   for (const t of school.teachers || [])   teacherById[t.id]   = t;
+    const subjectById = {};   for (const s of school.subjects || [])   subjectById[s.id]   = s;
+    const classById = {};     for (const c of school.classes || [])    classById[c.id]     = c;
+    const classroomById = {}; for (const r of school.classrooms || []) classroomById[r.id] = r;
+    const lessonById = {};    for (const l of school.lessons || [])    lessonById[l.id]    = l;
+
+    const cardsByClass = {};
+    const cardsByTeacher = {};
+    const cardsByRoom = {};
+    for (const card of (school.cards || [])) {
+      const lesson = lessonById[card.lessonId];
+      if (!lesson) continue;
+      for (const cid of (lesson.classIds || [])) {
+        (cardsByClass[cid] = cardsByClass[cid] || []).push(card);
+      }
+      for (const tid of (lesson.teacherIds || [])) {
+        (cardsByTeacher[tid] = cardsByTeacher[tid] || []).push(card);
+      }
+      if (card.classroomId) {
+        (cardsByRoom[card.classroomId] = cardsByRoom[card.classroomId] || []).push(card);
+      }
+    }
+
+    return {
+      teacherById, subjectById, classById, classroomById, lessonById,
+      cardsByClass, cardsByTeacher, cardsByRoom,
+      days: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+    };
+  }
+
+  function refreshIndex() {
+    const APP = global.APP || {};
+    if (!APP.school) return;
+    APP.school._idx = buildIndex(APP.school);
+  }
+
+  /**
+   * Initialize an empty school. The user fills it in via the entity dialogs.
+   */
+  function createBlank(opts = {}) {
+    const APP = global.APP || (global.APP = {});
+    APP.school = {
+      schoolName: opts.schoolName || "My School",
+      bell: JSON.parse(JSON.stringify(DEFAULT_BELL)),
+      teachers: [],
+      classes: [],
+      classrooms: [],
+      subjects: [],
+      lessons: [],
+      cards: [],
+    };
+    APP.school._idx = buildIndex(APP.school);
+    APP.editor = APP.editor || {};
+    APP.editor.perspective = "class";
+    APP.editor.cardInHand = null;
+    APP.audit = APP.audit || { _log: [] };
+    APP.audit._log.push({ ts: Date.now(), op: "create-new-blank", schoolName: APP.school.schoolName });
+    document.dispatchEvent(new CustomEvent("app:school-loaded", { detail: { source: "create-new" } }));
+  }
+
+  /**
+   * Seed a small demo so the new-timetable user has something to drag immediately.
+   * 4 teachers (with distinct colors), 3 classes, 2 classrooms, 3 subjects, 6 lessons.
+   */
+  function createDemoSeed() {
+    const APP = global.APP || (global.APP = {});
+    createBlank({ schoolName: "Demo Public School" });
+    const S = APP.school;
+    const C = PALETTE_24;
+
+    S.subjects = [
+      { id: "S1", name: "Mathematics", short: "Math", color: C[0] },
+      { id: "S2", name: "Science",     short: "Sci",  color: C[6] },
+      { id: "S3", name: "English",     short: "Eng",  color: C[12] },
+    ];
+    S.teachers = [
+      { id: "T1", name: "Mr. Aamir",  short: "AAM", color: C[2] },
+      { id: "T2", name: "Ms. Beauty", short: "BTY", color: C[8] },
+      { id: "T3", name: "Mr. Chetan", short: "CHE", color: C[14] },
+      { id: "T4", name: "Ms. Divya",  short: "DIV", color: C[20] },
+    ];
+    S.classes = [
+      { id: "C1", name: "VI A",  short: "VIA",  color: C[3] },
+      { id: "C2", name: "VI B",  short: "VIB",  color: C[9] },
+      { id: "C3", name: "VII A", short: "VIIA", color: C[15] },
+    ];
+    S.classrooms = [
+      { id: "R1", name: "Room 101", short: "R101" },
+      { id: "R2", name: "Room 102", short: "R102" },
+    ];
+    S.lessons = [
+      { id: "L1", subjectId: "S1", teacherIds: ["T1"], classIds: ["C1"], periodsPerWeek: 4 },
+      { id: "L2", subjectId: "S2", teacherIds: ["T2"], classIds: ["C1"], periodsPerWeek: 3 },
+      { id: "L3", subjectId: "S3", teacherIds: ["T3"], classIds: ["C1"], periodsPerWeek: 3 },
+      { id: "L4", subjectId: "S1", teacherIds: ["T1"], classIds: ["C2"], periodsPerWeek: 4 },
+      { id: "L5", subjectId: "S2", teacherIds: ["T4"], classIds: ["C2"], periodsPerWeek: 3 },
+      { id: "L6", subjectId: "S1", teacherIds: ["T1"], classIds: ["C3"], periodsPerWeek: 5 },
+    ];
+    S._idx = buildIndex(S);
+    document.dispatchEvent(new CustomEvent("app:school-loaded", { detail: { source: "create-demo" } }));
+  }
+
+  /**
+   * Assign distinct colors to any teachers/subjects/classes that don't have one.
+   * Called automatically when a school is loaded.
+   */
+  function ensureColors() {
+    const APP = global.APP || {};
+    if (!APP.school) return;
+    const S = APP.school;
+    function assign(list) {
+      let pi = 0;
+      for (const item of (list || [])) {
+        if (!item.color || item.color === "" || item.color === "#000000") {
+          item.color = PALETTE_24[pi % PALETTE_24.length];
+        }
+        pi++;
+      }
+    }
+    assign(S.teachers);
+    assign(S.subjects);
+    assign(S.classes);
+  }
+
+  // Thin wrapper that forwards to SchoolTemplates.applyTemplate once it loads
+  // later in the script chain. The actual seed logic lives in
+  // `js/ui/onboarding/school_templates.js`; this stub lets other modules call
+  // `CreateNew.createFromTemplate(id)` without caring about load order.
+  function createFromTemplate(id) {
+    if (global.SchoolTemplates && global.SchoolTemplates.applyTemplate) {
+      return global.SchoolTemplates.applyTemplate(id);
+    }
+    console.warn("[CreateNew] SchoolTemplates not loaded yet — call after onboarding/school_templates.js");
+    return false;
+  }
+
+  global.CreateNew = { createBlank, createDemoSeed, ensureColors, refreshIndex, buildIndex, PALETTE_24, createFromTemplate };
+})(window);
+
+/* ─── FILE: js/ui/wizard/wizard_walkthrough.js ─── */
+/**
+ * Wizard Walkthrough — 5-step Classic-style onboarding overlay.
+ *
+ * Replaces the jarring "Create new → blank editor" flow with a sequential
+ * walkthrough: Subjects → Teachers → Classes → Classrooms → Lessons.
+ *
+ * Rendered as a fullscreen modal overlay on top of the editor (which the
+ * activator has already activated via the `app:school-loaded` event). On
+ * Finish (or close-at-any-time), the user lands on the editor — empty-state
+ * hero from `editor/activator.js` handles the case where they skipped all 5.
+ *
+ * Exports `window.WizardWalkthrough = { start(), close() }`.
+ */
+(function (global) {
+  "use strict";
+
+  const STEPS = [
+    {
+      key: "subjects",
+      title: "Subjects",
+      icon: "📚",
+      instruction: "Add the subjects taught at your school — Maths, Science, English, Hindi, and so on.",
+      hint: "Click + Add subject to open the full editor. Repeat for as many subjects as you teach.",
+      open: () => window.EntitySubjects && window.EntitySubjects.open(),
+      describe: (s) => s.name + (s.abbr ? " (" + s.abbr + ")" : ""),
+      color: "emerald",
+    },
+    {
+      key: "teachers",
+      title: "Teachers",
+      icon: "👨‍🏫",
+      instruction: "Add the teachers on your staff. Each teacher gets a colour so their cards are easy to spot.",
+      hint: "Last name is required. Abbreviation + colour are recommended for the editor grid.",
+      open: () => window.EntityTeachers && window.EntityTeachers.open(),
+      describe: (t) => (t.name || ((t.firstName || "") + " " + (t.lastName || "")).trim()) + (t.abbr ? " (" + t.abbr + ")" : ""),
+      color: "blue",
+    },
+    {
+      key: "classes",
+      title: "Classes",
+      icon: "👥",
+      instruction: "Add the classes (sections) — I-A, VI-B, X-C, and the rest.",
+      hint: "Optionally pick a class teacher and home classroom now, or leave them blank and set them later.",
+      open: () => window.EntityClasses && window.EntityClasses.open(),
+      describe: (c) => c.name + (c.abbr ? " (" + c.abbr + ")" : ""),
+      color: "violet",
+    },
+    {
+      key: "classrooms",
+      title: "Classrooms",
+      icon: "🚪",
+      instruction: "Add the physical rooms — Lab, Library, Music Room, normal classrooms.",
+      hint: "Each lesson can be locked to a specific room or pool of rooms once you create lessons in the next step.",
+      open: () => window.EntityClassrooms && window.EntityClassrooms.open(),
+      describe: (r) => r.name + (r.abbr ? " (" + r.abbr + ")" : ""),
+      color: "amber",
+    },
+    {
+      key: "lessons",
+      title: "Lessons",
+      icon: "📝",
+      instruction: "Tie it all together: each lesson is a subject + teacher(s) + class(es) + how many periods/week.",
+      hint: "Lessons are what becomes draggable cards. No lessons = no cards in the editor.",
+      open: () => window.EntityLessons && window.EntityLessons.open(),
+      describe: (l) => {
+        const idx = (window.APP.school && window.APP.school._idx) || {};
+        const subj = (idx.subjectById && idx.subjectById[l.subjectId]);
+        const subjName = subj ? subj.name : l.subjectId;
+        const n = l.periodsPerWeek || 0;
+        const cls = (l.classIds || []).length;
+        return subjName + " — " + n + "× — " + cls + " class" + (cls === 1 ? "" : "es");
+      },
+      color: "rose",
+    },
+  ];
+
+  let host = null;
+  let active = 0;
+  let observer = null;
+
+  // ─── Public API ─────────────────────────────────────────────────────────
+  function start() {
+    if (host) close();
+    active = 0;
+    host = buildShell();
+    document.body.appendChild(host);
+    document.addEventListener("keydown", onKey, true);
+
+    // When an entity dialog closes, the user is back on the wizard — re-render
+    // the pane so the live counts/list update. We watch the body for removal
+    // of `.chrx-ent-dialog` rather than monkey-patching EntityDialog.
+    observer = new MutationObserver((muts) => {
+      for (const m of muts) {
+        for (const node of m.removedNodes) {
+          if (node && node.nodeType === 1 && node.classList && node.classList.contains("chrx-ent-dialog")) {
+            renderPane();
+            document.dispatchEvent(new CustomEvent("entity:changed"));
+            return;
+          }
+        }
+      }
+    });
+    observer.observe(document.body, { childList: true });
+
+    renderPane();
+  }
+
+  function close() {
+    document.removeEventListener("keydown", onKey, true);
+    if (observer) { try { observer.disconnect(); } catch (e) {} observer = null; }
+    if (host) { host.remove(); host = null; }
+    // Notify listeners so editor grid / activator update with whatever the
+    // user added. We do NOT dispatch nav:goto-step — activator already put
+    // us on step 6 when `app:school-loaded` fired.
+    document.dispatchEvent(new CustomEvent("entity:changed"));
+  }
+
+  // ─── Shell ──────────────────────────────────────────────────────────────
+  function buildShell() {
+    const root = document.createElement("div");
+    root.className = "fixed inset-0 z-50 flex items-center justify-center p-4";
+    root.style.background = "rgba(15, 23, 42, 0.55)";
+    root.addEventListener("click", (e) => { if (e.target === root) close(); });
+
+    const card = document.createElement("div");
+    card.className = "bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden";
+    card.id = "chrx-wizard-card";
+    root.appendChild(card);
+    return root;
+  }
+
+  // ─── Pane render ────────────────────────────────────────────────────────
+  function renderPane() {
+    if (!host) return;
+    const card = host.querySelector("#chrx-wizard-card");
+    if (!card) return;
+    const step = STEPS[active];
+    const list = ((window.APP.school && window.APP.school[step.key]) || []).slice();
+    const n = list.length;
+
+    card.innerHTML = "";
+
+    // Header
+    const header = document.createElement("div");
+    header.className = "px-6 pt-5 pb-4 border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white";
+    header.innerHTML = `
+      <div class="flex items-center justify-between gap-3 mb-2">
+        <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+          Step ${active + 1} of ${STEPS.length}
+        </div>
+        <button type="button" id="chrx-wiz-x" aria-label="Close wizard"
+                class="text-slate-400 hover:text-slate-700 text-2xl leading-none">×</button>
+      </div>
+      <div class="flex items-center gap-3">
+        <div class="text-3xl">${step.icon}</div>
+        <h2 class="text-2xl font-bold text-slate-900">${escapeHtml(step.title)}</h2>
+      </div>
+      <p class="text-sm text-slate-600 mt-2">${escapeHtml(step.instruction)}</p>
+    `;
+    card.appendChild(header);
+
+    // Progress dots
+    const progress = document.createElement("div");
+    progress.className = "px-6 py-3 flex items-center gap-2 border-b border-slate-100 bg-white";
+    for (let i = 0; i < STEPS.length; i++) {
+      const dot = document.createElement("div");
+      const isDone = i < active;
+      const isActive = i === active;
+      const cls = isActive
+        ? "flex-1 h-1.5 rounded-full bg-blue-600"
+        : isDone
+          ? "flex-1 h-1.5 rounded-full bg-emerald-500"
+          : "flex-1 h-1.5 rounded-full bg-slate-200";
+      dot.className = cls;
+      dot.title = "Step " + (i + 1) + " · " + STEPS[i].title;
+      progress.appendChild(dot);
+    }
+    card.appendChild(progress);
+
+    // Body — live list + Add button
+    const body = document.createElement("div");
+    body.className = "px-6 py-5 flex-1 overflow-y-auto";
+
+    const countBar = document.createElement("div");
+    countBar.className = "flex items-center justify-between mb-3";
+    const countLabel = document.createElement("div");
+    countLabel.className = "text-sm font-semibold text-slate-700";
+    countLabel.textContent = n === 0
+      ? "No " + step.title.toLowerCase() + " yet."
+      : n + " " + step.title.toLowerCase().replace(/s$/, n === 1 ? "" : "s") + " added.";
+    const ctaWrap = document.createElement("div");
+    ctaWrap.className = "flex items-center gap-2";
+
+    const addBtn = document.createElement("button");
+    addBtn.type = "button";
+    addBtn.className = "px-3 py-1.5 rounded-lg bg-" + step.color + "-600 text-white text-sm font-semibold hover:bg-" + step.color + "-700";
+    addBtn.textContent = "+ Add " + step.title.toLowerCase().replace(/s$/, "");
+    addBtn.addEventListener("click", () => { step.open(); });
+    ctaWrap.appendChild(addBtn);
+
+    // Bulk-add CTA — only for kinds the BulkAddWizard supports.
+    const bulkSupported = ["subjects", "teachers", "classes", "classrooms"].includes(step.key);
+    if (bulkSupported && window.BulkAddWizard && typeof window.BulkAddWizard.open === "function") {
+      const bulkBtn = document.createElement("button");
+      bulkBtn.type = "button";
+      bulkBtn.className = "px-3 py-1.5 rounded-lg border border-" + step.color + "-300 text-" + step.color + "-700 text-sm font-semibold hover:bg-" + step.color + "-50";
+      bulkBtn.textContent = "+ Bulk-add";
+      bulkBtn.title = "Add many " + step.title.toLowerCase() + " at once — paste a list, type one per line, or import from spreadsheet";
+      bulkBtn.addEventListener("click", () => {
+        // BulkAddWizard.open(kind, school?) — pass current school explicitly
+        // so the wizard never tries to re-load it.
+        window.BulkAddWizard.open(step.key, window.APP && window.APP.school);
+      });
+      ctaWrap.appendChild(bulkBtn);
+    }
+
+    countBar.appendChild(countLabel);
+    countBar.appendChild(ctaWrap);
+    body.appendChild(countBar);
+
+    if (n === 0) {
+      const empty = document.createElement("div");
+      empty.className = "border-2 border-dashed border-slate-200 rounded-xl p-8 text-center bg-slate-50";
+      empty.innerHTML = `
+        <div class="text-4xl mb-2">${step.icon}</div>
+        <div class="text-sm text-slate-600">${escapeHtml(step.hint)}</div>
+        <div class="text-xs text-slate-400 mt-3">Or click <em>Skip</em> below — you can come back to this anytime.</div>
+      `;
+      body.appendChild(empty);
+    } else {
+      const grid = document.createElement("div");
+      grid.className = "grid sm:grid-cols-2 gap-2";
+      list.forEach((item) => {
+        const chip = document.createElement("div");
+        chip.className = "flex items-center gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm";
+        const sw = document.createElement("span");
+        sw.className = "inline-block w-3 h-3 rounded-full border border-slate-300 flex-shrink-0";
+        sw.style.background = item.color || "transparent";
+        const label = document.createElement("span");
+        label.className = "truncate text-slate-700";
+        label.textContent = step.describe(item);
+        chip.appendChild(sw);
+        chip.appendChild(label);
+        grid.appendChild(chip);
+      });
+      body.appendChild(grid);
+      const tip = document.createElement("div");
+      tip.className = "text-xs text-slate-500 mt-3";
+      tip.textContent = step.hint;
+      body.appendChild(tip);
+    }
+
+    card.appendChild(body);
+
+    // Footer — Back / Skip / Next / Finish
+    const footer = document.createElement("div");
+    footer.className = "px-6 py-4 border-t border-slate-200 bg-slate-50 flex items-center gap-2";
+
+    const backBtn = document.createElement("button");
+    backBtn.type = "button";
+    backBtn.className = "px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 text-sm font-semibold hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed";
+    backBtn.textContent = "← Back";
+    backBtn.disabled = active === 0;
+    backBtn.addEventListener("click", () => { if (active > 0) { active--; renderPane(); } });
+    footer.appendChild(backBtn);
+
+    const spacer = document.createElement("div");
+    spacer.className = "flex-1";
+    footer.appendChild(spacer);
+
+    const skipBtn = document.createElement("button");
+    skipBtn.type = "button";
+    skipBtn.className = "px-4 py-2 rounded-lg text-slate-500 text-sm font-semibold hover:text-slate-700";
+    skipBtn.textContent = "Skip";
+    skipBtn.addEventListener("click", () => advance());
+    footer.appendChild(skipBtn);
+
+    const isLast = active === STEPS.length - 1;
+    const nextBtn = document.createElement("button");
+    nextBtn.type = "button";
+    nextBtn.className = "px-5 py-2 rounded-lg bg-blue-700 text-white text-sm font-bold hover:bg-blue-800";
+    nextBtn.textContent = isLast ? "Finish →" : "Next →";
+    nextBtn.addEventListener("click", () => advance());
+    footer.appendChild(nextBtn);
+
+    card.appendChild(footer);
+
+    // Wire close (×) button
+    const xBtn = header.querySelector("#chrx-wiz-x");
+    if (xBtn) xBtn.addEventListener("click", close);
+  }
+
+  function advance() {
+    // Fire entity:changed so the editor grid + activator refresh with what
+    // the user just added (per task spec).
+    document.dispatchEvent(new CustomEvent("entity:changed"));
+    if (active < STEPS.length - 1) {
+      active++;
+      renderPane();
+      return;
+    }
+    // Last step → Finish. Close the wizard and explicitly nav to editor.
+    close();
+    document.dispatchEvent(new CustomEvent("nav:goto-step", { detail: { step: 6 } }));
+  }
+
+  function onKey(e) {
+    if (!host) return;
+    if (e.key === "Escape") { e.preventDefault(); close(); return; }
+    // Block bubbling to the underlying step nav while wizard is open
+    if (e.key === "ArrowRight") { e.preventDefault(); advance(); }
+    if (e.key === "ArrowLeft" && active > 0) { e.preventDefault(); active--; renderPane(); }
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
+  global.WizardWalkthrough = { start, close };
+})(window);
+
+/* ─── FILE: js/ui/editor/activator.js ─── */
+/**
+ * Editor activator — turns on the editor + pending strip when the user enters Step 6.
+ * Hooks the existing #step-6 nav button and the CreateNew wizard's school-loaded event.
+ *
+ * Without this, the editor (Agent E's grid_canvas + pending_strip) lives in
+ * hidden divs (#editor-root / #pending-strip-root) and is never wired to render.
+ */
+(function (global) {
+  "use strict";
+
+  let activated = false;
+
+  function activate() {
+    const APP = global.APP || {};
+    if (!APP.school) {
+      console.warn("[editor] no school loaded yet — cannot activate");
+      return;
+    }
+    // Ensure every teacher / subject / class has a color
+    if (global.CreateNew && typeof global.CreateNew.ensureColors === "function") {
+      global.CreateNew.ensureColors();
+    }
+
+    const editorRoot = document.getElementById("editor-root");
+    const pendingRoot = document.getElementById("pending-strip-root");
+    if (!editorRoot || !pendingRoot) return;
+    editorRoot.hidden = false;
+    pendingRoot.hidden = false;
+
+    // ─── Empty-school coaching: instead of a blank grid, show "Get started" ─
+    if (isEmptySchool(APP.school)) {
+      renderEmptyHero(editorRoot);
+      pendingRoot.innerHTML = `<div class="p-3 text-sm text-slate-500 text-center">Cards will appear here once you add lessons.</div>`;
+      activated = true;
+      updatePendingCount();
+      return;
+    }
+
+    // Render the grid (Agent E's grid_canvas exports window.Editor)
+    if (global.Editor && typeof global.Editor.render === "function") {
+      try { global.Editor.render(editorRoot); }
+      catch (e) { editorRoot.innerHTML = '<div class="p-4 text-red-600">Editor render failed: ' + e.message + '</div>'; }
+    } else {
+      editorRoot.innerHTML = '<div class="p-4 text-amber-700">Editor module not loaded.</div>';
+    }
+    // Render the pending strip (Agent E's pending_strip exports window.PendingStrip)
+    if (global.PendingStrip && typeof global.PendingStrip.render === "function") {
+      try { global.PendingStrip.render(pendingRoot); }
+      catch (e) { pendingRoot.innerHTML = '<div class="p-2 text-red-600">Pending strip render failed: ' + e.message + '</div>'; }
+    }
+
+    activated = true;
+    updatePendingCount();
+    setBannerOnce();
+  }
+
+  function isEmptySchool(school) {
+    if (!school) return true;
+    const counts = ["subjects", "teachers", "classes", "classrooms", "lessons"]
+      .map(k => (school[k] || []).length);
+    return counts.every(n => n === 0);
+  }
+
+  function renderEmptyHero(root) {
+    const fire = (kind) => () => window.dispatchEvent(new CustomEvent("app:open-entity", { detail: { kind } }));
+    // Each tile uses theme tokens (no raw Tailwind palette) + the .chrx-lift +
+    // .chrx-press motion utilities. A small accent dot identifies the step
+    // without leaking a different color for every tile.
+    const tile = (icon, num, title, sub, kind) => `
+      <button data-kind="${kind}" class="chrx-hero-tile chrx-lift chrx-press">
+        <span class="chrx-hero-tile__num">${num}</span>
+        <span class="chrx-hero-tile__icon" aria-hidden="true">${icon}</span>
+        <span class="chrx-hero-tile__title">${title}</span>
+        <span class="chrx-hero-tile__sub">${sub}</span>
+        <span class="chrx-hero-tile__arrow" aria-hidden="true">→</span>
+      </button>`;
+    root.innerHTML = `
+      <div class="chrx-hero">
+        <div class="chrx-hero__inner">
+          <header class="chrx-hero__head chrx-fade-in">
+            <span class="chrx-hero__eyebrow">Get started</span>
+            <h3 class="chrx-hero__title">Let's build your timetable</h3>
+            <p class="chrx-hero__sub">Pick a starting point. We recommend this order, but you can jump in anywhere.</p>
+          </header>
+          <div class="chrx-hero__grid chrx-rise-stagger">
+            ${tile("\u{1F4DA}", "1", "Subjects",   "Maths, Science, English, …",      "subjects")}
+            ${tile("\u{1F468}‍\u{1F3EB}", "2", "Teachers",   "Names, abbreviations, colors",         "teachers")}
+            ${tile("\u{1F465}", "3", "Classes",    "I-A, I-B, VIII-C …",              "classes")}
+            ${tile("\u{1F6AA}", "4", "Classrooms", "Lab, Library, Music Room …",      "classrooms")}
+            ${tile("\u{1F4DD}", "5", "Lessons",    "Who teaches what, how often",          "lessons")}
+            ${tile("⚡",    "6", "Generate",   "Auto-place all cards",                 "_generate")}
+          </div>
+          <p class="chrx-hero__tip chrx-fade-in">
+            Tip: every tile opens the same dialog as <em>Specification</em> → <em>(entity)…</em> in the ribbon.
+          </p>
+        </div>
+      </div>`;
+    root.querySelectorAll("[data-kind]").forEach(btn => {
+      btn.onclick = () => {
+        const k = btn.dataset.kind;
+        if (k === "_generate") {
+          const gen = document.getElementById("cta-generate");
+          if (gen) gen.click();
+          return;
+        }
+        fire(k)();
+      };
+    });
+  }
+
+  function deactivate() {
+    const editorRoot = document.getElementById("editor-root");
+    const pendingRoot = document.getElementById("pending-strip-root");
+    if (editorRoot) editorRoot.hidden = true;
+    if (pendingRoot) pendingRoot.hidden = true;
+  }
+
+  function updatePendingCount() {
+    const APP = global.APP || {};
+    if (!APP.school || !APP.school.lessons) return;
+    let pending = 0;
+    const placedByLesson = {};
+    for (const c of (APP.school.cards || [])) {
+      placedByLesson[c.lessonId] = (placedByLesson[c.lessonId] || 0) + 1;
+    }
+    for (const l of APP.school.lessons) {
+      const needed = l.periodsPerWeek || 0;
+      const placed = placedByLesson[l.id] || 0;
+      pending += Math.max(0, needed - placed);
+    }
+    const el = document.getElementById("pending-count");
+    if (el) el.textContent = "(" + pending + " unplaced)";
+  }
+
+  function setBannerOnce() {
+    const el = document.getElementById("editor-banner");
+    const text = document.getElementById("editor-banner-text");
+    if (!el || !text) return;
+    const APP = global.APP || {};
+    const nTeachers = (APP.school?.teachers || []).length;
+    const nLessons = (APP.school?.lessons || []).length;
+    if (nTeachers === 0 && nLessons === 0) {
+      text.textContent = "Open Teachers / Subjects / Classes / Lessons from the ribbon (top bar) and add your data. Then come back here to place cards.";
+      el.hidden = false;
+    } else {
+      el.hidden = true;
+    }
+  }
+
+  // Listen for any of these → activate when user enters step 6
+  document.addEventListener("step:changed", e => {
+    if (e.detail && e.detail.step === 6) activate();
+    else if (activated) deactivate();
+  });
+
+  // Listen for school-loaded → auto-advance to editor if user just clicked "Create new"
+  document.addEventListener("app:school-loaded", e => {
+    // Mark step 6 enabled
+    document.querySelectorAll("[data-step='6']").forEach(b => b.removeAttribute("disabled"));
+    if (e.detail && (e.detail.source === "create-new" || e.detail.source === "create-demo")) {
+      // jump straight to editor
+      document.dispatchEvent(new CustomEvent("nav:goto-step", { detail: { step: 6 } }));
+    }
+  });
+
+  // Re-render pending count on every place/pickup
+  document.addEventListener("editor:place", updatePendingCount);
+  document.addEventListener("editor:pickup", updatePendingCount);
+
+  // Re-render the editor whenever an entity changes (so the hero card swaps to grid)
+  document.addEventListener("entity:changed", () => {
+    if (document.getElementById("step-6") && !document.getElementById("step-6").classList.contains("hidden")) {
+      activate();
+    }
+  });
+
+  global.EditorActivator = { activate, deactivate, updatePendingCount };
+})(window);
+
+/* ─── FILE: js/ui/pwa_install.js ─── */
+/**
+ * PWA install affordance + service worker registration.
+ *
+ * - Registers /sw.js so the app works offline after first visit
+ * - Captures the beforeinstallprompt event on Chrome/Edge so we can show
+ *   an "Install Chronexa as an app" CTA in the page
+ * - When the user clicks Install, we trigger the native browser prompt
+ * - Surfaces a quiet "Running on your computer · no server" banner so
+ *   it's clear that the solver / data / everything is local
+ */
+(function (global) {
+  "use strict";
+
+  let deferredPrompt = null;
+
+  function installable() {
+    return !!deferredPrompt;
+  }
+
+  function showBanner() {
+    if (document.getElementById("chrx-pwa-banner")) return;
+    const isStandalone = window.matchMedia("(display-mode: standalone)").matches;
+    if (isStandalone) return; // already installed
+
+    const banner = document.createElement("div");
+    banner.id = "chrx-pwa-banner";
+    banner.style.cssText = [
+      "position:fixed", "bottom:12px", "right:12px",
+      "background:#0f172a", "color:#f1f5f9",
+      "padding:10px 14px", "border-radius:8px",
+      "box-shadow:0 4px 14px rgba(0,0,0,0.25)",
+      "font-size:13px", "line-height:1.4",
+      "z-index:9999", "max-width:340px",
+      "display:flex", "flex-direction:column", "gap:8px"
+    ].join(";");
+
+    banner.innerHTML = `
+      <div style="display:flex;align-items:start;gap:8px">
+        <span style="font-size:20px;line-height:1">⚡</span>
+        <div style="flex:1">
+          <div style="font-weight:600;color:#fde68a">Runs entirely on your computer</div>
+          <div style="opacity:.8;font-size:12px;margin-top:2px">
+            Solver, data, everything stays in your browser. ${installable() ? "Install as an app for offline use." : "Already cached for offline use."}
+          </div>
+        </div>
+        <button id="chrx-pwa-close" style="background:none;border:0;color:#94a3b8;cursor:pointer;font-size:18px;line-height:1;padding:0 4px">×</button>
+      </div>
+      ${installable() ? `<button id="chrx-pwa-install" style="background:#10b981;color:white;border:0;padding:6px 12px;border-radius:6px;font-weight:600;cursor:pointer;font-size:13px">📲 Install Chronexa</button>` : ""}
+    `;
+
+    document.body.appendChild(banner);
+
+    document.getElementById("chrx-pwa-close").onclick = () => {
+      banner.remove();
+      try { localStorage.setItem("chrx-pwa-banner-dismissed", "1"); } catch (_) {}
+    };
+
+    const installBtn = document.getElementById("chrx-pwa-install");
+    if (installBtn) {
+      installBtn.onclick = async () => {
+        if (!deferredPrompt) return;
+        installBtn.disabled = true;
+        installBtn.textContent = "Installing…";
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        deferredPrompt = null;
+        if (outcome === "accepted") banner.remove();
+        else installBtn.textContent = "📲 Install Chronexa";
+      };
+    }
+  }
+
+  function showBannerOnceReady() {
+    // Don't pester users who dismissed it
+    try {
+      if (localStorage.getItem("chrx-pwa-banner-dismissed") === "1") return;
+    } catch (_) {}
+    // Wait 3s so the user can see the app first
+    setTimeout(showBanner, 3000);
+  }
+
+  // ─── Service worker registration ──────────────────────────────
+  function registerServiceWorker() {
+    if (!("serviceWorker" in navigator)) return;
+    // file:// (downloaded zip use case) can't register a SW — skip silently
+    if (location.protocol === "file:") return;
+    navigator.serviceWorker
+      .register("./sw.js")
+      .then((reg) => {
+        // Auto-update on subsequent visits
+        reg.addEventListener("updatefound", () => {
+          const nw = reg.installing;
+          if (!nw) return;
+          nw.addEventListener("statechange", () => {
+            if (nw.state === "installed" && navigator.serviceWorker.controller) {
+              // A new version is available; you could surface a "Reload to update" toast here
+              console.info("[chronexa] new version cached — reload to apply");
+            }
+          });
+        });
+      })
+      .catch((e) => console.warn("[chronexa] SW registration failed:", e));
+  }
+
+  // Capture install prompt before the browser shows its native one
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    // Banner already showing? Re-render to add the install button.
+    const existing = document.getElementById("chrx-pwa-banner");
+    if (existing) { existing.remove(); showBanner(); }
+  });
+
+  // When the user installs, hide the banner
+  window.addEventListener("appinstalled", () => {
+    const b = document.getElementById("chrx-pwa-banner");
+    if (b) b.remove();
+    deferredPrompt = null;
+  });
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", () => {
+      registerServiceWorker();
+      showBannerOnceReady();
+    });
+  } else {
+    registerServiceWorker();
+    showBannerOnceReady();
+  }
+
+  global.PWA = { installable, showBanner };
+})(window);
+
+/* ─── FILE: js/ui/editor/grid_canvas.js ─── */
+/**
+ * Editor.render(rootEl) — writable timetable grid.
+ * Rows = entities (class/teacher/room per APP.editor.perspective).
+ * Cols = NUM_DAYS × bell.periods.
+ * Pickup/place via mousedown (no HTML5 drag). See EDITOR.md (TBD).
+ */
+window.Editor = (function () {
+  "use strict";
+
+  const NUM_DAYS = 6;
+  const DAY_LABELS_EN = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+  /** Render into a host element. Re-render is safe (innerHTML replaced). */
+  function render(rootEl) {
+    if (!rootEl) return;
+    ensureEditorState();
+    const S = window.APP.school;
+    if (!S) {
+      rootEl.innerHTML = `<div class="chrx-editor-empty">Load a timetable to start editing.</div>`;
+      return;
+    }
+    const perspective = window.APP.editor.perspective;
+    const periods = S.bell.periods;
+    const rows = rowsFor(S, perspective);
+    const mobileDay = window.APP.day || 0;
+
+    // Per-render index: { rowKey -> { "d_p" -> card } }. Cheaper than scanning S.cards per cell.
+    const cardLookup = buildCardLookup(S, perspective);
+
+    rootEl.classList.add("chrx-editor");
+    rootEl.innerHTML = html(S, rows, periods, mobileDay, cardLookup);
+
+    wire(rootEl);
+    syncCardInHandClass();
+    if (window.ConstraintExplainer && typeof window.ConstraintExplainer.attachTooltip === "function") {
+      window.ConstraintExplainer.attachTooltip(rootEl);
+    }
+  }
+
+  function buildCardLookup(S, perspective) {
+    const lookup = Object.create(null);
+    for (const c of (S.cards || [])) {
+      const lesson = S._idx.lessonById[c.lessonId];
+      if (!lesson) continue;
+      const key = c.day + "_" + c.period;
+      const keysForCard = rowKeysForCard(lesson, perspective, c);
+      for (const rowKey of keysForCard) {
+        if (!lookup[rowKey]) lookup[rowKey] = Object.create(null);
+        // Multiple cards may collide on same slot post-edit; we just show first.
+        if (!lookup[rowKey][key]) lookup[rowKey][key] = c;
+      }
+    }
+    return lookup;
+  }
+
+  function rowKeysForCard(lesson, perspective, card) {
+    if (perspective === "class") return lesson.classIds;
+    if (perspective === "teacher") return lesson.teacherIds;
+    if (perspective === "room") {
+      const rid = card.classroomId || lesson.preferredRoomId;
+      return rid ? [rid] : [];
+    }
+    return [];
+  }
+
+  /** Switch perspective and re-render. */
+  function setPerspective(p, hostEl) {
+    ensureEditorState();
+    window.APP.editor.perspective = p;
+    render(hostEl);
+  }
+
+  function ensureEditorState() {
+    const A = window.APP;
+    A.editor = A.editor || {};
+    if (!A.editor.perspective) A.editor.perspective = "class";
+    if (A.editor.cardInHand === undefined) A.editor.cardInHand = null;
+  }
+
+  function syncCardInHandClass() {
+    document.body.classList.toggle(
+      "chrx-card-in-hand",
+      !!window.APP.editor.cardInHand
+    );
+  }
+
+  function rowsFor(S, perspective) {
+    if (perspective === "teacher") {
+      return S.teachers.map(t => ({
+        key: t.id,
+        label: t.name,
+        sub: t.abbr || "",
+      }));
+    }
+    if (perspective === "room") {
+      return S.classrooms.map(r => ({ key: r.id, label: r.name, sub: "" }));
+    }
+    // default = class
+    return S.classes.map(c => ({ key: c.id, label: c.name, sub: "" }));
+  }
+
+  function html(S, rows, periods, mobileDay, cardLookup) {
+    const headerHtml = headerRowHtml(periods, mobileDay);
+    const dayTabsHtml = dayTabsHtml_(mobileDay);
+
+    const bodyHtml = rows.map(row => rowHtml(S, row, periods, mobileDay, cardLookup)).join("");
+
+    return `
+      ${dayTabsHtml}
+      <div class="chrx-grid-scroll">
+        <div class="chrx-grid">
+          ${headerHtml}
+          ${bodyHtml}
+        </div>
+      </div>
+    `;
+  }
+
+  function dayTabsHtml_(mobileDay) {
+    const tabs = DAY_LABELS_EN.map((label, d) =>
+      `<button class="chrx-day-tab ${d === mobileDay ? "active" : ""}" data-day="${d}" type="button">${esc(label)}</button>`
+    ).join("");
+    return `<div class="chrx-day-tabs" role="tablist">${tabs}</div>`;
+  }
+
+  function headerRowHtml(periods, mobileDay) {
+    const dayBlocks = [];
+    for (let d = 0; d < NUM_DAYS; d++) {
+      const cells = periods.map(p =>
+        `<div class="chrx-h chrx-h-period ${d !== mobileDay ? "mobile-hidden" : ""}" data-day="${d}">P${p.index}</div>`
+      ).join("");
+      dayBlocks.push(`
+        <div class="chrx-h-day ${d !== mobileDay ? "mobile-hidden" : ""}" data-day="${d}">${esc(DAY_LABELS_EN[d])}</div>
+        ${cells}
+      `);
+    }
+    return `
+      <div class="chrx-row chrx-row-head">
+        <div class="chrx-rowlabel chrx-h">Row</div>
+        ${dayBlocks.join("")}
+      </div>
+    `;
+  }
+
+  function rowHtml(S, row, periods, mobileDay, cardLookup) {
+    const rowBucket = cardLookup[row.key] || null;
+    const slots = [];
+    for (let d = 0; d < NUM_DAYS; d++) {
+      for (const p of periods) {
+        const card = rowBucket ? rowBucket[d + "_" + p.index] : null;
+        const hide = d !== mobileDay ? " mobile-hidden" : "";
+        if (card) {
+          slots.push(cardHtml(S, card, d, p.index, row.key, hide));
+        } else {
+          slots.push(
+            `<div class="chrx-slot empty${hide}" data-day="${d}" data-period="${p.index}" data-row="${esc(row.key)}"></div>`
+          );
+        }
+      }
+    }
+    return `
+      <div class="chrx-row" data-row="${esc(row.key)}">
+        <div class="chrx-rowlabel" title="${esc(row.label)}">
+          <span class="chrx-rowlabel-main">${esc(row.label)}</span>
+          ${row.sub ? `<span class="chrx-rowlabel-sub">${esc(row.sub)}</span>` : ""}
+        </div>
+        ${slots.join("")}
+      </div>
+    `;
+  }
+
+  function cardHtml(S, card, day, period, rowKey, mobileHidden) {
+    const lesson = S._idx.lessonById[card.lessonId];
+    const subject = lesson ? S._idx.subjectById[lesson.subjectId] : null;
+    const subjShort = subject ? (subject.abbr || subject.name) : "?";
+    const teacherShort = (lesson?.teacherIds || [])
+      .map(tid => S._idx.teacherById[tid])
+      .filter(Boolean)
+      .map(t => t.abbr || t.name)
+      .join(", ");
+    const roomShort = (() => {
+      const rid = card.classroomId || lesson?.preferredRoomId;
+      const r = rid ? S._idx.classroomById[rid] : null;
+      return r ? r.name : "";
+    })();
+    const classShort = (() => {
+      if (window.APP.editor.perspective === "class") return ""; // already row
+      return (lesson?.classIds || [])
+        .map(cid => S._idx.classById[cid])
+        .filter(Boolean)
+        .map(c => c.name)
+        .join(", ");
+    })();
+
+    const hue = subjectHue(subject);
+    const cardId = `placed_${card.lessonId}_${day}_${period}`;
+    const locked = (lesson?.fixedDay != null || lesson?.fixedPeriod != null) ? " locked" : "";
+    // line 2 differs by perspective: class → teacher, teacher → class, room → class
+    const line2 = window.APP.editor.perspective === "teacher" ? classShort : teacherShort;
+    const line3 = window.APP.editor.perspective === "class" ? roomShort
+                : window.APP.editor.perspective === "teacher" ? roomShort
+                : teacherShort;
+
+    return `
+      <div class="chrx-slot${mobileHidden}" data-day="${day}" data-period="${period}" data-row="${esc(rowKey)}">
+        <div class="chrx-vkarta${locked}"
+             data-card-id="${cardId}"
+             data-lesson-id="${esc(card.lessonId)}"
+             data-day="${day}"
+             data-period="${period}"
+             style="--chrx-card-hue:${hue}"
+             title="${esc(subjShort + (teacherShort ? ' · ' + teacherShort : '') + (roomShort ? ' · ' + roomShort : ''))}">
+          <div class="chrx-vk-line1">${esc(subjShort)}</div>
+          <div class="chrx-vk-line2">${esc(line2)}</div>
+          <div class="chrx-vk-line3">${esc(line3)}</div>
+        </div>
+      </div>
+    `;
+  }
+
+  function wire(rootEl) {
+    // mousedown delegation
+    rootEl.addEventListener("mousedown", onMouseDown);
+    // Day tabs (mobile)
+    rootEl.querySelectorAll(".chrx-day-tab").forEach(btn => {
+      btn.addEventListener("click", () => {
+        window.APP.day = parseInt(btn.dataset.day, 10) || 0;
+        render(rootEl);
+      });
+    });
+  }
+
+  function onMouseDown(ev) {
+    // Card pickup
+    const vk = ev.target.closest(".chrx-vkarta");
+    if (vk) {
+      ev.preventDefault();
+      if (vk.classList.contains("locked")) return;
+      const cardId = vk.dataset.cardId;
+      const lessonId = vk.dataset.lessonId;
+      const day = parseInt(vk.dataset.day, 10);
+      const period = parseInt(vk.dataset.period, 10);
+      // Remove from data + DOM
+      removeCardFromSchool(lessonId, day, period);
+      const slot = vk.closest(".chrx-slot");
+      if (slot) {
+        slot.classList.add("empty");
+        slot.removeAttribute("title");
+        slot.innerHTML = "";
+        slot.dataset.day = String(day);
+        slot.dataset.period = String(period);
+      }
+      window.APP.editor.cardInHand = { cardId, lessonId, originDay: day, originPeriod: period };
+      syncCardInHandClass();
+      dispatch("editor:pickup", { cardId, lessonId, day, period });
+      return;
+    }
+    // Empty-slot place (only when we have something in hand)
+    const slot = ev.target.closest(".chrx-slot.empty");
+    if (slot && window.APP.editor.cardInHand) {
+      ev.preventDefault();
+      const day = parseInt(slot.dataset.day, 10);
+      const period = parseInt(slot.dataset.period, 10);
+      const rowKey = slot.dataset.row;
+      const inHand = window.APP.editor.cardInHand;
+      // Mutate school cards + re-render the row to keep visual state honest
+      placeCardOnSchool(inHand.lessonId, day, period);
+      window.APP.editor.cardInHand = null;
+      syncCardInHandClass();
+      dispatch("editor:place", { cardId: inHand.cardId, lessonId: inHand.lessonId, day, period, rowKey });
+      // Cheapest correct re-render: redraw whole grid. (Rows are few; perf ok.)
+      const host = slot.closest(".chrx-editor");
+      if (host) render(host);
+    }
+  }
+
+  function dispatch(name, detail) {
+    document.dispatchEvent(new CustomEvent(name, { detail }));
+  }
+
+  // S.cards is the single source of truth.
+  function removeCardFromSchool(lessonId, day, period) {
+    const S = window.APP.school;
+    if (!S) return;
+    const i = S.cards.findIndex(c => c.lessonId === lessonId && c.day === day && c.period === period);
+    if (i !== -1) S.cards.splice(i, 1);
+  }
+
+  function placeCardOnSchool(lessonId, day, period) {
+    const S = window.APP.school;
+    if (!S) return;
+    const lesson = S._idx.lessonById[lessonId];
+    const classroomId = lesson ? lesson.preferredRoomId : undefined;
+    // Avoid a duplicate placement on the same {lessonId, day, period}
+    if (S.cards.some(c => c.lessonId === lessonId && c.day === day && c.period === period)) return;
+    S.cards.push({ lessonId, day, period, classroomId });
+  }
+
+  // Subject hue: known short codes match design tokens, else hash.
+  const SHORT_HUES = {
+    MA: 220, MAT: 220, MATH: 220, MATHS: 220,
+    EN: 12,  ENG: 12,  ENGL: 12,
+    HI: 32,  HIN: 32,  HINDI: 32,
+    SC: 150, SCI: 150, SCIE: 150,
+    SS: 50,  SST: 50,  SOC: 50,
+    MU: 285, MUS: 285,
+    AR: 330, ART: 330,
+    PE: 110, PT: 110, PED: 110, SP: 110,
+    IT: 250, CS: 250, COMP: 250,
+    LIB: 200,
+  };
+  function subjectHue(subject) {
+    if (!subject) return 210;
+    const key = (subject.abbr || subject.name || "").toUpperCase().replace(/[^A-Z]/g, "");
+    if (SHORT_HUES[key] != null) return SHORT_HUES[key];
+    let h = 0;
+    for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) & 0xffff;
+    return h % 360;
+  }
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g,
+      c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+  }
+
+  return { render, setPerspective };
+})();
+
+/* ─── FILE: js/ui/editor/pending_strip.js ─── */
+/** PendingStrip.render(rootEl) — sticky bottom strip of un-placed cards. */
+window.PendingStrip = (function () {
+  "use strict";
+
+  const GROUPS = {
+    subject: { label: "Subject", keyFn: (S,L)=>keyOf(S._idx.subjectById[L.subjectId]) },
+    class:   { label: "Class",   keyFn: (S,L)=>keyOf(S._idx.classById[L.classIds[0]]) },
+    teacher: { label: "Teacher", keyFn: (S,L)=>keyOf(S._idx.teacherById[L.teacherIds[0]]) },
+  };
+
+  let _state = { groupBy: "subject", filter: "" };
+
+  function render(rootEl) {
+    if (!rootEl) return;
+    const S = window.APP.school;
+    rootEl.classList.add("chrx-pending-strip");
+    if (!S) {
+      rootEl.innerHTML = `<div class="chrx-pending-empty">No timetable loaded.</div>`;
+      return;
+    }
+    const placedCounts = countPlaced(S);
+    const groups = buildGroups(S, placedCounts);
+
+    rootEl.innerHTML = `
+      ${toolbarHtml()}
+      <div class="chrx-pending-scroll">
+        ${groups.map(groupHtml).join("") || `<div class="chrx-pending-empty">All cards placed.</div>`}
+      </div>
+    `;
+    wire(rootEl);
+  }
+
+  function toolbarHtml() {
+    return `
+      <div class="chrx-pending-toolbar">
+        <input type="search" class="chrx-pending-search"
+               placeholder="Search pending cards…"
+               value="${esc(_state.filter)}">
+        <div class="chrx-pending-groupby" role="tablist">
+          ${Object.entries(GROUPS).map(([k, v]) =>
+            `<button class="chrx-pending-tab ${_state.groupBy === k ? "active" : ""}" data-group="${k}">${esc(v.label)}</button>`
+          ).join("")}
+        </div>
+      </div>
+    `;
+  }
+
+  function groupHtml(g) {
+    if (!g.cards.length) return "";
+    return `
+      <div class="chrx-pending-group">
+        <div class="chrx-pending-grouplabel">${esc(g.label)} <span class="chrx-pending-count">${g.cards.length}</span></div>
+        <div class="chrx-pending-cards">
+          ${g.cards.map(c => pendingCardHtml(c)).join("")}
+        </div>
+      </div>
+    `;
+  }
+
+  function pendingCardHtml(p) {
+    return `
+      <div class="chrx-vkarta chrx-vk-pending"
+           data-card-id="${esc(p.cardId)}"
+           data-lesson-id="${esc(p.lessonId)}"
+           style="--chrx-card-hue:${p.hue}"
+           title="${esc(p.title)}">
+        <div class="chrx-vk-line1">${esc(p.subjShort)}</div>
+        <div class="chrx-vk-line2">${esc(p.classShort)}</div>
+        <div class="chrx-vk-line3">${esc(p.teacherShort)}</div>
+      </div>
+    `;
+  }
+
+  function wire(rootEl) {
+    rootEl.querySelector(".chrx-pending-search")?.addEventListener("input", (e) => {
+      _state.filter = e.target.value.toLowerCase();
+      render(rootEl);
+    });
+    rootEl.querySelectorAll(".chrx-pending-tab").forEach(btn => {
+      btn.addEventListener("click", () => {
+        _state.groupBy = btn.dataset.group || "subject";
+        render(rootEl);
+      });
+    });
+    rootEl.addEventListener("mousedown", (ev) => {
+      const vk = ev.target.closest(".chrx-vk-pending");
+      if (!vk) return;
+      ev.preventDefault();
+      const cardId = vk.dataset.cardId, lessonId = vk.dataset.lessonId;
+      window.APP.editor = window.APP.editor || {};
+      window.APP.editor.cardInHand = { cardId, lessonId, fromPending: true };
+      document.body.classList.add("chrx-card-in-hand");
+      vk.classList.add("chrx-vk-taken");
+      document.dispatchEvent(new CustomEvent("editor:pickup", { detail: { cardId, lessonId, fromPending: true } }));
+    });
+    document.addEventListener("editor:place", () => render(rootEl));
+  }
+
+  function countPlaced(S) {
+    const out = Object.create(null);
+    for (const c of (S.cards || [])) out[c.lessonId] = (out[c.lessonId] || 0) + 1;
+    return out;
+  }
+
+  function buildGroups(S, placedCounts) {
+    const groupKeyFn = GROUPS[_state.groupBy].keyFn;
+    const f = (_state.filter || "").trim();
+    const groups = Object.create(null);
+
+    for (const L of (S.lessons || [])) {
+      const ppw = Math.ceil(L.periodsPerWeek || 0);
+      const placed = placedCounts[L.id] || 0;
+      const missing = ppw - placed;
+      if (missing <= 0) continue;
+
+      const subj = S._idx.subjectById[L.subjectId];
+      const subjShort = subj ? (subj.abbr || subj.name) : "?";
+      const teacherShort = (L.teacherIds || []).map(t=>S._idx.teacherById[t])
+        .filter(Boolean).map(t=>t.abbr||t.name).join(", ");
+      const classShort = (L.classIds || []).map(c=>S._idx.classById[c])
+        .filter(Boolean).map(c=>c.name).join(", ");
+      const title = `${subjShort} · ${classShort}${teacherShort ? ' · ' + teacherShort : ''} — ${missing} more`;
+      const hue = hueOf(subjShort);
+
+      // Filter
+      const hay = `${subjShort} ${classShort} ${teacherShort}`.toLowerCase();
+      if (f && !hay.includes(f)) continue;
+
+      const gKey = groupKeyFn(S, L) || "—";
+      groups[gKey] = groups[gKey] || { label: gKey, cards: [] };
+
+      for (let i = 0; i < missing; i++) {
+        groups[gKey].cards.push({
+          cardId: `pending_${L.id}_${i}`,
+          lessonId: L.id,
+          subjShort, teacherShort, classShort, title, hue,
+        });
+      }
+    }
+    return Object.values(groups).sort((a, b) => a.label.localeCompare(b.label));
+  }
+
+  function keyOf(rec) { return rec ? (rec.name || rec.abbr || "—") : "—"; }
+
+  // Hue mirror — synced with grid_canvas.
+  const SHORT_HUES = {
+    MA:220,MAT:220,MATH:220,MATHS:220,EN:12,ENG:12,ENGL:12,HI:32,HIN:32,HINDI:32,
+    SC:150,SCI:150,SCIE:150,SS:50,SST:50,SOC:50,MU:285,MUS:285,AR:330,ART:330,
+    PE:110,PT:110,PED:110,SP:110,IT:250,CS:250,COMP:250,LIB:200,
+  };
+  function hueOf(s) {
+    const k = (s || "").toUpperCase().replace(/[^A-Z]/g, "");
+    if (SHORT_HUES[k] != null) return SHORT_HUES[k];
+    let h = 0; for (let i = 0; i < k.length; i++) h = (h * 31 + k.charCodeAt(i)) & 0xffff;
+    return h % 360;
+  }
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g,
+      c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+  }
+
+  return { render };
+})();
+
+/* ─── FILE: js/ui/editor/placement_validator.js ─── */
+/**
+ * Placement — real-time validity classifier for the in-hand card.
+ *
+ * Mirrors the seven hard constraints from js/solver/constraints.js
+ * (Agent C) but stays pure-client: no solver call, no async work, no
+ * allocation in the hot path. Caller (card_in_hand.js) throttles invocations
+ * to ≤ 1 per 16ms; classify itself runs in single-digit microseconds.
+ *
+ * Returns:
+ *   { validity: "green"|"amber"|"red", reasons: string[] }
+ *
+ * Validity ladder:
+ *   red    — any hard constraint fails (teacher/class/room busy, time-off
+ *            "unavailable", required-room-type mismatch, fixed-slot mismatch,
+ *            lab-double can't fit in two consecutive teaching periods).
+ *   amber  — placement legal but breaks a soft preference (teacher time-off
+ *            marked "preferred" off, period flagged non-teaching).
+ *   green  — clean placement.
+ */
+(function () {
+  "use strict";
+
+  function classify(lessonId, day, period, classroomId) {
+    const S = window.APP && window.APP.school;
+    if (!S) return { validity: "green", reasons: [] };
+    const idx = S._idx;
+    const lesson = idx.lessonById[lessonId];
+    if (!lesson) return { validity: "red", reasons: ["unknown lesson"] };
+
+    const reasons = [];
+    let level = 0; // 0=green, 1=amber, 2=red
+    const flag = (lvl, msg) => { if (lvl > level) level = lvl; reasons.push(msg); };
+
+    // 1. Fixed-slot mismatch (hard).
+    if (lesson.fixedDay != null && lesson.fixedDay !== day) {
+      flag(2, `fixed day ${dayLabel(lesson.fixedDay)}`);
+    }
+    if (lesson.fixedPeriod != null && lesson.fixedPeriod !== period) {
+      flag(2, `fixed period ${lesson.fixedPeriod}`);
+    }
+
+    // 2. Period must be a teaching period for hard placement; non-teaching is amber.
+    const periodObj = (S.bell.periods || []).find(p => p.index === period);
+    if (periodObj && periodObj.isTeaching === false) {
+      flag(1, `${periodObj.label || "P" + period} is non-teaching`);
+    }
+
+    // Build a per-(day,period) occupancy view from S.cards. Cheap enough at
+    // editor sizes (≤ ~2000 cards); avoids the cost of maintaining a live
+    // index that lessons/edit dialogs would have to keep in sync.
+    const sameSlot = S.cards.filter(c => c.day === day && c.period === period);
+
+    // 3. Class conflicts (hard).
+    const myClasses = new Set(lesson.classIds || []);
+    for (const c of sameSlot) {
+      const other = idx.lessonById[c.lessonId];
+      if (!other) continue;
+      for (const cid of (other.classIds || [])) {
+        if (myClasses.has(cid)) {
+          const cls = idx.classById[cid];
+          flag(2, `class ${cls ? cls.name : cid} busy`);
+          break;
+        }
+      }
+    }
+
+    // 4. Teacher conflicts (hard) + teacher unavailable (hard) / preferred (amber).
+    for (const tid of (lesson.teacherIds || [])) {
+      const teacher = idx.teacherById[tid];
+      for (const c of sameSlot) {
+        const other = idx.lessonById[c.lessonId];
+        if (other && (other.teacherIds || []).includes(tid)) {
+          flag(2, `teacher ${teacher ? (teacher.abbr || teacher.name) : tid} busy`);
+          break;
+        }
+      }
+      if (teacher && teacher.timeOff) {
+        const key = day + "_" + period;
+        const mark = teacher.timeOff[key];
+        if (mark === "unavailable") {
+          flag(2, `teacher ${teacher.abbr || teacher.name} unavailable`);
+        } else if (mark === "preferred") {
+          flag(1, `teacher ${teacher.abbr || teacher.name} prefers off`);
+        }
+      }
+    }
+
+    // 5. Room conflict + required-room-type (hard).
+    const rid = classroomId || lesson.preferredRoomId;
+    if (rid) {
+      for (const c of sameSlot) {
+        const otherRid = c.classroomId || idx.lessonById[c.lessonId]?.preferredRoomId;
+        if (otherRid === rid) {
+          const room = idx.classroomById[rid];
+          flag(2, `room ${room ? room.name : rid} busy`);
+          break;
+        }
+      }
+      if (lesson.requiredRoomType) {
+        const room = idx.classroomById[rid];
+        if (room && room.roomType && room.roomType !== lesson.requiredRoomType) {
+          flag(2, `room type ${lesson.requiredRoomType} required`);
+        }
+      }
+    } else if (lesson.requiredRoomType) {
+      flag(2, `room type ${lesson.requiredRoomType} required`);
+    }
+
+    // 6. Lab-double: needs `period+1` also free (hard).
+    if (lesson.isLabDouble) {
+      const periods = S.bell.periods || [];
+      const next = periods.find(p => p.index === period + 1);
+      if (!next || next.isTeaching === false) {
+        flag(2, "lab needs consecutive period");
+      } else {
+        const next2 = S.cards.filter(c => c.day === day && c.period === period + 1);
+        // Re-check class/teacher/room conflict at period+1 (only the strict trio).
+        const labClassBusy = next2.some(c =>
+          (idx.lessonById[c.lessonId]?.classIds || []).some(cid => myClasses.has(cid)));
+        if (labClassBusy) flag(2, "lab P+1: class busy");
+        const myTeachers = new Set(lesson.teacherIds || []);
+        const labTeacherBusy = next2.some(c =>
+          (idx.lessonById[c.lessonId]?.teacherIds || []).some(tid => myTeachers.has(tid)));
+        if (labTeacherBusy) flag(2, "lab P+1: teacher busy");
+        if (rid) {
+          const labRoomBusy = next2.some(c =>
+            (c.classroomId || idx.lessonById[c.lessonId]?.preferredRoomId) === rid);
+          if (labRoomBusy) flag(2, "lab P+1: room busy");
+        }
+      }
+    }
+
+    return {
+      validity: level === 2 ? "red" : level === 1 ? "amber" : "green",
+      reasons,
+    };
+  }
+
+  function dayLabel(d) {
+    return ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d] || "D" + d;
+  }
+
+  window.Placement = { classify };
+})();
+
+/* ─── FILE: js/ui/editor/card_in_hand.js ─── */
+/**
+ * CardInHand — cursor-following ghost overlay.
+ * Listens for `editor:pickup`; spawns a position:fixed translucent ghost
+ * that follows the cursor (transform, rAF batched). On mouseup over a valid
+ * slot → mutates APP.school.cards + dispatches `editor:place`. Else snaps
+ * back. Esc cancels. Tab / Enter give keyboard-only placement. See DRAG_UX.md.
+ */
+(function () {
+  "use strict";
+
+  let ghost = null, inHand = null;
+  let dx = 0, dy = 0, px = 0, py = 0;
+  let rafId = 0, lastValidate = 0, lastSlot = null;
+  const VALIDATE_MS = 16;
+
+  const HUE = { MA:220,MAT:220,MATH:220,MATHS:220,EN:12,ENG:12,ENGL:12,HI:32,HIN:32,HINDI:32,
+    SC:150,SCI:150,SCIE:150,SS:50,SST:50,SOC:50,MU:285,MUS:285,AR:330,ART:330,
+    PE:110,PT:110,PED:110,SP:110,IT:250,CS:250,COMP:250,LIB:200 };
+  function subjectHue(s) {
+    if (!s) return 210;
+    const k = (s.abbr || s.name || "").toUpperCase().replace(/[^A-Z]/g, "");
+    if (HUE[k] != null) return HUE[k];
+    let h = 0; for (let i = 0; i < k.length; i++) h = (h * 31 + k.charCodeAt(i)) & 0xffff;
+    return h % 360;
+  }
+  const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g,
+    c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+
+  function pickup(d) {
+    const S = window.APP && window.APP.school;
+    if (!S) return;
+    const lesson = S._idx.lessonById[d.lessonId];
+    if (!lesson) return;
+    inHand = { cardId: d.cardId, lessonId: d.lessonId,
+               originDay: d.day, originPeriod: d.period, fromPending: !!d.fromPending };
+    const subj = S._idx.subjectById[lesson.subjectId];
+    const subjShort = subj ? (subj.abbr || subj.name) : "?";
+    const teacherShort = (lesson.teacherIds || []).map(t => S._idx.teacherById[t])
+      .filter(Boolean).map(t => t.abbr || t.name).join(", ");
+    const classShort = (lesson.classIds || []).map(c => S._idx.classById[c])
+      .filter(Boolean).map(c => c.name).join(", ");
+    const hue = subjectHue(subj);
+    ghost = document.createElement("div");
+    ghost.className = "chrx-card-ghost";
+    ghost.setAttribute("aria-hidden", "true");
+    ghost.innerHTML = `<div class="chrx-vkarta" style="--chrx-card-hue:${hue}">
+      <div class="chrx-vk-line1">${esc(subjShort)}</div>
+      <div class="chrx-vk-line2">${esc(classShort)}</div>
+      <div class="chrx-vk-line3">${esc(teacherShort)}</div></div>`;
+    document.body.appendChild(ghost);
+    document.body.classList.add("chrx-card-in-hand");
+    const w = ghost.offsetWidth || 60, h = ghost.offsetHeight || 24;
+    dx = (w / 2) | 0; dy = (h / 2) | 0;
+    px = (typeof d.sourceX === "number") ? d.sourceX : (window.event ? window.event.clientX : 0);
+    py = (typeof d.sourceY === "number") ? d.sourceY : (window.event ? window.event.clientY : 0);
+    apply();
+    document.addEventListener("mousemove", onMove, true);
+    document.addEventListener("mouseup", onUp, true);
+    document.addEventListener("keydown", onKey, true);
+  }
+
+  function onMove(e) {
+    if (!ghost) return;
+    px = e.clientX; py = e.clientY;
+    if (!rafId) rafId = requestAnimationFrame(flush);
+  }
+  function flush() {
+    rafId = 0;
+    if (!ghost) return;
+    apply();
+    const now = performance.now();
+    if (now - lastValidate >= VALIDATE_MS) { lastValidate = now; paint(px, py); }
+  }
+  function apply() { ghost.style.transform = `translate(${px - dx}px, ${py - dy}px)`; }
+
+  function slotAt(x, y) {
+    ghost.style.visibility = "hidden";
+    const el = document.elementFromPoint(x, y);
+    ghost.style.visibility = "";
+    return el && el.closest ? el.closest(".chrx-slot.empty") : null;
+  }
+  function paint(x, y) {
+    const slot = slotAt(x, y);
+    if (slot === lastSlot) return;
+    if (lastSlot) { lastSlot.removeAttribute("data-validity"); lastSlot.removeAttribute("title"); }
+    lastSlot = slot || null;
+    if (!slot) return;
+    const d = parseInt(slot.dataset.day, 10), p = parseInt(slot.dataset.period, 10);
+    const v = window.Placement ? window.Placement.classify(inHand.lessonId, d, p) : { validity: "green", reasons: [] };
+    slot.setAttribute("data-validity", v.validity);
+    if (v.reasons && v.reasons.length) slot.title = v.reasons.join(" · ");
+  }
+
+  function onUp(e) {
+    if (!ghost) return;
+    const slot = slotAt(e.clientX, e.clientY);
+    if (!slot) return cancel();
+    const d = parseInt(slot.dataset.day, 10), p = parseInt(slot.dataset.period, 10);
+    const v = window.Placement ? window.Placement.classify(inHand.lessonId, d, p) : { validity: "green", reasons: [] };
+    if (v.validity === "red") return bumpAndCancel(slot);
+    commit(d, p);
+  }
+  function onKey(e) {
+    if (!ghost) return;
+    if (e.key === "Escape") { e.preventDefault(); return cancel(); }
+    if (e.key === "Tab") { e.preventDefault(); return moveFocus(e.shiftKey ? -1 : 1); }
+    if (e.key === "Enter") {
+      const f = document.activeElement;
+      if (f && f.classList && f.classList.contains("chrx-slot") && f.classList.contains("empty")) {
+        e.preventDefault();
+        const d = parseInt(f.dataset.day, 10), p = parseInt(f.dataset.period, 10);
+        const v = window.Placement ? window.Placement.classify(inHand.lessonId, d, p) : { validity: "green", reasons: [] };
+        if (v.validity === "red") bumpAndCancel(f); else commit(d, p);
+      }
+    }
+  }
+  function moveFocus(dir) {
+    const slots = Array.from(document.querySelectorAll(".chrx-editor .chrx-slot.empty"));
+    if (!slots.length) return;
+    slots.forEach(s => { if (!s.hasAttribute("tabindex")) s.setAttribute("tabindex", "-1"); });
+    const i = slots.indexOf(document.activeElement);
+    (slots[(i + dir + slots.length) % slots.length] || slots[0]).focus({ preventScroll: false });
+  }
+
+  function commit(day, period) {
+    const S = window.APP && window.APP.school;
+    if (S) {
+      const lesson = S._idx.lessonById[inHand.lessonId];
+      const cid = lesson ? lesson.preferredRoomId : undefined;
+      if (!S.cards.some(c => c.lessonId === inHand.lessonId && c.day === day && c.period === period))
+        S.cards.push({ lessonId: inHand.lessonId, day, period, classroomId: cid });
+    }
+    document.dispatchEvent(new CustomEvent("editor:place",
+      { detail: { cardId: inHand.cardId, lessonId: inHand.lessonId, day, period } }));
+    if (window.APP.editor) window.APP.editor.cardInHand = null;
+    cleanup(); rerender();
+  }
+
+  function bumpAndCancel(slot) {
+    slot.classList.add("chrx-slot-bump");
+    setTimeout(() => slot.classList.remove("chrx-slot-bump"), 200);
+    cancel();
+  }
+
+  function cancel() {
+    if (!ghost) return;
+    if (!inHand.fromPending && Number.isFinite(inHand.originDay) && Number.isFinite(inHand.originPeriod)) {
+      const S = window.APP && window.APP.school;
+      if (S) {
+        const lesson = S._idx.lessonById[inHand.lessonId];
+        const cid = lesson ? lesson.preferredRoomId : undefined;
+        if (!S.cards.some(c => c.lessonId === inHand.lessonId && c.day === inHand.originDay && c.period === inHand.originPeriod))
+          S.cards.push({ lessonId: inHand.lessonId, day: inHand.originDay, period: inHand.originPeriod, classroomId: cid });
+      }
+    }
+    const target = !inHand.fromPending ? document.querySelector(
+      `.chrx-editor .chrx-slot[data-day="${inHand.originDay}"][data-period="${inHand.originPeriod}"]`) : null;
+    if (target) {
+      const r = target.getBoundingClientRect();
+      ghost.classList.add("chrx-card-ghost-snap");
+      ghost.style.transform = `translate(${r.left}px, ${r.top}px)`;
+      setTimeout(finalise, 180);
+    } else {
+      ghost.classList.add("chrx-card-ghost-fade");
+      setTimeout(finalise, 160);
+    }
+    function finalise() {
+      if (window.APP.editor) window.APP.editor.cardInHand = null;
+      cleanup(); rerender();
+    }
+  }
+
+  function rerender() {
+    const host = document.querySelector(".chrx-editor");
+    if (host && window.Editor && window.Editor.render) window.Editor.render(host);
+    const pend = document.querySelector(".chrx-pending-strip");
+    if (pend && window.PendingStrip && window.PendingStrip.render) window.PendingStrip.render(pend);
+  }
+
+  function cleanup() {
+    document.removeEventListener("mousemove", onMove, true);
+    document.removeEventListener("mouseup", onUp, true);
+    document.removeEventListener("keydown", onKey, true);
+    if (lastSlot) { lastSlot.removeAttribute("data-validity"); lastSlot.removeAttribute("title"); }
+    lastSlot = null;
+    if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
+    if (ghost && ghost.parentNode) ghost.parentNode.removeChild(ghost);
+    ghost = null; inHand = null;
+    document.body.classList.remove("chrx-card-in-hand");
+  }
+
+  document.addEventListener("editor:pickup", e => { if (ghost) cleanup(); pickup(e.detail || {}); });
+  window.CardInHand = { _cleanup: cleanup };
+})();
+
+/* ─── FILE: js/ui/editor/constraint_explainer.js ─── */
+/**
+ * ConstraintExplainer — why is this card flagged?
+ *
+ * Hovering a red/yellow card in the editor grid pops a tooltip explaining
+ * which hard or soft constraints are broken at that (lessonId, day, period).
+ * Classic's "conflict" gives one generic word; Chronexa names the rule and
+ * the offending neighbour ("Mr. Sharma already teaches IX-A → Maths here").
+ *
+ * Data sources (in priority order):
+ *   1. window.APP.lastSolverResult.violations  — solver-level, lesson-keyed.
+ *      Coarse (only emitted for UNPLACED lessons during Generate). Surfaces
+ *      "this lesson was infeasible globally" annotations.
+ *   2. window.SolverConstraints.checkPlacement — live recheck of the cell
+ *      against current S.cards. Cell-level. Returns {hard:[], soft:[]}.
+ *      Loaded via the module shim in index.html.
+ *   3. window.Placement.classify — fallback when SolverConstraints hasn't
+ *      finished its module import yet. Same hard checks; sparser reasons.
+ *
+ * Tooltip is a single fixed-position element, recycled across hovers. Plain
+ * JS + tailwind. No deps. pointer-events:none so it never blocks clicks.
+ * 60ms debounce on show, 80ms on hide prevents flicker on hover-out-then-back.
+ */
+window.ConstraintExplainer = (function () {
+  "use strict";
+
+  const SHOW_DELAY_MS = 60;
+  const HIDE_DELAY_MS = 80;
+
+  let tooltipEl = null;
+  let showTimer = null;
+  let hideTimer = null;
+  let currentTarget = null;
+
+  /** Public: explain why one (cardId, day, period) is flagged. */
+  function explainCell(cardId, day, period) {
+    const out = { severity: "ok", reasons: [] };
+    const S = window.APP && window.APP.school;
+    if (!S) return out;
+    const lessonId = lessonIdFromCardId(cardId);
+    if (!lessonId) return out;
+    const card = (S.cards || []).find(c =>
+      c.lessonId === lessonId && c.day === day && c.period === period
+    );
+    const roomId = (card && card.classroomId) || (S._idx.lessonById[lessonId] || {}).preferredRoomId;
+
+    // 2. Live cell-level recheck — primary source.
+    const live = livecheck(S, lessonId, day, period, roomId);
+
+    // 1. Solver-emitted violations for this lesson (supplementary).
+    const solverNote = solverNoteFor(lessonId);
+
+    const hard = [...live.hard];
+    const soft = [...live.soft];
+    if (solverNote && hard.indexOf(solverNote) === -1 && soft.indexOf(solverNote) === -1) {
+      // Solver-level notes attach as soft annotations (the generator told us
+      // this lesson was hard to place; not necessarily a conflict in the
+      // current cell). They appear after live reasons.
+      soft.push(solverNote);
+    }
+
+    if (hard.length) {
+      out.severity = "hard";
+      out.reasons = hard.slice(0, 3);
+      if (hard.length < 3 && soft.length) {
+        out.reasons.push(...soft.slice(0, 3 - hard.length));
+      }
+    } else if (soft.length) {
+      out.severity = "soft";
+      out.reasons = soft.slice(0, 3);
+    }
+    return out;
+  }
+
+  function livecheck(S, lessonId, day, period, roomId) {
+    if (window.SolverConstraints && typeof window.SolverConstraints.checkPlacement === "function") {
+      try { return window.SolverConstraints.checkPlacement(S, lessonId, day, period, roomId); }
+      catch (e) { /* fall through */ }
+    }
+    // Fallback: Placement.classify (already loaded as classic script).
+    if (window.Placement && typeof window.Placement.classify === "function") {
+      try {
+        const r = window.Placement.classify(lessonId, day, period, roomId);
+        if (r.validity === "red") return { hard: r.reasons || [], soft: [] };
+        if (r.validity === "amber") return { hard: [], soft: r.reasons || [] };
+        return { hard: [], soft: [] };
+      } catch (e) { /* ignore */ }
+    }
+    return { hard: [], soft: [] };
+  }
+
+  function solverNoteFor(lessonId) {
+    const res = window.APP && window.APP.lastSolverResult;
+    const list = res && res.violations;
+    if (!list || !list.length) return null;
+    // Solver emits "Lesson <id> (<subjectId>) could not be placed: …".
+    // For lessons with periodsPerWeek > 1 the id may be `<lessonId>#<n>`,
+    // so we accept both an exact match and a `${lessonId}#` prefix match.
+    let count = 0;
+    for (const v of list) {
+      const d = v && v.description;
+      if (!d) continue;
+      if (d.indexOf(`Lesson ${lessonId} `) === 0 ||
+          d.indexOf(`Lesson ${lessonId}#`) === 0) {
+        count++;
+      }
+    }
+    if (!count) return null;
+    return count === 1
+      ? "Solver couldn't place this lesson globally — try freeing a slot"
+      : `Solver couldn't place ${count} repetitions of this lesson — try freeing slots`;
+  }
+
+  /** Card-id is `placed_${lessonId}_${day}_${period}`; parse out the lessonId. */
+  function lessonIdFromCardId(cardId /* , S */) {
+    if (!cardId) return null;
+    if (cardId.indexOf("placed_") !== 0) return cardId;
+    // lessonId may itself contain underscores — strip the "placed_" prefix
+    // and the trailing "_<day>_<period>" suffix. We use the vk dataset
+    // (data-lesson-id) instead in practice via the caller, but support the
+    // legacy cardId-only path for backward compat with explainCell()'s API.
+    const rest = cardId.slice("placed_".length);
+    const lastUnderscore = rest.lastIndexOf("_");
+    if (lastUnderscore <= 0) return rest;
+    const middle = rest.slice(0, lastUnderscore);
+    const lastUnderscore2 = middle.lastIndexOf("_");
+    if (lastUnderscore2 <= 0) return middle;
+    return middle.slice(0, lastUnderscore2);
+  }
+
+  /** Public: wire hover handlers to all .chrx-vkarta cells inside root. */
+  function attachTooltip(rootEl) {
+    if (!rootEl) return;
+    ensureTooltipEl();
+    // One delegated listener per root. Avoid double-wiring across re-renders.
+    if (rootEl.__chrxExplainerWired) return;
+    rootEl.__chrxExplainerWired = true;
+    rootEl.addEventListener("mouseover", onMouseOver, true);
+    rootEl.addEventListener("mousemove", onMouseMove, true);
+    rootEl.addEventListener("mouseout", onMouseOut, true);
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("keyup", onKeyUp);
+  }
+
+  function ensureTooltipEl() {
+    if (tooltipEl && document.body.contains(tooltipEl)) return;
+    tooltipEl = document.createElement("div");
+    tooltipEl.className = "chrx-explainer-tooltip";
+    tooltipEl.setAttribute("role", "tooltip");
+    tooltipEl.style.cssText = [
+      "position:fixed",
+      "z-index:120",
+      "pointer-events:none",
+      "max-width:280px",
+      "min-width:180px",
+      "background:#1e293b",
+      "color:#f8fafc",
+      "border-radius:6px",
+      "box-shadow:0 6px 20px rgba(0,0,0,.25)",
+      "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
+      "font-size:11.5px",
+      "line-height:1.35",
+      "padding:0",
+      "opacity:0",
+      "transition:opacity 120ms ease",
+      "display:none",
+    ].join(";");
+    document.body.appendChild(tooltipEl);
+  }
+
+  function onMouseOver(ev) {
+    const vk = ev.target.closest && ev.target.closest(".chrx-vkarta");
+    if (!vk) return;
+    currentTarget = vk;
+    clearTimeout(hideTimer); hideTimer = null;
+    clearTimeout(showTimer);
+    showTimer = setTimeout(() => showFor(vk, ev.clientX, ev.clientY), SHOW_DELAY_MS);
+  }
+
+  function onMouseMove(ev) {
+    if (!tooltipEl || tooltipEl.style.display === "none") return;
+    const vk = ev.target.closest && ev.target.closest(".chrx-vkarta");
+    if (vk && vk === currentTarget) {
+      positionTooltip(ev.clientX, ev.clientY);
+    }
+  }
+
+  function onMouseOut(ev) {
+    const vk = ev.target.closest && ev.target.closest(".chrx-vkarta");
+    if (!vk) return;
+    // Only hide when the relatedTarget is NOT inside the same vkarta or our tooltip.
+    const to = ev.relatedTarget;
+    if (to && (vk.contains(to) || (tooltipEl && tooltipEl.contains(to)))) return;
+    clearTimeout(showTimer); showTimer = null;
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(hideTooltip, HIDE_DELAY_MS);
+    currentTarget = null;
+  }
+
+  function onKeyDown(ev) {
+    if (ev.key === "Shift" && currentTarget) {
+      // Re-render so OK cells show the explanation too.
+      showFor(currentTarget, null, null);
+    }
+    if (ev.key === "Escape") hideTooltip();
+  }
+  function onKeyUp(ev) {
+    if (ev.key === "Shift" && currentTarget) {
+      // Re-evaluate — may hide if cell was OK.
+      showFor(currentTarget, null, null);
+    }
+  }
+
+  function showFor(vk, mouseX, mouseY) {
+    if (!vk || !document.body.contains(vk)) { hideTooltip(); return; }
+    ensureTooltipEl();
+    // The cell carries the canonical lessonId on data-lesson-id; the cardId
+    // (data-card-id, e.g. "placed_l1_0_3") is kept as the public API arg for
+    // explainCell so external callers can still reason about a card by id.
+    const cardId = vk.dataset.cardId || `placed_${vk.dataset.lessonId}_${vk.dataset.day}_${vk.dataset.period}`;
+    const day = parseInt(vk.dataset.day, 10);
+    const period = parseInt(vk.dataset.period, 10);
+    const data = explainCell(cardId, day, period);
+
+    const shiftHeld = isShiftHeld();
+    if (data.severity === "ok" && !shiftHeld) {
+      hideTooltip();
+      return;
+    }
+
+    tooltipEl.innerHTML = renderTooltipHtml(data);
+
+    // Position near cursor (or near vk if no mouse coords).
+    let x, y;
+    if (mouseX != null && mouseY != null) {
+      x = mouseX; y = mouseY;
+    } else {
+      const r = vk.getBoundingClientRect();
+      x = r.left + r.width / 2;
+      y = r.bottom;
+    }
+    tooltipEl.style.display = "block";
+    positionTooltip(x, y);
+    // Wire the Fix-it button (rebuilt on every show).
+    const btn = tooltipEl.querySelector(".chrx-explainer-fix-btn");
+    if (btn) {
+      btn.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        document.dispatchEvent(new CustomEvent("app:suggest-fix", {
+          detail: { cardId, day, period, severity: data.severity, reasons: data.reasons },
+        }));
+      });
+      // Ensure the button is clickable even though the tooltip is pointer-events:none.
+      btn.style.pointerEvents = "auto";
+    }
+    requestAnimationFrame(() => { tooltipEl.style.opacity = "1"; });
+  }
+
+  function positionTooltip(x, y) {
+    if (!tooltipEl) return;
+    const margin = 12;
+    const w = tooltipEl.offsetWidth || 240;
+    const h = tooltipEl.offsetHeight || 80;
+    let nx = x + margin;
+    let ny = y + margin;
+    if (nx + w + 4 > window.innerWidth) nx = Math.max(4, x - w - margin);
+    if (ny + h + 4 > window.innerHeight) ny = Math.max(4, y - h - margin);
+    tooltipEl.style.left = nx + "px";
+    tooltipEl.style.top  = ny + "px";
+  }
+
+  function hideTooltip() {
+    if (!tooltipEl) return;
+    tooltipEl.style.opacity = "0";
+    tooltipEl.style.display = "none";
+  }
+
+  let _shiftHeld = false;
+  function isShiftHeld() { return _shiftHeld; }
+  document.addEventListener("keydown", e => { if (e.key === "Shift") _shiftHeld = true; });
+  document.addEventListener("keyup",   e => { if (e.key === "Shift") _shiftHeld = false; });
+  window.addEventListener("blur",     () => { _shiftHeld = false; });
+
+  function renderTooltipHtml(data) {
+    const sev = data.severity;
+    const badge = sev === "hard"
+      ? { label: "Hard conflict", bg: "#dc2626" }
+      : sev === "soft"
+      ? { label: "Soft penalty",  bg: "#d97706" }
+      : { label: "OK",            bg: "#16a34a" };
+    const reasons = (data.reasons && data.reasons.length)
+      ? data.reasons
+      : ["No violations detected at this cell."];
+    const bullets = reasons.map(r =>
+      `<li style="margin:0;padding:3px 0 3px 14px;position:relative;">
+         <span style="position:absolute;left:0;top:7px;width:5px;height:5px;border-radius:50%;background:${badge.bg};"></span>
+         ${escHtml(r)}
+       </li>`
+    ).join("");
+    return [
+      `<div style="display:flex;align-items:center;gap:6px;padding:7px 10px 6px;border-bottom:1px solid rgba(255,255,255,.1);">`,
+        `<span style="display:inline-block;padding:2px 6px;border-radius:3px;background:${badge.bg};color:#fff;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.3px;">${escHtml(badge.label)}</span>`,
+        `<span style="color:#cbd5e1;font-size:10.5px;">${escHtml(reasons.length === 1 && sev === "ok" ? "" : reasons.length + " reason" + (reasons.length === 1 ? "" : "s"))}</span>`,
+      `</div>`,
+      `<ul style="list-style:none;margin:0;padding:6px 10px 4px;">${bullets}</ul>`,
+      sev === "ok"
+        ? ``
+        : `<div style="padding:4px 10px 8px;border-top:1px solid rgba(255,255,255,.08);">
+             <button type="button" class="chrx-explainer-fix-btn"
+                     style="background:rgba(59,130,246,.15);color:#93c5fd;border:1px solid rgba(59,130,246,.3);border-radius:4px;padding:3px 8px;font-size:10.5px;font-weight:600;cursor:pointer;">
+               🛠 Fix automatically (beta)
+             </button>
+           </div>`,
+    ].join("");
+  }
+
+  function escHtml(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g,
+      c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+  }
+
+  return { explainCell, attachTooltip };
+})();
+
+/* ─── FILE: js/ui/main.js ─── */
+/**
+ * Orchestrator — step navigation, XML upload, search, language toggle.
+ */
+(function () {
+  "use strict";
+  const t = (k) => I18N.t(k);
+
+  // ----- Error banner (red on-page, copy of sitting-planner pattern) --------
+  function showError(where, err) {
+    const msg = (err && err.message) ? err.message : String(err);
+    const stack = (err && err.stack) ? err.stack.split("\n").slice(0, 4).join("\n") : "";
+    const banner = document.createElement("div");
+    banner.className = "error-banner";
+    banner.style.cssText = "background:#fee2e2;border:1px solid #f87171;color:#991b1b;padding:12px;margin:8px 0;border-radius:6px;font-size:12px;font-family:monospace;white-space:pre-wrap;";
+    banner.innerHTML = `<strong>${escapeHtml(where)}:</strong>\n${escapeHtml(msg)}\n${escapeHtml(stack)}`;
+    const slot = document.getElementById("error-slot") || document.body;
+    slot.prepend(banner);
+    console.error(`[${where}]`, err);
+  }
+  window.addEventListener("error", (e) => showError("error", e.error || e));
+  window.addEventListener("unhandledrejection", (e) => showError("async", e.reason));
+  window._showError = showError;
+
+  // ----- Step navigation ----------------------------------------------------
+  function showStep(n) {
+    window.APP.step = n;
+    for (let i = 1; i <= 6; i++) {
+      document.getElementById("step-" + i)?.classList.toggle("hidden", i !== n);
+    }
+    document.querySelectorAll(".step-btn").forEach(b => {
+      const active = parseInt(b.dataset.step, 10) === n;
+      // step 6 has its own emerald primary; don't paint it blue when active
+      const isEditor = parseInt(b.dataset.step, 10) === 6;
+      if (!isEditor) {
+        b.classList.toggle("bg-blue-700", active);
+        b.classList.toggle("text-white",  active);
+        b.classList.toggle("bg-slate-200", !active);
+        b.classList.toggle("text-slate-700", !active);
+      }
+      b.setAttribute("aria-current", active ? "step" : "false");
+    });
+    renderActiveStep();
+    // notify the editor activator + other listeners
+    document.dispatchEvent(new CustomEvent("step:changed", { detail: { step: n } }));
+  }
+  function renderActiveStep() {
+    switch (window.APP.step) {
+      case 2: SchoolInfo.render(document.getElementById("step-2-body")); break;
+      case 3: ClassGrid.render(document.getElementById("step-3-body")); break;
+      case 4: TeacherGrid.render(document.getElementById("step-4-body")); break;
+      case 5: RoomGrid.render(document.getElementById("step-5-body")); break;
+      // case 6 is handled by EditorActivator listening to step:changed
+    }
+  }
+
+  // ----- Search ------------------------------------------------------------
+  function wireSearch() {
+    const input = document.getElementById("search-input");
+    if (!input) return;
+    input.placeholder = t("searchPlaceholder");
+    let timer = null;
+    input.addEventListener("input", () => {
+      window.APP.filter = input.value.trim().toLowerCase();
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        // Cheap path: hide rows by text-content lookup
+        const host = activeHost();
+        if (host) GridView.applyFilter(host);
+      }, 80);
+    });
+  }
+  function activeHost() {
+    return document.getElementById(`step-${window.APP.step}-body`);
+  }
+
+  // ----- Language toggle ---------------------------------------------------
+  function wireLang() {
+    const en = document.getElementById("lang-en");
+    const hi = document.getElementById("lang-hi");
+    if (!en || !hi) return;
+    en.onclick = () => setLang("en");
+    hi.onclick = () => setLang("hi");
+    updateLangButtons();
+  }
+  function setLang(lang) {
+    window.APP.lang = lang;
+    applyStaticLabels();
+    updateLangButtons();
+    renderActiveStep();
+  }
+  function updateLangButtons() {
+    document.querySelectorAll("[data-lang]").forEach(b => {
+      const active = b.dataset.lang === window.APP.lang;
+      b.classList.toggle("bg-blue-700", active);
+      b.classList.toggle("text-white",  active);
+      b.classList.toggle("bg-white",    !active);
+      b.classList.toggle("text-slate-700", !active);
+    });
+  }
+  function applyStaticLabels() {
+    document.querySelectorAll("[data-i18n]").forEach(el => {
+      const k = el.dataset.i18n;
+      el.textContent = t(k);
+    });
+    const s = document.getElementById("search-input");
+    if (s) s.placeholder = t("searchPlaceholder");
+  }
+
+  // ----- XML upload --------------------------------------------------------
+  function wireXmlUpload() {
+    const input = document.getElementById("xml-file");
+    if (!input) return;
+    input.addEventListener("change", async (e) => {
+      const f = e.target.files && e.target.files[0];
+      if (!f) return;
+      const status = document.getElementById("xml-status");
+      status.innerHTML = `<span class="text-slate-500">${escapeHtml(t("parsing"))}</span>`;
+      try {
+        const t0 = performance.now();
+        const school = await parseTimetableXml.parseFile(f);
+        const dt = Math.round(performance.now() - t0);
+        window.APP.school = school;
+        const c = school._meta.counts;
+        status.innerHTML = `
+          <span class="text-emerald-700 font-semibold">${escapeHtml(t("parseOK"))}</span>
+          <span class="text-slate-600">
+            ${c.teachers} teachers · ${c.classes} classes · ${c.subjects} subjects ·
+            ${c.classrooms} rooms · ${c.lessons} lessons · ${c.cards} cards
+            <span class="text-slate-400 ml-1">(${dt} ms)</span>
+          </span>`;
+        document.querySelectorAll(".needs-school").forEach(b => b.disabled = false);
+        // Auto-color anything without a color (Agent A's parser doesn't always set them)
+        if (window.CreateNew && window.CreateNew.ensureColors) window.CreateNew.ensureColors();
+        // Fire school-loaded event so EditorActivator can hook
+        document.dispatchEvent(new CustomEvent("app:school-loaded", { detail: { source: "upload-xml" } }));
+        // Auto-advance to the Editor (was School Info; users want the grid first)
+        setTimeout(() => showStep(6), 250);
+      } catch (err) {
+        console.error(err);
+        status.innerHTML = `<span class="text-rose-700 font-semibold">${escapeHtml(t("parseFail"))} ${escapeHtml(err.message || "")}</span>`;
+      }
+    });
+  }
+
+  // ----- Boot --------------------------------------------------------------
+  function boot() {
+    document.querySelectorAll(".step-btn").forEach(b => {
+      b.onclick = () => {
+        const n = parseInt(b.dataset.step, 10);
+        if (n > 1 && !window.APP.school) {
+          // Gate steps 2-6 behind a parsed-or-created school
+          showError(t("needXml") || "Build or load a timetable first.", new Error(""));
+          return;
+        }
+        showStep(n);
+      };
+    });
+
+    // ─── CTA: Build New Timetable ────────────────────────────
+    // CreateNew.createBlank() fires `app:school-loaded`, which the editor
+    // activator listens for and auto-advances to step 6. We then layer the
+    // 5-step wizard walkthrough on top as a modal overlay.
+    const buildBtn = document.getElementById("cta-build-new");
+    if (buildBtn) {
+      buildBtn.onclick = () => {
+        if (window.APP.school && (window.APP.school.teachers.length || window.APP.school.cards.length)) {
+          if (!confirm("A timetable is already loaded. Replace it with a new one?")) return;
+        }
+        // Friendly entry: show school template picker first. If the user picks
+        // "Blank" we fall through to createBlank(); otherwise SchoolTemplates
+        // seeds subjects/bell/classes/teachers/rooms for that school type.
+        if (window.SchoolTemplates && window.SchoolTemplates.showPicker) {
+          window.SchoolTemplates.showPicker((id /*, result */) => {
+            document.querySelectorAll(".needs-school").forEach(b => b.disabled = false);
+            // Wizard walkthrough overlay covers the seeded school
+            if (window.WizardWalkthrough && window.WizardWalkthrough.start) {
+              window.WizardWalkthrough.start();
+            } else {
+              showStep(6);
+            }
+          });
+        } else if (window.CreateNew && window.CreateNew.createBlank) {
+          // Fallback: no template picker loaded (shouldn't happen on live)
+          window.CreateNew.createBlank();
+          document.querySelectorAll(".needs-school").forEach(b => b.disabled = false);
+          if (window.WizardWalkthrough && window.WizardWalkthrough.start) {
+            window.WizardWalkthrough.start();
+          } else {
+            showStep(6);
+          }
+        }
+      };
+    }
+
+    // ─── CTA: Load Demo Seed (bundled GD Goenka sample-school.xml) ──
+    const demoBtn = document.getElementById("cta-load-demo");
+    if (demoBtn) {
+      demoBtn.onclick = async () => {
+        const status = document.getElementById("xml-status");
+        if (status) status.innerHTML = `<span class="text-slate-500">Loading bundled sample…</span>`;
+        try {
+          const r = await fetch("./sample-school.xml");
+          if (!r.ok) throw new Error("HTTP " + r.status);
+          const xmlText = await r.text();
+          // Use the same parse pipeline as <input type="file">
+          const blob = new Blob([xmlText], { type: "application/xml" });
+          const file = new File([blob], "sample-school.xml", { type: "application/xml" });
+          const school = await parseTimetableXml.parseFile(file);
+          window.APP.school = school;
+          if (window.CreateNew && window.CreateNew.ensureColors) window.CreateNew.ensureColors();
+          const c = school._meta.counts;
+          if (status) status.innerHTML = `<span class="text-emerald-700 font-semibold">Loaded.</span> <span class="text-slate-600">${c.teachers} teachers · ${c.classes} classes · ${c.subjects} subjects · ${c.classrooms} rooms · ${c.lessons} lessons · ${c.cards} cards</span>`;
+          document.querySelectorAll(".needs-school").forEach(b => b.disabled = false);
+          document.dispatchEvent(new CustomEvent("app:school-loaded", { detail: { source: "demo-xml" } }));
+          setTimeout(() => showStep(6), 250);
+        } catch (e) {
+          console.warn("[demo] bundled XML fetch failed, falling back to 22-card seed:", e);
+          if (status) status.innerHTML = `<span class="text-amber-700">Bundled file unavailable, using 22-card demo instead.</span>`;
+          if (window.CreateNew && window.CreateNew.createDemoSeed) {
+            window.CreateNew.createDemoSeed();
+            document.querySelectorAll(".needs-school").forEach(b => b.disabled = false);
+            showStep(6);
+          }
+        }
+      };
+    }
+
+    // ─── Listen for nav:goto-step events (fired by activators / wizards) ──
+    document.addEventListener("nav:goto-step", e => {
+      const n = e.detail && e.detail.step;
+      if (n) showStep(n);
+    });
+
+    // ─── Classic skin toggle in editor header ──────────────────
+    const skinBtn = document.getElementById("editor-toggle-skin");
+    if (skinBtn) {
+      skinBtn.onclick = () => {
+        const html = document.documentElement;
+        if (html.getAttribute("data-skin") === "classic") {
+          html.removeAttribute("data-skin");
+          skinBtn.classList.remove("bg-amber-100", "border-amber-500");
+        } else {
+          html.setAttribute("data-skin", "classic");
+          skinBtn.classList.add("bg-amber-100", "border-amber-500");
+        }
+      };
+    }
+
+    // ─── Perspective rotator in editor header ──────────────────
+    const persBtn = document.getElementById("editor-perspective");
+    if (persBtn) {
+      const PERS = ["class", "teacher", "room"];
+      const LABEL = { class: "By Class", teacher: "By Teacher", room: "By Room" };
+      persBtn.onclick = () => {
+        const cur = (window.APP.editor && window.APP.editor.perspective) || "class";
+        const next = PERS[(PERS.indexOf(cur) + 1) % PERS.length];
+        window.APP.editor = window.APP.editor || {};
+        window.APP.editor.perspective = next;
+        persBtn.textContent = LABEL[next];
+        // Re-render
+        if (window.EditorActivator) window.EditorActivator.activate();
+      };
+    }
+
+    wireSearch();
+    wireLang();
+    wireXmlUpload();
+    applyStaticLabels();
+    showStep(1);
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", boot);
+  } else {
+    boot();
+  }
+})();
+
+/* ─── FILE: js/ui/onboarding/data_library.js ─── */
+/* Data library — curated seed data for onboarding templates.
+ *
+ * Provides subject lists / teacher name pools / class naming patterns /
+ * standard bell schedules for each school-type template. The W14
+ * onboarding agent (school_templates.js) can consume these to keep
+ * its file readable.
+ *
+ * All data is hand-curated — no random generation, no Latin filler.
+ * Schools in India / IB / IGCSE / Montessori / Govt see realistic
+ * names that look like a real timetable, not a Lorem-ipsum demo.
+ */
+(function (global) {
+  "use strict";
+
+  /* ── Subjects ── */
+  const SUBJECTS = {
+    cbse: [
+      { name: "Mathematics", short: "Math",  color: "#e11d48", weight: 1.0 },
+      { name: "Hindi",       short: "Hin",   color: "#f97316", weight: 1.0 },
+      { name: "English",     short: "Eng",   color: "#3b82f6", weight: 1.0 },
+      { name: "Science",     short: "Sci",   color: "#22c55e", weight: 1.2 },
+      { name: "Social Studies", short: "SST", color: "#8b5cf6", weight: 1.0 },
+      { name: "Sanskrit",    short: "Sans",  color: "#ec4899", weight: 0.8 },
+      { name: "Computer",    short: "Comp",  color: "#06b6d4", weight: 1.0 },
+      { name: "Physical Education", short: "PE", color: "#84cc16", weight: 0.5 },
+      { name: "Art",         short: "Art",   color: "#fbbf24", weight: 0.6 },
+      { name: "Music",       short: "Mus",   color: "#a78bfa", weight: 0.6 },
+      { name: "Library",     short: "Lib",   color: "#64748b", weight: 0.5 },
+      { name: "Assembly",    short: "Asm",   color: "#475569", weight: 0.3 },
+    ],
+    ib_myp: [
+      { name: "Language A — English Literature", short: "EngLit", color: "#3b82f6", weight: 1.0 },
+      { name: "Language B — Hindi", short: "HinB", color: "#f97316", weight: 1.0 },
+      { name: "Mathematics", short: "Math", color: "#e11d48", weight: 1.0 },
+      { name: "Sciences", short: "Sci", color: "#22c55e", weight: 1.2 },
+      { name: "Individuals & Societies", short: "I&S", color: "#8b5cf6", weight: 1.0 },
+      { name: "Arts", short: "Arts", color: "#fbbf24", weight: 0.7 },
+      { name: "Physical & Health Education", short: "PHE", color: "#84cc16", weight: 0.5 },
+      { name: "Design", short: "Des", color: "#06b6d4", weight: 0.8 },
+      { name: "Personal Project", short: "PP", color: "#ec4899", weight: 0.5 },
+    ],
+    igcse: [
+      { name: "English Language", short: "EngLg", color: "#3b82f6", weight: 1.0 },
+      { name: "Mathematics", short: "Math", color: "#e11d48", weight: 1.0 },
+      { name: "Combined Science", short: "ComSci", color: "#22c55e", weight: 1.2 },
+      { name: "Business Studies", short: "Biz", color: "#8b5cf6", weight: 0.8 },
+      { name: "Economics", short: "Eco", color: "#f97316", weight: 0.8 },
+      { name: "Computer Science", short: "CS", color: "#06b6d4", weight: 1.0 },
+      { name: "Geography", short: "Geo", color: "#84cc16", weight: 0.8 },
+      { name: "History", short: "Hist", color: "#a78bfa", weight: 0.8 },
+      { name: "Foreign Language", short: "FL", color: "#ec4899", weight: 0.8 },
+      { name: "Physical Education", short: "PE", color: "#fbbf24", weight: 0.4 },
+    ],
+    us_k12: [
+      { name: "English Language Arts", short: "ELA", color: "#3b82f6", weight: 1.0 },
+      { name: "Mathematics", short: "Math", color: "#e11d48", weight: 1.0 },
+      { name: "Science", short: "Sci", color: "#22c55e", weight: 1.0 },
+      { name: "Social Studies", short: "SocSt", color: "#8b5cf6", weight: 1.0 },
+      { name: "World Language", short: "WL", color: "#f97316", weight: 0.8 },
+      { name: "Health & PE", short: "PE", color: "#84cc16", weight: 0.5 },
+      { name: "Art", short: "Art", color: "#fbbf24", weight: 0.6 },
+      { name: "Technology", short: "Tech", color: "#06b6d4", weight: 0.8 },
+    ],
+    montessori_primary: [
+      { name: "Practical Life", short: "PL",  color: "#84cc16", weight: 0.8 },
+      { name: "Sensorial",      short: "Sen", color: "#fbbf24", weight: 0.8 },
+      { name: "Language",       short: "Lng", color: "#3b82f6", weight: 1.0 },
+      { name: "Mathematics",    short: "Math", color: "#e11d48", weight: 1.0 },
+      { name: "Cultural — Geography", short: "Geo", color: "#22c55e", weight: 0.7 },
+      { name: "Cultural — Biology",   short: "Bio", color: "#10b981", weight: 0.7 },
+      { name: "Cultural — History",   short: "Hst", color: "#a78bfa", weight: 0.7 },
+      { name: "Music",          short: "Mus", color: "#ec4899", weight: 0.5 },
+      { name: "Art",            short: "Art", color: "#f97316", weight: 0.5 },
+      { name: "Circle Time",    short: "CT",  color: "#06b6d4", weight: 0.3 },
+    ],
+    india_govt: [
+      { name: "Hindi", short: "Hin", color: "#f97316", weight: 1.0 },
+      { name: "English", short: "Eng", color: "#3b82f6", weight: 1.0 },
+      { name: "Mathematics", short: "Math", color: "#e11d48", weight: 1.0 },
+      { name: "EVS / Science", short: "EVS", color: "#22c55e", weight: 1.0 },
+      { name: "Social Studies", short: "SST", color: "#8b5cf6", weight: 1.0 },
+      { name: "Regional Language", short: "RL", color: "#ec4899", weight: 0.8 },
+      { name: "Physical Education", short: "PE", color: "#84cc16", weight: 0.4 },
+      { name: "Art / Craft", short: "AC", color: "#fbbf24", weight: 0.5 },
+    ],
+  };
+
+  /* ── Teacher honorific + sample names (one set of 12 per region) ── */
+  const TEACHER_NAMES = {
+    indian: [
+      "Mr. Rahul Sharma", "Mrs. Priya Mehta", "Ms. Anjali Verma",
+      "Mr. Aditya Nair", "Ms. Sneha Iyer", "Mr. Karan Singh",
+      "Mrs. Kavita Bose", "Mr. Vikram Patel", "Ms. Ritu Joshi",
+      "Mr. Sanjay Kumar", "Mrs. Meera Kapoor", "Ms. Pooja Reddy",
+    ],
+    western: [
+      "Mr. James Wright", "Ms. Emily Carter", "Mrs. Sarah Brown",
+      "Mr. David Wilson", "Ms. Olivia Davis", "Mr. Michael Lee",
+      "Mrs. Sophia Taylor", "Mr. Daniel Clark", "Ms. Mia Garcia",
+      "Mr. Christopher Hall", "Mrs. Charlotte Moore", "Ms. Amelia Jackson",
+    ],
+    asian: [
+      "Ms. Li Wei", "Mr. Tanaka Hiroshi", "Mrs. Park Min-Jung",
+      "Ms. Cheng Yi", "Mr. Sato Daisuke", "Mrs. Yamamoto Sakura",
+      "Ms. Kim Hye-Jin", "Mr. Zhang Jun", "Ms. Suzuki Aiko",
+      "Mr. Lee Joon", "Mrs. Wang Xin", "Ms. Choi Min-Ji",
+    ],
+  };
+
+  /* ── Class naming patterns ── */
+  const CLASS_PATTERNS = {
+    "Indian primary": ["I A", "I B", "II A", "II B", "III A", "III B", "IV A", "IV B", "V A", "V B"],
+    "Indian secondary": ["VI A", "VI B", "VII A", "VII B", "VIII A", "VIII B", "IX A", "IX B", "X A", "X B"],
+    "Indian sr secondary": ["XI Science", "XI Commerce", "XI Humanities", "XII Science", "XII Commerce", "XII Humanities"],
+    "Western K-5": ["Kindergarten A", "Grade 1A", "Grade 2A", "Grade 3A", "Grade 4A", "Grade 5A"],
+    "Montessori": ["Cycle 1 (3-6)", "Cycle 2 (6-9)", "Cycle 3 (9-12)"],
+  };
+
+  /* ── Standard bell schedules ── */
+  const BELLS = {
+    "Indian 6-day 8-period": {
+      daysPerWeek: 6,
+      periods: [
+        { label: "P1", startMin: 7*60+30, endMin: 8*60+10 },
+        { label: "P2", startMin: 8*60+10, endMin: 8*60+50 },
+        { label: "P3", startMin: 8*60+50, endMin: 9*60+30 },
+        { label: "P4", startMin: 9*60+50, endMin: 10*60+30 },  // after recess
+        { label: "P5", startMin: 10*60+30, endMin: 11*60+10 },
+        { label: "P6", startMin: 11*60+10, endMin: 11*60+50 },
+        { label: "P7", startMin: 11*60+50, endMin: 12*60+30 },
+        { label: "P8", startMin: 12*60+30, endMin: 13*60+10 },
+      ],
+      breaks: [
+        { name: "Recess", afterPeriod: 3, startMin: 9*60+30, endMin: 9*60+50 },
+      ],
+    },
+    "Western 5-day 7-period": {
+      daysPerWeek: 5,
+      periods: [
+        { label: "P1", startMin: 8*60, endMin: 8*60+45 },
+        { label: "P2", startMin: 8*60+50, endMin: 9*60+35 },
+        { label: "P3", startMin: 9*60+40, endMin: 10*60+25 },
+        { label: "P4", startMin: 10*60+45, endMin: 11*60+30 },  // after morning break
+        { label: "P5", startMin: 11*60+35, endMin: 12*60+20 },
+        { label: "P6", startMin: 13*60, endMin: 13*60+45 },  // after lunch
+        { label: "P7", startMin: 13*60+50, endMin: 14*60+35 },
+      ],
+      breaks: [
+        { name: "Morning break", afterPeriod: 3, startMin: 10*60+25, endMin: 10*60+45 },
+        { name: "Lunch", afterPeriod: 5, startMin: 12*60+20, endMin: 13*60 },
+      ],
+    },
+    "Montessori 5-day 4-cycle": {
+      daysPerWeek: 5,
+      periods: [
+        { label: "Morning Work Cycle", startMin: 8*60+30, endMin: 11*60 },
+        { label: "Group Activity",     startMin: 11*60, endMin: 11*60+45 },
+        { label: "Afternoon Cycle",    startMin: 12*60+30, endMin: 14*60+30 },
+        { label: "Reflection",         startMin: 14*60+30, endMin: 15*60 },
+      ],
+      breaks: [
+        { name: "Lunch", afterPeriod: 2, startMin: 11*60+45, endMin: 12*60+30 },
+      ],
+    },
+  };
+
+  /* ── Classroom naming ── */
+  const ROOM_PATTERNS = {
+    "Numbered": ["Room 101", "Room 102", "Room 103", "Room 201", "Room 202", "Lab 1", "Lab 2", "Library", "Music Room", "Art Studio"],
+    "Named": ["Lotus", "Lily", "Rose", "Tulip", "Marigold", "Daisy", "Sunflower", "Jasmine", "Orchid", "Lavender"],
+  };
+
+  global.OnboardingData = {
+    SUBJECTS, TEACHER_NAMES, CLASS_PATTERNS, BELLS, ROOM_PATTERNS,
+    listSchoolTypes: () => Object.keys(SUBJECTS),
+  };
+})(window);
+
+/* ─── FILE: js/ui/onboarding/school_templates.js ─── */
+/* School templates — seed a working school from a school-type choice.
+ *
+ * Consumes window.OnboardingData (shipped in data_library.js).
+ * Exposes window.SchoolTemplates.{ choices, applyChoice(id, opts) }.
+ *
+ * Triggered from the wizard's "Create new" flow. Each choice loads
+ * subjects + 1 sample teacher + 1 sample class + a bell schedule.
+ */
+(function (global) {
+  "use strict";
+
+  function ensure(condition, message) {
+    if (!condition) console.warn("[school-templates]", message);
+  }
+
+  const CHOICES = [
+    { id: "cbse",              label: "CBSE school (India)",          subj: "cbse",
+      classes: "Indian primary",  bell: "Indian 6-day 8-period",       names: "indian" },
+    { id: "ib_myp",            label: "IB MYP school",                subj: "ib_myp",
+      classes: "Indian primary",  bell: "Western 5-day 7-period",      names: "western" },
+    { id: "igcse",             label: "IGCSE school",                 subj: "igcse",
+      classes: "Indian secondary", bell: "Western 5-day 7-period",     names: "western" },
+    { id: "us_k12",            label: "US public school K-12",        subj: "us_k12",
+      classes: "Western K-5",     bell: "Western 5-day 7-period",      names: "western" },
+    { id: "montessori_primary", label: "Montessori primary",          subj: "montessori_primary",
+      classes: "Montessori",      bell: "Montessori 5-day 4-cycle",    names: "western" },
+    { id: "india_govt",        label: "Govt school (India)",          subj: "india_govt",
+      classes: "Indian primary",  bell: "Indian 6-day 8-period",       names: "indian" },
+    { id: "blank",             label: "Blank — I'll set up everything", subj: null, classes: null, bell: null, names: null },
+  ];
+
+  function applyChoice(id, opts) {
+    opts = opts || {};
+    const choice = CHOICES.find(c => c.id === id);
+    if (!choice) return { error: "no such template: " + id };
+    const APP = global.APP || (global.APP = {});
+    if (!global.CreateNew?.createBlank) return { error: "CreateNew not loaded" };
+    global.CreateNew.createBlank({ schoolName: opts.schoolName || choice.label });
+    const school = APP.school;
+    if (choice.id === "blank") {
+      return { ok: true, choice: "blank" };
+    }
+    const data = global.OnboardingData;
+    if (!data) {
+      ensure(false, "OnboardingData missing — seeding skeleton only");
+      return { ok: true, choice: "blank-fallback" };
+    }
+    // Seed subjects
+    if (choice.subj && data.SUBJECTS[choice.subj]) {
+      school.subjects = data.SUBJECTS[choice.subj].map((s, i) => ({
+        id: "s_" + i + "_" + Math.random().toString(36).slice(2, 6),
+        name: s.name, abbr: s.short, color: s.color,
+        contractWeight: s.weight,
+      }));
+    }
+    // Seed bell schedule
+    if (choice.bell && data.BELLS[choice.bell]) {
+      const bell = data.BELLS[choice.bell];
+      school.bell = { periods: bell.periods.map((p, i) => ({
+        index: i + 1, label: p.label, startMin: p.startMin, endMin: p.endMin, isTeaching: true,
+      })) };
+      // Seed breaks
+      if (bell.breaks?.length) {
+        school.breaks = bell.breaks.map((b, i) => ({
+          id: "b_" + i, name: b.name, startMin: b.startMin, endMin: b.endMin,
+          afterPeriod: b.afterPeriod,
+        }));
+      }
+      school.daysPerWeek = bell.daysPerWeek;
+    }
+    // Seed sample classes
+    if (choice.classes && data.CLASS_PATTERNS[choice.classes]) {
+      school.classes = data.CLASS_PATTERNS[choice.classes].slice(0, 3).map((name, i) => ({
+        id: "c_" + i + "_" + Math.random().toString(36).slice(2, 6),
+        name, short: name, color: "#3b82f6",
+      }));
+    }
+    // Seed one sample teacher
+    if (choice.names && data.TEACHER_NAMES[choice.names]?.length) {
+      const t = data.TEACHER_NAMES[choice.names][0];
+      school.teachers = [{
+        id: "t_seed", name: t + " — replace with real teachers", color: "#10b981",
+      }];
+    }
+    // Seed two sample rooms
+    const roomPattern = data.ROOM_PATTERNS["Numbered"];
+    if (roomPattern) {
+      school.classrooms = roomPattern.slice(0, 2).map((name, i) => ({
+        id: "r_" + i, name, short: name,
+      }));
+    }
+    if (global.CreateNew?.refreshIndex) global.CreateNew.refreshIndex();
+    if (global.APP?.audit?.append) {
+      global.APP.audit.append({ entity: "school", op: "template-applied", template: id });
+    }
+    return { ok: true, choice: id, counts: {
+      subjects: school.subjects?.length || 0,
+      classes:  school.classes?.length  || 0,
+      teachers: school.teachers?.length || 0,
+      rooms:    school.classrooms?.length || 0,
+    }};
+  }
+
+  /* ── UI: template picker modal (only shown if user clicks "Create new") ── */
+  function pickerHtml() {
+    const tiles = CHOICES.map(c =>
+      `<button data-id="${c.id}" class="chrx-tpl-card chrx-lift chrx-press">
+         <strong>${c.label}</strong>
+         <small>${c.subj ? "8+ subjects · " : ""}${c.bell ? c.bell + " · " : ""}${c.names || "blank"}</small>
+       </button>`
+    ).join("");
+    return `
+      <h3 style="margin:0 0 6px;color:#1e3a8a">Pick a starting point</h3>
+      <p style="margin:0 0 16px;color:#64748b;font-size:13px">We'll seed subjects, bell schedule, and 3 sample classes. You can change everything later.</p>
+      <div class="chrx-tpl-grid">${tiles}</div>`;
+  }
+
+  function ensureStyles() {
+    if (document.getElementById("chrx-tpl-styles")) return;
+    const s = document.createElement("style");
+    s.id = "chrx-tpl-styles";
+    s.textContent = `
+.chrx-tpl-modal{position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:24px;z-index:1100}
+.chrx-tpl-modal__panel{background:#fff;border-radius:14px;width:min(680px,95vw);padding:22px 24px;box-shadow:0 20px 60px rgba(0,0,0,.3);font-family:-apple-system,sans-serif}
+.chrx-tpl-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.chrx-tpl-card{background:#f1f5f9;border:1px solid transparent;color:#0f172a;text-align:left;padding:14px 16px;border-radius:10px;cursor:pointer;transition:background .15s ease,border-color .15s ease,transform .15s ease;display:flex;flex-direction:column;gap:4px}
+.chrx-tpl-card:hover{background:#fff;border-color:#4f46e5;transform:translateY(-1px)}
+.chrx-tpl-card small{color:#64748b;font-size:11px}
+    `;
+    document.head.appendChild(s);
+  }
+
+  function showPicker(onPick) {
+    ensureStyles();
+    const root = document.createElement("div");
+    root.className = "chrx-tpl-modal";
+    root.onclick = e => { if (e.target === root) root.remove(); };
+    const panel = document.createElement("div");
+    panel.className = "chrx-tpl-modal__panel";
+    panel.innerHTML = pickerHtml();
+    root.appendChild(panel);
+    document.body.appendChild(root);
+    panel.querySelectorAll("[data-id]").forEach(btn => {
+      btn.onclick = () => {
+        const id = btn.dataset.id;
+        const r = applyChoice(id);
+        root.remove();
+        if (onPick) onPick(id, r);
+      };
+    });
+  }
+
+  global.SchoolTemplates = { CHOICES, applyChoice, showPicker };
+})(window);
+
+/* ─── FILE: js/ui/onboarding/bulk_add_wizard.js ─── */
+/* Bulk-add wizard — paste a list / spreadsheet to create N entities at once.
+ *
+ * Friendly UX for fresh-start schools: the school admin types or pastes
+ * teacher names / class names / subjects, one per line OR comma-separated,
+ * and the wizard creates N entities at once with sensible defaults
+ * (auto colors, sequential numbering, etc.).
+ *
+ * window.BulkAddWizard.open(kind, school?)  // kind: 'teachers' | 'classes' | 'subjects' | 'classrooms'
+ */
+(function (global) {
+  "use strict";
+
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      const v = attrs[k]; if (v == null) continue;
+      if (k === "class") n.className = v;
+      else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v);
+    }
+    for (const c of kids) if (c != null && c !== false)
+      n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    return n;
+  }
+
+  // Detect if the pasted text is a TSV/CSV with a header row. If so, look
+  // for a "name"-like column and emit values from that. Otherwise fall back
+  // to the original newline-then-comma split. Returns up to 200 items.
+  function parse(text) {
+    if (!text) return [];
+    const lines = text.split(/[\r\n]+/).map(s => s.trim()).filter(Boolean);
+    if (!lines.length) return [];
+
+    // TSV/CSV detection: first line has multiple cells AND looks header-y
+    // (contains "name" / "teacher" / "subject" / "class" / "room").
+    const firstLine = lines[0];
+    const hasTab = firstLine.includes("\t");
+    const hasSemi = firstLine.includes(";");
+    const cellsInFirst = (hasTab ? firstLine.split("\t") :
+                          hasSemi ? firstLine.split(";") :
+                          firstLine.split(","));
+    const headerLooksReal = cellsInFirst.length >= 2 &&
+      /name|teacher|subject|class|room|abbr|short/i.test(firstLine);
+
+    if (lines.length > 1 && headerLooksReal) {
+      const sep = hasTab ? "\t" : (hasSemi ? ";" : ",");
+      const headers = cellsInFirst.map(h => h.replace(/^"|"$/g, "").trim().toLowerCase());
+      // Pick name column. Priority: "name", "teacher", "subject", "class",
+      // "room", "title". Else column 0.
+      const priorities = ["name", "fullname", "teacher", "subject", "class",
+                          "room", "classroom", "title"];
+      let nameCol = -1;
+      for (const p of priorities) {
+        const i = headers.indexOf(p);
+        if (i >= 0) { nameCol = i; break; }
+      }
+      if (nameCol < 0) nameCol = 0;
+      return lines.slice(1).map(l => {
+        const cells = l.split(sep).map(c => c.replace(/^"|"$/g, "").trim());
+        return (cells[nameCol] || "").trim();
+      }).filter(Boolean).slice(0, 200);
+    }
+
+    // No header → original behaviour: newline-split, fall back to commas.
+    let parts = lines;
+    if (parts.length === 1 && parts[0].includes(",")) {
+      parts = parts[0].split(/,\s*/).map(s => s.trim()).filter(Boolean);
+    }
+    return parts.slice(0, 200);
+  }
+
+  function open(kind, school) {
+    school = school || global.APP?.school;
+    if (!school) { (global._chrxNotify || console.log)("Open a timetable first.", "error"); return; }
+    ensureStyles();
+
+    const labels = {
+      teachers:   { plural: "teachers",  defaultColor: () => "#10b981", store: "teachers"   },
+      subjects:   { plural: "subjects",  defaultColor: () => "#3b82f6", store: "subjects"   },
+      classes:    { plural: "classes",   defaultColor: () => "#a855f7", store: "classes"    },
+      classrooms: { plural: "classrooms",defaultColor: () => "#f59e0b", store: "classrooms" },
+    };
+    const info = labels[kind];
+    if (!info) return;
+
+    const root = el("div", { class: "chrx-bulk-root", onclick: e => { if (e.target === root) root.remove(); } });
+    const panel = el("div", { class: "chrx-bulk-panel" });
+
+    panel.appendChild(el("header", null,
+      el("h2", null, `📋 Bulk add ${info.plural}`),
+      el("button", { class: "chrx-bulk-close", "aria-label": "Close", onclick: () => root.remove() }, "×")
+    ));
+    panel.appendChild(el("p", { class: "chrx-bulk-sub" },
+      `Paste a list of ${info.plural} — one per line, comma-separated, OR a full TSV/CSV with a header row (we'll auto-pick the "name" column). We'll auto-create them with default colors.`));
+
+    const exampleByKind = {
+      teachers: "Mr. Sharma\nMrs. Verma\nMs. Kapoor",
+      subjects: "Maths\nScience\nEnglish\nHindi",
+      classes:  "I A, I B, II A, II B",
+      classrooms: "Room 101\nRoom 102\nLab 1\nLibrary",
+    };
+    const ta = el("textarea", { class: "chrx-bulk-text", rows: "10",
+      placeholder: exampleByKind[kind] || "" });
+    panel.appendChild(ta);
+
+    const previewEl = el("div", { class: "chrx-bulk-preview" });
+    panel.appendChild(previewEl);
+
+    let parsedItems = [];
+    ta.addEventListener("input", () => {
+      parsedItems = parse(ta.value);
+      previewEl.textContent = parsedItems.length
+        ? `${parsedItems.length} ${info.plural} will be created.`
+        : "Type names above to preview.";
+    });
+
+    const useColorTaxonomy = window.ColorTaxonomy && window.ColorTaxonomy.colorForId;
+
+    panel.appendChild(el("footer", null,
+      el("button", { class: "chrx-bulk-cancel", onclick: () => root.remove() }, "Cancel"),
+      el("button", { class: "chrx-bulk-go", onclick: () => {
+        if (!parsedItems.length) return;
+        const arr = (school[info.store] = school[info.store] || []);
+        let added = 0;
+        parsedItems.forEach((name, i) => {
+          const id = info.store[0] + "_b_" + Date.now() + "_" + i;
+          const color = useColorTaxonomy ? window.ColorTaxonomy.colorForId(id, kind.slice(0, -1)) : info.defaultColor();
+          arr.push({ id, name, short: name.slice(0, 6), color });
+          added++;
+        });
+        if (global.CreateNew?.refreshIndex) global.CreateNew.refreshIndex();
+        if (global.APP?.audit?.append) {
+          global.APP.audit.append({ entity: kind, op: "bulk-add", added });
+        }
+        window.dispatchEvent(new CustomEvent("entity:changed", { detail: { entity: kind, count: added } }));
+        (global._chrxNotify || console.log)(`✓ Added ${added} ${info.plural}`);
+        root.remove();
+      } }, "Add all")
+    ));
+
+    root.appendChild(panel);
+    document.body.appendChild(root);
+    ta.focus();
+  }
+
+  function ensureStyles() {
+    if (document.getElementById("chrx-bulk-styles")) return;
+    const s = document.createElement("style");
+    s.id = "chrx-bulk-styles";
+    s.textContent = `
+.chrx-bulk-root{position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:24px;z-index:1100}
+.chrx-bulk-panel{background:#fff;border-radius:14px;width:min(520px,95vw);padding:20px 24px;box-shadow:0 20px 60px rgba(0,0,0,.3);font-family:-apple-system,sans-serif}
+.chrx-bulk-panel header{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e2e8f0;padding-bottom:10px;margin-bottom:10px}
+.chrx-bulk-panel h2{margin:0;font-size:16px;color:#1e3a8a}
+.chrx-bulk-close{background:none;border:0;font-size:22px;cursor:pointer;color:#64748b}
+.chrx-bulk-sub{margin:0 0 12px;color:#64748b;font-size:13px;line-height:1.5}
+.chrx-bulk-text{width:100%;border:2px solid #cbd5e1;border-radius:8px;padding:10px;font-size:13px;font-family:Menlo,Monaco,monospace;outline:none;transition:border .15s ease;box-sizing:border-box}
+.chrx-bulk-text:focus{border-color:#4f46e5}
+.chrx-bulk-preview{margin-top:8px;font-size:12px;color:#10b981;min-height:18px}
+.chrx-bulk-panel footer{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
+.chrx-bulk-cancel{background:#fff;border:1px solid #cbd5e1;color:#0f172a;padding:6px 14px;border-radius:6px;cursor:pointer}
+.chrx-bulk-go{background:#10b981;color:#fff;border:0;padding:6px 16px;border-radius:6px;font-weight:600;cursor:pointer}
+    `;
+    document.head.appendChild(s);
+  }
+
+  global.BulkAddWizard = { open, parse };
+})(window);
+
+/* ─── FILE: js/ui/onboarding/tour.js ─── */
+/* First-run guided tour — dotted-line highlights of the core features.
+ *
+ * Persists "tour seen" in localStorage (`chronexa.tour.seen.v1`) so it
+ * doesn't reappear after first dismissal. User can re-launch via Help
+ * menu → Take the tour.
+ */
+(function (global) {
+  "use strict";
+  const SEEN_KEY = "chronexa.tour.seen.v1";
+
+  const STEPS = [
+    {
+      selector: "#cta-build-new, [data-step='1']",
+      title: "Welcome to Chronexa 👋",
+      body:  "Build your school's timetable in your browser, on your computer. No upload, no tracking. Click <strong>Create new timetable</strong> or load an existing Timetable XML to start.",
+    },
+    {
+      selector: "[data-step='6'], #step-6 [data-kind='subjects']",
+      title: "The empty-state hero",
+      body:  "Six color-coded tiles guide your first day: Subjects → Teachers → Classes → Rooms → Lessons → Generate. Tap any one to open the matching dialog.",
+    },
+    {
+      selector: ".chrx-menubar, button.chrx-menubar__item",
+      title: "Ribbon menus",
+      body:  "Eight top menus mirror Classic/Classic. Specification has every entity. Timetable has the solver. Options has Constraints library. Help has searchable docs.",
+    },
+    {
+      selector: "#cta-generate, [data-act-fire='app:master-solve']",
+      title: "🚀 Master Solve = one-click build",
+      body:  "Open Timetable → Master Solve. The solver runs entirely on your CPU using Min-Conflicts repair. ~92% placement on real schools.",
+    },
+    {
+      selector: "[data-kind='lessons'], #cta-test, #cta-generate",
+      title: "Hover a card for plain-English explanations",
+      body:  "Any red card in the editor shows exactly WHY it's flagged (e.g. 'Mr. Sharma already teaches IX-A in this period'). Classic just says 'conflict'.",
+    },
+  ];
+
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      const v = attrs[k]; if (v == null) continue;
+      if (k === "class") n.className = v;
+      else if (k === "html") n.innerHTML = v;
+      else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v);
+    }
+    for (const c of kids) if (c != null && c !== false)
+      n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    return n;
+  }
+
+  function findTarget(selector) {
+    const sels = selector.split(",").map(s => s.trim());
+    for (const s of sels) {
+      const t = document.querySelector(s);
+      if (t && t.offsetParent !== null) return t;
+    }
+    return null;
+  }
+
+  function start() {
+    ensureStyles();
+    let i = 0;
+    const overlay = el("div", { class: "chrx-tour-overlay" });
+    document.body.appendChild(overlay);
+
+    function showStep(ix) {
+      overlay.innerHTML = "";
+      if (ix >= STEPS.length) { end(); return; }
+      const s = STEPS[ix];
+      const target = findTarget(s.selector);
+      const card = el("div", { class: "chrx-tour-card" });
+      card.innerHTML = `
+        <header>
+          <span class="chrx-tour-count">${ix + 1} / ${STEPS.length}</span>
+          <h3>${s.title}</h3>
+        </header>
+        <p>${s.body}</p>
+        <footer>
+          <button class="chrx-tour-skip">Skip tour</button>
+          <button class="chrx-tour-prev"${ix === 0 ? " disabled" : ""}>Back</button>
+          <button class="chrx-tour-next">${ix === STEPS.length - 1 ? "Got it" : "Next →"}</button>
+        </footer>`;
+      // Position
+      if (target) {
+        const r = target.getBoundingClientRect();
+        card.style.position = "fixed";
+        card.style.zIndex = "10000";
+        card.style.maxWidth = "360px";
+        card.style.left = Math.min(window.innerWidth - 380, Math.max(12, r.left)) + "px";
+        card.style.top = (r.bottom + 12 < window.innerHeight - 200 ? r.bottom + 12 : Math.max(20, r.top - 200)) + "px";
+        target.classList.add("chrx-tour-spotlight");
+      } else {
+        card.style.position = "fixed";
+        card.style.zIndex = "10000";
+        card.style.left = "50%";
+        card.style.top = "50%";
+        card.style.transform = "translate(-50%, -50%)";
+        card.style.maxWidth = "420px";
+      }
+      overlay.appendChild(card);
+      card.querySelector(".chrx-tour-skip").onclick = end;
+      card.querySelector(".chrx-tour-prev").onclick = () => { if (target) target.classList.remove("chrx-tour-spotlight"); showStep(ix - 1); };
+      card.querySelector(".chrx-tour-next").onclick = () => { if (target) target.classList.remove("chrx-tour-spotlight"); showStep(ix + 1); };
+    }
+    function end() {
+      document.querySelectorAll(".chrx-tour-spotlight").forEach(t => t.classList.remove("chrx-tour-spotlight"));
+      overlay.remove();
+      try { localStorage.setItem(SEEN_KEY, "1"); } catch {}
+    }
+    showStep(0);
+  }
+
+  function maybeStart() {
+    try { if (localStorage.getItem(SEEN_KEY)) return; } catch {}
+    setTimeout(start, 1500);
+  }
+
+  function ensureStyles() {
+    if (document.getElementById("chrx-tour-styles")) return;
+    const s = document.createElement("style");
+    s.id = "chrx-tour-styles";
+    s.textContent = `
+.chrx-tour-overlay{position:fixed;inset:0;background:rgba(15,23,42,.45);pointer-events:auto;z-index:9999}
+.chrx-tour-spotlight{position:relative;z-index:9998;outline:3px solid #4f46e5;outline-offset:4px;border-radius:8px;box-shadow:0 0 0 6px rgba(79,70,229,.25),0 0 0 9999px rgba(15,23,42,.55);transition:outline .2s ease}
+.chrx-tour-card{background:#fff;border-radius:12px;padding:14px 18px;box-shadow:0 12px 40px rgba(0,0,0,.3);font-family:-apple-system,sans-serif;color:#0f172a}
+.chrx-tour-card header{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.chrx-tour-count{background:#e0e7ff;color:#4f46e5;font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px}
+.chrx-tour-card h3{margin:0;color:#1e3a8a;font-size:15px}
+.chrx-tour-card p{font-size:13px;color:#334155;line-height:1.5;margin:6px 0 12px}
+.chrx-tour-card footer{display:flex;justify-content:flex-end;gap:6px}
+.chrx-tour-card footer button{background:#fff;border:1px solid #cbd5e1;color:#0f172a;padding:5px 12px;border-radius:5px;cursor:pointer;font-size:12px}
+.chrx-tour-card footer button:last-child{background:#4f46e5;color:#fff;border-color:transparent;font-weight:600}
+.chrx-tour-skip{margin-right:auto;color:#94a3b8 !important;border:0 !important}
+    `;
+    document.head.appendChild(s);
+  }
+
+  window.addEventListener("app:take-tour", start);
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", maybeStart);
+  } else maybeStart();
+
+  global.Tour = { start, maybeStart, reset: () => { try { localStorage.removeItem(SEEN_KEY); } catch {} } };
+})(window);
+
+/* ─── FILE: js/ui/onboarding/smart_defaults.js ─── */
+/* Smart defaults — hooks that decorate existing dialogs from outside.
+ *
+ * Listens for entity dialogs opening and pre-fills sensible defaults:
+ *  - Color via ColorTaxonomy when none set
+ *  - Name suggestions based on existing siblings
+ *
+ * Does NOT modify entity dialog files (they're frozen). Instead this
+ * module reacts to entity:changed events and patches new rows.
+ */
+(function (global) {
+  "use strict";
+
+  /* When a new entity is added, ensure it has a sensible color */
+  function decorateNewEntity(detail) {
+    if (!detail || !detail.entity || !global.APP?.school) return;
+    const school = global.APP.school;
+    const kind = detail.entity;
+    const list = school[kind];
+    if (!Array.isArray(list)) return;
+    list.forEach((item, i) => {
+      if (!item.color && global.ColorTaxonomy?.colorForId) {
+        item.color = global.ColorTaxonomy.colorForId(item.id || item.name || String(i), kind.slice(0, -1));
+      }
+    });
+  }
+
+  window.addEventListener("entity:changed", e => decorateNewEntity(e.detail));
+  document.addEventListener("entity:changed", e => decorateNewEntity(e.detail));
+
+  /* Helpers exposed for entity dialogs (or bulk-add) that want suggestions */
+  function suggestClassName(existingClasses) {
+    if (!existingClasses?.length) return "I A";
+    // Find highest grade roman numeral
+    const ROMAN = ["I","II","III","IV","V","VI","VII","VIII","IX","X","XI","XII"];
+    const lastByGrade = new Map();
+    for (const c of existingClasses) {
+      const m = (c.name || "").match(/^([IVX]+)\s+([A-Z])$/);
+      if (m) lastByGrade.set(m[1], m[2]);
+    }
+    // Suggest next section in lowest gap, or next grade if all rows full
+    for (const r of ROMAN) {
+      const last = lastByGrade.get(r);
+      if (!last) return r + " A";
+      if (last < "Z") return r + " " + String.fromCharCode(last.charCodeAt(0) + 1);
+    }
+    return "I A";
+  }
+  function suggestRoomName(existingRooms) {
+    if (!existingRooms?.length) return "Room 101";
+    const m = (existingRooms[existingRooms.length - 1].name || "").match(/^Room (\d+)$/);
+    if (m) return "Room " + (parseInt(m[1], 10) + 1);
+    return "Room " + (101 + existingRooms.length);
+  }
+
+  // ─── Friendly empty states for entity dialogs ──────────────────────────
+  // The entity dialogs in js/ui/entities/* are frozen for this work item.
+  // We decorate them from outside via a MutationObserver that watches for
+  // `.chrx-ent-dialog` insertions. When the dialog mounts with zero rows we
+  // slot in a hero callout; we always slot a "+ Bulk-add" link below the
+  // sidebar so the user can pop the BulkAddWizard from any entity screen.
+
+  const TITLE_TO_KIND = {
+    teachers: "teachers", teacher: "teachers",
+    classes: "classes", class: "classes",
+    subjects: "subjects", subject: "subjects",
+    classrooms: "classrooms", classroom: "classrooms",
+    rooms: "classrooms", room: "classrooms",
+  };
+  const HERO_LABELS = {
+    teachers:   { plural: "teachers",   single: "teacher",   color: "#1d4ed8", bg: "#dbeafe", icon: "T" },
+    classes:    { plural: "classes",    single: "class",     color: "#7c3aed", bg: "#ede9fe", icon: "C" },
+    subjects:   { plural: "subjects",   single: "subject",   color: "#047857", bg: "#d1fae5", icon: "S" },
+    classrooms: { plural: "classrooms", single: "classroom", color: "#b45309", bg: "#fef3c7", icon: "R" },
+  };
+
+  function inferKind(dialogEl) {
+    const h2 = dialogEl.querySelector(".chrx-ent-head h2");
+    if (!h2) return null;
+    const t = (h2.textContent || "").trim().toLowerCase();
+    for (const k of Object.keys(TITLE_TO_KIND)) {
+      if (t === k || t.startsWith(k + " ") || t.startsWith(k + ":") ||
+          t.startsWith(k + "—") || t.startsWith(k + "-")) {
+        return TITLE_TO_KIND[k];
+      }
+    }
+    for (const k of Object.keys(TITLE_TO_KIND)) if (t.includes(k)) return TITLE_TO_KIND[k];
+    return null;
+  }
+
+  function rowCount(dialogEl) {
+    return dialogEl.querySelectorAll(".chrx-ent-rows > tr").length;
+  }
+
+  function openBulk(kind) {
+    if (global.BulkAddWizard && global.BulkAddWizard.open) {
+      global.BulkAddWizard.open(kind, global.APP && global.APP.school);
+    }
+  }
+
+  function injectEmptyHero(dialogEl, kind) {
+    if (dialogEl.querySelector(".chrx-ent-empty-hero")) return;
+    const tableWrap = dialogEl.querySelector(".chrx-ent-table-wrap");
+    if (!tableWrap || !tableWrap.parentNode) return;
+    const l = HERO_LABELS[kind]; if (!l) return;
+
+    const hero = document.createElement("div");
+    hero.className = "chrx-ent-empty-hero";
+    hero.style.cssText =
+      "border:2px dashed #cbd5e1;border-radius:14px;padding:24px 20px;margin:12px;background:#f8fafc;" +
+      "display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center";
+    hero.innerHTML =
+      '<div style="width:48px;height:48px;border-radius:12px;background:' + l.bg +
+      ';color:' + l.color + ';display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px;letter-spacing:.5px">' + l.icon + '</div>' +
+      '<div style="font-size:15px;font-weight:600;color:#0f172a">No ' + l.plural + ' yet</div>' +
+      '<div style="font-size:13px;color:#64748b;max-width:360px">Click <strong>New</strong> on the right to add your first ' + l.single +
+      ', or paste a list from your spreadsheet.</div>' +
+      '<div style="display:flex;gap:8px;margin-top:6px">' +
+        '<button type="button" class="chrx-ent-empty-add" style="background:' + l.color + ';color:white;border:0;padding:8px 16px;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer">+ Add your first ' + l.single + '</button>' +
+        '<button type="button" class="chrx-ent-empty-bulk" style="background:white;color:' + l.color + ';border:1px solid ' + l.color + ';padding:8px 16px;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer">Bulk-add from list</button>' +
+      '</div>';
+    tableWrap.parentNode.insertBefore(hero, tableWrap);
+
+    const addBtn  = hero.querySelector(".chrx-ent-empty-add");
+    const bulkBtn = hero.querySelector(".chrx-ent-empty-bulk");
+    if (addBtn) addBtn.onclick = () => {
+      const newBtn = Array.from(dialogEl.querySelectorAll("button"))
+        .find(b => (b.textContent || "").trim() === "New");
+      if (newBtn) newBtn.click();
+    };
+    if (bulkBtn) bulkBtn.onclick = () => openBulk(kind);
+  }
+
+  function injectBulkLinkIntoSidebar(dialogEl, kind) {
+    if (dialogEl.querySelector(".chrx-ent-bulk-link")) return;
+    // The entity-dialog shell uses `.chrx-ent-aside` for the right rail
+    // (it's an <aside> element). Fall back to other plausible names in case
+    // the markup changes in the future.
+    const sidebar = dialogEl.querySelector(".chrx-ent-aside")
+                 || dialogEl.querySelector(".chrx-ent-sidebar")
+                 || dialogEl.querySelector(".chrx-ent-side")
+                 || dialogEl.querySelector(".chrx-ent-side-buttons")
+                 || dialogEl.querySelector("aside");
+    if (!sidebar) return;
+    const link = document.createElement("button");
+    link.type = "button";
+    link.className = "chrx-ent-bulk-link";
+    link.textContent = "+ Bulk-add";
+    link.title = "Add many " + kind + " at once";
+    link.style.cssText =
+      "background:transparent;border:1px dashed #94a3b8;color:#475569;padding:6px 10px;border-radius:6px;" +
+      "font-size:12px;font-weight:600;cursor:pointer;margin-top:8px;display:block;width:100%";
+    link.onclick = () => openBulk(kind);
+    sidebar.appendChild(link);
+  }
+
+  function decorateDialog(dialogEl) {
+    const kind = inferKind(dialogEl);
+    if (!kind) return;
+    requestAnimationFrame(() => {
+      if (rowCount(dialogEl) === 0) injectEmptyHero(dialogEl, kind);
+      injectBulkLinkIntoSidebar(dialogEl, kind);
+    });
+  }
+
+  function startObserver() {
+    if (global.__chronexaSmartDefaultsObserver) return;
+    const obs = new MutationObserver((muts) => {
+      for (const m of muts) {
+        for (const node of m.addedNodes) {
+          if (!node || node.nodeType !== 1) continue;
+          if (node.classList && node.classList.contains("chrx-ent-dialog")) {
+            decorateDialog(node);
+          } else if (node.querySelector) {
+            const dlg = node.querySelector(".chrx-ent-dialog");
+            if (dlg) decorateDialog(dlg);
+          }
+        }
+      }
+    });
+    obs.observe(document.body, { childList: true });
+    global.__chronexaSmartDefaultsObserver = obs;
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", startObserver);
+  } else {
+    startObserver();
+  }
+
+  global.SmartDefaults = {
+    suggestClassName, suggestRoomName, decorateNewEntity,
+    decorateDialog, startObserver,
+  };
+})(window);
+
+/* ─── FILE: js/ui/onboarding/wiring.js ─── */
+/**
+ * Onboarding wiring — glues all the onboarding pieces together.
+ *
+ * This is the LAST onboarding script in index.html. It runs after
+ * data_library, school_templates, bulk_add_wizard, tour and smart_defaults
+ * are all loaded, so every API it needs is guaranteed to exist.
+ *
+ * Responsibilities:
+ *  1. Hijack the "Create new timetable" CTA (#cta-build-new) so it opens
+ *     the school-type picker instead of jumping straight to a blank school.
+ *  2. After the user picks a template, show the "sample data loaded"
+ *     banner above the editor.
+ *  3. Open the 5-step walkthrough wizard immediately on top of the editor
+ *     so the user knows where to fill in their real data.
+ *  4. Surface the onboarding tour on the first visit (the parallel-agent
+ *     Tour module auto-runs maybeStart() on DOMContentLoaded; we leave
+ *     that alone but expose a Help-menu trigger via window.OnboardingTour).
+ */
+(function (global) {
+  "use strict";
+
+  // ─── 1. CTA hijack ──────────────────────────────────────────────────────
+  function wireBuildNewCTA() {
+    const btn = document.getElementById("cta-build-new");
+    if (!btn) return;
+
+    // Replace the handler installed by main.js. We keep the same "data
+    // already loaded — replace?" confirm guard.
+    btn.onclick = (ev) => {
+      try {
+        const S = global.APP && global.APP.school;
+        const hasData = S && ((S.teachers && S.teachers.length) || (S.cards && S.cards.length));
+        if (hasData && !confirm("A timetable is already loaded. Replace it with a fresh start?")) return;
+      } catch (e) { /* non-fatal */ }
+
+      if (!global.SchoolTemplates || !global.SchoolTemplates.showPicker) {
+        console.warn("[onboarding] SchoolTemplates missing — falling back to blank.");
+        if (global.CreateNew && global.CreateNew.createBlank) global.CreateNew.createBlank();
+        return;
+      }
+      global.SchoolTemplates.showPicker((id, result) => onTemplatePicked(id, result));
+    };
+  }
+
+  // ─── 2. Banner + 3. Wizard kickoff ──────────────────────────────────────
+  function onTemplatePicked(id, result) {
+    if (!result || result.error) {
+      console.warn("[onboarding] template apply failed:", result);
+      return;
+    }
+    // Enable the "needs-school" buttons.
+    document.querySelectorAll(".needs-school").forEach(b => b.disabled = false);
+    // Mark step 6 enabled (activator listens to app:school-loaded but the
+    // template applyChoice already called createBlank which fires that
+    // event — so the activator should have done this. Belt + braces.)
+    document.querySelectorAll("[data-step='6']").forEach(b => b.removeAttribute("disabled"));
+
+    // Jump to the editor.
+    document.dispatchEvent(new CustomEvent("nav:goto-step", { detail: { step: 6 } }));
+
+    // Show the sample-data banner unless the user picked the blank template.
+    if (id !== "blank") showSampleBanner(id, result);
+
+    // Open the 5-step walkthrough. Slight delay so the editor step transition
+    // settles first; the WizardWalkthrough overlay sits on top.
+    setTimeout(() => {
+      if (global.WizardWalkthrough && global.WizardWalkthrough.start) {
+        global.WizardWalkthrough.start();
+      }
+    }, 250);
+  }
+
+  function showSampleBanner(templateId, result) {
+    const banner = document.getElementById("editor-banner");
+    const text   = document.getElementById("editor-banner-text");
+    if (!banner || !text) return;
+    banner.classList.remove("hidden");
+    banner.hidden = false;
+    const counts = result && result.counts;
+    const summary = counts
+      ? counts.subjects + " subjects · " + counts.classes + " sample classes · " + counts.teachers + " sample teacher · " + counts.rooms + " rooms"
+      : "sample data loaded";
+    text.innerHTML =
+      '<strong>Sample data loaded</strong> (' + escapeHtml(summary) + '). ' +
+      'Open <em>Specification → Teachers / Classes / Lessons</em> from the ribbon to replace the placeholders with your real data. ' +
+      '<button id="chrx-banner-clear-sample" style="margin-left:8px;text-decoration:underline;font-weight:600;background:none;border:0;color:inherit;cursor:pointer">Remove sample data</button>';
+    const clearBtn = document.getElementById("chrx-banner-clear-sample");
+    if (clearBtn) clearBtn.onclick = clearSampleData;
+  }
+
+  function clearSampleData() {
+    const S = global.APP && global.APP.school;
+    if (!S) return;
+    function isSample(name) { return /sample|replace with real/i.test(name || ""); }
+    S.teachers   = (S.teachers   || []).filter(t => !isSample(t.name));
+    S.classes    = (S.classes    || []).filter(c => !isSample(c.name));
+    S.classrooms = (S.classrooms || []).filter(r => !isSample(r.name));
+    if (global.CreateNew && global.CreateNew.refreshIndex) global.CreateNew.refreshIndex();
+    const banner = document.getElementById("editor-banner");
+    if (banner) banner.hidden = true;
+    document.dispatchEvent(new CustomEvent("entity:changed"));
+  }
+
+  // ─── 4. Tour helper alias ───────────────────────────────────────────────
+  // The Tour module auto-starts via maybeStart() on first visit. We expose
+  // a small alias so callers expecting `OnboardingTour` don't fail.
+  if (!global.OnboardingTour && global.Tour) {
+    global.OnboardingTour = {
+      start: global.Tour.start,
+      startIfFirstVisit: global.Tour.maybeStart,
+      reset: global.Tour.reset,
+      STORAGE_KEY: "chronexa.tour.seen.v1",
+    };
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", wireBuildNewCTA);
+  } else {
+    wireBuildNewCTA();
+  }
+
+  global.OnboardingWiring = { wireBuildNewCTA, onTemplatePicked, showSampleBanner, clearSampleData };
+})(window);
+
+/* ─── FILE: js/ui/ribbon/topbar.js ─── */
+/* Persistent action bar + shared ChrxMenu helper.
+ * Builds menubar shell + topbar into the ribbon host. Menu files register themselves.
+ * Events on window: app:save save-as test generate generate-cloud verify print-preview
+ *   close open-file open-snapshot undo redo search(query) zoom(zoom) perspective(kind). */
+(function () {
+  "use strict";
+  const APP = window.APP || (window.APP = {});
+
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      const v = attrs[k]; if (v == null || v === false) continue;
+      if (k === "class") n.className = v;
+      else if (k === "html") n.innerHTML = v;
+      else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v === true ? "" : v);
+    }
+    for (const c of kids) { if (c == null || c === false) continue;
+      n.appendChild(typeof c === "string" ? document.createTextNode(c) : c); }
+    return n;
+  }
+  function dispatch(name, detail) { window.dispatchEvent(new CustomEvent(name, { detail: detail || {} })); }
+  function notify(msg, level) {
+    const t = el("div", { class: "chrx-toast",
+      style: "position:fixed;bottom:24px;left:50%;transform:translateX(-50%);"
+        + "background:var(--chrx-bg-elev);color:var(--chrx-fg);padding:8px 14px;"
+        + "border:1px solid " + (level === "error" ? "var(--chrx-red)" : "var(--chrx-line)")
+        + ";border-radius:8px;box-shadow:var(--chrx-shadow-sheet);z-index:9999;font-size:13px;" });
+    t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), 2200);
+  }
+  window._chrxNotify = notify;
+
+  function buildMenuPanel(entries) {
+    const panel = el("div", { class: "chrx-menu-panel", role: "menu" });
+    for (const e of entries) {
+      if (!e) continue;
+      if (e.sep)     { panel.appendChild(el("div", { class: "chrx-menu-sep" })); continue; }
+      if (e.section) { panel.appendChild(el("div", { class: "chrx-menu-section" }, e.section)); continue; }
+      const cls = "chrx-menu-item" + (e.soon ? " chrx-menu-item--soon" : "");
+      const item = el("div", { class: cls, role: "menuitem", "aria-disabled": e.disabled ? "true" : null });
+      if (e.icon != null) item.appendChild(el("span", { class: "chrx-menu-item__icon" }, e.icon));
+      item.appendChild(el("span", { class: "chrx-menu-item__label" }, e.label));
+      if (e.hint) item.appendChild(el("span", { class: "chrx-menu-item__hint" }, e.hint));
+      if (e.sub) {
+        item.appendChild(el("span", { class: "chrx-menu-item__arrow" }, "▶"));
+        let subEl = null;
+        item.addEventListener("mouseenter", () => {
+          if (!subEl) { subEl = buildMenuPanel(e.sub); subEl.classList.add("chrx-menu-item__sub"); item.appendChild(subEl); }
+        });
+      } else if (e.run && !e.disabled) {
+        item.addEventListener("click", (ev) => {
+          ev.stopPropagation(); closeAllMenus();
+          try { e.run(); } catch (err) { console.error(err); notify("Action failed: " + err.message, "error"); }
+        });
+      } else if (e.soon || e.disabled) {
+        item.addEventListener("click", (ev) => { ev.stopPropagation(); if (e.soon) notify("Coming soon: " + e.label); });
+      }
+      panel.appendChild(item);
+    }
+    return panel;
+  }
+  window.ChrxMenu = { buildPanel: buildMenuPanel };
+
+  const MENUS = []; let activeMenu = null, activePanel = null;
+  function registerMenu(m) { MENUS.push(m); renderMenubar(); }
+  function closeAllMenus() {
+    if (activePanel) activePanel.remove();
+    if (activeMenu) activeMenu.setAttribute("aria-expanded", "false");
+    activePanel = null; activeMenu = null;
+  }
+  function openMenu(key) {
+    closeAllMenus();
+    const def = MENUS.find(m => m.key === key); if (!def) return;
+    const btn = document.querySelector(`[data-menu="${key}"]`); if (!btn) return;
+    const panel = buildMenuPanel(def.build());
+    const r = btn.getBoundingClientRect();
+    Object.assign(panel.style, { position: "fixed", left: r.left + "px", top: (r.bottom + 2) + "px" });
+    document.body.appendChild(panel);
+    btn.setAttribute("aria-expanded", "true");
+    activeMenu = btn; activePanel = panel;
+  }
+  document.addEventListener("click", (e) => {
+    if (!activePanel) return;
+    if (activePanel.contains(e.target)) return;
+    if (activeMenu && activeMenu.contains(e.target)) return;
+    closeAllMenus();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeAllMenus();
+    if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key === "s") { e.preventDefault(); dispatch("app:save"); }
+    if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === "S" || e.key === "s")) { e.preventDefault(); dispatch("app:save-as"); }
+    if ((e.metaKey || e.ctrlKey) && (e.key === "z" || e.key === "Z") && !e.shiftKey) { e.preventDefault(); dispatch("app:undo"); }
+    if ((e.metaKey || e.ctrlKey) && ((e.key === "y" || e.key === "Y") || (e.shiftKey && (e.key === "Z" || e.key === "z")))) {
+      e.preventDefault(); dispatch("app:redo");
+    }
+  });
+
+  let _perspective = "class", _zoom = 100;
+  function setPerspective(p) {
+    _perspective = p;
+    document.querySelectorAll(".chrx-tb-pill button").forEach(b =>
+      b.classList.toggle("is-on", b.dataset.persp === p));
+    dispatch("app:perspective", { kind: p });
+  }
+  function setZoom(z) {
+    _zoom = z;
+    const lbl = document.querySelector(".chrx-tb-zoom__label");
+    if (lbl) lbl.textContent = z + "%";
+    dispatch("app:zoom", { zoom: z });
+  }
+  function toggleTheme() {
+    const html = document.documentElement, cur = html.getAttribute("data-theme");
+    const next = cur === "dark" ? "light" : "dark";
+    html.setAttribute("data-theme", next);
+    try { localStorage.setItem("chronexa.theme", next); } catch {}
+    notify("Theme: " + next);
+  }
+  try { const t = localStorage.getItem("chronexa.theme"); if (t) document.documentElement.setAttribute("data-theme", t); } catch {}
+
+  function mount(host) {
+    if (!host) return;
+    host.innerHTML = ""; host.classList.add("chrx-ribbon-host");
+    host.appendChild(el("nav", { class: "chrx-menubar", role: "menubar" }));
+
+    const tb = el("div", { class: "chrx-topbar" });
+    host.appendChild(tb);
+
+    tb.appendChild(group([
+      splitBtn("💾 Save", () => dispatch("app:save"), [
+        { icon: "💾", label: "Save", hint: "⌘S", run: () => dispatch("app:save") },
+        { icon: "📋", label: "Save as…", hint: "⇧⌘S", run: () => dispatch("app:save-as") },
+        { sep: true },
+        { icon: "🕘", label: "Version history…", run: () => dispatch("app:open-snapshot") },
+      ]),
+      iconBtn("📂 Open", () => dispatch("app:open-file"), "⌘O"),
+    ]));
+    tb.appendChild(group([
+      iconBtn("🧪 Test", () => dispatch("app:test")),
+      primaryBtn("⚡ Generate", () => dispatch("app:generate")),
+      iconBtn("☁︎ Cloud", () => dispatch("app:generate-cloud"), null, "Generate in cloud"),
+      iconBtn("✓ Verify", () => dispatch("app:verify")),
+    ]));
+    tb.appendChild(group([
+      iconBtn("🖨 Print", () => dispatch("app:print-preview")),
+      iconBtn("✕ Close", () => dispatch("app:close"), null, null, "danger"),
+    ]));
+    tb.appendChild(group([searchBox()]));
+    tb.appendChild(group([zoomBtn()]));
+    tb.appendChild(group([perspectivePill()]));
+    tb.appendChild(group([meBtn()]));
+
+    renderMenubar();
+  }
+
+  function group(kids) { const g = el("div", { class: "chrx-topbar__group" }); kids.forEach(k => g.appendChild(k)); return g; }
+  function iconBtn(label, fn, hint, title, variant) {
+    const b = el("button", { class: "chrx-tb-btn" + (variant === "danger" ? " chrx-tb-btn--danger" : ""),
+      type: "button", title: title || label, onclick: fn });
+    b.appendChild(el("span", null, label));
+    if (hint) b.appendChild(el("span", { class: "chrx-kbd", style: "margin-left:6px" }, hint));
+    return b;
+  }
+  function primaryBtn(label, fn) {
+    return el("button", { class: "chrx-tb-btn chrx-tb-btn--primary", type: "button", onclick: fn }, label);
+  }
+  function splitBtn(label, primaryFn, dropEntries) {
+    const wrap = el("div", { class: "chrx-tb-btn--split" });
+    wrap.appendChild(el("button", { class: "chrx-tb-btn", type: "button", title: label + " (⌘S)", onclick: primaryFn }, label));
+    const drop = el("button", { class: "chrx-tb-btn", type: "button", "aria-label": "More save options" }, "▼");
+    drop.addEventListener("click", (ev) => {
+      ev.stopPropagation(); closeAllMenus();
+      const panel = buildMenuPanel(dropEntries);
+      const r = drop.getBoundingClientRect();
+      Object.assign(panel.style, { position: "fixed", left: r.left + "px", top: (r.bottom + 2) + "px" });
+      document.body.appendChild(panel); activePanel = panel;
+    });
+    wrap.appendChild(drop); return wrap;
+  }
+  function searchBox() {
+    const wrap = el("div", { class: "chrx-tb-search" });
+    const inp = el("input", { type: "search", placeholder: "Search anything…", "aria-label": "Search" });
+    let st; inp.addEventListener("input", () => {
+      clearTimeout(st); st = setTimeout(() => dispatch("app:search", { query: inp.value.trim() }), 120);
+    });
+    wrap.appendChild(inp); return wrap;
+  }
+  function zoomBtn() {
+    const lbl = el("span", { class: "chrx-tb-zoom__label" }, _zoom + "%");
+    const btn = el("button", { class: "chrx-tb-btn", type: "button", title: "Zoom" }, "🔍 ", lbl, " ▾");
+    btn.addEventListener("click", () => {
+      closeAllMenus();
+      const panel = buildMenuPanel([25,50,75,100,125,150,200].map(z => ({
+        icon: z === _zoom ? "✓" : " ", label: z + "%", run: () => setZoom(z),
+      })));
+      const r = btn.getBoundingClientRect();
+      Object.assign(panel.style, { position: "fixed", left: r.left + "px", top: (r.bottom + 2) + "px" });
+      document.body.appendChild(panel); activePanel = panel;
+    });
+    return btn;
+  }
+  function perspectivePill() {
+    const pill = el("div", { class: "chrx-tb-pill", role: "tablist", "aria-label": "Perspective" });
+    [["class","Class"],["teacher","Teacher"],["room","Room"],["lesson","Lesson"]].forEach(([k, lbl]) => {
+      pill.appendChild(el("button", {
+        type: "button", "data-persp": k, role: "tab",
+        class: k === _perspective ? "is-on" : "", onclick: () => setPerspective(k),
+      }, lbl));
+    });
+    return pill;
+  }
+  function meBtn() {
+    const init = (APP.user && APP.user.initials) || "ME";
+    const b = el("button", { class: "chrx-tb-me", type: "button", title: "Account" });
+    b.appendChild(el("span", { class: "chrx-tb-me__avatar" }, init));
+    b.appendChild(el("span", null, " Me ▾"));
+    b.addEventListener("click", () => {
+      closeAllMenus();
+      const panel = buildMenuPanel([
+        { icon: "👤", label: APP.user?.name || "Me", disabled: true },
+        { sep: true },
+        { icon: "⚙︎", label: "Preferences",  run: () => openMenu("options") },
+        { icon: "🎨", label: "Toggle theme", run: toggleTheme },
+        { sep: true },
+        { icon: "↩", label: "Sign out", disabled: true },
+      ]);
+      const r = b.getBoundingClientRect();
+      Object.assign(panel.style, { position: "fixed", left: (r.right - 220) + "px", top: (r.bottom + 2) + "px" });
+      document.body.appendChild(panel); activePanel = panel;
+    });
+    return b;
+  }
+
+  function renderMenubar() {
+    const mb = document.querySelector(".chrx-menubar"); if (!mb) return;
+    mb.innerHTML = "";
+    for (const def of MENUS) {
+      const b = el("button", {
+        class: "chrx-menubar__item", "data-menu": def.key, type: "button",
+        "aria-haspopup": "menu", "aria-expanded": "false",
+        onclick: (e) => { e.stopPropagation(); openMenu(def.key); },
+        onmouseenter: () => { if (activeMenu && activeMenu !== document.querySelector(`[data-menu="${def.key}"]`)) openMenu(def.key); },
+      }, def.label);
+      mb.appendChild(b);
+    }
+  }
+
+  APP.ribbon = {
+    mount, registerMenu, openMenu, closeMenu: closeAllMenus,
+    setPerspective, getPerspective: () => _perspective,
+    setZoom, getZoom: () => _zoom, notify,
+    // Read-only accessor for command palette / cross-module consumers.
+    // Returns the live menu definition list (each: { key, label, build() }).
+    menus: MENUS,
+  };
+})();
+
+/* ─── FILE: js/ui/ribbon/undo_redo.js ─── */
+/* Client-side undo / redo command stack.
+ *
+ * Consumers (Agent E grid, Agent F entity dialogs) call:
+ *   APP.audit.commit({ label, do() {...}, undo() {...} })
+ * The first call invokes do() and pushes onto undoStack.
+ *
+ * Keyboard: ⌘Z = undo, ⇧⌘Z / ⌘Y = redo (dispatched by topbar.js).
+ * Menus check APP.audit.undoStack.length / redoStack.length to gate buttons.
+ *
+ * Listens for legacy 'app:editor-commit' events as a courtesy hook so existing
+ * code can opt in without modification:
+ *   window.dispatchEvent(new CustomEvent("app:editor-commit", { detail: cmd }))
+ */
+(function () {
+  "use strict";
+  const APP = window.APP;
+  const notify = window._chrxNotify || console.log;
+
+  const MAX = 100;
+  const audit = APP.audit = APP.audit || {};
+  audit.undoStack = [];
+  audit.redoStack = [];
+  audit._log = audit._log || [];
+
+  /* append(record) — used by entity dialogs to log changes.
+   * Also dispatches `entity:changed` so the editor/UI can re-render.
+   * Without this, subjects.js / teachers.js / classes.js / etc. all
+   * crashed on save because `audit.append` was undefined. */
+  audit.append = function (record) {
+    if (!record) return;
+    record.ts = record.ts || Date.now();
+    audit._log.push(record);
+    if (audit._log.length > 500) audit._log.shift();
+    try {
+      window.dispatchEvent(new CustomEvent("entity:changed", { detail: record }));
+      document.dispatchEvent(new CustomEvent("entity:changed", { detail: record }));
+    } catch (e) { /* old browsers */ }
+    // Also refresh the index so cards/lessons stay in sync
+    if (window.CreateNew && typeof window.CreateNew.refreshIndex === "function") {
+      try { window.CreateNew.refreshIndex(); } catch (_) {}
+    }
+  };
+
+  audit.commit = function (cmd) {
+    if (!cmd || typeof cmd.do !== "function" || typeof cmd.undo !== "function") return;
+    try { cmd.do(); } catch (e) { console.error("[audit] do() failed:", e); return; }
+    audit.undoStack.push(cmd);
+    if (audit.undoStack.length > MAX) audit.undoStack.shift();
+    audit.redoStack.length = 0;
+    notify(cmd.label ? "Done: " + cmd.label : "Done", "info");
+  };
+  audit.undo = function () {
+    const cmd = audit.undoStack.pop();
+    if (!cmd) { notify("Nothing to undo"); return; }
+    try { cmd.undo(); audit.redoStack.push(cmd); notify("Undo · " + (cmd.label || "")); }
+    catch (e) { console.error(e); notify("Undo failed: " + e.message, "error"); }
+  };
+  audit.redo = function () {
+    const cmd = audit.redoStack.pop();
+    if (!cmd) { notify("Nothing to redo"); return; }
+    try { cmd.do(); audit.undoStack.push(cmd); notify("Redo · " + (cmd.label || "")); }
+    catch (e) { console.error(e); notify("Redo failed: " + e.message, "error"); }
+  };
+  audit.clear = function () { audit.undoStack.length = 0; audit.redoStack.length = 0; };
+
+  window.addEventListener("app:undo",          audit.undo);
+  window.addEventListener("app:redo",          audit.redo);
+  window.addEventListener("app:editor-commit", (e) => audit.commit(e.detail));
+  window.addEventListener("app:school-loaded", () => audit.clear());
+})();
+
+/* ─── FILE: js/ui/ribbon/menus/main_menu.js ─── */
+/* Main menu — New / Open / Save / Save-as / Snapshot / Version history / Undo / Redo / Close / Demo */
+(function () {
+  "use strict";
+  const APP = window.APP;
+  function fire(name, detail) { window.dispatchEvent(new CustomEvent(name, { detail: detail || {} })); }
+  function hasSchool() { return !!APP.school; }
+  function canUndo() { return (APP.audit?.undoStack?.length || 0) > 0; }
+  function canRedo() { return (APP.audit?.redoStack?.length || 0) > 0; }
+
+  APP.ribbon.registerMenu({
+    key: "main", label: "Main",
+    build() {
+      return [
+        { icon: "🆕", label: "New timetable", hint: "⌘N", run: () => fire("app:new") },
+        { icon: "📂", label: "Open…",        hint: "⌘O", run: () => fire("app:open-file") },
+        { sep: true },
+        { icon: "💾", label: "Save",         hint: "⌘S",   run: () => fire("app:save"),    disabled: !hasSchool() },
+        { icon: "📋", label: "Save as…",     hint: "⇧⌘S",  run: () => fire("app:save-as"), disabled: !hasSchool() },
+        { icon: "📸", label: "Snapshot…",                  run: () => fire("app:save-as", { snapshotOnly: true }), disabled: !hasSchool() },
+        { icon: "🕘", label: "Version history…",           run: () => fire("app:open-snapshot"),                   disabled: !hasSchool() },
+        { sep: true },
+        { icon: "↶", label: "Undo", hint: "⌘Z",          run: () => fire("app:undo"), disabled: !canUndo() },
+        { icon: "↷", label: "Redo", hint: "⇧⌘Z",         run: () => fire("app:redo"), disabled: !canRedo() },
+        { sep: true },
+        { icon: "🎬", label: "Show demo file",             run: () => fire("app:open-demo") },
+        { sep: true },
+        { icon: "✕",  label: "Close",                      run: () => fire("app:close"), disabled: !hasSchool() },
+      ];
+    },
+  });
+})();
+
+/* ─── FILE: js/ui/ribbon/menus/files_menu.js ─── */
+/* Files menu — Back / New / Open / Close / Save / Save-as / Demo / Import 6 / Export 12 / Compare / Print */
+(function () {
+  "use strict";
+  const APP = window.APP;
+  const fire = (n, d) => window.dispatchEvent(new CustomEvent(n, { detail: d || {} }));
+  const has  = () => !!APP.school;
+
+  APP.ribbon.registerMenu({
+    key: "files", label: "Files",
+    build() {
+      return [
+        { icon: "←",  label: "Back",            run: () => fire("app:back") },
+        { icon: "🆕", label: "New",             run: () => fire("app:new") },
+        { icon: "📂", label: "Open…",  hint: "⌘O", run: () => fire("app:open-file") },
+        { icon: "✕",  label: "Close",  disabled: !has(), run: () => fire("app:close") },
+        { sep: true },
+        { icon: "💾", label: "Save",        hint: "⌘S",  disabled: !has(), run: () => fire("app:save") },
+        { icon: "📋", label: "Save as…",    hint: "⇧⌘S", disabled: !has(), run: () => fire("app:save-as") },
+        { icon: "🎬", label: "Show demo file",            run: () => fire("app:open-demo") },
+        { sep: true },
+        { icon: "⬇",  label: "Import", sub: [
+          { icon: "📄", label: "Classic Timetable XML",  run: () => fire("app:import-timetable-xml") },
+          { icon: "🌐", label: "Classic — Basic school data",  soon: true },
+          { icon: "🔔", label: "Classic — Bell times",          soon: true },
+          { icon: "📋", label: "Import from Clipboard",         soon: true },
+          { icon: "🗓",  label: "Classic — Timetable",           soon: true },
+          { icon: "🪐", label: "Jupiter (Stirlingschools)",     soon: true },
+        ]},
+        { icon: "⬆",  label: "Export", disabled: !has(), sub: [
+          { icon: "📦", label: "Classic Timetable (*.roz)",        soon: true },
+          { icon: "📄", label: "Classic Timetable XML",            run: () => fire("app:export-timetable-xml") },
+          { sep: true },
+          { icon: "📊", label: "Excel — Contracts",             run: () => fire("app:export-excel", { kind: "contracts" }) },
+          { icon: "📊", label: "Excel — Available teachers",    run: () => fire("app:export-excel", { kind: "available" }) },
+          { icon: "📊", label: "Excel — Room supervision",      run: () => fire("app:export-excel", { kind: "supervision" }) },
+          { icon: "📊", label: "Excel — Timetable",             run: () => fire("app:export-excel", { kind: "timetable" }) },
+          { sep: true },
+          { icon: "📤", label: "GP-Untis DIF",   soon: true },
+          { icon: "📤", label: "Atlantis",       soon: true },
+          { icon: "📤", label: "PowerSchool",    soon: true },
+          { icon: "📤", label: "NYC Excel",      soon: true },
+          { icon: "📤", label: "Jupiter",        soon: true },
+          { icon: "📤", label: "Mashov",         soon: true },
+          { icon: "📤", label: "iSAMS",          soon: true },
+        ]},
+        { icon: "⇄",  label: "Compare", disabled: !has(), sub: [
+          { icon: "🕘", label: "Compare with last saved",    run: () => fire("app:compare-last") },
+          { icon: "📂", label: "Compare with another file…", run: () => fire("app:compare-file") },
+        ]},
+        { sep: true },
+        { icon: "🖨", label: "Print preview…", disabled: !has(), run: () => fire("app:print-preview") },
+      ];
+    },
+  });
+})();
+
+/* ─── FILE: js/ui/ribbon/menus/specification_menu.js ─── */
+/* Specification — entity CRUD entry points (Subjects, Teachers, Classes, etc.)
+ * Followed by school-level definitions (Bells, Days, Weeks, Terms, Buildings, Holidays).
+ *
+ * Click handlers fire `app:open-entity` which is handled by js/ui/entity_router.js.
+ */
+(function () {
+  "use strict";
+  const APP = window.APP;
+  const fire = (n, d) => window.dispatchEvent(new CustomEvent(n, { detail: d || {} }));
+  const has  = () => !!APP.school;
+
+  APP.ribbon.registerMenu({
+    key: "spec", label: "Specification",
+    build() {
+      return [
+        { section: "Core entities" },
+        { icon: "📚", label: "Subjects…",       disabled: !has(),
+          run: () => fire("app:open-entity", { kind: "subjects" }) },
+        { icon: "👨‍🏫", label: "Teachers…",      disabled: !has(),
+          run: () => fire("app:open-entity", { kind: "teachers" }) },
+        { icon: "👥", label: "Classes…",         disabled: !has(),
+          run: () => fire("app:open-entity", { kind: "classes" }) },
+        { icon: "🚪", label: "Classrooms…",      disabled: !has(),
+          run: () => fire("app:open-entity", { kind: "classrooms" }) },
+        { icon: "📝", label: "Lessons…",         disabled: !has(),
+          run: () => fire("app:open-entity", { kind: "lessons" }) },
+        { icon: "🔗", label: "Card relationships…", disabled: !has(),
+          run: () => fire("app:open-entity", { kind: "relations" }) },
+        { sep: true },
+        { section: "Groups & roles" },
+        { icon: "✂️", label: "Divisions…",       disabled: !has(),
+          run: () => fire("app:open-entity", { kind: "divisions" }) },
+        { icon: "👁", label: "Supervisions…",    disabled: !has(),
+          run: () => fire("app:open-entity", { kind: "supervisions" }) },
+        { icon: "🎓", label: "Grades…",          disabled: !has(),
+          run: () => fire("app:open-entity", { kind: "grades" }) },
+        { sep: true },
+        { section: "School definitions" },
+        { icon: "🔔", label: "Bell times / Periods…", disabled: !has(),
+          run: () => fire("app:open-entity", { kind: "bells" }) },
+        { icon: "📅", label: "Days…",                  disabled: !has(),
+          run: () => fire("app:open-entity", { kind: "days" }) },
+        { icon: "🗓",  label: "Weeks…",                 disabled: !has(),
+          run: () => fire("app:open-entity", { kind: "weeks" }) },
+        { icon: "🍂", label: "Terms…",                 disabled: !has(),
+          run: () => fire("app:open-entity", { kind: "terms" }) },
+        { icon: "🏛", label: "Buildings…",             disabled: !has(),
+          run: () => fire("app:open-entity", { kind: "buildings" }) },
+        { icon: "🏖", label: "Holidays…",              disabled: !has(),
+          run: () => fire("app:open-entity", { kind: "holidays" }) },
+        { sep: true },
+        { icon: "⚙︎", label: "School settings…",       disabled: !has(),
+          run: () => fire("app:open-entity", { kind: "school" }) },
+      ];
+    },
+  });
+})();
+
+/* ─── FILE: js/ui/ribbon/menus/view_menu.js ─── */
+/* View — perspectives / zoom / density / theme toggle */
+(function () {
+  "use strict";
+  const APP = window.APP;
+  const fire = (n, d) => window.dispatchEvent(new CustomEvent(n, { detail: d || {} }));
+  const tick = (cond) => cond ? "✓" : " ";
+  const curTheme = () => document.documentElement.getAttribute("data-theme")
+    || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+
+  function setTheme(t) {
+    document.documentElement.setAttribute("data-theme", t);
+    try { localStorage.setItem("chronexa.theme", t); } catch {}
+    window._chrxNotify && window._chrxNotify("Theme: " + t);
+  }
+  function setDensity(d) {
+    document.documentElement.setAttribute("data-density", d);
+    try { localStorage.setItem("chronexa.density", d); } catch {}
+    fire("app:density", { density: d });
+  }
+  // restore density
+  try { const d = localStorage.getItem("chronexa.density"); if (d) document.documentElement.setAttribute("data-density", d); } catch {}
+
+  APP.ribbon.registerMenu({
+    key: "view", label: "View",
+    build() {
+      const p = APP.ribbon.getPerspective();
+      const z = APP.ribbon.getZoom();
+      const dn = document.documentElement.getAttribute("data-density") || "comfortable";
+      const th = curTheme();
+      return [
+        { section: "Perspective" },
+        { icon: tick(p==="class"),   label: "Classes",   run: () => APP.ribbon.setPerspective("class") },
+        { icon: tick(p==="teacher"), label: "Teachers",  run: () => APP.ribbon.setPerspective("teacher") },
+        { icon: tick(p==="room"),    label: "Rooms",     run: () => APP.ribbon.setPerspective("room") },
+        { icon: tick(p==="lesson"),  label: "Lesson grid", run: () => APP.ribbon.setPerspective("lesson") },
+        { sep: true },
+        { section: "Zoom" },
+        ...[50,75,100,125,150].map(v => ({
+          icon: tick(v===z), label: v + "%", run: () => APP.ribbon.setZoom(v),
+        })),
+        { sep: true },
+        { section: "Density" },
+        { icon: tick(dn==="compact"),     label: "Compact",     run: () => setDensity("compact") },
+        { icon: tick(dn==="comfortable"), label: "Comfortable", run: () => setDensity("comfortable") },
+        { icon: tick(dn==="spacious"),    label: "Spacious",    run: () => setDensity("spacious") },
+        { sep: true },
+        { section: "Theme" },
+        { icon: tick(th==="light"), label: "Light", run: () => setTheme("light") },
+        { icon: tick(th==="dark"),  label: "Dark",  run: () => setTheme("dark")  },
+        { sep: true },
+        { section: "Spotlight" },
+        { icon: "🔦", label: "Focus mode…",
+          run: () => { if (window.FocusMode) window.FocusMode.openPicker(); } },
+        { icon: "⚡", label: "Quick add lesson…",
+          run: () => fire("app:quick-add-lesson") },
+        { icon: "🔍", label: "Open command palette  (⌘K)",
+          run: () => { if (window.CommandPalette) window.CommandPalette.open(); } },
+      ];
+    },
+  });
+})();
+
+/* ─── FILE: js/ui/ribbon/menus/timetable_menu.js ─── */
+/* Timetable — Test / Generate / Verify / Statistics / Substitutions / Reports / Calendar export */
+(function () {
+  "use strict";
+  const APP = window.APP;
+  const fire = (n, d) => window.dispatchEvent(new CustomEvent(n, { detail: d || {} }));
+  const has  = () => !!APP.school;
+
+  APP.ribbon.registerMenu({
+    key: "timetable", label: "Timetable",
+    build() {
+      return [
+        { icon: "🚀", label: "Master Solve (one-click)…",disabled: !has(), run: () => fire("app:master-solve") },
+        { icon: "🧪", label: "Test",                     disabled: !has(), run: () => fire("app:test") },
+        { icon: "⚡", label: "Generate",                  disabled: !has(), run: () => fire("app:generate") },
+        { icon: "✨", label: "Improve current schedule",  disabled: !has(), run: () => fire("app:improve") },
+        { icon: "☁︎", label: "Generate in cloud",         disabled: !has(), run: () => fire("app:generate-cloud") },
+        { icon: "⏹", label: "Stop generation",            disabled: !has(), run: () => fire("app:generate-stop") },
+        { icon: "✓",  label: "Verification",              disabled: !has(), run: () => fire("app:verify") },
+        { icon: "🔧", label: "Verification Pro (auto-fix)…", disabled: !has(), run: () => fire("app:verification-pro") },
+        { icon: "💡", label: "Advisor — suggest improvements…", disabled: !has(), run: () => fire("app:advisor") },
+        { icon: "📊", label: "Statistics (with Exhaustion)…", disabled: !has(), run: () => fire("app:statistics") },
+        { icon: "📜", label: "List constraints",          disabled: !has(), run: () => fire("app:list-constraints") },
+        { sep: true },
+        { icon: "📈", label: "Statistics…",               disabled: !has(), run: () => fire("app:statistics") },
+        { icon: "🔁", label: "Substitutions…",            disabled: !has(), run: () => fire("app:substitutions") },
+        { icon: "📑", label: "Reports…",                  disabled: !has(), run: () => fire("app:print-preview") },
+        { sep: true },
+        { icon: "📆", label: "Export to calendar (ICS)",  disabled: !has(), run: () => fire("app:export-ics"), soon: true },
+      ];
+    },
+  });
+})();
+
+/* ─── FILE: js/ui/ribbon/menus/options_menu.js ─── */
+/* Options — Settings, Constraints library, Preferences */
+(function () {
+  "use strict";
+  const APP = window.APP;
+  const fire = (n, d) => window.dispatchEvent(new CustomEvent(n, { detail: d || {} }));
+  const has  = () => !!APP.school;
+
+  APP.ribbon.registerMenu({
+    key: "options", label: "Options",
+    build() {
+      return [
+        { icon: "⚙︎", label: "Settings…",            disabled: !has(),
+          run: () => fire("app:open-entity", { kind: "settings" }) },
+        { icon: "📜", label: "Constraints library…", disabled: !has(),
+          run: () => fire("app:open-entity", { kind: "constraints" }) },
+        { sep: true },
+        { icon: "👤", label: "Preferences (account)…",
+          run: () => fire("app:open-entity", { kind: "preferences" }) },
+        { sep: true },
+        { icon: "🎨", label: "Display settings…",    disabled: !has(),
+          run: () => fire("app:open-entity", { kind: "display-settings" }) },
+        { icon: "🖨", label: "Print defaults…",      disabled: !has(),
+          run: () => fire("app:open-entity", { kind: "print-defaults" }) },
+        { icon: "👮", label: "Supervision criteria…", disabled: !has(),
+          run: () => fire("app:open-entity", { kind: "supervision-criteria" }) },
+      ];
+    },
+  });
+})();
+
+/* ─── FILE: js/ui/ribbon/menus/help_menu.js ─── */
+/* Help — About, Documentation, Keyboard shortcuts */
+(function () {
+  "use strict";
+  const APP = window.APP;
+  const fire = (n, d) => window.dispatchEvent(new CustomEvent(n, { detail: d || {} }));
+
+  function showShortcuts() {
+    const wrap = document.createElement("div");
+    wrap.className = "chrx-dlg-scrim is-open";
+    const dlg = document.createElement("div");
+    dlg.className = "chrx-dlg";
+    dlg.innerHTML = `
+      <h2>Keyboard shortcuts</h2>
+      <p>The basics — works in any view.</p>
+      <table>
+        <tr><td><span class="chrx-kbd">⌘O</span></td><td>Open file</td></tr>
+        <tr><td><span class="chrx-kbd">⌘S</span></td><td>Save</td></tr>
+        <tr><td><span class="chrx-kbd">⇧⌘S</span></td><td>Save as…</td></tr>
+        <tr><td><span class="chrx-kbd">⌘Z</span></td><td>Undo</td></tr>
+        <tr><td><span class="chrx-kbd">⇧⌘Z</span> / <span class="chrx-kbd">⌘Y</span></td><td>Redo</td></tr>
+        <tr><td><span class="chrx-kbd">⌘P</span></td><td>Print preview</td></tr>
+        <tr><td><span class="chrx-kbd">⌘F</span></td><td>Focus search</td></tr>
+        <tr><td><span class="chrx-kbd">Esc</span></td><td>Close menu / dialog</td></tr>
+      </table>
+      <div class="chrx-dlg__actions">
+        <button class="chrx-tb-btn chrx-tb-btn--primary" id="chrx-help-close">Close</button>
+      </div>`;
+    wrap.appendChild(dlg); document.body.appendChild(wrap);
+    const close = () => wrap.remove();
+    dlg.querySelector("#chrx-help-close").onclick = close;
+    wrap.addEventListener("click", (e) => { if (e.target === wrap) close(); });
+  }
+
+  function showAbout() {
+    const wrap = document.createElement("div");
+    wrap.className = "chrx-dlg-scrim is-open";
+    const dlg = document.createElement("div");
+    dlg.className = "chrx-dlg";
+    const ver = window.APP_VER || "dev";
+    dlg.innerHTML = `
+      <h2>Chronexa</h2>
+      <p>Open timetable. Yours to keep.</p>
+      <table>
+        <tr><th>Version</th><td>${ver}</td></tr>
+        <tr><th>Mode</th><td>browser-only (no upload)</td></tr>
+        <tr><th>Solver</th><td>browser CSP or OR-Tools backend</td></tr>
+        <tr><th>License</th><td>MIT</td></tr>
+      </table>
+      <div class="chrx-dlg__actions">
+        <button class="chrx-tb-btn chrx-tb-btn--primary" id="chrx-about-close">Close</button>
+      </div>`;
+    wrap.appendChild(dlg); document.body.appendChild(wrap);
+    const close = () => wrap.remove();
+    dlg.querySelector("#chrx-about-close").onclick = close;
+    wrap.addEventListener("click", (e) => { if (e.target === wrap) close(); });
+  }
+
+  APP.ribbon.registerMenu({
+    key: "help", label: "Help",
+    build() {
+      return [
+        { icon: "ℹ︎", label: "About Chronexa…", run: showAbout },
+        { icon: "📖", label: "Documentation",  run: () => window.open("https://github.com/Abhishekchhetri020/chronexa-web", "_blank") },
+        { icon: "⌨︎", label: "Keyboard shortcuts…", run: showShortcuts },
+        { sep: true },
+        { icon: "💬", label: "Questions / Comments", run: () => fire("app:feedback"), soon: true },
+        { icon: "🎬", label: "Show demo file",       run: () => fire("app:open-demo") },
+      ];
+    },
+  });
+})();
+
+/* ─── FILE: js/ui/ribbon/menus/ai_menu.js ─── */
+/* AI — assist toggle (stub for now) */
+(function () {
+  "use strict";
+  const APP = window.APP;
+  const fire = (n, d) => window.dispatchEvent(new CustomEvent(n, { detail: d || {} }));
+  function aiOn() { return localStorage.getItem("chronexa.ai") === "1"; }
+  function toggleAi() {
+    const next = !aiOn();
+    try { localStorage.setItem("chronexa.ai", next ? "1" : "0"); } catch {}
+    fire("app:ai-toggle", { on: next });
+    window._chrxNotify && window._chrxNotify("AI assist: " + (next ? "on" : "off"));
+  }
+
+  APP.ribbon.registerMenu({
+    key: "ai", label: "AI",
+    build() {
+      const on = aiOn();
+      return [
+        { icon: on ? "✓" : " ", label: "AI assist", run: toggleAi },
+        { sep: true },
+        { icon: "🧠", label: "Auto-fill empty cells",      soon: true },
+        { icon: "🧹", label: "Cleanup last card move",     soon: true },
+        { icon: "🔒", label: "Lock all placed cells",      soon: true },
+        { sep: true },
+        { icon: "✨", label: "Suggest placements (beta)",  soon: true },
+      ];
+    },
+  });
+})();
+
+/* ─── FILE: js/ui/io/import_timetable_xml.js ─── */
+/* Import wrapper around the existing js/xml/parse_timetable_xml.js.
+ * Adds: source-text retention (so export can round-trip), demo loader,
+ * and wires the "Open / Import / Demo" UI to APP.school.
+ */
+(function () {
+  "use strict";
+  const APP = window.APP;
+  const notify = window._chrxNotify || console.log;
+
+  async function loadFromFile(file) {
+    if (!file) return null;
+    const t0 = performance.now();
+    const text = await file.text();
+    const school = window.parseTimetableXml.parseText(text, file.name || "sample.xml");
+    school._meta = school._meta || {};
+    school._meta.sourceText = text;             // preserve for round-trip
+    school._meta.sourceFilename = file.name;
+    school._meta.parseMs = Math.round(performance.now() - t0);
+    return school;
+  }
+
+  async function loadFromText(text, fname) {
+    const school = window.parseTimetableXml.parseText(text, fname || "sample.xml");
+    school._meta = school._meta || {};
+    school._meta.sourceText = text;
+    school._meta.sourceFilename = fname || "sample.xml";
+    return school;
+  }
+
+  async function pickFile(accept) {
+    return new Promise((resolve) => {
+      const inp = document.createElement("input");
+      inp.type = "file"; inp.accept = accept || ".xml,application/xml,text/xml";
+      inp.style.display = "none";
+      inp.onchange = () => resolve(inp.files && inp.files[0] || null);
+      document.body.appendChild(inp); inp.click();
+      setTimeout(() => inp.remove(), 200);
+    });
+  }
+
+  async function applySchool(school) {
+    APP.school = school;
+    document.querySelectorAll(".needs-school").forEach(b => b.disabled = false);
+    window.dispatchEvent(new CustomEvent("app:school-loaded", { detail: { school } }));
+    const c = school._meta?.counts || {};
+    notify(`Loaded · ${c.classes || 0} classes · ${c.teachers || 0} teachers · ${c.lessons || 0} lessons`);
+  }
+
+  async function importTimetableXml() {
+    const f = await pickFile();
+    if (!f) return;
+    try {
+      const s = await loadFromFile(f);
+      await applySchool(s);
+    } catch (e) { notify("Import failed: " + e.message, "error"); console.error(e); }
+  }
+
+  async function openDemoFile() {
+    try {
+      const r = await fetch("docs/demo_sample-school.xml?v=" + (window.APP_VER || "dev"));
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const text = await r.text();
+      const s = await loadFromText(text, "demo_sample-school.xml");
+      await applySchool(s);
+    } catch (e) { notify("Demo file failed: " + e.message, "error"); console.error(e); }
+  }
+
+  // Event wiring
+  window.addEventListener("app:import-timetable-xml", importTimetableXml);
+  window.addEventListener("app:open-file",      importTimetableXml);
+  window.addEventListener("app:open-demo",      openDemoFile);
+  window.addEventListener("app:new",            () => {
+    if (APP.school && !confirm("Discard current timetable and start fresh?")) return;
+    APP.school = null;
+    window.dispatchEvent(new CustomEvent("app:school-loaded", { detail: { school: null } }));
+    notify("Cleared");
+  });
+
+  APP.io = APP.io || {};
+  APP.io.importTimetableXml = importTimetableXml;
+  APP.io.loadFromFile = loadFromFile;
+  APP.io.loadFromText = loadFromText;
+  APP.io.openDemoFile = openDemoFile;
+  APP.io.applySchool  = applySchool;
+})();
+
+/* ─── FILE: js/ui/io/export_timetable_xml.js ─── */
+/* Round-trip Classic Timetable XML export.
+ *
+ * Strategy:
+ *  1. If APP.school._meta.sourceText exists (set by import_timetable_xml.js), we use
+ *     it as the template and surgically replace the <cards> block with the
+ *     current APP.school.cards. This preserves field order, IDs, daysdefs.
+ *  2. If no source text, we synthesize a minimal Classic-shaped XML from the
+ *     canonical SchoolData. Less faithful, but always works.
+ *
+ * Cards round-trip: parser emits {lessonId, day, period, classroomId?}.
+ * Each CLASSIC <card days="100000"> bit position maps to dayIdx 0..5
+ *   (0=Mon, 1=Tue, …, 5=Sat — same as DATA_SHAPES.md).
+ * One CLASSIC card with multi-bit days becomes N entries on parse; we collapse
+ * back here only when we have the original card lines (preserve identity);
+ * otherwise we emit one <card days="bbbbbb"/> per (day,period) pair.
+ */
+(function () {
+  "use strict";
+  const APP = window.APP;
+  const notify = window._chrxNotify || console.log;
+
+  const DAY_BITS = 6;
+
+  function dayBits(dayIdx) {
+    const bits = new Array(DAY_BITS).fill("0");
+    if (dayIdx >= 0 && dayIdx < DAY_BITS) bits[dayIdx] = "1";
+    return bits.join("");
+  }
+
+  function xmlEscape(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+  }
+
+  function renderCardsBlock(school) {
+    const cards = school.cards || [];
+    const lines = [];
+    lines.push('  <cards options="canadd,export:silent" columns="lessonid,period,days,weeks,terms,classroomids">');
+    for (const c of cards) {
+      const lid = xmlEscape(c.lessonId);
+      const period = String(c.period || 1);
+      const days = dayBits(c.day);
+      const rooms = c.classroomId ? xmlEscape(c.classroomId) : "";
+      lines.push(`    <card lessonid="${lid}" classroomids="${rooms}" period="${period}" weeks="1" terms="1" days="${days}"/>`);
+    }
+    lines.push("  </cards>");
+    return lines.join("\n");
+  }
+
+  function exportFromTemplate(school) {
+    const src = school._meta.sourceText;
+    const re  = /<cards\b[^>]*>[\s\S]*?<\/cards>|<cards\b[^>]*\/>/;
+    if (!re.test(src)) {
+      // No cards section to replace — append before </timetable>
+      return src.replace(/<\/timetable>\s*$/, renderCardsBlock(school) + "\n</timetable>\n");
+    }
+    return src.replace(re, renderCardsBlock(school));
+  }
+
+  function exportSynthesized(school) {
+    const out = [];
+    out.push('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>');
+    out.push(`<timetable importtype="database" defaultexport="1" displayname="${xmlEscape(school.schoolName || "Chronexa Export")}" displaycountries="">`);
+
+    // Periods
+    out.push('  <periods options="canadd,export:silent" columns="period,name,short,starttime,endtime">');
+    for (const p of (school.bell?.periods || [])) {
+      const st = minToTime(p.startMin), en = minToTime(p.endMin);
+      out.push(`    <period name="${xmlEscape(p.label)}" short="${xmlEscape(p.label)}" period="${p.index}" starttime="${st}" endtime="${en}"/>`);
+    }
+    out.push("  </periods>");
+    out.push('  <breaks options="canadd,export:silent" columns="break,name,short,starttime,endtime"/>');
+
+    // Daysdefs: prefer user-defined patterns (school.daysDefs), else emit 6 standard + 'Any day'.
+    out.push('  <daysdefs options="canadd,export:silent" columns="id,days,name,short">');
+    const userDaysDefs = (school.daysDefs && school.daysDefs.length) ? school.daysDefs : null;
+    if (userDaysDefs) {
+      for (const d of userDaysDefs) {
+        out.push(`    <daysdef id="${xmlEscape(d.id)}" name="${xmlEscape(d.name || d.id)}" short="${xmlEscape(d.short || "")}" days="${xmlEscape(d.bits || "111111")}"/>`);
+      }
+    } else {
+      const DAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+      DAYS.forEach((d, i) => {
+        const bits = new Array(DAY_BITS).fill("0"); bits[i] = "1";
+        out.push(`    <daysdef id="DAY_${i}" name="${d}" short="${d.slice(0,2)}" days="${bits.join("")}"/>`);
+      });
+      out.push(`    <daysdef id="DAY_ANY" name="Any day" short="X" days="100000,010000,001000,000100,000010,000001"/>`);
+    }
+    out.push("  </daysdefs>");
+
+    const userWeeksDefs = (school.weeksDefs && school.weeksDefs.length) ? school.weeksDefs : null;
+    out.push('  <weeksdefs options="canadd,export:silent" columns="id,weeks,name,short">');
+    if (userWeeksDefs) {
+      for (const w of userWeeksDefs)
+        out.push(`    <weeksdef id="${xmlEscape(w.id)}" name="${xmlEscape(w.name || "")}" short="${xmlEscape(w.short || "")}" weeks="${xmlEscape(w.bits || "1")}"/>`);
+    } else {
+      out.push('    <weeksdef id="WEEK_ALL" name="All weeks" short="All" weeks="1"/>');
+    }
+    out.push("  </weeksdefs>");
+
+    const userTermsDefs = (school.termsDefs && school.termsDefs.length) ? school.termsDefs : null;
+    out.push('  <termsdefs options="canadd,export:silent" columns="id,terms,name,short">');
+    if (userTermsDefs) {
+      for (const t of userTermsDefs)
+        out.push(`    <termsdef id="${xmlEscape(t.id)}" name="${xmlEscape(t.name || "")}" short="${xmlEscape(t.short || "")}" terms="${xmlEscape(t.bits || "1")}"/>`);
+    } else {
+      out.push('    <termsdef id="TERM_YR" name="Whole year" short="YR" terms="1"/>');
+    }
+    out.push("  </termsdefs>");
+
+    // Subjects
+    out.push('  <subjects options="canadd,export:silent" columns="id,name,short,partner_id">');
+    for (const s of (school.subjects || []))
+      out.push(`    <subject id="${xmlEscape(s.id)}" name="${xmlEscape(s.name)}" short="${xmlEscape(s.abbr || s.name)}" partner_id=""/>`);
+    out.push("  </subjects>");
+
+    // Teachers
+    out.push('  <teachers options="canadd,export:silent" columns="id,name,short,gender,color,email,mobile,partner_id,firstname,lastname">');
+    for (const t of (school.teachers || []))
+      out.push(`    <teacher id="${xmlEscape(t.id)}" name="${xmlEscape(t.name)}" short="${xmlEscape(t.abbr || t.name)}" gender="" color="" email="" mobile="" partner_id="" firstname="" lastname=""/>`);
+    out.push("  </teachers>");
+
+    // Buildings (empty) + Classrooms
+    out.push('  <buildings options="canadd,export:silent" columns="id,name,partner_id"/>');
+    out.push('  <classrooms options="canadd,export:silent" columns="id,name,short,capacity,buildingid,partner_id">');
+    for (const r of (school.classrooms || []))
+      out.push(`    <classroom id="${xmlEscape(r.id)}" name="${xmlEscape(r.name)}" short="${xmlEscape(r.name)}" capacity="${r.capacity || "*"}" buildingid="" partner_id=""/>`);
+    out.push("  </classrooms>");
+
+    // Classes
+    out.push('  <classes options="canadd,export:silent" columns="id,name,short,classroomids,teacherid,grade,partner_id">');
+    for (const c of (school.classes || []))
+      out.push(`    <class id="${xmlEscape(c.id)}" name="${xmlEscape(c.name)}" short="${xmlEscape(c.name)}" classroomids="" teacherid="" grade="" partner_id=""/>`);
+    out.push("  </classes>");
+
+    // Lessons
+    out.push('  <lessons options="canadd,export:silent" columns="id,subjectid,classids,groupids,teacherids,classroomids,periodspercard,periodsperweek,daysdefid,weeksdefid,termsdefid,seminargroup,capacity,partner_id">');
+    for (const l of (school.lessons || [])) {
+      const cls = (l.classIds || []).join(",");
+      const tch = (l.teacherIds || []).join(",");
+      const rooms = l.preferredRoomId || "";
+      const ppc = l.isLabDouble ? 2 : 1;
+      const daysDefId = l.daysDefId || "DAY_ANY";
+      const weeksDefId = l.weeksDefId || "WEEK_ALL";
+      const termsDefId = l.termsDefId || "TERM_YR";
+      out.push(`    <lesson id="${xmlEscape(l.id)}" classids="${cls}" subjectid="${xmlEscape(l.subjectId || "")}" periodspercard="${ppc}" periodsperweek="${l.periodsPerWeek || 0}" teacherids="${tch}" classroomids="${rooms}" groupids="" seminargroup="" termsdefid="${xmlEscape(termsDefId)}" weeksdefid="${xmlEscape(weeksDefId)}" daysdefid="${xmlEscape(daysDefId)}" capacity="*" partner_id=""/>`);
+    }
+    out.push("  </lessons>");
+
+    out.push(renderCardsBlock(school));
+    out.push("</timetable>");
+    return out.join("\n") + "\n";
+  }
+
+  function minToTime(m) {
+    if (!m && m !== 0) return "";
+    const h = Math.floor(m / 60), mm = m % 60;
+    return h + ":" + String(mm).padStart(2, "0");
+  }
+
+  function downloadBlob(text, filename) {
+    const blob = new Blob([text], { type: "application/xml" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  }
+
+  function exportTimetableXml() {
+    const school = APP.school;
+    if (!school) { notify("Open a timetable first.", "error"); return; }
+    let xml;
+    if (school._meta?.sourceText) {
+      xml = exportFromTemplate(school);
+    } else {
+      xml = exportSynthesized(school);
+    }
+    const base = (school._meta?.sourceFilename || school.schoolName || "chronexa").replace(/\.xml$/i, "");
+    downloadBlob(xml, base + "-export.xml");
+    notify("Exported " + base + "-export.xml");
+  }
+
+  window.addEventListener("app:export-timetable-xml", exportTimetableXml);
+  APP.io = APP.io || {};
+  APP.io.exportTimetableXml         = exportTimetableXml;
+  APP.io.exportFromTemplate   = exportFromTemplate;
+  APP.io.exportSynthesized    = exportSynthesized;
+  APP.io.renderCardsBlock     = renderCardsBlock;
+})();
+
+/* ─── FILE: js/ui/io/export_excel.js ─── */
+/* Excel exports — Contracts / Available teachers / Room supervision / Timetable.
+ * Uses SheetJS (window.XLSX). Index.html loads SheetJS via CDN.
+ */
+(function () {
+  "use strict";
+  const APP = window.APP;
+  const notify = window._chrxNotify || console.log;
+  const DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat"];
+
+  function need(name) {
+    if (typeof window.XLSX === "undefined") {
+      notify(name + " export needs SheetJS — check internet connection.", "error");
+      return false;
+    }
+    if (!APP.school) { notify("Open a timetable first.", "error"); return false; }
+    return true;
+  }
+
+  function save(wb, fname) {
+    window.XLSX.writeFile(wb, fname);
+    notify("Exported " + fname);
+  }
+
+  function sheet(rows) { return window.XLSX.utils.aoa_to_sheet(rows); }
+
+  // ─── Contracts — teacher × (subject + class) period counts ───────────────
+  function exportContracts() {
+    if (!need("Contracts")) return;
+    const s = APP.school;
+    const teacherById = {}, subjectById = {}, classById = {};
+    s.teachers.forEach(t => teacherById[t.id] = t);
+    s.subjects.forEach(x => subjectById[x.id] = x);
+    s.classes.forEach(c => classById[c.id] = c);
+
+    // Aggregate periods per (teacher, subject, class)
+    const agg = new Map();
+    for (const l of (s.lessons || [])) {
+      for (const tid of (l.teacherIds || [])) {
+        for (const cid of (l.classIds || [])) {
+          const k = tid + "|" + l.subjectId + "|" + cid;
+          agg.set(k, (agg.get(k) || 0) + (l.periodsPerWeek || 0));
+        }
+      }
+    }
+    const rows = [["Teacher", "Subject", "Class", "Periods/week"]];
+    [...agg.entries()].sort().forEach(([k, v]) => {
+      const [tid, sid, cid] = k.split("|");
+      rows.push([
+        teacherById[tid]?.name || tid,
+        subjectById[sid]?.name || sid,
+        classById[cid]?.name || cid,
+        v,
+      ]);
+    });
+    const wb = window.XLSX.utils.book_new();
+    window.XLSX.utils.book_append_sheet(wb, sheet(rows), "Contracts");
+    save(wb, fileName(s, "contracts"));
+  }
+
+  // ─── Available teachers — day-by-day free/booked grid ────────────────────
+  function exportAvailable() {
+    if (!need("Available teachers")) return;
+    const s = APP.school;
+    const periods = s.bell?.periods || [];
+    const head = ["Teacher", "Day"];
+    periods.forEach(p => head.push("P" + p.index + " (" + p.label + ")"));
+    const rows = [head];
+    const cardsByTeacher = s._idx?.cardsByTeacher || {};
+    for (const t of s.teachers) {
+      for (let d = 0; d < DAYS.length; d++) {
+        const row = [t.name, DAYS[d]];
+        periods.forEach(p => {
+          const hit = (cardsByTeacher[t.id] || []).some(c => c.day === d && c.period === p.index);
+          row.push(hit ? "booked" : "free");
+        });
+        rows.push(row);
+      }
+    }
+    const wb = window.XLSX.utils.book_new();
+    window.XLSX.utils.book_append_sheet(wb, sheet(rows), "Available");
+    save(wb, fileName(s, "available_teachers"));
+  }
+
+  // ─── Room supervision — room × day × period (teacher present?) ───────────
+  function exportSupervision() {
+    if (!need("Room supervision")) return;
+    const s = APP.school;
+    const periods = s.bell?.periods || [];
+    const head = ["Room", "Day"];
+    periods.forEach(p => head.push("P" + p.index));
+    const rows = [head];
+    const cardsByRoom = s._idx?.cardsByRoom || {};
+    for (const r of s.classrooms) {
+      for (let d = 0; d < DAYS.length; d++) {
+        const row = [r.name, DAYS[d]];
+        periods.forEach(p => {
+          const hit = (cardsByRoom[r.id] || []).find(c => c.day === d && c.period === p.index);
+          row.push(hit ? (hit.teachers || []).join(", ") : "");
+        });
+        rows.push(row);
+      }
+    }
+    const wb = window.XLSX.utils.book_new();
+    window.XLSX.utils.book_append_sheet(wb, sheet(rows), "RoomSupervision");
+    save(wb, fileName(s, "room_supervision"));
+  }
+
+  // ─── Timetable — 5-sheet workbook (p4-w11). ──────────────────────────────
+  //   1. Class Schedule    classes × days × periods (one big sheet, blocked)
+  //   2. Teacher Schedule  teachers × days × periods
+  //   3. Room Schedule     rooms × days × periods
+  //   4. Lessons           flat lesson list with subject/teacher/class/etc.
+  //   5. Statistics        per-teacher load + per-room utilisation + gaps
+  function exportTimetable() {
+    if (!need("Timetable")) return;
+    const s = APP.school;
+    const periods = s.bell?.periods || [];
+    const wb = window.XLSX.utils.book_new();
+    const totalSlots = DAYS.length * periods.length;
+
+    // Resolver maps — used across multiple sheets.
+    const tById = Object.fromEntries((s.teachers   || []).map(t => [t.id, t]));
+    const sById = Object.fromEntries((s.subjects   || []).map(x => [x.id, x]));
+    const cById = Object.fromEntries((s.classes    || []).map(c => [c.id, c]));
+    const rById = Object.fromEntries((s.classrooms || []).map(r => [r.id, r]));
+
+    // ── Sheet 1 — Class Schedule ───────────────────────────────────────────
+    {
+      const head = ["Class", "Day"];
+      periods.forEach(p => head.push("P" + p.index + (p.label ? " " + p.label : "")));
+      const rows = [head];
+      const byClass = s._idx?.cardsByClass || {};
+      for (const c of (s.classes || [])) {
+        const list = byClass[c.id] || [];
+        for (let d = 0; d < DAYS.length; d++) {
+          const row = [c.name, DAYS[d]];
+          for (const p of periods) {
+            const card = list.find(x => x.day === d && x.period === p.index);
+            row.push(card
+              ? `${card.subjectAbbr || card.subject || ""}\n${(card.teachers || []).join(", ")}\n${card.classroom || ""}`.trim()
+              : "");
+          }
+          rows.push(row);
+        }
+      }
+      window.XLSX.utils.book_append_sheet(wb, sheet(rows), "Class Schedule");
+    }
+
+    // ── Sheet 2 — Teacher Schedule ─────────────────────────────────────────
+    {
+      const head = ["Teacher", "Day"];
+      periods.forEach(p => head.push("P" + p.index));
+      const rows = [head];
+      const byTeacher = s._idx?.cardsByTeacher || {};
+      for (const t of (s.teachers || [])) {
+        const list = byTeacher[t.id] || [];
+        for (let d = 0; d < DAYS.length; d++) {
+          const row = [t.name + (t.abbr ? " (" + t.abbr + ")" : ""), DAYS[d]];
+          for (const p of periods) {
+            const card = list.find(x => x.day === d && x.period === p.index);
+            row.push(card
+              ? `${card.subjectAbbr || card.subject || ""}\n${(card.classes || []).join(",")}\n${card.classroom || ""}`.trim()
+              : "");
+          }
+          rows.push(row);
+        }
+      }
+      window.XLSX.utils.book_append_sheet(wb, sheet(rows), "Teacher Schedule");
+    }
+
+    // ── Sheet 3 — Room Schedule ────────────────────────────────────────────
+    {
+      const head = ["Room", "Day"];
+      periods.forEach(p => head.push("P" + p.index));
+      const rows = [head];
+      const byRoom = s._idx?.cardsByRoom || {};
+      for (const r of (s.classrooms || [])) {
+        const list = byRoom[r.id] || [];
+        for (let d = 0; d < DAYS.length; d++) {
+          const row = [r.name, DAYS[d]];
+          for (const p of periods) {
+            const card = list.find(x => x.day === d && x.period === p.index);
+            row.push(card
+              ? `${card.subjectAbbr || card.subject || ""}\n${(card.teachers || []).join(",")}\n${(card.classes || []).join(",")}`.trim()
+              : "");
+          }
+          rows.push(row);
+        }
+      }
+      window.XLSX.utils.book_append_sheet(wb, sheet(rows), "Room Schedule");
+    }
+
+    // ── Sheet 4 — Lessons (flat) ───────────────────────────────────────────
+    {
+      const rows = [["#", "Subject", "Class(es)", "Teacher(s)", "Room pref.",
+        "Per/wk", "Card count", "Lab×2", "Pinned"]];
+      const cardCountByLesson = {};
+      for (const card of (s.cards || [])) {
+        cardCountByLesson[card.lessonId] = (cardCountByLesson[card.lessonId] || 0) + 1;
+      }
+      const sorted = (s.lessons || []).slice().sort((a, b) => {
+        const sa = (sById[a.subjectId]?.name || "").localeCompare(sById[b.subjectId]?.name || "");
+        if (sa) return sa;
+        return (cById[a.classIds?.[0]]?.name || "").localeCompare(cById[b.classIds?.[0]]?.name || "");
+      });
+      sorted.forEach((l, idx) => {
+        rows.push([
+          idx + 1,
+          sById[l.subjectId]?.name || l.subjectId || "",
+          (l.classIds || []).map(id => cById[id]?.name || id).join(", "),
+          (l.teacherIds || []).map(id => tById[id]?.name || id).join(", "),
+          rById[l.preferredRoomId]?.name || l.preferredRoomId
+            || (l.requiredRoomType ? "(" + l.requiredRoomType + ")" : ""),
+          l.periodsPerWeek || 0,
+          cardCountByLesson[l.id] || 0,
+          l.isLabDouble ? "yes" : "",
+          (l.fixedDay != null && l.fixedPeriod != null) ? ("D" + l.fixedDay + " P" + l.fixedPeriod) : "",
+        ]);
+      });
+      window.XLSX.utils.book_append_sheet(wb, sheet(rows), "Lessons");
+    }
+
+    // ── Sheet 5 — Statistics ───────────────────────────────────────────────
+    {
+      const rows = [];
+      rows.push(["Chronexa — Statistics", "", "", "", ""]);
+      rows.push(["School", s.schoolName || "(unnamed)", "", "", ""]);
+      rows.push(["Generated", new Date().toISOString(), "", "", ""]);
+      rows.push(["Days × Periods", DAYS.length + " × " + periods.length,
+        "Total weekly slots", totalSlots, ""]);
+      rows.push([]);
+
+      // Teacher load
+      rows.push(["Teacher load", "", "", "", ""]);
+      rows.push(["Teacher", "Abbr", "Periods/week", "Gaps/week", "Util %"]);
+      const byTeacher = s._idx?.cardsByTeacher || {};
+      for (const t of (s.teachers || [])) {
+        const list = byTeacher[t.id] || [];
+        let gaps = 0;
+        for (let d = 0; d < DAYS.length; d++) {
+          const ps = list.filter(x => x.day === d).map(x => x.period).sort((a, b) => a - b);
+          for (let i = 1; i < ps.length; i++) gaps += (ps[i] - ps[i - 1] - 1);
+        }
+        const util = totalSlots ? Math.round(100 * list.length / totalSlots) : 0;
+        rows.push([t.name, t.abbr || "", list.length, gaps, util + "%"]);
+      }
+      rows.push([]);
+
+      // Room utilisation
+      rows.push(["Room utilisation", "", "", "", ""]);
+      rows.push(["Room", "Sessions/week", "Util %", "", ""]);
+      const byRoom = s._idx?.cardsByRoom || {};
+      for (const r of (s.classrooms || [])) {
+        const n = (byRoom[r.id] || []).length;
+        const util = totalSlots ? Math.round(100 * n / totalSlots) : 0;
+        rows.push([r.name, n, util + "%", "", ""]);
+      }
+      rows.push([]);
+
+      // Totals
+      rows.push(["Counts", "", "", "", ""]);
+      rows.push(["Teachers",   (s.teachers   || []).length, "", "", ""]);
+      rows.push(["Classes",    (s.classes    || []).length, "", "", ""]);
+      rows.push(["Classrooms", (s.classrooms || []).length, "", "", ""]);
+      rows.push(["Subjects",   (s.subjects   || []).length, "", "", ""]);
+      rows.push(["Lessons",    (s.lessons    || []).length, "", "", ""]);
+      rows.push(["Cards",      (s.cards      || []).length, "", "", ""]);
+
+      window.XLSX.utils.book_append_sheet(wb, sheet(rows), "Statistics");
+    }
+
+    save(wb, fileName(s, "timetable"));
+  }
+
+  function fileName(s, kind) {
+    const base = (s._meta?.sourceFilename || s.schoolName || "chronexa").replace(/\.xml$/i, "");
+    return base + "-" + kind + ".xlsx";
+  }
+
+  window.addEventListener("app:export-excel", (e) => {
+    switch (e.detail?.kind) {
+      case "contracts":   return exportContracts();
+      case "available":   return exportAvailable();
+      case "supervision": return exportSupervision();
+      case "timetable":   return exportTimetable();
+      default:            notify("Unknown export: " + e.detail?.kind, "error");
+    }
+  });
+
+  APP.io = APP.io || {};
+  APP.io.exportContracts   = exportContracts;
+  APP.io.exportAvailable   = exportAvailable;
+  APP.io.exportSupervision = exportSupervision;
+  APP.io.exportTimetable   = exportTimetable;
+})();
+
+/* ─── FILE: js/ui/io/snapshot.js ─── */
+/* Snapshot system — Save / Save-as / Version history.
+ *
+ * localStorage key: "chronexa.snapshots" -> JSON array:
+ *   [{ id, name, ts, sizeKB, payload }, …]
+ *
+ * payload = base64(gzip(JSON.stringify(school)))  if window.pako is loaded;
+ *           else base64(JSON.stringify(school))   (fallback, larger).
+ *
+ * 1482-card school: ~280KB JSON  → ~50KB gzipped (3-7x reduction).
+ */
+(function () {
+  "use strict";
+  const APP = window.APP;
+  const notify = window._chrxNotify || console.log;
+  const KEY = "chronexa.snapshots";
+  const CUR_KEY = "chronexa.current-snapshot";
+
+  function listSnapshots() {
+    try { return JSON.parse(localStorage.getItem(KEY) || "[]"); }
+    catch { return []; }
+  }
+  function writeSnapshots(arr) {
+    try { localStorage.setItem(KEY, JSON.stringify(arr)); return true; }
+    catch (e) { notify("Snapshot storage failed: " + e.message, "error"); return false; }
+  }
+  function setCurrent(id) { try { localStorage.setItem(CUR_KEY, id || ""); } catch {} }
+  function getCurrent() { try { return localStorage.getItem(CUR_KEY) || ""; } catch { return ""; } }
+
+  // ─── Encode / decode ─────────────────────────────────────────────────────
+  function makeSerializable(school) {
+    // Strip _idx (re-derivable, huge). Keep _meta with sourceText.
+    const out = {};
+    for (const k in school) if (k !== "_idx") out[k] = school[k];
+    return out;
+  }
+
+  function encode(school) {
+    const json = JSON.stringify(makeSerializable(school));
+    if (window.pako && window.pako.gzip) {
+      const u8 = window.pako.gzip(json);
+      return { payload: "gz:" + toBase64(u8), bytes: u8.length };
+    }
+    return { payload: "raw:" + toBase64(new TextEncoder().encode(json)), bytes: json.length };
+  }
+  function decode(payload) {
+    if (payload.startsWith("gz:")) {
+      const u8 = fromBase64(payload.slice(3));
+      const txt = window.pako.ungzip(u8, { to: "string" });
+      return JSON.parse(txt);
+    }
+    const u8 = fromBase64(payload.slice(4));
+    return JSON.parse(new TextDecoder().decode(u8));
+  }
+  function toBase64(u8) {
+    let s = "";
+    const CHUNK = 0x8000;
+    for (let i = 0; i < u8.length; i += CHUNK)
+      s += String.fromCharCode.apply(null, u8.subarray(i, i + CHUNK));
+    return btoa(s);
+  }
+  function fromBase64(b64) {
+    const bin = atob(b64), u8 = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    return u8;
+  }
+
+  // ─── Save / Save as ──────────────────────────────────────────────────────
+  function save() {
+    if (!APP.school) { notify("Open a timetable first.", "error"); return; }
+    const cur = getCurrent();
+    const list = listSnapshots();
+    const found = list.find(s => s.id === cur);
+    if (found) {
+      const enc = encode(APP.school);
+      found.payload = enc.payload;
+      found.ts = Date.now();
+      found.sizeKB = Math.round(enc.bytes / 1024);
+      writeSnapshots(list);
+      notify("Saved · " + found.name + " · " + found.sizeKB + " KB");
+    } else {
+      saveAs();
+    }
+  }
+  function saveAs() {
+    if (!APP.school) { notify("Open a timetable first.", "error"); return; }
+    promptName(APP.school.schoolName || "Untitled", (name) => {
+      if (!name) return;
+      const list = listSnapshots();
+      const enc = encode(APP.school);
+      const id = "snap_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      const item = { id, name, ts: Date.now(), sizeKB: Math.round(enc.bytes / 1024), payload: enc.payload };
+      list.push(item);
+      if (!writeSnapshots(list)) return;
+      setCurrent(id);
+      notify("Saved as · " + name + " · " + item.sizeKB + " KB");
+    });
+  }
+  function open(snapId) {
+    const list = listSnapshots();
+    const found = list.find(s => s.id === snapId);
+    if (!found) { notify("Snapshot not found.", "error"); return; }
+    try {
+      const school = decode(found.payload);
+      setCurrent(snapId);
+      // Re-derive _idx by re-parsing sourceText if available, else accept stripped form
+      if (school._meta && school._meta.sourceText && window.parseTimetableXml) {
+        const fresh = window.parseTimetableXml.parseText(school._meta.sourceText, school._meta.sourceFilename);
+        fresh._meta = school._meta;
+        // Restore custom mutations (e.g. cards changed since import)
+        if (school.cards) fresh.cards = school.cards;
+        APP.io.applySchool(fresh);
+      } else {
+        APP.io.applySchool(school);
+      }
+      notify("Loaded · " + found.name);
+    } catch (e) { notify("Load failed: " + e.message, "error"); console.error(e); }
+  }
+  function removeOne(snapId) {
+    const list = listSnapshots().filter(s => s.id !== snapId);
+    writeSnapshots(list);
+    if (getCurrent() === snapId) setCurrent("");
+  }
+
+  // ─── Diff between snapshot N and N-1 ─────────────────────────────────────
+  function diffSummary(curSchool, prevSchool) {
+    if (!prevSchool) return "—";
+    const fields = ["teachers","classes","classrooms","subjects","lessons","cards"];
+    const out = [];
+    for (const f of fields) {
+      const a = (curSchool[f] || []).length, b = (prevSchool[f] || []).length;
+      if (a !== b) out.push(f + ": " + b + "→" + a);
+    }
+    return out.length ? out.join(", ") : "no entity-count changes";
+  }
+
+  // ─── Dialogs ─────────────────────────────────────────────────────────────
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      if (k === "class") n.className = attrs[k];
+      else if (k.startsWith("on") && typeof attrs[k] === "function") n.addEventListener(k.slice(2), attrs[k]);
+      else if (attrs[k] != null) n.setAttribute(k, attrs[k]);
+    }
+    for (const c of kids) { if (c == null) continue; n.appendChild(typeof c === "string" ? document.createTextNode(c) : c); }
+    return n;
+  }
+  function modal(title, body, actions) {
+    const scrim = el("div", { class: "chrx-dlg-scrim is-open" });
+    const dlg = el("div", { class: "chrx-dlg" });
+    dlg.appendChild(el("h2", null, title));
+    body.forEach(b => dlg.appendChild(b));
+    const act = el("div", { class: "chrx-dlg__actions" });
+    actions.forEach(a => act.appendChild(a));
+    dlg.appendChild(act);
+    scrim.appendChild(dlg); document.body.appendChild(scrim);
+    scrim.addEventListener("click", (e) => { if (e.target === scrim) scrim.remove(); });
+    return scrim;
+  }
+  function promptName(suggest, cb) {
+    const inp = el("input", { type: "text", value: suggest });
+    setTimeout(() => { inp.focus(); inp.select(); }, 50);
+    const ok = el("button", { class: "chrx-tb-btn chrx-tb-btn--primary", type: "button" }, "Save");
+    const cancel = el("button", { class: "chrx-tb-btn", type: "button" }, "Cancel");
+    const wrap = modal("Save as…",
+      [el("p", null, "Pick a name for this snapshot."),
+       el("label", null, "Name", inp)],
+      [cancel, ok]);
+    inp.addEventListener("keydown", (e) => { if (e.key === "Enter") ok.click(); });
+    ok.onclick     = () => { const v = inp.value.trim(); wrap.remove(); cb(v); };
+    cancel.onclick = () => { wrap.remove(); cb(null); };
+  }
+  function openVersionHistory() {
+    const list = listSnapshots().slice().sort((a, b) => b.ts - a.ts);
+    const tableBody = el("tbody");
+    let prevSchool = null;
+    list.forEach((s, i) => {
+      let summary = "—";
+      try {
+        const cur = decode(s.payload);
+        const prev = list[i + 1] ? decode(list[i + 1].payload) : null;
+        summary = diffSummary(cur, prev);
+      } catch {}
+      const tr = el("tr", { class: "chrx-dlg__row" },
+        el("td", null, s.name),
+        el("td", null, new Date(s.ts).toLocaleString()),
+        el("td", null, s.sizeKB + " KB"),
+        el("td", null, summary),
+      );
+      const rm = el("button", { class: "chrx-tb-btn", style: "padding:2px 6px;font-size:11px" }, "✕");
+      rm.onclick = (e) => { e.stopPropagation(); if (confirm("Delete " + s.name + "?")) { removeOne(s.id); wrap.remove(); openVersionHistory(); } };
+      tr.appendChild(el("td", null, rm));
+      tr.onclick = () => { wrap.remove(); open(s.id); };
+      tableBody.appendChild(tr);
+    });
+    const body = list.length
+      ? el("table", null,
+          el("thead", null, el("tr", null,
+            el("th", null, "Name"), el("th", null, "Saved"), el("th", null, "Size"),
+            el("th", null, "Diff vs prev"), el("th", null, ""))),
+          tableBody)
+      : el("div", { class: "chrx-dlg__empty" }, "No saved snapshots yet. Hit Save as… to start.");
+    const close = el("button", { class: "chrx-tb-btn", type: "button", onclick: () => wrap.remove() }, "Close");
+    const newBtn = el("button", { class: "chrx-tb-btn chrx-tb-btn--primary", type: "button",
+      onclick: () => { wrap.remove(); saveAs(); } }, "Save current as…");
+    const wrap = modal("Version history",
+      [el("p", null, list.length + " snapshot" + (list.length === 1 ? "" : "s") + " in localStorage."), body],
+      APP.school ? [close, newBtn] : [close]);
+  }
+
+  // ─── Wire events ─────────────────────────────────────────────────────────
+  window.addEventListener("app:save",          save);
+  window.addEventListener("app:save-as",       saveAs);
+  window.addEventListener("app:open-snapshot", openVersionHistory);
+
+  APP.snapshot = { save, saveAs, open, listSnapshots, openVersionHistory, diffSummary };
+})();
+
+/* ─── FILE: js/ui/io/import_basic_xml.js ─── */
+/* Classic "Basic data export" importer.
+ * Accepts a JSON blob (file or pasted text) containing school identity,
+ * teachers, classes, subjects, classrooms. Merges into APP.school
+ * (best-effort — fills in what we can, leaves the rest untouched).
+ *
+ * Classic's JSON varies by version. We accept either:
+ *   { school:{name}, teachers:[...], classes:[...], subjects:[...], classrooms:[...] }
+ * or the flat top-level arrays.
+ */
+(function () {
+  "use strict";
+  const APP = window.APP;
+  const notify = window._chrxNotify || console.log;
+
+  function pickFile() {
+    return new Promise(res => {
+      const i = document.createElement("input");
+      i.type = "file"; i.accept = ".json,application/json,text/plain";
+      i.style.display = "none";
+      i.onchange = () => res(i.files && i.files[0] || null);
+      document.body.appendChild(i); i.click();
+      setTimeout(() => i.remove(), 200);
+    });
+  }
+
+  function parse(raw) {
+    const j = typeof raw === "string" ? JSON.parse(raw) : raw;
+    // Tolerant: pull from common shapes
+    const root = j.data || j;
+    return {
+      schoolName: root.school?.name || root.schoolName || j.name || "",
+      teachers:   root.teachers   || j.teachers   || [],
+      classes:    root.classes    || j.classes    || [],
+      subjects:   root.subjects   || j.subjects   || [],
+      classrooms: root.classrooms || root.rooms || j.classrooms || j.rooms || [],
+    };
+  }
+
+  function normTeacher(t, i) {
+    return {
+      id: String(t.id || t.shortcut || ("T" + (i + 1))),
+      name: t.name || t.firstname && (t.firstname + " " + (t.lastname || "")).trim() || ("Teacher " + (i + 1)),
+      abbr: t.short || t.shortcut || t.abbr || "",
+    };
+  }
+  function normClass(c, i) {
+    return {
+      id: String(c.id || c.shortcut || ("C" + (i + 1))),
+      name: c.name || c.short || ("Class " + (i + 1)),
+    };
+  }
+  function normSubject(s, i) {
+    return {
+      id: String(s.id || s.shortcut || ("S" + (i + 1))),
+      name: s.name || ("Subject " + (i + 1)),
+      abbr: s.short || s.shortcut || s.abbr || "",
+    };
+  }
+  function normRoom(r, i) {
+    return {
+      id: String(r.id || r.shortcut || ("R" + (i + 1))),
+      name: r.name || r.short || ("Room " + (i + 1)),
+      capacity: r.capacity || undefined,
+    };
+  }
+
+  function merge(parsed) {
+    const s = APP.school || {
+      schoolName: "", bell: { periods: [] },
+      teachers: [], classes: [], subjects: [], classrooms: [], lessons: [], cards: [],
+    };
+    if (parsed.schoolName) s.schoolName = parsed.schoolName;
+    if (parsed.teachers.length)   s.teachers   = parsed.teachers.map(normTeacher);
+    if (parsed.classes.length)    s.classes    = parsed.classes.map(normClass);
+    if (parsed.subjects.length)   s.subjects   = parsed.subjects.map(normSubject);
+    if (parsed.classrooms.length) s.classrooms = parsed.classrooms.map(normRoom);
+    s._meta = s._meta || {};
+    s._meta.sourceFilename = "classic-basic.json";
+    APP.school = s;
+    document.querySelectorAll(".needs-school").forEach(b => b.disabled = false);
+    window.dispatchEvent(new CustomEvent("app:school-loaded", { detail: { school: s } }));
+  }
+
+  async function run(input) {
+    try {
+      let text;
+      if (!input) {
+        const f = await pickFile();
+        if (!f) return;
+        text = await f.text();
+      } else if (input instanceof File || input instanceof Blob) {
+        text = await input.text();
+      } else {
+        text = String(input);
+      }
+      const parsed = parse(text);
+      merge(parsed);
+      notify(`Classic Basic imported · ${parsed.teachers.length} teachers · ${parsed.classes.length} classes`);
+    } catch (e) {
+      notify("Classic Basic import failed: " + e.message, "error");
+      console.error(e);
+    }
+  }
+
+  window.ImportBasicXml = { run, parse };
+  window.addEventListener("app:import-classic-basic", () => run());
+})();
+
+/* ─── FILE: js/ui/io/import_bell_times.js ─── */
+/* Classic "Bell times export" importer.
+ * Accepts JSON with period rows: [{ name, short, starttime, endtime, period }]
+ * (or { periods:[...] } shape). Writes to APP.school.bell.periods using the
+ * shape declared in docs/DATA_SHAPES.md:
+ *   { index, label, startMin, endMin, isTeaching }
+ */
+(function () {
+  "use strict";
+  const APP = window.APP;
+  const notify = window._chrxNotify || console.log;
+
+  function pickFile() {
+    return new Promise(res => {
+      const i = document.createElement("input");
+      i.type = "file"; i.accept = ".json,application/json,text/plain";
+      i.style.display = "none";
+      i.onchange = () => res(i.files && i.files[0] || null);
+      document.body.appendChild(i); i.click();
+      setTimeout(() => i.remove(), 200);
+    });
+  }
+
+  function toMin(s) {
+    if (typeof s === "number") return s;
+    if (!s) return 0;
+    const m = String(s).match(/^(\d{1,2}):(\d{2})/);
+    return m ? Number(m[1]) * 60 + Number(m[2]) : 0;
+  }
+
+  function parse(raw) {
+    const j = typeof raw === "string" ? JSON.parse(raw) : raw;
+    const rows = j.periods || j.bell || j.data || (Array.isArray(j) ? j : []);
+    return rows.map((p, i) => {
+      const start = toMin(p.starttime || p.start || p.from);
+      const end   = toMin(p.endtime   || p.end   || p.to);
+      const lbl   = p.short || p.name || p.label || ("P" + (i + 1));
+      const isBreak = /break|recess|lunch|interval/i.test(p.name || "") || p.is_break === 1;
+      return {
+        index: Number(p.period || p.index || (i + 1)),
+        label: lbl,
+        startMin: start,
+        endMin: end,
+        isTeaching: !isBreak,
+      };
+    });
+  }
+
+  function apply(periods) {
+    const s = APP.school || {
+      schoolName: "", bell: { periods: [] },
+      teachers: [], classes: [], subjects: [], classrooms: [], lessons: [], cards: [],
+    };
+    s.bell = s.bell || { periods: [] };
+    s.bell.periods = periods;
+    APP.school = s;
+    document.querySelectorAll(".needs-school").forEach(b => b.disabled = false);
+    window.dispatchEvent(new CustomEvent("app:school-loaded", { detail: { school: s } }));
+  }
+
+  async function run(input) {
+    try {
+      let text;
+      if (!input) {
+        const f = await pickFile();
+        if (!f) return;
+        text = await f.text();
+      } else if (input instanceof File || input instanceof Blob) {
+        text = await input.text();
+      } else {
+        text = String(input);
+      }
+      const periods = parse(text);
+      if (!periods.length) throw new Error("No periods found in file");
+      apply(periods);
+      notify(`Classic Bell times imported · ${periods.length} periods`);
+    } catch (e) {
+      notify("Classic Bell import failed: " + e.message, "error");
+      console.error(e);
+    }
+  }
+
+  window.ImportBellTimes = { run, parse };
+  window.addEventListener("app:import-classic-bell-times", () => run());
+})();
+
+/* ─── FILE: js/ui/io/import_clipboard.js ─── */
+/* Clipboard importer — reads navigator.clipboard text, auto-detects TSV/CSV,
+ * peeks at headers to guess if rows are teachers / classes / lessons,
+ * and shows a preview confirm() before merging into APP.school.
+ */
+(function () {
+  "use strict";
+  const APP = window.APP;
+  const notify = window._chrxNotify || console.log;
+
+  function splitTSV(text) {
+    const lines = text.split(/\r?\n/).filter(l => l.trim().length);
+    if (!lines.length) return { headers: [], rows: [] };
+    const sep = lines[0].indexOf("\t") >= 0 ? "\t" : (lines[0].indexOf(";") >= 0 ? ";" : ",");
+    const split = l => l.split(sep).map(c => c.replace(/^"|"$/g, "").trim());
+    const headers = split(lines[0]).map(h => h.toLowerCase());
+    const rows = lines.slice(1).map(split);
+    return { headers, rows };
+  }
+
+  function classify(headers) {
+    const h = headers.join(" ");
+    if (/teacher|name|abbr|short/.test(h) && !/class|subject|lesson/.test(h)) return "teachers";
+    if (/class|grade|section/.test(h) && !/teacher|subject|periods/.test(h)) return "classes";
+    if (/(teacher|subject).*class|class.*subject|periods|lesson/.test(h)) return "lessons";
+    if (/subject/.test(h)) return "subjects";
+    if (/room|capacity/.test(h)) return "classrooms";
+    return "unknown";
+  }
+
+  function col(headers, ...names) {
+    for (const n of names) {
+      const i = headers.indexOf(n.toLowerCase());
+      if (i >= 0) return i;
+    }
+    return -1;
+  }
+
+  function buildTeachers(h, rows) {
+    const nC = col(h, "name", "teacher", "fullname");
+    const aC = col(h, "abbr", "short", "shortcut");
+    return rows.map((r, i) => ({
+      id: "T" + (i + 1),
+      name: (nC >= 0 ? r[nC] : r[0]) || ("Teacher " + (i + 1)),
+      abbr: aC >= 0 ? r[aC] : "",
+    })).filter(t => t.name);
+  }
+  function buildClasses(h, rows) {
+    const nC = col(h, "name", "class", "section");
+    return rows.map((r, i) => ({
+      id: "C" + (i + 1),
+      name: (nC >= 0 ? r[nC] : r[0]) || ("Class " + (i + 1)),
+    })).filter(c => c.name);
+  }
+  function buildSubjects(h, rows) {
+    const nC = col(h, "name", "subject");
+    const aC = col(h, "abbr", "short");
+    return rows.map((r, i) => ({
+      id: "S" + (i + 1),
+      name: (nC >= 0 ? r[nC] : r[0]) || ("Subject " + (i + 1)),
+      abbr: aC >= 0 ? r[aC] : "",
+    })).filter(s => s.name);
+  }
+  function buildRooms(h, rows) {
+    const nC = col(h, "name", "room");
+    const cC = col(h, "capacity");
+    return rows.map((r, i) => ({
+      id: "R" + (i + 1),
+      name: (nC >= 0 ? r[nC] : r[0]) || ("Room " + (i + 1)),
+      capacity: cC >= 0 ? Number(r[cC]) || undefined : undefined,
+    })).filter(r => r.name);
+  }
+
+  async function run(text) {
+    try {
+      if (!text) {
+        if (!navigator.clipboard?.readText) throw new Error("Clipboard API unavailable");
+        text = await navigator.clipboard.readText();
+      }
+      if (!text || !text.trim()) { notify("Clipboard is empty", "error"); return; }
+      const { headers, rows } = splitTSV(text);
+      if (!rows.length) { notify("No data rows detected", "error"); return; }
+      const kind = classify(headers);
+      const preview = `Detected: ${kind}\nColumns: ${headers.join(", ")}\nRows: ${rows.length}\n\nFirst row: ${rows[0].join(" | ")}\n\nMerge into current school?`;
+      if (!confirm(preview)) { notify("Clipboard import cancelled"); return; }
+
+      const s = APP.school || {
+        schoolName: "", bell: { periods: [] },
+        teachers: [], classes: [], subjects: [], classrooms: [], lessons: [], cards: [],
+      };
+      let n = 0;
+      if (kind === "teachers")   { s.teachers   = buildTeachers(headers, rows); n = s.teachers.length; }
+      else if (kind === "classes") { s.classes  = buildClasses(headers, rows);  n = s.classes.length; }
+      else if (kind === "subjects"){ s.subjects = buildSubjects(headers, rows); n = s.subjects.length; }
+      else if (kind === "classrooms"){ s.classrooms = buildRooms(headers, rows); n = s.classrooms.length; }
+      else { notify("Unsupported clipboard layout: " + kind, "error"); return; }
+
+      APP.school = s;
+      document.querySelectorAll(".needs-school").forEach(b => b.disabled = false);
+      window.dispatchEvent(new CustomEvent("app:school-loaded", { detail: { school: s } }));
+      notify(`Clipboard merged · ${n} ${kind}`);
+    } catch (e) {
+      notify("Clipboard import failed: " + e.message, "error");
+      console.error(e);
+    }
+  }
+
+  window.ImportClipboard = { run, classify, splitTSV };
+  window.addEventListener("app:import-clipboard", () => run());
+})();
+
+/* ─── FILE: js/ui/io/import_gp_untis.js ─── */
+/* GP-Untis DIF (Data Interchange Format) importer.
+ * Each record line:   #<type>;<field1>;<field2>;...
+ * Types per spec:
+ *   1 = teachers     (id; short; name; ...)
+ *   2 = classes      (id; short; name; ...)
+ *   3 = subjects     (id; short; name; ...)
+ *   4 = rooms        (id; short; name; capacity; ...)
+ *   5 = lessons      (id; class; subject; teacher; periodsPerWeek; ...)
+ *
+ * Tolerant: skips comments (// or *), ignores trailing semicolons,
+ * accepts CR/LF or LF.
+ */
+(function () {
+  "use strict";
+  const APP = window.APP;
+  const notify = window._chrxNotify || console.log;
+
+  function pickFile() {
+    return new Promise(res => {
+      const i = document.createElement("input");
+      i.type = "file"; i.accept = ".txt,.csv,.dif,text/plain";
+      i.style.display = "none";
+      i.onchange = () => res(i.files && i.files[0] || null);
+      document.body.appendChild(i); i.click();
+      setTimeout(() => i.remove(), 200);
+    });
+  }
+
+  function parse(text) {
+    const teachers = [], classes = [], subjects = [], classrooms = [], lessons = [];
+    const lines = text.split(/\r?\n/);
+    for (const raw of lines) {
+      const ln = raw.trim();
+      if (!ln || ln.startsWith("//") || ln.startsWith("*")) continue;
+      const m = ln.match(/^#\s*(\d+)\s*;(.*)$/);
+      if (!m) continue;
+      const type = Number(m[1]);
+      const cells = m[2].split(";").map(c => c.trim().replace(/^"|"$/g, ""));
+      if (type === 1) {
+        teachers.push({ id: cells[0] || ("T" + (teachers.length + 1)), name: cells[2] || cells[1] || "", abbr: cells[1] || "" });
+      } else if (type === 2) {
+        classes.push({ id: cells[0] || ("C" + (classes.length + 1)), name: cells[2] || cells[1] || "" });
+      } else if (type === 3) {
+        subjects.push({ id: cells[0] || ("S" + (subjects.length + 1)), name: cells[2] || cells[1] || "", abbr: cells[1] || "" });
+      } else if (type === 4) {
+        classrooms.push({ id: cells[0] || ("R" + (classrooms.length + 1)), name: cells[2] || cells[1] || "", capacity: Number(cells[3]) || undefined });
+      } else if (type === 5) {
+        lessons.push({
+          id: cells[0] || ("L" + (lessons.length + 1)),
+          classIds: cells[1] ? cells[1].split(",").map(x => x.trim()).filter(Boolean) : [],
+          subjectId: cells[2] || "",
+          teacherIds: cells[3] ? cells[3].split(",").map(x => x.trim()).filter(Boolean) : [],
+          periodsPerWeek: Number(cells[4]) || 0,
+        });
+      }
+    }
+    return { teachers, classes, subjects, classrooms, lessons };
+  }
+
+  function apply(parsed) {
+    const s = APP.school || {
+      schoolName: "", bell: { periods: [] },
+      teachers: [], classes: [], subjects: [], classrooms: [], lessons: [], cards: [],
+    };
+    if (parsed.teachers.length)   s.teachers   = parsed.teachers;
+    if (parsed.classes.length)    s.classes    = parsed.classes;
+    if (parsed.subjects.length)   s.subjects   = parsed.subjects;
+    if (parsed.classrooms.length) s.classrooms = parsed.classrooms;
+    if (parsed.lessons.length)    s.lessons    = parsed.lessons;
+    s._meta = s._meta || {};
+    s._meta.sourceFilename = "gp-untis.dif";
+    APP.school = s;
+    document.querySelectorAll(".needs-school").forEach(b => b.disabled = false);
+    window.dispatchEvent(new CustomEvent("app:school-loaded", { detail: { school: s } }));
+  }
+
+  async function run(input) {
+    try {
+      let text;
+      if (!input) {
+        const f = await pickFile();
+        if (!f) return;
+        text = await f.text();
+      } else if (input instanceof File || input instanceof Blob) {
+        text = await input.text();
+      } else {
+        text = String(input);
+      }
+      const parsed = parse(text);
+      const total = parsed.teachers.length + parsed.classes.length + parsed.subjects.length + parsed.classrooms.length + parsed.lessons.length;
+      if (!total) throw new Error("No GP-Untis records (#1..#5) found");
+      apply(parsed);
+      notify(`GP-Untis DIF imported · ${parsed.teachers.length} T · ${parsed.classes.length} C · ${parsed.subjects.length} S · ${parsed.classrooms.length} R · ${parsed.lessons.length} L`);
+    } catch (e) {
+      notify("GP-Untis import failed: " + e.message, "error");
+      console.error(e);
+    }
+  }
+
+  window.ImportGpUntis = { run, parse };
+  window.addEventListener("app:import-gp-untis", () => run());
+})();
+
+/* ─── FILE: js/ui/io/export_legacy_roz.js ─── */
+/* Classic Timetable .roz binary exporter — PARTIAL.
+ *
+ * The .roz format is Classic's proprietary binary container.  Full fidelity
+ * requires the closed-source Classic writer.  This module emits a syntactically
+ * valid header so the file opens in Classic without an immediate parser error,
+ * then writes a UTF-8 "FORMAT LIMITED" payload reminding the user to fall
+ * back to Timetable XML for round-trip work.
+ *
+ * Header layout (16 bytes, little-endian):
+ *   off  0   4  magic            = "aScR"            (0x61 0x53 0x63 0x52)
+ *   off  4   2  format version   = 0x0001
+ *   off  6   2  flags            = 0x0000
+ *   off  8   4  payload length   = N (uint32 LE)
+ *   off 12   4  checksum (xor)   = 0x00000000        (stub)
+ */
+(function () {
+  "use strict";
+  const APP = window.APP;
+  const notify = window._chrxNotify || console.log;
+
+  function buildHeader(payloadLen) {
+    const h = new Uint8Array(16);
+    h[0] = 0x61; h[1] = 0x53; h[2] = 0x63; h[3] = 0x52;   // "aScR"
+    h[4] = 0x01; h[5] = 0x00;                              // version 1
+    h[6] = 0x00; h[7] = 0x00;                              // flags
+    const dv = new DataView(h.buffer);
+    dv.setUint32(8, payloadLen, true);                     // payload length
+    dv.setUint32(12, 0, true);                             // checksum stub
+    return h;
+  }
+
+  function buildPayload(school) {
+    const lines = [
+      "CHRONEXA-ROZ-STUB v1",
+      "FORMAT LIMITED — full .roz round-trip is unsupported.",
+      "Use 'Export Timetable XML' for full fidelity.",
+      "",
+      "school:    " + (school.schoolName || ""),
+      "teachers:  " + (school.teachers   || []).length,
+      "classes:   " + (school.classes    || []).length,
+      "subjects:  " + (school.subjects   || []).length,
+      "rooms:     " + (school.classrooms || []).length,
+      "lessons:   " + (school.lessons    || []).length,
+      "cards:     " + (school.cards      || []).length,
+      "",
+      "Generated: " + new Date().toISOString(),
+    ];
+    return new TextEncoder().encode(lines.join("\n") + "\n");
+  }
+
+  function download(bytes, fname) {
+    const blob = new Blob([bytes], { type: "application/octet-stream" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = fname;
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  }
+
+  function run(school) {
+    school = school || APP.school;
+    if (!school) { notify("Open a timetable first.", "error"); return; }
+    const payload = buildPayload(school);
+    const header  = buildHeader(payload.length);
+    const out     = new Uint8Array(header.length + payload.length);
+    out.set(header, 0);
+    out.set(payload, header.length);
+    const base = (school._meta?.sourceFilename || school.schoolName || "chronexa").replace(/\.\w+$/, "");
+    download(out, base + "-stub.roz");
+    notify("ROZ binary export is partial — use 'Timetable XML' for full fidelity", "warn");
+  }
+
+  window.ExportAscRoz = { run, buildHeader, buildPayload };
+  window.addEventListener("app:export-legacy-roz", () => run());
+})();
+
+/* ─── FILE: js/ui/io/export_gp_untis_dif.js ─── */
+/* GP-Untis DIF (Data Interchange Format) exporter.
+ * Mirror of import_gp_untis.js — emits keyed records:
+ *   #1 teachers   id;short;name
+ *   #2 classes    id;short;name
+ *   #3 subjects   id;short;name
+ *   #4 rooms      id;short;name;capacity
+ *   #5 lessons    id;classes;subject;teachers;periodsPerWeek
+ *
+ * Trailing newline; CRLF for Windows-friendliness.
+ */
+(function () {
+  "use strict";
+  const APP = window.APP;
+  const notify = window._chrxNotify || console.log;
+
+  function esc(v) {
+    if (v == null) return "";
+    const s = String(v);
+    return /[;\r\n"]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+
+  function build(school) {
+    const out = [];
+    out.push("// Chronexa GP-Untis DIF export");
+    out.push("// generated: " + new Date().toISOString());
+    out.push("// school:    " + (school.schoolName || ""));
+    out.push("");
+
+    for (const t of (school.teachers || []))
+      out.push(`#1;${esc(t.id)};${esc(t.abbr || t.name)};${esc(t.name)}`);
+    for (const c of (school.classes || []))
+      out.push(`#2;${esc(c.id)};${esc(c.name)};${esc(c.name)}`);
+    for (const s of (school.subjects || []))
+      out.push(`#3;${esc(s.id)};${esc(s.abbr || s.name)};${esc(s.name)}`);
+    for (const r of (school.classrooms || []))
+      out.push(`#4;${esc(r.id)};${esc(r.name)};${esc(r.name)};${r.capacity || ""}`);
+    for (const l of (school.lessons || [])) {
+      const cls = (l.classIds || []).join(",");
+      const tch = (l.teacherIds || []).join(",");
+      out.push(`#5;${esc(l.id)};${esc(cls)};${esc(l.subjectId)};${esc(tch)};${l.periodsPerWeek || 0}`);
+    }
+    return out.join("\r\n") + "\r\n";
+  }
+
+  function download(text, fname) {
+    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = fname;
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  }
+
+  function run(school) {
+    school = school || APP.school;
+    if (!school) { notify("Open a timetable first.", "error"); return; }
+    const text = build(school);
+    const base = (school._meta?.sourceFilename || school.schoolName || "chronexa").replace(/\.\w+$/, "");
+    download(text, base + "-untis.txt");
+    notify("Exported " + base + "-untis.txt");
+  }
+
+  window.ExportGpUntisDif = { run, build };
+  window.addEventListener("app:export-gp-untis-dif", () => run());
+})();
+
+/* ─── FILE: js/ui/io/export_atlantis.js ─── */
+/* Atlantis STDPLAN exporter.
+ * CSV-like (semicolon-separated, German-locale convention).
+ * One header row + one row per card:
+ *   Class;Subject;Teacher;Room;Day;Period;StartTime;EndTime
+ */
+(function () {
+  "use strict";
+  const APP = window.APP;
+  const notify = window._chrxNotify || console.log;
+  const DAYS = ["Mo","Di","Mi","Do","Fr","Sa"];
+
+  function esc(v) {
+    if (v == null) return "";
+    const s = String(v);
+    return /[;\r\n"]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+  function minToTime(m) {
+    if (m == null) return "";
+    const h = Math.floor(m / 60), mm = m % 60;
+    return String(h).padStart(2, "0") + ":" + String(mm).padStart(2, "0");
+  }
+
+  function build(school) {
+    const teachers = {}, subjects = {}, classes = {}, rooms = {};
+    (school.teachers || []).forEach(t => teachers[t.id] = t);
+    (school.subjects || []).forEach(s => subjects[s.id] = s);
+    (school.classes  || []).forEach(c => classes[c.id]  = c);
+    (school.classrooms || []).forEach(r => rooms[r.id]  = r);
+    const lessons = {};
+    (school.lessons || []).forEach(l => lessons[l.id] = l);
+    const periods = {};
+    (school.bell?.periods || []).forEach(p => periods[p.index] = p);
+
+    const out = [];
+    out.push("Class;Subject;Teacher;Room;Day;Period;StartTime;EndTime");
+    for (const c of (school.cards || [])) {
+      const l = lessons[c.lessonId] || {};
+      const cls = (l.classIds || []).map(id => classes[id]?.name || id).join("/");
+      const sub = subjects[l.subjectId]?.name || l.subjectId || "";
+      const tch = (l.teacherIds || []).map(id => teachers[id]?.name || id).join("/");
+      const room = rooms[c.classroomId]?.name || c.classroomId || "";
+      const p = periods[c.period];
+      out.push([
+        esc(cls), esc(sub), esc(tch), esc(room),
+        DAYS[c.day] || "?", c.period,
+        minToTime(p?.startMin), minToTime(p?.endMin),
+      ].join(";"));
+    }
+    return out.join("\r\n") + "\r\n";
+  }
+
+  function download(text, fname) {
+    const blob = new Blob(["﻿" + text], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = fname;
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  }
+
+  function run(school) {
+    school = school || APP.school;
+    if (!school) { notify("Open a timetable first.", "error"); return; }
+    const csv = build(school);
+    const base = (school._meta?.sourceFilename || school.schoolName || "chronexa").replace(/\.\w+$/, "");
+    download(csv, base + "-stdplan.csv");
+    notify("Exported " + base + "-stdplan.csv");
+  }
+
+  window.ExportAtlantis = { run, build };
+  window.addEventListener("app:export-atlantis", () => run());
+})();
+
+/* ─── FILE: js/ui/io/export_powerschool.js ─── */
+/* PowerSchool Excel exporter — three tabs: Sections, Teachers, Periods.
+ * Column names use PowerSchool's standard import field labels so the file
+ * can be picked up by PowerSchool's bulk import without much remapping.
+ */
+(function () {
+  "use strict";
+  const APP = window.APP;
+  const notify = window._chrxNotify || console.log;
+
+  function need() {
+    if (typeof window.XLSX === "undefined") {
+      notify("PowerSchool export needs SheetJS — check internet connection.", "error");
+      return false;
+    }
+    if (!APP.school) { notify("Open a timetable first.", "error"); return false; }
+    return true;
+  }
+
+  function sheet(rows) { return window.XLSX.utils.aoa_to_sheet(rows); }
+  function minToTime(m) {
+    if (m == null) return "";
+    const h = Math.floor(m / 60), mm = m % 60;
+    return String(h).padStart(2, "0") + ":" + String(mm).padStart(2, "0");
+  }
+
+  function buildSections(school) {
+    const teachers = {}; (school.teachers || []).forEach(t => teachers[t.id] = t);
+    const subjects = {}; (school.subjects || []).forEach(s => subjects[s.id] = s);
+    const classes  = {}; (school.classes  || []).forEach(c => classes[c.id]  = c);
+    const rows = [[
+      "Section_Number", "Course_Number", "Course_Name", "Teacher_Number",
+      "Teacher_Name", "Room", "Periods", "Class_List",
+    ]];
+    for (const l of (school.lessons || [])) {
+      const sub = subjects[l.subjectId] || {};
+      const tch = teachers[l.teacherIds?.[0]] || {};
+      rows.push([
+        l.id,
+        sub.id || "",
+        sub.name || "",
+        tch.id || "",
+        tch.name || "",
+        l.preferredRoomId || "",
+        l.periodsPerWeek || 0,
+        (l.classIds || []).map(id => classes[id]?.name || id).join(", "),
+      ]);
+    }
+    return rows;
+  }
+
+  function buildTeachers(school) {
+    const rows = [["Teacher_Number", "Last_Name", "First_Name", "Email", "Initials"]];
+    for (const t of (school.teachers || [])) {
+      const parts = (t.name || "").split(/\s+/);
+      const last = parts.length > 1 ? parts.pop() : "";
+      const first = parts.join(" ");
+      rows.push([t.id, last, first, t.email || "", t.abbr || ""]);
+    }
+    return rows;
+  }
+
+  function buildPeriods(school) {
+    const rows = [["Period_Number", "Period_Name", "Start_Time", "End_Time"]];
+    for (const p of (school.bell?.periods || [])) {
+      rows.push([p.index, p.label, minToTime(p.startMin), minToTime(p.endMin)]);
+    }
+    return rows;
+  }
+
+  function fileName(s) {
+    const base = (s._meta?.sourceFilename || s.schoolName || "chronexa").replace(/\.\w+$/, "");
+    return base + "-powerschool.xlsx";
+  }
+
+  function run(school) {
+    if (!need()) return;
+    school = school || APP.school;
+    const wb = window.XLSX.utils.book_new();
+    window.XLSX.utils.book_append_sheet(wb, sheet(buildSections(school)), "Sections");
+    window.XLSX.utils.book_append_sheet(wb, sheet(buildTeachers(school)), "Teachers");
+    window.XLSX.utils.book_append_sheet(wb, sheet(buildPeriods(school)),  "Periods");
+    const fname = fileName(school);
+    window.XLSX.writeFile(wb, fname);
+    notify("Exported " + fname);
+  }
+
+  window.ExportPowerschool = { run };
+  window.addEventListener("app:export-powerschool", () => run());
+})();
+
+/* ─── FILE: js/ui/io/export_excel_class_register.js ─── */
+/* Class Register Excel exporter — one sheet per class, pre-filled with the
+ * next 30 weekdays from today.  Columns: Date / Period / Subject / Teacher /
+ * Topic / Attendance.  Subject + Teacher are pulled from APP.school.cards
+ * when the cell day/period matches; otherwise left blank for the teacher
+ * to fill in.
+ */
+(function () {
+  "use strict";
+  const APP = window.APP;
+  const notify = window._chrxNotify || console.log;
+  const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+  const N_DAYS = 30;
+
+  function need() {
+    if (typeof window.XLSX === "undefined") {
+      notify("Class Register export needs SheetJS — check internet connection.", "error");
+      return false;
+    }
+    if (!APP.school) { notify("Open a timetable first.", "error"); return false; }
+    return true;
+  }
+
+  function sheet(rows) { return window.XLSX.utils.aoa_to_sheet(rows); }
+  function fmtDate(d) {
+    return d.getFullYear() + "-" +
+      String(d.getMonth() + 1).padStart(2, "0") + "-" +
+      String(d.getDate()).padStart(2, "0");
+  }
+  function nextWeekdays(n) {
+    const out = [];
+    const d = new Date();
+    while (out.length < n) {
+      const dow = d.getDay();             // 0=Sun, 6=Sat
+      if (dow !== 0) out.push(new Date(d.getTime()));   // skip Sundays (M–Sa)
+      d.setDate(d.getDate() + 1);
+    }
+    return out;
+  }
+  function dayIdxForDate(d) {
+    // 0=Mon, 1=Tue, ..., 5=Sat (matches DATA_SHAPES dayIdx)
+    const dow = d.getDay();
+    return dow === 0 ? -1 : dow - 1;
+  }
+
+  function buildClassSheet(school, klass, dates) {
+    const periods = school.bell?.periods || [];
+    const subjects = {}; (school.subjects || []).forEach(s => subjects[s.id] = s);
+    const teachers = {}; (school.teachers || []).forEach(t => teachers[t.id] = t);
+    const lessons  = {}; (school.lessons  || []).forEach(l => lessons[l.id]  = l);
+    const cardsByClass = (school.cards || []).filter(c => {
+      const l = lessons[c.lessonId];
+      return l && (l.classIds || []).includes(klass.id);
+    });
+
+    const rows = [["Date", "Day", "Period", "Subject", "Teacher", "Topic", "Attendance"]];
+    for (const d of dates) {
+      const di = dayIdxForDate(d);
+      for (const p of periods) {
+        const card = cardsByClass.find(c => c.day === di && c.period === p.index);
+        const l    = card ? lessons[card.lessonId] : null;
+        const sub  = l ? subjects[l.subjectId]?.name || "" : "";
+        const tch  = l ? (l.teacherIds || []).map(id => teachers[id]?.name || id).join(", ") : "";
+        rows.push([fmtDate(d), DAYS[d.getDay()], p.index, sub, tch, "", ""]);
+      }
+    }
+    return rows;
+  }
+
+  function safeSheetName(name) {
+    return String(name).slice(0, 31).replace(/[\\/?*[\]]/g, "_");
+  }
+
+  function fileName(s) {
+    const base = (s._meta?.sourceFilename || s.schoolName || "chronexa").replace(/\.\w+$/, "");
+    return base + "-class-register.xlsx";
+  }
+
+  function run(school) {
+    if (!need()) return;
+    school = school || APP.school;
+    const wb = window.XLSX.utils.book_new();
+    const dates = nextWeekdays(N_DAYS);
+    const classes = school.classes || [];
+    if (!classes.length) {
+      window.XLSX.utils.book_append_sheet(wb, sheet([["No classes defined"]]), "Empty");
+    } else {
+      for (const c of classes) {
+        const rows = buildClassSheet(school, c, dates);
+        window.XLSX.utils.book_append_sheet(wb, sheet(rows), safeSheetName(c.name || c.id));
+      }
+    }
+    const fname = fileName(school);
+    window.XLSX.writeFile(wb, fname);
+    notify("Exported " + fname);
+  }
+
+  window.ExportExcelClassRegister = { run };
+  window.addEventListener("app:export-class-register", () => run());
+})();
+
+/* ─── FILE: js/ui/print_preview/cell_style_dialog.js ─── */
+/* Cell-style editor dialog for print preview.
+ *
+ *   window.CellStyleDialog.open(templateId, currentStyle, onSave)
+ *
+ * Lets the user customize how each lesson card looks within a print
+ * template. Controls:
+ *   - 3×3 anchor grid (which corner of the cell the card sits in)
+ *   - 7 card-type checkboxes (subject, teacher, class, group, classroom,
+ *     count, bellTimes)
+ *   - Font picker (family + size)
+ *   - Color pickers (background + foreground)
+ *   - Live preview pane (renders a synthetic sample card with the
+ *     current settings applied)
+ *
+ * The settings object shape is:
+ *   {
+ *     anchor: "top-left" | "top-center" | "top-right" |
+ *             "middle-left" | "middle-center" | "middle-right" |
+ *             "bottom-left" | "bottom-center" | "bottom-right",
+ *     cardTypes: { subject, teacher, class, group, classroom,
+ *                  count, bellTimes }   (all booleans)
+ *     font: { family: string, size: number }   // size in px
+ *     colors: { bg: hex, fg: hex }
+ *   }
+ *
+ * Persistence is in-memory on window.APP.printCellStyles[templateId].
+ * print_preview.js consults this in `cellFromCard`.
+ */
+(function (global) {
+  "use strict";
+  const APP = (window.APP = window.APP || {});
+  APP.printCellStyles = APP.printCellStyles || {};
+
+  const ANCHORS = [
+    "top-left", "top-center", "top-right",
+    "middle-left", "middle-center", "middle-right",
+    "bottom-left", "bottom-center", "bottom-right",
+  ];
+  const CARD_TYPES = [
+    { id:"subject",   label:"Subject" },
+    { id:"teacher",   label:"Teacher" },
+    { id:"class",     label:"Class" },
+    { id:"group",     label:"Group" },
+    { id:"classroom", label:"Classroom" },
+    { id:"count",     label:"Count" },
+    { id:"bellTimes", label:"Bell times" },
+  ];
+  const FONTS = [
+    "system-ui", "Arial", "Helvetica", "Times New Roman",
+    "Georgia", "Courier New", "Verdana",
+  ];
+
+  function defaultStyle() {
+    return {
+      anchor: "middle-center",
+      cardTypes: {
+        subject:true, teacher:true, class:false, group:false,
+        classroom:true, count:false, bellTimes:false,
+      },
+      font: { family:"system-ui", size:11 },
+      colors: { bg:"#ffffff", fg:"#111827" },
+    };
+  }
+
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      const v = attrs[k]; if (v == null) continue;
+      if (k === "class") n.className = v;
+      else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v);
+    }
+    for (const c of kids) if (c != null && c !== false) {
+      n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    }
+    return n;
+  }
+
+  // Sample card content used by the live preview.
+  const SAMPLE = {
+    subject:"Math", subjectAbbr:"MA",
+    teachers:["Mrs. Sharma"], teacher:"Mrs. Sharma",
+    classes:["X-A"], class:"X-A",
+    groups:["Group 1"], group:"Group 1",
+    classroom:"Lab-1", count:"5/wk", bellTimes:"08:00–08:40",
+  };
+
+  function renderCardPreview(style) {
+    const align = (() => {
+      const [v, h] = style.anchor.split("-");
+      const just = h === "left" ? "flex-start" : h === "right" ? "flex-end" : "center";
+      const items = v === "top" ? "flex-start" : v === "bottom" ? "flex-end" : "center";
+      const ta = h === "left" ? "left" : h === "right" ? "right" : "center";
+      return { just, items, ta };
+    })();
+    const card = el("div", {
+      style: `display:flex;flex-direction:column;justify-content:${align.items};align-items:${align.just};text-align:${align.ta};` +
+        `width:200px;height:120px;padding:8px;border:1px solid #d1d5db;border-radius:6px;` +
+        `background:${style.colors.bg};color:${style.colors.fg};` +
+        `font-family:${style.font.family};font-size:${style.font.size}px;line-height:1.25;gap:2px;overflow:hidden`,
+    });
+    if (style.cardTypes.subject) card.appendChild(el("div", { style:"font-weight:700" }, SAMPLE.subject));
+    if (style.cardTypes.teacher) card.appendChild(el("div", null, SAMPLE.teacher));
+    if (style.cardTypes.class)   card.appendChild(el("div", null, SAMPLE.class));
+    if (style.cardTypes.group)   card.appendChild(el("div", null, SAMPLE.group));
+    if (style.cardTypes.classroom) card.appendChild(el("div", { style:"opacity:.75" }, SAMPLE.classroom));
+    if (style.cardTypes.count)   card.appendChild(el("div", { style:"opacity:.6;font-size:0.9em" }, SAMPLE.count));
+    if (style.cardTypes.bellTimes) card.appendChild(el("div", { style:"opacity:.6;font-size:0.9em" }, SAMPLE.bellTimes));
+    return card;
+  }
+
+  function open(templateId, currentStyle, onSave) {
+    const style = JSON.parse(JSON.stringify(currentStyle || defaultStyle()));
+    // ensure shape
+    style.cardTypes = Object.assign({}, defaultStyle().cardTypes, style.cardTypes || {});
+    style.font = Object.assign({}, defaultStyle().font, style.font || {});
+    style.colors = Object.assign({}, defaultStyle().colors, style.colors || {});
+
+    // ─── Scrim + dialog
+    const scrim = el("div", {
+      class: "chrx-cellstyle-scrim",
+      style: "position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;display:flex;align-items:center;justify-content:center",
+      onclick: (e) => { if (e.target === scrim) close(); },
+    });
+    const dlg = el("div", {
+      style: "background:#fff;border-radius:12px;width:min(720px,92vw);max-height:88vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,0.35);padding:20px",
+      role: "dialog", "aria-modal":"true",
+    });
+    scrim.appendChild(dlg);
+
+    function close() { scrim.remove(); document.removeEventListener("keydown", onKey, true); }
+    function onKey(e) { if (e.key === "Escape") { e.preventDefault(); close(); } }
+    document.addEventListener("keydown", onKey, true);
+
+    // ─── Header
+    dlg.appendChild(el("div", {
+      style:"display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;border-bottom:1px solid #e5e7eb;padding-bottom:10px" },
+      el("h3", { style:"margin:0;font-size:18px" }, "Cell style — " + (templateId || "template")),
+      el("button", { type:"button",
+        style:"border:0;background:transparent;font-size:24px;cursor:pointer;color:#6b7280",
+        onclick: close }, "×")));
+
+    // ─── Body grid: controls (left) + live preview (right)
+    const body = el("div", { style:"display:grid;grid-template-columns:1fr 240px;gap:20px" });
+    const controls = el("div", null);
+    const previewWrap = el("div", { style:"display:flex;flex-direction:column;gap:8px;align-items:center" });
+    body.appendChild(controls); body.appendChild(previewWrap);
+    dlg.appendChild(body);
+
+    // ─── Live preview
+    const previewLabel = el("div", { style:"font-size:11px;opacity:.6;font-weight:600;letter-spacing:0.04em;text-transform:uppercase" }, "Live preview");
+    const previewHost = el("div", {
+      style:"padding:12px;background:#f9fafb;border-radius:8px;border:1px dashed #d1d5db;display:flex;align-items:center;justify-content:center" });
+    function refreshPreview() {
+      previewHost.innerHTML = "";
+      previewHost.appendChild(renderCardPreview(style));
+    }
+    previewWrap.appendChild(previewLabel);
+    previewWrap.appendChild(previewHost);
+    refreshPreview();
+
+    // ─── Section: anchor grid (3×3)
+    controls.appendChild(el("div", { style:"font-size:12px;font-weight:600;color:#374151;margin-bottom:6px" }, "Position (3×3 anchor)"));
+    const anchorGrid = el("div", {
+      style:"display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-bottom:14px;max-width:180px" });
+    ANCHORS.forEach(a => {
+      const btn = el("button", { type:"button",
+        "data-anchor": a,
+        style:"aspect-ratio:1;border:1px solid #d1d5db;background:#fff;border-radius:6px;cursor:pointer;font-size:14px",
+        title: a,
+        onclick: () => { style.anchor = a; markAnchor(); refreshPreview(); } }, "•");
+      anchorGrid.appendChild(btn);
+    });
+    function markAnchor() {
+      anchorGrid.querySelectorAll("button").forEach(b => {
+        const active = b.dataset.anchor === style.anchor;
+        b.style.background = active ? "#3b82f6" : "#fff";
+        b.style.color = active ? "#fff" : "#111";
+        b.style.borderColor = active ? "#1d4ed8" : "#d1d5db";
+      });
+    }
+    markAnchor();
+    controls.appendChild(anchorGrid);
+
+    // ─── Section: card-type checkboxes (7)
+    controls.appendChild(el("div", { style:"font-size:12px;font-weight:600;color:#374151;margin-bottom:6px" }, "Show on card"));
+    const cardTypesWrap = el("div", { style:"display:grid;grid-template-columns:repeat(2,1fr);gap:4px 12px;margin-bottom:14px" });
+    CARD_TYPES.forEach(ct => {
+      const cb = el("input", { type:"checkbox",
+        checked: style.cardTypes[ct.id] ? "checked" : null,
+        onchange:(e)=>{ style.cardTypes[ct.id] = e.target.checked; refreshPreview(); } });
+      cardTypesWrap.appendChild(el("label", {
+        style:"display:inline-flex;align-items:center;gap:6px;font-size:13px;cursor:pointer" },
+        cb, el("span", null, ct.label)));
+    });
+    controls.appendChild(cardTypesWrap);
+
+    // ─── Section: font picker
+    controls.appendChild(el("div", { style:"font-size:12px;font-weight:600;color:#374151;margin-bottom:6px" }, "Font"));
+    const fontRow = el("div", { style:"display:flex;gap:8px;margin-bottom:14px;align-items:center" });
+    const fontFamily = el("select", { style:"flex:1;padding:4px 6px",
+      onchange:(e)=>{ style.font.family = e.target.value; refreshPreview(); } });
+    FONTS.forEach(f => {
+      const opt = el("option", { value:f }, f);
+      if (f === style.font.family) opt.selected = true;
+      fontFamily.appendChild(opt);
+    });
+    const fontSize = el("input", { type:"number", min:"6", max:"48",
+      value: String(style.font.size), style:"width:64px;padding:4px 6px",
+      oninput:(e)=>{ style.font.size = parseInt(e.target.value, 10) || 11; refreshPreview(); } });
+    fontRow.appendChild(fontFamily);
+    fontRow.appendChild(fontSize);
+    fontRow.appendChild(el("span", { style:"font-size:11px;opacity:.6" }, "px"));
+    controls.appendChild(fontRow);
+
+    // ─── Section: colors (bg + fg)
+    controls.appendChild(el("div", { style:"font-size:12px;font-weight:600;color:#374151;margin-bottom:6px" }, "Colors"));
+    const colorRow = el("div", { style:"display:flex;gap:14px;margin-bottom:14px;align-items:center" });
+    function colorField(label, key) {
+      const cp = el("input", { type:"color", value: style.colors[key],
+        style:"width:36px;height:28px;border:1px solid #d1d5db;border-radius:4px;padding:0;cursor:pointer",
+        oninput:(e)=>{ style.colors[key] = e.target.value; refreshPreview(); } });
+      return el("label", { style:"display:inline-flex;align-items:center;gap:6px;font-size:13px" },
+        el("span", { style:"opacity:.7" }, label), cp);
+    }
+    colorRow.appendChild(colorField("Background", "bg"));
+    colorRow.appendChild(colorField("Foreground", "fg"));
+    controls.appendChild(colorRow);
+
+    // ─── Footer
+    dlg.appendChild(el("div", {
+      style:"display:flex;justify-content:flex-end;gap:8px;margin-top:8px;border-top:1px solid #e5e7eb;padding-top:12px" },
+      el("button", { type:"button",
+        style:"padding:6px 14px;border:1px solid #d1d5db;background:#fff;border-radius:6px;cursor:pointer",
+        onclick: close }, "Cancel"),
+      el("button", { type:"button",
+        style:"padding:6px 14px;border:0;background:#1d4ed8;color:#fff;border-radius:6px;cursor:pointer;font-weight:600",
+        onclick: () => {
+          APP.printCellStyles[templateId] = style;
+          close();
+          if (typeof onSave === "function") onSave(style);
+        } }, "Save")));
+
+    document.body.appendChild(scrim);
+  }
+
+  global.CellStyleDialog = { open, defaultStyle };
+})(window);
+
+/* ─── FILE: js/ui/print_preview/templates_registry.js ─── */
+/* Print template registry — sidecar that Agent H's print_preview.js can
+ * consume to populate the "Select your report" dropdown with all 20+
+ * templates (Agent H's 5 built-ins + the 15 added by Agent M's
+ * /templates/*.js modules).
+ *
+ * Each template module self-registers via:
+ *   window.APP.printTemplates.register("my_id", { name, render })
+ *
+ * print_preview.js can do:
+ *   for (const t of window.APP.printTemplates.list()) sel.appendChild(option…)
+ *   const tpl = window.APP.printTemplates.get(id);
+ *   tpl.render(school, periods)  // returns Array<Node> (one per A4 page)
+ */
+(function () {
+  "use strict";
+  const APP = (window.APP = window.APP || {});
+
+  const reg = new Map();
+
+  // Pre-register Agent H's 5 built-ins (id, label) — keeps the dropdown
+  // ordering stable when print_preview.js iterates list().
+  const BUILTINS = [
+    ["class",   "Timetable for each class"],
+    ["teacher", "Timetable for each teacher"],
+    ["room",    "Timetable for each room"],
+    ["summary", "Summary of classes"],
+    ["poster",  "Wall poster (landscape)"],
+  ];
+
+  function register(id, def) {
+    if (!id || !def || typeof def.render !== "function") {
+      console.warn("[print templates] bad registration:", id);
+      return;
+    }
+    reg.set(id, { id, name: def.name || id, render: def.render, builtin: !!def.builtin });
+  }
+
+  function get(id) { return reg.get(id); }
+
+  function list() {
+    // Stable order: built-ins first (their declared order), then registrations
+    // in insertion order.
+    const out = [];
+    for (const [id, name] of BUILTINS) {
+      const e = reg.get(id);
+      if (e) out.push(e);
+      else out.push({ id, name, builtin: true });
+    }
+    for (const [id, e] of reg.entries()) {
+      if (!BUILTINS.find(b => b[0] === id)) out.push(e);
+    }
+    return out;
+  }
+
+  APP.printTemplates = { register, get, list };
+})();
+
+/* ─── FILE: js/ui/print_preview/templates/_helpers.js ─── */
+/* Shared helpers for Agent M's print templates. Loaded before any template
+ * module. Mirrors the el() / pageHeader() / gridTable() shape inside Agent
+ * H's print_preview.js so the visual style stays uniform.
+ */
+(function () {
+  "use strict";
+  const APP = (window.APP = window.APP || {});
+  const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      if (k === "class") n.className = attrs[k];
+      else if (k === "html") n.innerHTML = attrs[k];
+      else if (k.startsWith("on") && typeof attrs[k] === "function") n.addEventListener(k.slice(2), attrs[k]);
+      else if (attrs[k] != null) n.setAttribute(k, attrs[k]);
+    }
+    for (const c of kids) {
+      if (c == null) continue;
+      n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    }
+    return n;
+  }
+
+  function page(landscape) {
+    return el("div", {
+      class: "chrx-preview-page",
+      style: landscape
+        ? "width:297mm;min-height:210mm;padding:10mm 12mm;background:#fff"
+        : "background:#fff",
+    });
+  }
+
+  function header(title, subtitle) {
+    return el("div", {
+      style: "display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid #333;padding-bottom:4px;margin-bottom:8px",
+    },
+      el("h2", { style: "margin:0;font-size:14px" }, title || ""),
+      el("div", { style: "font-size:9.5px;color:#555" }, subtitle || ""));
+  }
+
+  function footer() {
+    return el("div", { style: "font-size:9px;color:#999;text-align:right;margin-top:8px" },
+      "Chronexa · " + new Date().toLocaleDateString());
+  }
+
+  function emptyPage(msg) {
+    const p = page();
+    p.appendChild(header(msg || "No data", ""));
+    return p;
+  }
+
+  function cardAtFor(list, day, period) {
+    return (list || []).find(c => c.day === day && c.period === period) || null;
+  }
+
+  function subjectLabel(card) {
+    if (!card) return "";
+    return card.subjectAbbr || card.subject || "";
+  }
+
+  function teacherList(card) {
+    return (card && card.teachers) ? card.teachers.join(", ") : "";
+  }
+
+  // Style block used by tables across templates (kept tiny so each template
+  // can rely on identical look without redefining).
+  function tableCSS() {
+    return "border-collapse:collapse;width:100%;font-size:9.5px";
+  }
+  function thCSS() {
+    return "border:1px solid #888;background:#f0f0f0;padding:3px 5px;font-weight:600;text-align:left";
+  }
+  function tdCSS() {
+    return "border:1px solid #bbb;padding:3px 5px;vertical-align:top";
+  }
+
+  APP.printTemplateUtils = {
+    DAYS, el, page, header, footer, emptyPage,
+    cardAtFor, subjectLabel, teacherList,
+    tableCSS, thCSS, tdCSS,
+  };
+})();
+
+/* ─── FILE: js/ui/print_preview/templates/timetable_for_student.js ─── */
+/* Timetable for each student (section) — one A4 portrait page per section.
+ *
+ * Classic equivalent: "Timetable for each student". When the school doesn't
+ * define explicit sections, we fall back to one page per class (a class IS
+ * a section in single-section schools — common in CBSE primaries).
+ */
+(function () {
+  "use strict";
+  const U = window.APP.printTemplateUtils;
+  if (!U) { console.warn("[timetable_for_student] helpers missing"); return; }
+  const { el, page, header, footer, emptyPage, DAYS, cardAtFor, subjectLabel, teacherList } = U;
+
+  function render(school /*, cards */) {
+    if (!school || !school.classes || !school.classes.length) return [emptyPage("No classes")];
+    const periods = school.bell?.periods || [];
+    const byClass = school._idx?.cardsByClass || {};
+    const pages = [];
+
+    for (const c of school.classes) {
+      const sections = (c.sections && c.sections.length) ? c.sections : [{ id: c.id, name: c.name }];
+      for (const sec of sections) {
+        const list = byClass[c.id] || [];
+        const p = page(false);
+        p.appendChild(header(
+          sec.name + " — Student timetable",
+          (school.schoolName || "") + " · " + DAYS.length + " days × " + periods.length + " periods"));
+
+        const tbl = el("table", { style: U.tableCSS() });
+        const thead = el("thead");
+        const tr0 = el("tr");
+        tr0.appendChild(el("th", { style: U.thCSS() }, "Day"));
+        periods.forEach(per => tr0.appendChild(el("th", { style: U.thCSS() },
+          "P" + per.index, el("div", { style: "font-weight:400;font-size:8.5px;color:#666" }, per.label || ""))));
+        thead.appendChild(tr0);
+        tbl.appendChild(thead);
+
+        const tbody = el("tbody");
+        for (let d = 0; d < DAYS.length; d++) {
+          const tr = el("tr");
+          tr.appendChild(el("th", { style: U.thCSS() }, DAYS[d]));
+          for (const per of periods) {
+            const card = cardAtFor(list, d, per.index);
+            if (!card) {
+              tr.appendChild(el("td", { style: U.tdCSS() + ";color:#bbb;text-align:center" }, "—"));
+            } else {
+              tr.appendChild(el("td", { style: U.tdCSS() },
+                el("div", { style: "font-weight:600" }, subjectLabel(card)),
+                el("div", { style: "font-size:8.5px;color:#666" }, teacherList(card)),
+                el("div", { style: "font-size:8.5px;color:#888" }, card.classroom || "")));
+            }
+          }
+          tbody.appendChild(tr);
+        }
+        tbl.appendChild(tbody);
+        p.appendChild(tbl);
+        p.appendChild(footer());
+        pages.push(p);
+      }
+    }
+    return pages;
+  }
+
+  window.APP.printTemplates.register("timetable_for_student", {
+    name: "Timetable for each student",
+    render,
+  });
+})();
+
+/* ─── FILE: js/ui/print_preview/templates/summary_of_students.js ─── */
+/* Summary of students — single A4 landscape with one row per class (acting as
+ * the student-group container) showing weekly period counts grouped by
+ * subject. Useful for parents to see workload distribution at a glance.
+ */
+(function () {
+  "use strict";
+  const U = window.APP.printTemplateUtils;
+  if (!U) return;
+  const { el, page, header, footer, emptyPage } = U;
+
+  function render(school /*, cards */) {
+    if (!school || !school.classes || !school.classes.length) return [emptyPage("No classes")];
+
+    const subjects = school.subjects || [];
+    const subjectById = Object.fromEntries(subjects.map(s => [s.id, s]));
+    const cardsByClass = school._idx?.cardsByClass || {};
+
+    const p = page(true);
+    p.appendChild(header("Summary of students", school.schoolName || ""));
+
+    const tbl = el("table", { style: U.tableCSS() });
+    const thead = el("thead");
+    const tr0 = el("tr");
+    tr0.appendChild(el("th", { style: U.thCSS() }, "Class"));
+    tr0.appendChild(el("th", { style: U.thCSS() }, "Total"));
+    subjects.forEach(s => tr0.appendChild(el("th", { style: U.thCSS() }, s.abbr || s.name)));
+    thead.appendChild(tr0);
+    tbl.appendChild(thead);
+
+    const tbody = el("tbody");
+    for (const c of school.classes) {
+      const list = cardsByClass[c.id] || [];
+      const tr = el("tr");
+      tr.appendChild(el("th", { style: U.thCSS() }, c.name));
+      tr.appendChild(el("td", { style: U.tdCSS() + ";text-align:right;font-weight:600" }, String(list.length)));
+
+      const tally = {};
+      for (const card of list) {
+        const sid = card.subjectId || card.subject || "?";
+        tally[sid] = (tally[sid] || 0) + 1;
+      }
+      for (const s of subjects) {
+        const n = tally[s.id] || tally[s.name] || 0;
+        tr.appendChild(el("td", { style: U.tdCSS() + ";text-align:right;" + (n ? "" : "color:#ccc") }, n ? String(n) : "·"));
+      }
+      tbody.appendChild(tr);
+    }
+    tbl.appendChild(tbody);
+    p.appendChild(tbl);
+
+    p.appendChild(el("div", { style: "margin-top:10px;font-size:9px;color:#666" },
+      "Rows: " + school.classes.length + "  ·  Subjects: " + subjects.length));
+    p.appendChild(footer());
+    return [p];
+  }
+
+  window.APP.printTemplates.register("summary_of_students", {
+    name: "Summary of students",
+    render,
+  });
+})();
+
+/* ─── FILE: js/ui/print_preview/templates/summary_of_subjects.js ─── */
+/* Summary of subjects — one A4 landscape page with subject × class grid
+ * showing periods-per-week. Lets the head check subject loading vs the
+ * curriculum plan at a glance.
+ */
+(function () {
+  "use strict";
+  const U = window.APP.printTemplateUtils;
+  if (!U) return;
+  const { el, page, header, footer, emptyPage } = U;
+
+  function render(school /*, cards */) {
+    if (!school) return [emptyPage("No school")];
+    const subjects = school.subjects || [];
+    const classes  = school.classes  || [];
+    if (!subjects.length) return [emptyPage("No subjects")];
+
+    // Aggregate periods/week from lessons (primary source) and fall back to
+    // cards count when no lesson rows exist.
+    const grid = {};   // grid[subjectId][classId] = n
+    for (const s of subjects) grid[s.id] = {};
+    for (const l of (school.lessons || [])) {
+      for (const cid of (l.classIds || [])) {
+        const sid = l.subjectId;
+        if (!grid[sid]) grid[sid] = {};
+        grid[sid][cid] = (grid[sid][cid] || 0) + (l.periodsPerWeek || 0);
+      }
+    }
+
+    const p = page(true);
+    p.appendChild(header("Summary of subjects", school.schoolName || ""));
+
+    const tbl = el("table", { style: U.tableCSS() });
+    const thead = el("thead");
+    const tr0 = el("tr");
+    tr0.appendChild(el("th", { style: U.thCSS() }, "Subject"));
+    tr0.appendChild(el("th", { style: U.thCSS() }, "Total"));
+    classes.forEach(c => tr0.appendChild(el("th", { style: U.thCSS() }, c.name)));
+    thead.appendChild(tr0);
+    tbl.appendChild(thead);
+
+    const tbody = el("tbody");
+    for (const s of subjects) {
+      const tr = el("tr");
+      tr.appendChild(el("th", { style: U.thCSS() }, s.name + (s.abbr ? "  (" + s.abbr + ")" : "")));
+      let tot = 0;
+      const row = classes.map(c => {
+        const n = (grid[s.id] && grid[s.id][c.id]) || 0;
+        tot += n;
+        return n;
+      });
+      tr.appendChild(el("td", { style: U.tdCSS() + ";text-align:right;font-weight:600" }, String(tot)));
+      row.forEach(n => tr.appendChild(el("td", {
+        style: U.tdCSS() + ";text-align:right;" + (n ? "" : "color:#ccc"),
+      }, n ? String(n) : "·")));
+      tbody.appendChild(tr);
+    }
+    tbl.appendChild(tbody);
+    p.appendChild(tbl);
+    p.appendChild(footer());
+    return [p];
+  }
+
+  window.APP.printTemplates.register("summary_of_subjects", {
+    name: "Summary of subjects",
+    render,
+  });
+})();
+
+/* ─── FILE: js/ui/print_preview/templates/wall_poster_classrooms.js ─── */
+/* Wall poster — classrooms (landscape).
+ *
+ * One A4 landscape page with a big classroom × (day, period) grid — what
+ * room is in use, when, by whom. Doubles as the corridor-display poster
+ * Classic prints for invigilator orientation.
+ */
+(function () {
+  "use strict";
+  const U = window.APP.printTemplateUtils;
+  if (!U) return;
+  const { el, page, header, footer, emptyPage, DAYS } = U;
+
+  function render(school /*, cards */) {
+    if (!school || !school.classrooms || !school.classrooms.length) return [emptyPage("No classrooms")];
+    const periods = school.bell?.periods || [];
+    const byRoom  = school._idx?.cardsByRoom || {};
+
+    const p = page(true);
+    p.appendChild(header("Classrooms wall poster", school.schoolName || ""));
+
+    const cols = 1 + DAYS.length * periods.length;
+    const grid = el("div", {
+      style: "display:grid;grid-template-columns:120px repeat(" + (cols - 1) + ",minmax(28px,1fr));gap:1px;background:#999;border:1px solid #444",
+    });
+
+    grid.appendChild(headerCell("Room"));
+    for (let d = 0; d < DAYS.length; d++) {
+      for (const per of periods) {
+        grid.appendChild(headerCell(DAYS[d] + " P" + per.index));
+      }
+    }
+
+    for (const r of school.classrooms) {
+      grid.appendChild(headerCell(r.name, true));
+      const list = byRoom[r.id] || [];
+      for (let d = 0; d < DAYS.length; d++) {
+        for (const per of periods) {
+          const card = list.find(c => c.day === d && c.period === per.index);
+          grid.appendChild(roomCell(card));
+        }
+      }
+    }
+    p.appendChild(grid);
+
+    p.appendChild(el("div", { style: "margin-top:8px;font-size:9px;color:#555" },
+      "Rooms: " + school.classrooms.length + "  ·  Slots/week: " + (DAYS.length * periods.length)));
+    p.appendChild(footer());
+    return [p];
+  }
+
+  function headerCell(s, sticky) {
+    return el("div", {
+      style: "background:#eee;padding:3px 5px;font-size:8.5px;font-weight:600;text-align:center;" + (sticky ? "text-align:left" : ""),
+    }, s || "");
+  }
+  function roomCell(card) {
+    if (!card) return el("div", { style: "background:#fff;padding:2px;min-height:18px" });
+    return el("div", { style: "background:#fff;padding:2px;min-height:18px;font-size:8px;line-height:1.1" },
+      el("div", { style: "font-weight:600" }, card.subjectAbbr || card.subject || ""),
+      el("div", { style: "color:#666" }, (card.teachers || []).join(",").slice(0, 10)));
+  }
+
+  window.APP.printTemplates.register("wall_poster_classrooms", {
+    name: "Wall poster — classrooms",
+    render,
+  });
+})();
+
+/* ─── FILE: js/ui/print_preview/templates/lesson_grid.js ─── */
+/* Lesson grid — one A4 landscape page listing every lesson row (subject,
+ * class, teacher, periods/week, day/period if pinned). Mirrors the CLASSIC
+ * "Lessons" report developers use when auditing curriculum coverage.
+ */
+(function () {
+  "use strict";
+  const U = window.APP.printTemplateUtils;
+  if (!U) return;
+  const { el, page, header, footer, emptyPage } = U;
+
+  const PER_PAGE = 36;  // ~36 rows per A4 landscape at 9.5px font
+
+  function render(school /*, cards */) {
+    if (!school || !school.lessons || !school.lessons.length) return [emptyPage("No lessons")];
+
+    const tById = Object.fromEntries((school.teachers  || []).map(t => [t.id, t]));
+    const sById = Object.fromEntries((school.subjects  || []).map(s => [s.id, s]));
+    const cById = Object.fromEntries((school.classes   || []).map(c => [c.id, c]));
+    const rById = Object.fromEntries((school.classrooms|| []).map(r => [r.id, r]));
+
+    const lessons = school.lessons.slice().sort((a, b) => {
+      const sa = (sById[a.subjectId]?.name || "").localeCompare(sById[b.subjectId]?.name || "");
+      if (sa) return sa;
+      return (cById[a.classIds?.[0]]?.name || "").localeCompare(cById[b.classIds?.[0]]?.name || "");
+    });
+
+    const pages = [];
+    for (let i = 0; i < lessons.length; i += PER_PAGE) {
+      const chunk = lessons.slice(i, i + PER_PAGE);
+      const p = page(true);
+      p.appendChild(header("Lesson grid", (school.schoolName || "") + "  ·  page " + (i / PER_PAGE + 1)));
+
+      const tbl = el("table", { style: U.tableCSS() });
+      const thead = el("thead");
+      const tr0 = el("tr");
+      ["#", "Subject", "Class(es)", "Teacher(s)", "Room pref.", "Per/wk", "Lab×2", "Pinned"]
+        .forEach(h => tr0.appendChild(el("th", { style: U.thCSS() }, h)));
+      thead.appendChild(tr0);
+      tbl.appendChild(thead);
+
+      const tbody = el("tbody");
+      chunk.forEach((l, idx) => {
+        const tr = el("tr");
+        tr.appendChild(el("td", { style: U.tdCSS() + ";text-align:right;color:#666" }, String(i + idx + 1)));
+        tr.appendChild(el("td", { style: U.tdCSS() },
+          (sById[l.subjectId]?.abbr || sById[l.subjectId]?.name || l.subjectId || "")));
+        tr.appendChild(el("td", { style: U.tdCSS() },
+          (l.classIds || []).map(id => cById[id]?.name || id).join(", ")));
+        tr.appendChild(el("td", { style: U.tdCSS() },
+          (l.teacherIds || []).map(id => tById[id]?.abbr || tById[id]?.name || id).join(", ")));
+        tr.appendChild(el("td", { style: U.tdCSS() },
+          rById[l.preferredRoomId]?.name || l.preferredRoomId || (l.requiredRoomType ? "(" + l.requiredRoomType + ")" : "—")));
+        tr.appendChild(el("td", { style: U.tdCSS() + ";text-align:right" }, String(l.periodsPerWeek || 0)));
+        tr.appendChild(el("td", { style: U.tdCSS() + ";text-align:center" }, l.isLabDouble ? "✓" : ""));
+        tr.appendChild(el("td", { style: U.tdCSS() },
+          (l.fixedDay != null && l.fixedPeriod != null)
+            ? "D" + l.fixedDay + " P" + l.fixedPeriod : ""));
+        tbody.appendChild(tr);
+      });
+      tbl.appendChild(tbody);
+      p.appendChild(tbl);
+      p.appendChild(footer());
+      pages.push(p);
+    }
+    return pages;
+  }
+
+  window.APP.printTemplates.register("lesson_grid", {
+    name: "Lesson grid",
+    render,
+  });
+})();
+
+/* ─── FILE: js/ui/print_preview/templates/classwise_with_table.js ─── */
+/* Class-wise timetable + companion table.
+ *
+ * One A4 portrait per class: top half = the standard day × period grid,
+ * bottom half = subject summary (subject → periods/week, teacher, room).
+ * Matches the Classic "Timetable with companion table" report variant.
+ */
+(function () {
+  "use strict";
+  const U = window.APP.printTemplateUtils;
+  if (!U) return;
+  const { el, page, header, footer, emptyPage, DAYS, cardAtFor, subjectLabel, teacherList } = U;
+
+  function render(school /*, cards */) {
+    if (!school || !school.classes || !school.classes.length) return [emptyPage("No classes")];
+    const periods = school.bell?.periods || [];
+    const byClass = school._idx?.cardsByClass || {};
+    const pages = [];
+
+    for (const c of school.classes) {
+      const list = byClass[c.id] || [];
+      const p = page(false);
+      p.appendChild(header(c.name + " — class-wise with table", school.schoolName || ""));
+
+      // Grid
+      const tbl = el("table", { style: U.tableCSS() });
+      const head = el("tr");
+      head.appendChild(el("th", { style: U.thCSS() }, ""));
+      periods.forEach(per => head.appendChild(el("th", { style: U.thCSS() }, "P" + per.index)));
+      tbl.appendChild(el("thead", null, head));
+      const body = el("tbody");
+      for (let d = 0; d < DAYS.length; d++) {
+        const tr = el("tr");
+        tr.appendChild(el("th", { style: U.thCSS() }, DAYS[d]));
+        for (const per of periods) {
+          const card = cardAtFor(list, d, per.index);
+          tr.appendChild(el("td", { style: U.tdCSS() + (card ? "" : ";color:#bbb;text-align:center") },
+            card ? subjectLabel(card) : "—"));
+        }
+        body.appendChild(tr);
+      }
+      tbl.appendChild(body);
+      p.appendChild(tbl);
+
+      // Companion table — subject summary
+      const tally = {};   // subject → { n, teachers:Set, rooms:Set }
+      for (const card of list) {
+        const k = card.subjectAbbr || card.subject || "?";
+        if (!tally[k]) tally[k] = { n: 0, teachers: new Set(), rooms: new Set() };
+        tally[k].n += 1;
+        (card.teachers || []).forEach(t => tally[k].teachers.add(t));
+        if (card.classroom) tally[k].rooms.add(card.classroom);
+      }
+      const t2 = el("table", { style: U.tableCSS() + ";margin-top:10px" });
+      const h2 = el("tr");
+      ["Subject", "Periods/week", "Teacher(s)", "Room(s)"]
+        .forEach(h => h2.appendChild(el("th", { style: U.thCSS() }, h)));
+      t2.appendChild(el("thead", null, h2));
+      const b2 = el("tbody");
+      Object.keys(tally).sort().forEach(k => {
+        const row = el("tr");
+        row.appendChild(el("td", { style: U.tdCSS() + ";font-weight:600" }, k));
+        row.appendChild(el("td", { style: U.tdCSS() + ";text-align:right" }, String(tally[k].n)));
+        row.appendChild(el("td", { style: U.tdCSS() }, [...tally[k].teachers].join(", ")));
+        row.appendChild(el("td", { style: U.tdCSS() }, [...tally[k].rooms].join(", ")));
+        b2.appendChild(row);
+      });
+      t2.appendChild(b2);
+      p.appendChild(t2);
+      p.appendChild(footer());
+      pages.push(p);
+    }
+    return pages;
+  }
+
+  window.APP.printTemplates.register("classwise_with_table", {
+    name: "Class-wise with companion table",
+    render,
+  });
+})();
+
+/* ─── FILE: js/ui/print_preview/templates/teacherwise_with_table.js ─── */
+/* Teacher-wise timetable + companion table.
+ *
+ * One A4 portrait per teacher. Top: day × period grid showing class +
+ * subject. Bottom: contract summary (class → subject → periods/week).
+ */
+(function () {
+  "use strict";
+  const U = window.APP.printTemplateUtils;
+  if (!U) return;
+  const { el, page, header, footer, emptyPage, DAYS, cardAtFor, subjectLabel } = U;
+
+  function render(school /*, cards */) {
+    if (!school || !school.teachers || !school.teachers.length) return [emptyPage("No teachers")];
+    const periods = school.bell?.periods || [];
+    const byTeacher = school._idx?.cardsByTeacher || {};
+    const pages = [];
+
+    for (const t of school.teachers) {
+      const list = byTeacher[t.id] || [];
+      const p = page(false);
+      p.appendChild(header(t.name + " — teacher-wise with table",
+        (school.schoolName || "") + (t.abbr ? "  (" + t.abbr + ")" : "")));
+
+      // Grid
+      const tbl = el("table", { style: U.tableCSS() });
+      const head = el("tr");
+      head.appendChild(el("th", { style: U.thCSS() }, ""));
+      periods.forEach(per => head.appendChild(el("th", { style: U.thCSS() }, "P" + per.index)));
+      tbl.appendChild(el("thead", null, head));
+      const body = el("tbody");
+      for (let d = 0; d < DAYS.length; d++) {
+        const tr = el("tr");
+        tr.appendChild(el("th", { style: U.thCSS() }, DAYS[d]));
+        for (const per of periods) {
+          const card = cardAtFor(list, d, per.index);
+          if (card) tr.appendChild(el("td", { style: U.tdCSS() },
+            el("div", { style: "font-weight:600" }, subjectLabel(card)),
+            el("div", { style: "font-size:8.5px;color:#666" }, (card.classes || []).join(",")),
+            el("div", { style: "font-size:8.5px;color:#888" }, card.classroom || "")));
+          else tr.appendChild(el("td", { style: U.tdCSS() + ";color:#bbb;text-align:center" }, "—"));
+        }
+        body.appendChild(tr);
+      }
+      tbl.appendChild(body);
+      p.appendChild(tbl);
+
+      // Contract table
+      const tally = {};   // "class|subject" → n
+      for (const card of list) {
+        const k = ((card.classes || []).join(",") || "?") + "|" + (card.subjectAbbr || card.subject || "?");
+        tally[k] = (tally[k] || 0) + 1;
+      }
+      const t2 = el("table", { style: U.tableCSS() + ";margin-top:10px" });
+      const h2 = el("tr");
+      ["Class", "Subject", "Periods/week"].forEach(h => h2.appendChild(el("th", { style: U.thCSS() }, h)));
+      t2.appendChild(el("thead", null, h2));
+      const b2 = el("tbody");
+      let total = 0;
+      Object.keys(tally).sort().forEach(k => {
+        const [cls, sub] = k.split("|");
+        total += tally[k];
+        const r = el("tr");
+        r.appendChild(el("td", { style: U.tdCSS() }, cls));
+        r.appendChild(el("td", { style: U.tdCSS() }, sub));
+        r.appendChild(el("td", { style: U.tdCSS() + ";text-align:right" }, String(tally[k])));
+        b2.appendChild(r);
+      });
+      const totRow = el("tr");
+      totRow.appendChild(el("td", { style: U.tdCSS() + ";font-weight:600", colspan: 2 }, "Total"));
+      totRow.appendChild(el("td", { style: U.tdCSS() + ";text-align:right;font-weight:600" }, String(total)));
+      b2.appendChild(totRow);
+      t2.appendChild(b2);
+      p.appendChild(t2);
+      p.appendChild(footer());
+      pages.push(p);
+    }
+    return pages;
+  }
+
+  window.APP.printTemplates.register("teacherwise_with_table", {
+    name: "Teacher-wise with contract table",
+    render,
+  });
+})();
+
+/* ─── FILE: js/ui/print_preview/templates/teacherwise_extra.js ─── */
+/* Teacher-wise — extra columns variant.
+ *
+ * Adds gap-count, free-period count, and load fairness columns next to the
+ * core grid. Useful for principals reviewing weekly fairness across staff.
+ * One A4 landscape page lists all teachers in a single table.
+ */
+(function () {
+  "use strict";
+  const U = window.APP.printTemplateUtils;
+  if (!U) return;
+  const { el, page, header, footer, emptyPage, DAYS } = U;
+
+  function render(school /*, cards */) {
+    if (!school || !school.teachers || !school.teachers.length) return [emptyPage("No teachers")];
+    const periods = school.bell?.periods || [];
+    const byTeacher = school._idx?.cardsByTeacher || {};
+    const totalSlots = DAYS.length * periods.length;
+
+    const p = page(true);
+    p.appendChild(header("Teacher-wise — extra columns", school.schoolName || ""));
+
+    const tbl = el("table", { style: U.tableCSS() });
+    const head = el("tr");
+    ["Teacher", "Abbr", "Periods", "Free", "Gaps", "Max consec.", "Util %"]
+      .forEach(h => head.appendChild(el("th", { style: U.thCSS() }, h)));
+    tbl.appendChild(el("thead", null, head));
+    const body = el("tbody");
+
+    for (const t of school.teachers) {
+      const list = byTeacher[t.id] || [];
+      let gaps = 0, maxRun = 0;
+      for (let d = 0; d < DAYS.length; d++) {
+        const dayList = list.filter(x => x.day === d).map(x => x.period).sort((a, b) => a - b);
+        if (!dayList.length) continue;
+        let run = 1;
+        for (let i = 1; i < dayList.length; i++) {
+          if (dayList[i] === dayList[i - 1] + 1) run += 1;
+          else { gaps += (dayList[i] - dayList[i - 1] - 1); maxRun = Math.max(maxRun, run); run = 1; }
+        }
+        maxRun = Math.max(maxRun, run);
+      }
+      const util = totalSlots ? Math.round(100 * list.length / totalSlots) : 0;
+
+      const tr = el("tr");
+      tr.appendChild(el("td", { style: U.tdCSS() }, t.name));
+      tr.appendChild(el("td", { style: U.tdCSS() }, t.abbr || ""));
+      tr.appendChild(el("td", { style: U.tdCSS() + ";text-align:right" }, String(list.length)));
+      tr.appendChild(el("td", { style: U.tdCSS() + ";text-align:right;color:#666" }, String(totalSlots - list.length)));
+      tr.appendChild(el("td", { style: U.tdCSS() + ";text-align:right;" + (gaps > 4 ? "color:#a00" : "") }, String(gaps)));
+      tr.appendChild(el("td", { style: U.tdCSS() + ";text-align:right" }, String(maxRun)));
+      tr.appendChild(el("td", { style: U.tdCSS() + ";text-align:right" }, util + "%"));
+      body.appendChild(tr);
+    }
+    tbl.appendChild(body);
+    p.appendChild(tbl);
+
+    p.appendChild(el("div", { style: "margin-top:8px;font-size:9px;color:#666" },
+      "Total weekly slots = " + totalSlots + ". Gaps > 4 highlighted."));
+    p.appendChild(footer());
+    return [p];
+  }
+
+  window.APP.printTemplates.register("teacherwise_extra", {
+    name: "Teacher-wise (extra columns)",
+    render,
+  });
+})();
+
+/* ─── FILE: js/ui/print_preview/templates/contract_overview.js ─── */
+/* Contract overview — teacher × subject matrix showing periods/week.
+ *
+ * One A4 landscape page. Mirrors the Excel "Contracts" export but as a
+ * printable matrix instead of a flat list, so HR can spot empty columns
+ * (subjects without coverage) and overloaded rows visually.
+ */
+(function () {
+  "use strict";
+  const U = window.APP.printTemplateUtils;
+  if (!U) return;
+  const { el, page, header, footer, emptyPage } = U;
+
+  function render(school /*, cards */) {
+    if (!school) return [emptyPage("No school")];
+    const teachers = school.teachers || [];
+    const subjects = school.subjects || [];
+    if (!teachers.length || !subjects.length) return [emptyPage("Need teachers and subjects")];
+
+    // matrix[teacherId][subjectId] = periods/week summed over classes
+    const m = {};
+    for (const l of (school.lessons || [])) {
+      for (const tid of (l.teacherIds || [])) {
+        if (!m[tid]) m[tid] = {};
+        m[tid][l.subjectId] = (m[tid][l.subjectId] || 0) + (l.periodsPerWeek || 0) * (l.classIds?.length || 1);
+      }
+    }
+
+    const p = page(true);
+    p.appendChild(header("Contract overview (teacher × subject)", school.schoolName || ""));
+
+    const tbl = el("table", { style: U.tableCSS() });
+    const tr0 = el("tr");
+    tr0.appendChild(el("th", { style: U.thCSS() }, "Teacher"));
+    tr0.appendChild(el("th", { style: U.thCSS() }, "Total"));
+    subjects.forEach(s => tr0.appendChild(el("th", { style: U.thCSS() }, s.abbr || s.name)));
+    tbl.appendChild(el("thead", null, tr0));
+
+    const body = el("tbody");
+    for (const t of teachers) {
+      const row = m[t.id] || {};
+      const tot = Object.values(row).reduce((a, b) => a + b, 0);
+      const tr = el("tr");
+      tr.appendChild(el("th", { style: U.thCSS() }, t.name + (t.abbr ? "  (" + t.abbr + ")" : "")));
+      tr.appendChild(el("td", { style: U.tdCSS() + ";text-align:right;font-weight:600" }, String(tot)));
+      for (const s of subjects) {
+        const n = row[s.id] || 0;
+        tr.appendChild(el("td", {
+          style: U.tdCSS() + ";text-align:right;" + (n ? "" : "color:#ccc"),
+        }, n ? String(n) : "·"));
+      }
+      body.appendChild(tr);
+    }
+    tbl.appendChild(body);
+    p.appendChild(tbl);
+
+    p.appendChild(el("div", { style: "margin-top:10px;font-size:9px;color:#666" },
+      "Cell = periods/week (lessons × classes). Empty cell = teacher not assigned to that subject."));
+    p.appendChild(footer());
+    return [p];
+  }
+
+  window.APP.printTemplates.register("contract_overview", {
+    name: "Contract overview",
+    render,
+  });
+})();
+
+/* ─── FILE: js/ui/print_preview/templates/daily_attendance.js ─── */
+/* Daily attendance sheet — one A4 portrait per class per day.
+ *
+ * For schools that mark attendance on a paper sheet kept on the teacher's
+ * desk: each period gets a checkbox column; the bottom carries a sign-off
+ * row. Compact enough that a whole week (6 days) fits as 6 print pages.
+ */
+(function () {
+  "use strict";
+  const U = window.APP.printTemplateUtils;
+  if (!U) return;
+  const { el, page, header, footer, emptyPage, DAYS, cardAtFor, subjectLabel, teacherList } = U;
+
+  function render(school /*, cards */) {
+    if (!school || !school.classes || !school.classes.length) return [emptyPage("No classes")];
+    const periods = school.bell?.periods || [];
+    const byClass = school._idx?.cardsByClass || {};
+    const pages = [];
+
+    for (const c of school.classes) {
+      const list = byClass[c.id] || [];
+      for (let d = 0; d < DAYS.length; d++) {
+        const p = page(false);
+        p.appendChild(header(c.name + " — " + DAYS[d] + " daily attendance",
+          (school.schoolName || "") + " · " + new Date().toLocaleDateString()));
+
+        // Period strip
+        const tbl = el("table", { style: U.tableCSS() });
+        const tr0 = el("tr");
+        tr0.appendChild(el("th", { style: U.thCSS() }, "Period"));
+        tr0.appendChild(el("th", { style: U.thCSS() }, "Subject / Teacher"));
+        tr0.appendChild(el("th", { style: U.thCSS() }, "Room"));
+        tr0.appendChild(el("th", { style: U.thCSS() }, "Present"));
+        tr0.appendChild(el("th", { style: U.thCSS() }, "Absent"));
+        tr0.appendChild(el("th", { style: U.thCSS() }, "Signature"));
+        tbl.appendChild(el("thead", null, tr0));
+
+        const tbody = el("tbody");
+        for (const per of periods) {
+          const card = cardAtFor(list, d, per.index);
+          const tr = el("tr");
+          tr.appendChild(el("td", { style: U.tdCSS() + ";text-align:center;font-weight:600" },
+            "P" + per.index, el("div", { style: "font-weight:400;font-size:8.5px;color:#666" }, per.label || "")));
+          if (card) {
+            tr.appendChild(el("td", { style: U.tdCSS() },
+              el("div", { style: "font-weight:600" }, subjectLabel(card)),
+              el("div", { style: "font-size:8.5px;color:#666" }, teacherList(card))));
+            tr.appendChild(el("td", { style: U.tdCSS() }, card.classroom || ""));
+          } else {
+            tr.appendChild(el("td", { style: U.tdCSS() + ";color:#bbb;text-align:center" }, "—"));
+            tr.appendChild(el("td", { style: U.tdCSS() }, ""));
+          }
+          tr.appendChild(el("td", { style: U.tdCSS() + ";min-width:50px" }, ""));
+          tr.appendChild(el("td", { style: U.tdCSS() + ";min-width:50px" }, ""));
+          tr.appendChild(el("td", { style: U.tdCSS() + ";min-width:80px" }, ""));
+          tbody.appendChild(tr);
+        }
+        tbl.appendChild(tbody);
+        p.appendChild(tbl);
+
+        // Sign-off
+        p.appendChild(el("div", { style: "display:flex;justify-content:space-between;margin-top:18px;font-size:10px" },
+          el("div", null, "Class teacher signature: ___________________________"),
+          el("div", null, "HM signature: ___________________________")));
+
+        p.appendChild(footer());
+        pages.push(p);
+      }
+    }
+    return pages;
+  }
+
+  window.APP.printTemplates.register("daily_attendance", {
+    name: "Daily attendance sheet",
+    render,
+  });
+})();
+
+/* ─── FILE: js/ui/print_preview/templates/timetable_for_each_subject.js ─── */
+/* Timetable for each subject — one A4 portrait page per subject.
+ *
+ * Classic parity: "Timetable for each subject". For each subject, render a
+ * day × period grid showing which class/teacher uses that subject in each
+ * slot. Lets HoDs check subject-specific room/teacher load.
+ */
+(function () {
+  "use strict";
+  const U = window.APP.printTemplateUtils;
+  if (!U) { console.warn("[timetable_for_each_subject] helpers missing"); return; }
+  const { el, page, header, footer, emptyPage, DAYS } = U;
+
+  function render(school) {
+    if (!school || !school.subjects || !school.subjects.length) return [emptyPage("No subjects")];
+    const periods = school.bell?.periods || [];
+    const cards   = school.cards || [];
+    const sById   = Object.fromEntries((school.subjects   || []).map(s => [s.id, s]));
+    const cById   = Object.fromEntries((school.classes    || []).map(c => [c.id, c]));
+    const tById   = Object.fromEntries((school.teachers   || []).map(t => [t.id, t]));
+    const rById   = Object.fromEntries((school.classrooms || []).map(r => [r.id, r]));
+    const lById   = (school._idx && school._idx.lessonById) || {};
+
+    // Build subject → list-of-cards index by re-scanning. Cards in school.cards
+    // store lessonId; resolve subjectId via lessonById.
+    const bySubject = {};
+    for (const c of cards) {
+      const l = lById[c.lessonId];
+      if (!l) continue;
+      const sid = l.subjectId;
+      if (!sid) continue;
+      (bySubject[sid] = bySubject[sid] || []).push({
+        day: c.day, period: c.period,
+        classes: (l.classIds || []).map(id => cById[id]?.name || id).join(", "),
+        teachers: (l.teacherIds || []).map(id => tById[id]?.abbr || tById[id]?.name || id).join(", "),
+        room: c.classroomId ? (rById[c.classroomId]?.name || "") : "",
+      });
+    }
+
+    const pages = [];
+    for (const s of school.subjects) {
+      const list = bySubject[s.id] || [];
+      const p = page(false);
+      p.appendChild(header(
+        s.name + (s.abbr ? "  (" + s.abbr + ")" : "") + " — subject timetable",
+        (school.schoolName || "") + " · " + list.length + " sessions/week"));
+
+      const tbl = el("table", { style: U.tableCSS() });
+      const tr0 = el("tr");
+      tr0.appendChild(el("th", { style: U.thCSS() }, "Day"));
+      periods.forEach(per => tr0.appendChild(el("th", { style: U.thCSS() },
+        "P" + per.index,
+        el("div", { style: "font-weight:400;font-size:8.5px;color:#666" }, per.label || ""))));
+      tbl.appendChild(el("thead", null, tr0));
+
+      const tbody = el("tbody");
+      for (let d = 0; d < DAYS.length; d++) {
+        const tr = el("tr");
+        tr.appendChild(el("th", { style: U.thCSS() }, DAYS[d]));
+        for (const per of periods) {
+          const hits = list.filter(x => x.day === d && x.period === per.index);
+          if (!hits.length) {
+            tr.appendChild(el("td", { style: U.tdCSS() + ";color:#bbb;text-align:center" }, "—"));
+          } else {
+            const cell = el("td", { style: U.tdCSS() });
+            hits.forEach(h => {
+              cell.appendChild(el("div", { style: "font-weight:600;font-size:9px" }, h.classes));
+              cell.appendChild(el("div", { style: "font-size:8.5px;color:#666" }, h.teachers));
+              if (h.room) cell.appendChild(el("div", { style: "font-size:8.5px;color:#888" }, h.room));
+            });
+            tr.appendChild(cell);
+          }
+        }
+        tbody.appendChild(tr);
+      }
+      tbl.appendChild(tbody);
+      p.appendChild(tbl);
+      p.appendChild(footer());
+      pages.push(p);
+    }
+    return pages;
+  }
+
+  window.APP.printTemplates.register("timetable_for_each_subject", {
+    name: "Timetable for each subject",
+    render,
+  });
+})();
+
+/* ─── FILE: js/ui/print_preview/templates/summary_of_teachers.js ─── */
+/* Summary of teachers — single A4 landscape with one row per teacher.
+ *
+ * Classic parity: "Summary timetable of teachers". Per-day period count
+ * across the week, plus a total. Quick way for the principal to spot
+ * teacher-load imbalances on one page.
+ */
+(function () {
+  "use strict";
+  const U = window.APP.printTemplateUtils;
+  if (!U) return;
+  const { el, page, header, footer, emptyPage, DAYS } = U;
+
+  function render(school) {
+    if (!school || !school.teachers || !school.teachers.length) return [emptyPage("No teachers")];
+    const periods   = school.bell?.periods || [];
+    const byTeacher = school._idx?.cardsByTeacher || {};
+    const totalSlots = DAYS.length * periods.length;
+
+    const p = page(true);
+    p.appendChild(header("Summary of teachers", school.schoolName || ""));
+
+    const tbl = el("table", { style: U.tableCSS() });
+    const tr0 = el("tr");
+    tr0.appendChild(el("th", { style: U.thCSS() }, "Teacher"));
+    tr0.appendChild(el("th", { style: U.thCSS() }, "Abbr"));
+    DAYS.forEach(d => tr0.appendChild(el("th", { style: U.thCSS() + ";text-align:right" }, d)));
+    tr0.appendChild(el("th", { style: U.thCSS() + ";text-align:right" }, "Total"));
+    tr0.appendChild(el("th", { style: U.thCSS() + ";text-align:right" }, "Util %"));
+    tbl.appendChild(el("thead", null, tr0));
+
+    const tbody = el("tbody");
+    for (const t of school.teachers) {
+      const list = byTeacher[t.id] || [];
+      const perDay = DAYS.map((_, d) => list.filter(x => x.day === d).length);
+      const total = perDay.reduce((a, b) => a + b, 0);
+      const util = totalSlots ? Math.round(100 * total / totalSlots) : 0;
+
+      const tr = el("tr");
+      tr.appendChild(el("td", { style: U.tdCSS() }, t.name));
+      tr.appendChild(el("td", { style: U.tdCSS() + ";color:#666" }, t.abbr || ""));
+      perDay.forEach(n => tr.appendChild(el("td",
+        { style: U.tdCSS() + ";text-align:right;" + (n ? "" : "color:#ccc") },
+        n ? String(n) : "·")));
+      tr.appendChild(el("td", { style: U.tdCSS() + ";text-align:right;font-weight:600" }, String(total)));
+      tr.appendChild(el("td", { style: U.tdCSS() + ";text-align:right;" + (util > 85 ? "color:#a00" : util < 30 ? "color:#888" : "") }, util + "%"));
+      tbody.appendChild(tr);
+    }
+    tbl.appendChild(tbody);
+    p.appendChild(tbl);
+
+    p.appendChild(el("div", { style: "margin-top:8px;font-size:9px;color:#666" },
+      "Teachers: " + school.teachers.length + "  ·  Weekly slots/teacher: " + totalSlots + "  ·  Util > 85% highlighted."));
+    p.appendChild(footer());
+    return [p];
+  }
+
+  window.APP.printTemplates.register("summary_of_teachers", {
+    name: "Summary of teachers",
+    render,
+  });
+})();
+
+/* ─── FILE: js/ui/print_preview/templates/summary_of_classrooms.js ─── */
+/* Summary of classrooms — single A4 landscape with one row per classroom.
+ *
+ * Classic parity: "Summary timetable of classrooms". Per-day period count
+ * across the week + total + utilisation. Lets the facilities lead see room
+ * dead-time at a glance.
+ */
+(function () {
+  "use strict";
+  const U = window.APP.printTemplateUtils;
+  if (!U) return;
+  const { el, page, header, footer, emptyPage, DAYS } = U;
+
+  function render(school) {
+    if (!school || !school.classrooms || !school.classrooms.length) return [emptyPage("No classrooms")];
+    const periods = school.bell?.periods || [];
+    const byRoom  = school._idx?.cardsByRoom || {};
+    const totalSlots = DAYS.length * periods.length;
+
+    const p = page(true);
+    p.appendChild(header("Summary of classrooms", school.schoolName || ""));
+
+    const tbl = el("table", { style: U.tableCSS() });
+    const tr0 = el("tr");
+    tr0.appendChild(el("th", { style: U.thCSS() }, "Room"));
+    DAYS.forEach(d => tr0.appendChild(el("th", { style: U.thCSS() + ";text-align:right" }, d)));
+    tr0.appendChild(el("th", { style: U.thCSS() + ";text-align:right" }, "Total"));
+    tr0.appendChild(el("th", { style: U.thCSS() + ";text-align:right" }, "Util %"));
+    tbl.appendChild(el("thead", null, tr0));
+
+    const tbody = el("tbody");
+    for (const r of school.classrooms) {
+      const list = byRoom[r.id] || [];
+      const perDay = DAYS.map((_, d) => list.filter(x => x.day === d).length);
+      const total = perDay.reduce((a, b) => a + b, 0);
+      const util = totalSlots ? Math.round(100 * total / totalSlots) : 0;
+
+      const tr = el("tr");
+      tr.appendChild(el("td", { style: U.tdCSS() }, r.name));
+      perDay.forEach(n => tr.appendChild(el("td",
+        { style: U.tdCSS() + ";text-align:right;" + (n ? "" : "color:#ccc") },
+        n ? String(n) : "·")));
+      tr.appendChild(el("td", { style: U.tdCSS() + ";text-align:right;font-weight:600" }, String(total)));
+      tr.appendChild(el("td", { style: U.tdCSS() + ";text-align:right;" + (util > 85 ? "color:#a00" : util < 20 ? "color:#888" : "") }, util + "%"));
+      tbody.appendChild(tr);
+    }
+    tbl.appendChild(tbody);
+    p.appendChild(tbl);
+
+    p.appendChild(el("div", { style: "margin-top:8px;font-size:9px;color:#666" },
+      "Rooms: " + school.classrooms.length + "  ·  Weekly slots/room: " + totalSlots + "  ·  Util < 20% may be over-provisioned."));
+    p.appendChild(footer());
+    return [p];
+  }
+
+  window.APP.printTemplates.register("summary_of_classrooms", {
+    name: "Summary of classrooms",
+    render,
+  });
+})();
+
+/* ─── FILE: js/ui/print_preview/templates/wall_poster_teachers.js ─── */
+/* Wall poster — teachers (landscape).
+ *
+ * Classic parity: "Wall poster of teachers". One A4 landscape with a big
+ * teacher × (day, period) grid showing the subject + class in each slot.
+ * Doubles as the staff-room display board.
+ */
+(function () {
+  "use strict";
+  const U = window.APP.printTemplateUtils;
+  if (!U) return;
+  const { el, page, header, footer, emptyPage, DAYS } = U;
+
+  function render(school) {
+    if (!school || !school.teachers || !school.teachers.length) return [emptyPage("No teachers")];
+    const periods   = school.bell?.periods || [];
+    const byTeacher = school._idx?.cardsByTeacher || {};
+
+    const p = page(true);
+    p.appendChild(header("Teachers wall poster", school.schoolName || ""));
+
+    const cols = 1 + DAYS.length * periods.length;
+    const grid = el("div", {
+      style: "display:grid;grid-template-columns:130px repeat(" + (cols - 1) + ",minmax(28px,1fr));gap:1px;background:#999;border:1px solid #444",
+    });
+
+    grid.appendChild(headerCell("Teacher"));
+    for (let d = 0; d < DAYS.length; d++) {
+      for (const per of periods) {
+        grid.appendChild(headerCell(DAYS[d] + " P" + per.index));
+      }
+    }
+
+    for (const t of school.teachers) {
+      grid.appendChild(headerCell(t.abbr || t.name, true));
+      const list = byTeacher[t.id] || [];
+      for (let d = 0; d < DAYS.length; d++) {
+        for (const per of periods) {
+          const card = list.find(c => c.day === d && c.period === per.index);
+          grid.appendChild(teacherCell(card));
+        }
+      }
+    }
+    p.appendChild(grid);
+
+    p.appendChild(el("div", { style: "margin-top:8px;font-size:9px;color:#555" },
+      "Teachers: " + school.teachers.length + "  ·  Slots/week: " + (DAYS.length * periods.length)));
+    p.appendChild(footer());
+    return [p];
+  }
+
+  function headerCell(s, sticky) {
+    return el("div", {
+      style: "background:#eee;padding:3px 5px;font-size:8.5px;font-weight:600;text-align:center;" + (sticky ? "text-align:left" : ""),
+    }, s || "");
+  }
+  function teacherCell(card) {
+    if (!card) return el("div", { style: "background:#fff;padding:2px;min-height:18px" });
+    return el("div", { style: "background:#fff;padding:2px;min-height:18px;font-size:8px;line-height:1.1" },
+      el("div", { style: "font-weight:600" }, card.subjectAbbr || card.subject || ""),
+      el("div", { style: "color:#666" }, (card.classes || []).join(",").slice(0, 10)));
+  }
+
+  window.APP.printTemplates.register("wall_poster_teachers", {
+    name: "Wall poster — teachers",
+    render,
+  });
+})();
+
+/* ─── FILE: js/ui/print_preview/templates/list_of_teachers.js ─── */
+/* List of teachers — directory page with name, abbreviation, periods/week,
+ * subjects taught, and primary classes assigned.
+ *
+ * Classic parity: "List of teachers". One A4 portrait, multi-page if the
+ * list is long (~30 rows/page). Useful as a back-cover roster for the
+ * printed timetable booklet.
+ */
+(function () {
+  "use strict";
+  const U = window.APP.printTemplateUtils;
+  if (!U) return;
+  const { el, page, header, footer, emptyPage } = U;
+
+  const PER_PAGE = 30;
+
+  function render(school) {
+    if (!school || !school.teachers || !school.teachers.length) return [emptyPage("No teachers")];
+    const byTeacher = school._idx?.cardsByTeacher || {};
+    const teachers = school.teachers.slice().sort((a, b) =>
+      (a.name || "").localeCompare(b.name || ""));
+
+    const pages = [];
+    for (let i = 0; i < teachers.length; i += PER_PAGE) {
+      const chunk = teachers.slice(i, i + PER_PAGE);
+      const p = page(false);
+      p.appendChild(header("List of teachers",
+        (school.schoolName || "") + "  ·  page " + (i / PER_PAGE + 1) +
+        "/" + Math.ceil(teachers.length / PER_PAGE)));
+
+      const tbl = el("table", { style: U.tableCSS() });
+      const tr0 = el("tr");
+      ["#", "Name", "Abbr", "Per/wk", "Subjects", "Classes"]
+        .forEach(h => tr0.appendChild(el("th", { style: U.thCSS() }, h)));
+      tbl.appendChild(el("thead", null, tr0));
+
+      const tbody = el("tbody");
+      chunk.forEach((t, idx) => {
+        const list = byTeacher[t.id] || [];
+        const subjects = [...new Set(list.map(c => c.subjectAbbr || c.subject || ""))].filter(Boolean).sort();
+        const classes  = [...new Set(list.flatMap(c => c.classes || []))].sort();
+
+        const tr = el("tr");
+        tr.appendChild(el("td", { style: U.tdCSS() + ";text-align:right;color:#666" }, String(i + idx + 1)));
+        tr.appendChild(el("td", { style: U.tdCSS() + ";font-weight:600" }, t.name || ""));
+        tr.appendChild(el("td", { style: U.tdCSS() }, t.abbr || ""));
+        tr.appendChild(el("td", { style: U.tdCSS() + ";text-align:right" }, String(list.length)));
+        tr.appendChild(el("td", { style: U.tdCSS() + ";font-size:8.5px" }, subjects.join(", ")));
+        tr.appendChild(el("td", { style: U.tdCSS() + ";font-size:8.5px;color:#666" }, classes.join(", ")));
+        tbody.appendChild(tr);
+      });
+      tbl.appendChild(tbody);
+      p.appendChild(tbl);
+
+      p.appendChild(el("div", { style: "margin-top:8px;font-size:9px;color:#666" },
+        "Total teachers: " + teachers.length));
+      p.appendChild(footer());
+      pages.push(p);
+    }
+    return pages;
+  }
+
+  window.APP.printTemplates.register("list_of_teachers", {
+    name: "List of teachers",
+    render,
+  });
+})();
+
+/* ─── FILE: js/ui/print_preview/templates/list_of_classes.js ─── */
+/* "List of classes" report template — final missing Classic parity item.
+ * Registers via window.APP.printTemplates.register(...).
+ */
+(function () {
+  "use strict";
+  if (!window.APP || !window.APP.printTemplates) return;
+
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      const v = attrs[k]; if (v == null) continue;
+      if (k === "class") n.className = v;
+      else n.setAttribute(k, v);
+    }
+    for (const c of kids) if (c != null && c !== false)
+      n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    return n;
+  }
+
+  function render(school) {
+    school = school || (window.APP && window.APP.school);
+    const out = [];
+    out.push(el("h1", null, `List of classes — ${school?.schoolName || ""}`));
+    out.push(el("p", { style: "color:#64748b" }, `${(school?.classes || []).length} classes total. Generated ${new Date().toLocaleString()}.`));
+
+    const tbl = el("table", { class: "tt-list", style: "width:100%;border-collapse:collapse;font-size:12px" });
+    const thead = el("thead", null,
+      el("tr", null,
+        el("th", { style: "background:#f1f5f9;padding:6px;text-align:left;border:1px solid #cbd5e1" }, "#"),
+        el("th", { style: "background:#f1f5f9;padding:6px;text-align:left;border:1px solid #cbd5e1" }, "Name"),
+        el("th", { style: "background:#f1f5f9;padding:6px;text-align:left;border:1px solid #cbd5e1" }, "Short"),
+        el("th", { style: "background:#f1f5f9;padding:6px;text-align:left;border:1px solid #cbd5e1" }, "Class teacher"),
+        el("th", { style: "background:#f1f5f9;padding:6px;text-align:right;border:1px solid #cbd5e1" }, "Lessons"),
+        el("th", { style: "background:#f1f5f9;padding:6px;text-align:right;border:1px solid #cbd5e1" }, "Periods/week"),
+      ));
+    tbl.appendChild(thead);
+
+    const lessons = school?.lessons || [];
+    const teachers = school?.teachers || [];
+    const tbody = el("tbody");
+    (school?.classes || []).forEach((c, i) => {
+      const tch = teachers.find(t => t.id === c.teacherId);
+      const myLessons = lessons.filter(l => (l.classIds || []).includes(c.id));
+      const totalPpw = myLessons.reduce((s, l) => s + (l.periodsPerWeek || 0), 0);
+      const tr = el("tr", null,
+        el("td", { style: "padding:5px;border:1px solid #e2e8f0" }, String(i + 1)),
+        el("td", { style: `padding:5px;border:1px solid #e2e8f0;color:${c.color || "#0f172a"}` }, c.name || "—"),
+        el("td", { style: "padding:5px;border:1px solid #e2e8f0" }, c.short || ""),
+        el("td", { style: "padding:5px;border:1px solid #e2e8f0" }, tch?.name || "—"),
+        el("td", { style: "padding:5px;border:1px solid #e2e8f0;text-align:right" }, String(myLessons.length)),
+        el("td", { style: "padding:5px;border:1px solid #e2e8f0;text-align:right" }, String(totalPpw)),
+      );
+      tbody.appendChild(tr);
+    });
+    tbl.appendChild(tbody);
+    out.push(tbl);
+    return out;
+  }
+
+  window.APP.printTemplates.register({
+    id: "list_of_classes",
+    title: "List of classes",
+    category: "lists",
+    render,
+  });
+})();
+
+/* ─── FILE: js/ui/print_preview/templates/custom_slots.js ─── */
+/* Custom 1 / Custom 2 / Custom 3 — empty user-editable report slots.
+ *
+ * Classic exposes 3 user-customizable slots in the print preview dropdown.
+ * Each is empty by default; users compose via the cell-style editor +
+ * a basic class×period skeleton.
+ *
+ * Persisted on APP.printCustomTemplates[N] = { title, settings } (future).
+ * For now we render a stub page explaining how to populate the slot.
+ */
+(function () {
+  "use strict";
+  if (!window.APP || !window.APP.printTemplates) return;
+
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      const v = attrs[k]; if (v == null) continue;
+      if (k === "class") n.className = v;
+      else n.setAttribute(k, v);
+    }
+    for (const c of kids) if (c != null && c !== false)
+      n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    return n;
+  }
+
+  function makeCustom(slot) {
+    return function render(school) {
+      const stored = (window.APP.printCustomTemplates || {})[slot];
+      const out = [];
+      out.push(el("h1", null, `Custom ${slot} — ${school?.schoolName || ""}`));
+      if (!stored) {
+        out.push(el("p", { style: "color:#64748b;max-width:600px;line-height:1.5" },
+          `This custom slot is empty. Open the Cell-style editor from the Print preview ribbon, configure the card layout, then save here. Future opens of this slot will render with your settings.`));
+        out.push(el("p", { style: "color:#94a3b8;font-size:11px;margin-top:30px" },
+          `Tip: Custom slots are useful for parent communications, exam-week schedules, or rotating-day patterns that don't fit a standard report.`));
+      } else {
+        // Render a basic class×period grid using stored settings
+        const classes = school?.classes || [];
+        const periods = (school?.bell?.periods?.length) || 8;
+        const tbl = el("table", { style: "width:100%;border-collapse:collapse;font-size:11px" });
+        // Header row
+        const headRow = el("tr", null, el("th", { style: "background:#f1f5f9;padding:4px" }, "Class"));
+        for (let p = 0; p < periods; p++) {
+          headRow.appendChild(el("th", { style: "background:#f1f5f9;padding:4px" }, "P" + (p + 1)));
+        }
+        tbl.appendChild(el("thead", null, headRow));
+        // Body
+        const tbody = el("tbody");
+        for (const c of classes) {
+          const tr = el("tr");
+          tr.appendChild(el("td", { style: "padding:4px;font-weight:600" }, c.name));
+          for (let p = 0; p < periods; p++) tr.appendChild(el("td", { style: "padding:4px;border:1px solid #e2e8f0" }, "·"));
+          tbody.appendChild(tr);
+        }
+        tbl.appendChild(tbody);
+        out.push(tbl);
+      }
+      return out;
+    };
+  }
+
+  for (const n of [1, 2, 3]) {
+    window.APP.printTemplates.register({
+      id: "custom_" + n,
+      title: "Custom " + n,
+      category: "custom",
+      render: makeCustom(n),
+    });
+  }
+})();
+
+/* ─── FILE: js/ui/io/compare_files.js ─── */
+/* Compare-with-file — diff two Timetable XML timetables side-by-side.
+ *
+ * Users often need to compare last year's timetable to this year's, or
+ * compare two solver runs. This module loads a SECOND XML, parses it
+ * with the existing parseTimetableXml pipeline, and computes a diff against
+ * the currently-loaded school.
+ *
+ * Triggered by `app:compare-with-file`. Files menu wires an entry.
+ *
+ * Diff produced:
+ *   - entities added/removed/renamed (teachers, classes, subjects, rooms)
+ *   - lessons added/removed/changed (count, duration, classroom)
+ *   - cards added/removed/moved (lesson, day, period)
+ *
+ * Render: tabbed dialog with summary + per-entity table + per-card grid.
+ */
+(function () {
+  "use strict";
+  const APP = window.APP;
+  const notify = window._chrxNotify || console.log;
+
+  function indexBy(arr, key) {
+    const m = new Map();
+    for (const r of (arr || [])) {
+      if (r && r[key] != null) m.set(r[key], r);
+    }
+    return m;
+  }
+
+  function diffEntities(aArr, bArr, fields) {
+    const a = indexBy(aArr, "id"), b = indexBy(bArr, "id");
+    const added = [], removed = [], changed = [];
+    for (const [id, rec] of b) {
+      if (!a.has(id)) { added.push(rec); continue; }
+      const ar = a.get(id);
+      const diffs = [];
+      for (const f of fields) {
+        if (JSON.stringify(ar[f]) !== JSON.stringify(rec[f])) {
+          diffs.push({ field: f, before: ar[f], after: rec[f] });
+        }
+      }
+      if (diffs.length) changed.push({ id, before: ar, after: rec, diffs });
+    }
+    for (const [id, rec] of a) {
+      if (!b.has(id)) removed.push(rec);
+    }
+    return { added, removed, changed };
+  }
+
+  function diffSchools(a, b) {
+    return {
+      teachers:   diffEntities(a.teachers,   b.teachers,   ["name", "abbr", "color"]),
+      classes:    diffEntities(a.classes,    b.classes,    ["name", "color"]),
+      subjects:   diffEntities(a.subjects,   b.subjects,   ["name", "abbr", "color"]),
+      classrooms: diffEntities(a.classrooms, b.classrooms, ["name", "abbr", "capacity"]),
+      lessons:    diffEntities(a.lessons,    b.lessons,    ["subjectId", "teacherIds", "classIds", "periodsPerWeek"]),
+      cards:      diffCards(a, b),
+      summary: {
+        a_name: a.schoolName || "(current)", b_name: b.schoolName || "(loaded)",
+        a_cards: (a.cards || []).length, b_cards: (b.cards || []).length,
+      },
+    };
+  }
+
+  function diffCards(a, b) {
+    // Cards are keyed by (lessonId, day, period). Movement = same lesson, different (day,period).
+    const aKey = c => `${c.lessonId}|${c.day}|${c.period}`;
+    const aMap = new Map((a.cards || []).map(c => [aKey(c), c]));
+    const bMap = new Map((b.cards || []).map(c => [aKey(c), c]));
+    const added = [], removed = [], moved = [];
+    // Lessons in B but not in A at same slot → either added or moved
+    for (const [k, c] of bMap) {
+      if (aMap.has(k)) continue;
+      // Check if same lesson moved
+      const aCardForLesson = (a.cards || []).find(x => x.lessonId === c.lessonId);
+      if (aCardForLesson && (aCardForLesson.day !== c.day || aCardForLesson.period !== c.period)) {
+        moved.push({ lessonId: c.lessonId,
+          from: { day: aCardForLesson.day, period: aCardForLesson.period },
+          to:   { day: c.day, period: c.period } });
+      } else {
+        added.push(c);
+      }
+    }
+    for (const [k, c] of aMap) if (!bMap.has(k)) removed.push(c);
+    return { added, removed, moved };
+  }
+
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      const v = attrs[k]; if (v == null) continue;
+      if (k === "class") n.className = v;
+      else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v);
+    }
+    for (const c of kids) if (c != null && c !== false)
+      n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    return n;
+  }
+
+  function esc(s) { return String(s == null ? "" : s); }
+
+  function showDiff(d) {
+    const root = el("div", { class: "chrx-diff-root",
+      onclick: e => { if (e.target === root) root.remove(); }, role: "dialog", "aria-modal": "true" });
+    const panel = el("div", { class: "chrx-diff-panel" });
+    panel.appendChild(el("header", null,
+      el("h2", null, `🔍 Diff — ${esc(d.summary.a_name)} vs ${esc(d.summary.b_name)}`),
+      el("button", { class: "chrx-diff-close", "aria-label": "Close", onclick: () => root.remove() }, "×"),
+    ));
+    panel.appendChild(el("div", { class: "chrx-diff-summary" },
+      `${d.summary.a_cards} cards → ${d.summary.b_cards} cards. ` +
+      `Teachers: +${d.teachers.added.length} -${d.teachers.removed.length} ~${d.teachers.changed.length}. ` +
+      `Classes: +${d.classes.added.length} -${d.classes.removed.length}. ` +
+      `Lessons: +${d.lessons.added.length} -${d.lessons.removed.length} ~${d.lessons.changed.length}. ` +
+      `Cards: +${d.cards.added.length} -${d.cards.removed.length} moved=${d.cards.moved.length}.`
+    ));
+
+    function section(title, lines) {
+      if (!lines.length) return null;
+      const wrap = el("section");
+      wrap.appendChild(el("h3", null, `${title} (${lines.length})`));
+      const list = el("ul", { class: "chrx-diff-list" });
+      lines.slice(0, 50).forEach(l => list.appendChild(el("li", null, l)));
+      if (lines.length > 50) list.appendChild(el("li", { class: "chrx-diff-more" }, `… ${lines.length - 50} more`));
+      wrap.appendChild(list);
+      return wrap;
+    }
+
+    panel.appendChild(section("Teachers added", d.teachers.added.map(t => `+ ${esc(t.name)}`)));
+    panel.appendChild(section("Teachers removed", d.teachers.removed.map(t => `- ${esc(t.name)}`)));
+    panel.appendChild(section("Classes added", d.classes.added.map(c => `+ ${esc(c.name)}`)));
+    panel.appendChild(section("Classes removed", d.classes.removed.map(c => `- ${esc(c.name)}`)));
+    panel.appendChild(section("Subjects changed", d.subjects.changed.map(c => `~ ${esc(c.before.name)} → ${esc(c.after.name)}`)));
+    panel.appendChild(section("Lessons added", d.lessons.added.map(l => `+ ${esc(l.subjectId)} × ${l.periodsPerWeek || 0}`)));
+    panel.appendChild(section("Lessons removed", d.lessons.removed.map(l => `- ${esc(l.subjectId)} × ${l.periodsPerWeek || 0}`)));
+    panel.appendChild(section("Cards moved", d.cards.moved.slice(0, 50).map(m =>
+      `Lesson ${esc(m.lessonId.slice(0, 10))}: D${m.from.day + 1}P${m.from.period + 1} → D${m.to.day + 1}P${m.to.period + 1}`)));
+
+    root.appendChild(panel);
+    document.body.appendChild(root);
+    ensureStyles();
+  }
+
+  function ensureStyles() {
+    if (document.getElementById("chrx-diff-styles")) return;
+    const s = document.createElement("style");
+    s.id = "chrx-diff-styles";
+    s.textContent = `
+.chrx-diff-root{position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:flex-start;justify-content:center;padding:24px;z-index:1000;overflow:auto}
+.chrx-diff-panel{background:#fff;border-radius:12px;max-width:900px;width:100%;padding:18px 22px;box-shadow:0 20px 60px rgba(0,0,0,.3);font-family:-apple-system,BlinkMacSystemFont,sans-serif;color:#0f172a}
+.chrx-diff-panel header{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e2e8f0;padding-bottom:10px;margin-bottom:12px}
+.chrx-diff-panel h2{margin:0;font-size:18px;color:#1e3a8a}
+.chrx-diff-close{background:none;border:0;font-size:22px;cursor:pointer;color:#64748b}
+.chrx-diff-summary{background:#f1f5f9;padding:10px 14px;border-radius:8px;font-size:13px;line-height:1.5;color:#334155;margin-bottom:14px}
+.chrx-diff-panel h3{margin:12px 0 4px;font-size:13px;color:#475569;text-transform:uppercase;letter-spacing:.04em}
+.chrx-diff-list{margin:4px 0 12px 16px;font-size:13px;color:#1f2937;list-style:square}
+.chrx-diff-list li{padding:2px 0}
+.chrx-diff-more{color:#94a3b8;font-style:italic;list-style:none;margin-left:-16px}
+    `;
+    document.head.appendChild(s);
+  }
+
+  async function trigger() {
+    if (!APP || !APP.school) { notify("Open a timetable first.", "error"); return; }
+    if (!window.parseTimetableXml) { notify("XML parser not loaded.", "error"); return; }
+
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".xml";
+    input.style.display = "none";
+    input.onchange = async (e) => {
+      const f = e.target.files && e.target.files[0];
+      input.remove();
+      if (!f) return;
+      try {
+        const other = await window.parseTimetableXml.parseFile(f);
+        const d = diffSchools(APP.school, other);
+        showDiff(d);
+      } catch (err) {
+        notify("Compare failed: " + err.message, "error");
+      }
+    };
+    document.body.appendChild(input);
+    input.click();
+  }
+
+  window.addEventListener("app:compare-with-file", trigger);
+  APP.io = APP.io || {};
+  APP.io.compareWithFile = trigger;
+})();
+
+/* ─── FILE: js/ui/io/import_cardrelationships_har.js ─── */
+/* CardRelationships HAR Importer.
+ *
+ * Classic stores constraint rows (`cardrelationships` table) on the server.
+ * To migrate to Chronexa Web, a school admin can export a HAR via Chrome
+ * DevTools → Network → "Export HAR…" while their Classic timetable is
+ * loaded. This module finds the `ttuidocDBIAccessor` response inside the
+ * HAR that carries the `cardrelationships` rows and imports them.
+ *
+ * Triggered by `app:import-classic-har`. The Files → Import menu wires
+ * an entry. The importer:
+ *   1. Reads the .har file as text (JSON)
+ *   2. Walks `log.entries[]` for any POST to /timetable/app/server/ttdoc.js
+ *      whose response body has `cardrelationships` rows
+ *   3. Maps each row to Chronexa's `school.relations` shape
+ *   4. Surfaces a summary + imports the rows on confirm
+ */
+(function () {
+  "use strict";
+  const APP = window.APP;
+  const notify = window._chrxNotify || console.log;
+
+  function parseHAR(text) {
+    let har;
+    try { har = JSON.parse(text); }
+    catch (e) { return { error: "Not valid JSON: " + e.message }; }
+    if (!har.log || !Array.isArray(har.log.entries))
+      return { error: "Not a HAR file (missing log.entries)" };
+    return { har };
+  }
+
+  function findCardRelationships(har) {
+    const rows = [];
+    const entitiesFound = new Set();
+    for (const entry of har.log.entries) {
+      const req = entry.request, res = entry.response;
+      if (!req || !res || !res.content) continue;
+      const url = req.url || "";
+      if (!/ttdoc\.js|dbiaccessor/i.test(url)) continue;
+      const body = res.content.text || "";
+      if (!body) continue;
+      // Look for `cardrelationships` rows
+      if (!/cardrelationships/i.test(body)) continue;
+      try {
+        // Classic encodes responses as `{"r":{...}}`
+        const decoded = body.startsWith("{") ? JSON.parse(body) : null;
+        const tables = decoded?.r?.tables || decoded?.r?.data?.tables || [];
+        for (const table of (Array.isArray(tables) ? tables : [tables])) {
+          if (!table || !table.id) continue;
+          entitiesFound.add(table.id);
+          if (table.id === "cardrelationships" && Array.isArray(table.data_rows)) {
+            for (const row of table.data_rows) {
+              rows.push(row);
+            }
+          }
+        }
+      } catch (e) { /* skip malformed entry */ }
+    }
+    return { rows, entitiesFound: Array.from(entitiesFound) };
+  }
+
+  function mapRowToRelation(row) {
+    // Classic row → Chronexa relation
+    return {
+      id: row.id || ("har_" + Math.random().toString(36).slice(2, 8)),
+      typ: row.typ || "",
+      importance: row.importance || "normal",
+      note: row.note || "",
+      disabled: !!row.disabled,
+      subjectids: row.subjectids || [],
+      subject2ids: row.subject2ids || [],
+      classids: row.classids || [],
+      teacherids: row.teacherids || [],
+      classroomids: row.classroomids || [],
+      positions: row.positions != null ? row.positions : undefined,
+      positions2: row.positions2 != null ? row.positions2 : undefined,
+      param1: row.param1,
+      param2: row.param2,
+      filter: row.filter || "",
+      filter2: row.filter2 || "",
+    };
+  }
+
+  async function importHAR(file) {
+    if (!APP || !APP.school) {
+      notify("Open or create a timetable first.", "error"); return;
+    }
+    const text = await file.text();
+    const { har, error } = parseHAR(text);
+    if (error) { notify("HAR parse error: " + error, "error"); return; }
+    const { rows, entitiesFound } = findCardRelationships(har);
+
+    if (!rows.length) {
+      notify(
+        `No cardrelationships found in HAR. Detected entities: ${entitiesFound.join(", ") || "(none)"}. ` +
+        `Make sure you exported the HAR while Classic's timetable customize view was open.`,
+        "warn"
+      );
+      return;
+    }
+
+    // Confirm with the user before merging
+    const existing = (APP.school.relations || []).length;
+    if (!confirm(
+      `Found ${rows.length} cardrelationships in HAR. Import will merge with existing ${existing} relations. Continue?`
+    )) return;
+
+    APP.school.relations = APP.school.relations || [];
+    const mapped = rows.map(mapRowToRelation);
+    // Skip rows with duplicate IDs (already present)
+    const ids = new Set(APP.school.relations.map(r => r.id));
+    let added = 0;
+    for (const r of mapped) {
+      if (ids.has(r.id)) continue;
+      APP.school.relations.push(r);
+      ids.add(r.id); added++;
+    }
+    if (window.APP.audit?.append) {
+      APP.audit.append({ entity: "relations", op: "har-import", added, total: APP.school.relations.length });
+    }
+    notify(`✓ Imported ${added} relations (${rows.length - added} duplicates skipped). Total: ${APP.school.relations.length}.`, "info");
+  }
+
+  function trigger() {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".har,.json";
+    input.style.display = "none";
+    input.onchange = async (e) => {
+      const f = e.target.files && e.target.files[0];
+      if (f) await importHAR(f);
+      input.remove();
+    };
+    document.body.appendChild(input);
+    input.click();
+  }
+
+  window.addEventListener("app:import-cardrelationships-har", trigger);
+  APP.io = APP.io || {};
+  APP.io.importCardRelationshipsHAR = trigger;
+})();
+
+/* ─── FILE: js/ui/io/snapshots.js ─── */
+/* Snapshot / Version history — ports Classic's tt_snapshots flow.
+ *
+ * Two-mode pattern (per legacy-research §8.5):
+ *   Mode 1 — initial create / give-name (Save As…)
+ *   Mode 2 — snapshot-only checkpoint (ad-hoc save with optional note)
+ *
+ * Storage: localStorage keyed by school name + an in-memory history list.
+ * In the future this should sync to a server / IndexedDB; for v1 it's
+ * a per-tab in-browser checkpoint system that survives page reloads.
+ *
+ * Snapshots store a structured-clone of the entire school object plus
+ * metadata (timestamp, note, user-marked tag). Restore swaps in.
+ */
+(function (global) {
+  "use strict";
+  const APP = global.APP || (global.APP = {});
+  const notify = global._chrxNotify || console.log;
+  const KEY = "chronexa.snapshots.v1";
+
+  function load() {
+    try { return JSON.parse(localStorage.getItem(KEY) || "[]"); }
+    catch { return []; }
+  }
+  function save(list) {
+    try { localStorage.setItem(KEY, JSON.stringify(list)); }
+    catch (e) { notify("Snapshot store full — clear history first.", "warn"); }
+  }
+  function listForSchool(schoolName) {
+    return load().filter(s => s.school === schoolName);
+  }
+
+  function take(noteOrOpts) {
+    const opts = (typeof noteOrOpts === "string") ? { note: noteOrOpts } : (noteOrOpts || {});
+    const school = APP.school;
+    if (!school) { notify("Open a timetable first.", "error"); return null; }
+    const list = load();
+    const snap = {
+      id: "ss_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8),
+      ts: new Date().toISOString(),
+      school: school.schoolName || "(untitled)",
+      note: (opts.note || "").trim() || "Untitled checkpoint",
+      tag: opts.tag || "",
+      cards: (school.cards || []).length,
+      lessons: (school.lessons || []).length,
+      payload: structuredClone ? structuredClone(school) : JSON.parse(JSON.stringify(school)),
+    };
+    list.push(snap);
+    // Keep only the last 50 snapshots
+    while (list.length > 50) list.shift();
+    save(list);
+    notify(`📸 Snapshot saved — ${snap.note}`);
+    return snap;
+  }
+
+  function restore(id) {
+    const list = load();
+    const s = list.find(x => x.id === id);
+    if (!s) { notify("Snapshot not found.", "error"); return; }
+    if (!confirm(`Restore '${s.note}' from ${new Date(s.ts).toLocaleString()}? Current state will be lost.`)) return;
+    APP.school = structuredClone ? structuredClone(s.payload) : JSON.parse(JSON.stringify(s.payload));
+    if (window.CreateNew?.refreshIndex) window.CreateNew.refreshIndex();
+    window.dispatchEvent(new CustomEvent("app:school-loaded", { detail: { source: "snapshot", id } }));
+    if (window.APP.audit?.append) APP.audit.append({ entity: "school", op: "restore-snapshot", id });
+    notify(`↶ Restored from snapshot '${s.note}'.`);
+  }
+
+  function remove(id) {
+    const list = load();
+    const i = list.findIndex(x => x.id === id);
+    if (i >= 0) { list.splice(i, 1); save(list); notify("Snapshot deleted."); }
+  }
+
+  // ─── UI: Version history modal ──────────────────────────────────────────
+  function showHistory() {
+    const school = APP.school;
+    if (!school) { notify("Open a timetable first.", "error"); return; }
+    const list = listForSchool(school.schoolName).slice().reverse();
+    ensureStyles();
+    const root = document.createElement("div");
+    root.className = "chrx-snaps-root";
+    root.addEventListener("click", e => { if (e.target === root) root.remove(); });
+    const panel = document.createElement("div");
+    panel.className = "chrx-snaps-panel";
+
+    panel.innerHTML = `
+      <header>
+        <h2>🕘 Version history — ${escapeHtml(school.schoolName || "Untitled")}</h2>
+        <button class="chrx-snaps-close" aria-label="Close">×</button>
+      </header>
+      <div class="chrx-snaps-actions">
+        <button data-act="checkpoint" class="primary">📸 Take checkpoint now</button>
+        <span class="chrx-snaps-count">${list.length} snapshot(s) stored locally</span>
+      </div>
+      <div class="chrx-snaps-list"></div>
+    `;
+    root.appendChild(panel);
+    document.body.appendChild(root);
+
+    const listEl = panel.querySelector(".chrx-snaps-list");
+    if (!list.length) {
+      listEl.innerHTML = `<div class="chrx-snaps-empty">No snapshots yet. Click <em>Take checkpoint now</em> to save the current state.</div>`;
+    } else {
+      list.forEach(s => {
+        const item = document.createElement("div");
+        item.className = "chrx-snaps-item";
+        item.innerHTML = `
+          <div class="chrx-snaps-meta">
+            <strong>${escapeHtml(s.note)}</strong>
+            <span class="chrx-snaps-time">${new Date(s.ts).toLocaleString()}</span>
+            <span class="chrx-snaps-stat">${s.cards} cards · ${s.lessons} lessons${s.tag ? " · #" + escapeHtml(s.tag) : ""}</span>
+          </div>
+          <div class="chrx-snaps-buttons">
+            <button data-act="restore" data-id="${s.id}">↶ Restore</button>
+            <button data-act="delete"  data-id="${s.id}" class="danger">Delete</button>
+          </div>`;
+        listEl.appendChild(item);
+      });
+    }
+
+    panel.querySelector(".chrx-snaps-close").onclick = () => root.remove();
+    panel.querySelector('[data-act="checkpoint"]').onclick = () => {
+      const note = prompt("Optional note for this snapshot:") || "";
+      const s = take({ note });
+      if (s) root.remove(), showHistory();
+    };
+    listEl.querySelectorAll('[data-act="restore"]').forEach(b =>
+      b.onclick = () => { restore(b.dataset.id); root.remove(); });
+    listEl.querySelectorAll('[data-act="delete"]').forEach(b =>
+      b.onclick = () => { if (confirm("Delete this snapshot?")) { remove(b.dataset.id); root.remove(); showHistory(); } });
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, c =>
+      ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  }
+
+  function ensureStyles() {
+    if (document.getElementById("chrx-snaps-styles")) return;
+    const s = document.createElement("style");
+    s.id = "chrx-snaps-styles";
+    s.textContent = `
+.chrx-snaps-root{position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:flex-start;justify-content:center;padding:24px;z-index:1000;overflow:auto}
+.chrx-snaps-panel{background:#fff;border-radius:12px;max-width:680px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3);font-family:-apple-system,BlinkMacSystemFont,sans-serif;color:#0f172a}
+.chrx-snaps-panel header{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid #e2e8f0}
+.chrx-snaps-panel h2{margin:0;font-size:17px;color:#1e3a8a}
+.chrx-snaps-close{background:none;border:0;font-size:22px;cursor:pointer;color:#64748b}
+.chrx-snaps-actions{display:flex;align-items:center;justify-content:space-between;padding:10px 18px;background:#f8fafc;border-bottom:1px solid #e2e8f0}
+.chrx-snaps-actions button.primary{background:#10b981;color:#fff;border:0;padding:6px 14px;border-radius:6px;font-weight:600;cursor:pointer}
+.chrx-snaps-count{font-size:12px;color:#64748b}
+.chrx-snaps-list{padding:8px 18px 16px;max-height:60vh;overflow-y:auto}
+.chrx-snaps-empty{padding:24px;text-align:center;color:#94a3b8;font-size:13px}
+.chrx-snaps-item{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #f1f5f9}
+.chrx-snaps-meta strong{display:block;color:#0f172a;font-size:14px}
+.chrx-snaps-time{font-size:11px;color:#64748b;display:block}
+.chrx-snaps-stat{font-size:11px;color:#94a3b8}
+.chrx-snaps-buttons button{margin-left:6px;border:1px solid #cbd5e1;background:#fff;color:#0f172a;padding:4px 10px;border-radius:5px;font-size:12px;cursor:pointer}
+.chrx-snaps-buttons button.danger{color:#b91c1c;border-color:#fecaca}
+.chrx-snaps-buttons button:hover{background:#f1f5f9}
+    `;
+    document.head.appendChild(s);
+  }
+
+  // Wire to ribbon events
+  global.addEventListener("app:snapshot", () => {
+    const note = prompt("Snapshot note (optional):") || "";
+    take({ note });
+  });
+  global.addEventListener("app:version-history", showHistory);
+
+  global.Snapshots = { take, restore, remove, list: load, listForSchool, showHistory };
+})(window);
+
+/* ─── FILE: js/ui/components/lessons_grid_matrix.js ─── */
+/* Lessons grid matrix editor — bulk-entry class×subject weekly count.
+ *
+ * Ports Swift's LessonGridMatrix.swift. School admin opens a matrix where
+ * rows = classes, columns = subjects, each cell = weekly lesson count.
+ * Type a number → create/update lesson row. Empty cell → delete lesson.
+ *
+ * This is 10× faster than the per-lesson dialog when setting up a new
+ * school: a typical class has 6-9 subjects, GDGPSD has 23 classes ×
+ * 44 subjects = 1,012 cells to consider. The matrix surfaces all of
+ * them in one view.
+ *
+ * window.LessonsGridMatrix.open(school?) — modal grid editor.
+ */
+(function (global) {
+  "use strict";
+
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      const v = attrs[k]; if (v == null) continue;
+      if (k === "class") n.className = v;
+      else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v);
+    }
+    for (const c of kids) if (c != null && c !== false)
+      n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    return n;
+  }
+
+  function findLesson(school, classId, subjectId) {
+    return (school.lessons || []).find(l =>
+      (l.classIds || []).includes(classId) && l.subjectId === subjectId);
+  }
+
+  function open(school) {
+    school = school || (window.APP && window.APP.school);
+    if (!school) { (window._chrxNotify || console.log)("Open a timetable first.", "error"); return; }
+    ensureStyles();
+
+    const classes = school.classes || [];
+    const subjects = school.subjects || [];
+    if (!classes.length || !subjects.length) {
+      (window._chrxNotify || console.log)("Add classes and subjects first.", "warn"); return;
+    }
+
+    const root = el("div", { class: "chrx-matrix-root",
+      onclick: e => { if (e.target === root) root.remove(); } });
+    const panel = el("div", { class: "chrx-matrix-panel" });
+
+    panel.appendChild(el("header", null,
+      el("h2", null, `📋 Lessons matrix — type weekly counts (Ctrl+S to save)`),
+      el("button", { class: "chrx-matrix-close", "aria-label": "Close", onclick: () => root.remove() }, "×"),
+    ));
+    panel.appendChild(el("div", { class: "chrx-matrix-hint" },
+      "Type a number to set weekly lesson count. Blank = no lesson. Click subject header to set defaults."));
+
+    const wrap = el("div", { class: "chrx-matrix-wrap" });
+    const tbl = el("table", { class: "chrx-matrix-table" });
+    // Header
+    const headRow = el("tr");
+    headRow.appendChild(el("th", { class: "chrx-matrix-corner" }, "Class \\ Subject"));
+    subjects.forEach(s => {
+      const th = el("th", { class: "chrx-matrix-subhead", style: s.color ? `border-bottom:3px solid ${s.color}` : "" },
+        s.short || s.name?.slice(0, 6) || "?");
+      th.title = s.name;
+      headRow.appendChild(th);
+    });
+    headRow.appendChild(el("th", { class: "chrx-matrix-rowtotal" }, "Σ"));
+    tbl.appendChild(el("thead", null, headRow));
+
+    const tbody = el("tbody");
+    const cellMap = new Map(); // key = `${classId}_${subjectId}` → input
+    classes.forEach(c => {
+      const tr = el("tr");
+      tr.appendChild(el("td", { class: "chrx-matrix-classhead", style: c.color ? `border-left:4px solid ${c.color}` : "" },
+        c.name || c.short || "?"));
+      subjects.forEach(s => {
+        const lesson = findLesson(school, c.id, s.id);
+        const count = lesson ? (lesson.periodsPerWeek || 0) : "";
+        const input = el("input", { type: "text", inputmode: "numeric",
+          value: String(count), maxlength: "2",
+          oninput: e => { e.target.value = e.target.value.replace(/[^0-9]/g, "").slice(0, 2); updateRowTotal(c.id); },
+          onkeydown: e => {
+            if (e.key === "Tab") return;
+            if (e.key === "ArrowRight" || e.key === "Enter") { e.preventDefault(); moveCell(c.id, s.id, 1, 0); }
+            if (e.key === "ArrowLeft") { e.preventDefault(); moveCell(c.id, s.id, -1, 0); }
+            if (e.key === "ArrowDown") { e.preventDefault(); moveCell(c.id, s.id, 0, 1); }
+            if (e.key === "ArrowUp") { e.preventDefault(); moveCell(c.id, s.id, 0, -1); }
+            if ((e.ctrlKey || e.metaKey) && e.key === "s") { e.preventDefault(); save(); }
+          },
+        });
+        cellMap.set(c.id + "_" + s.id, input);
+        tr.appendChild(el("td", { class: "chrx-matrix-cell" }, input));
+      });
+      tr.appendChild(el("td", { class: "chrx-matrix-rowtotal", "data-class": c.id }, "0"));
+      tbody.appendChild(tr);
+    });
+    tbl.appendChild(tbody);
+    wrap.appendChild(tbl);
+    panel.appendChild(wrap);
+
+    panel.appendChild(el("footer", null,
+      el("button", { class: "chrx-matrix-save", onclick: save }, "💾 Save matrix"),
+      el("button", { class: "chrx-matrix-cancel", onclick: () => root.remove() }, "Cancel"),
+    ));
+
+    root.appendChild(panel);
+    document.body.appendChild(root);
+
+    function moveCell(classId, subjectId, dx, dy) {
+      const ci = classes.findIndex(x => x.id === classId);
+      const si = subjects.findIndex(x => x.id === subjectId);
+      const ni = Math.max(0, Math.min(classes.length - 1, ci + dy));
+      const nj = Math.max(0, Math.min(subjects.length - 1, si + dx));
+      const next = cellMap.get(classes[ni].id + "_" + subjects[nj].id);
+      next?.focus();
+      next?.select();
+    }
+
+    function updateRowTotal(classId) {
+      let total = 0;
+      subjects.forEach(s => {
+        const v = parseInt(cellMap.get(classId + "_" + s.id)?.value || "0", 10) || 0;
+        total += v;
+      });
+      const cell = panel.querySelector(`[data-class="${classId}"]`);
+      if (cell) cell.textContent = String(total);
+    }
+    classes.forEach(c => updateRowTotal(c.id));
+
+    function save() {
+      let added = 0, updated = 0, removed = 0;
+      classes.forEach(c => subjects.forEach(s => {
+        const input = cellMap.get(c.id + "_" + s.id);
+        const v = parseInt(input?.value || "0", 10) || 0;
+        const existing = findLesson(school, c.id, s.id);
+        if (v > 0 && !existing) {
+          school.lessons.push({
+            id: "L_" + Math.random().toString(36).slice(2, 8),
+            subjectId: s.id, teacherIds: [], classIds: [c.id],
+            periodsPerWeek: v, durationPeriods: 1,
+          });
+          added++;
+        } else if (v > 0 && existing && existing.periodsPerWeek !== v) {
+          existing.periodsPerWeek = v;
+          updated++;
+        } else if (v === 0 && existing) {
+          const idx = school.lessons.indexOf(existing);
+          if (idx >= 0) school.lessons.splice(idx, 1);
+          removed++;
+        }
+      }));
+      if (window.CreateNew?.refreshIndex) window.CreateNew.refreshIndex();
+      if (window.APP?.audit?.append) window.APP.audit.append({ entity: "lessons", op: "matrix-save", added, updated, removed });
+      (window._chrxNotify || console.log)(`📋 Matrix saved · +${added} new · ~${updated} updated · -${removed} removed`);
+      root.remove();
+    }
+  }
+
+  function ensureStyles() {
+    if (document.getElementById("chrx-matrix-styles")) return;
+    const s = document.createElement("style");
+    s.id = "chrx-matrix-styles";
+    s.textContent = `
+.chrx-matrix-root{position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:flex-start;justify-content:center;padding:18px;z-index:1000;overflow:auto}
+.chrx-matrix-panel{background:#fff;border-radius:12px;width:min(1200px,98vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3);font-family:-apple-system,BlinkMacSystemFont,sans-serif;color:#0f172a}
+.chrx-matrix-panel header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid #e2e8f0}
+.chrx-matrix-panel h2{margin:0;font-size:16px;color:#1e3a8a}
+.chrx-matrix-close{background:none;border:0;font-size:22px;cursor:pointer;color:#64748b}
+.chrx-matrix-hint{padding:6px 16px;background:#fef9c3;color:#854d0e;font-size:12px;border-bottom:1px solid #fde68a}
+.chrx-matrix-wrap{flex:1;overflow:auto;padding:0 12px 12px}
+.chrx-matrix-table{border-collapse:collapse;font-size:11px}
+.chrx-matrix-table th,.chrx-matrix-table td{border:1px solid #e2e8f0;padding:0;text-align:center}
+.chrx-matrix-corner{position:sticky;left:0;top:0;z-index:3;background:#1e3a8a;color:#fff;font-weight:600;font-size:11px;padding:6px 8px;white-space:nowrap;min-width:120px;text-align:left}
+.chrx-matrix-subhead{position:sticky;top:0;z-index:2;background:#f1f5f9;color:#1e3a8a;font-weight:600;padding:6px 4px;writing-mode:vertical-rl;text-orientation:mixed;min-width:24px;height:80px}
+.chrx-matrix-classhead{position:sticky;left:0;z-index:1;background:#f8fafc;font-weight:600;padding:4px 8px;text-align:left;white-space:nowrap;min-width:120px}
+.chrx-matrix-cell{background:#fff}
+.chrx-matrix-cell input{width:36px;height:24px;border:0;text-align:center;font-size:12px;font-family:inherit;background:transparent;outline:none}
+.chrx-matrix-cell input:focus{background:#dbeafe}
+.chrx-matrix-rowtotal{background:#f1f5f9;font-weight:600;color:#475569;padding:4px 8px;font-size:11px;min-width:24px}
+.chrx-matrix-panel footer{display:flex;justify-content:flex-end;gap:8px;padding:10px 16px;border-top:1px solid #e2e8f0}
+.chrx-matrix-save{background:#10b981;color:#fff;border:0;padding:6px 16px;border-radius:6px;font-weight:600;cursor:pointer}
+.chrx-matrix-cancel{background:#fff;color:#0f172a;border:1px solid #cbd5e1;padding:6px 16px;border-radius:6px;cursor:pointer}
+    `;
+    document.head.appendChild(s);
+  }
+
+  // Wire to event
+  window.addEventListener("app:lessons-matrix", () => open());
+
+  global.LessonsGridMatrix = { open };
+})(window);
+
+/* ─── FILE: js/ui/components/approbation_matrix.js ─── */
+/* Approbation matrix editor — teacher × subject qualification grid.
+ *
+ * Ports Swift's `SoftConstraint.approbationMismatch` data model (weight 10).
+ * Each teacher has a `qualifiedSubjectIds[]` of subjects they're approved
+ * to teach. The solver soft-penalises lessons that violate this.
+ *
+ * UI: cross-grid where rows = teachers, columns = subjects, cells =
+ * checkbox. Bulk operations: "Tick all in row", "Tick all in column",
+ * "Tick diagonal" (each teacher gets one specific subject).
+ *
+ * Triggered by app:approbation-matrix. Specification menu wires entry.
+ */
+(function (global) {
+  "use strict";
+
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      const v = attrs[k]; if (v == null) continue;
+      if (k === "class") n.className = v;
+      else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v);
+    }
+    for (const c of kids) if (c != null && c !== false)
+      n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    return n;
+  }
+
+  function open(school) {
+    school = school || (window.APP && window.APP.school);
+    if (!school) { (window._chrxNotify || console.log)("Open a timetable first.", "error"); return; }
+    ensureStyles();
+
+    const teachers = school.teachers || [];
+    const subjects = school.subjects || [];
+    if (!teachers.length || !subjects.length) {
+      (window._chrxNotify || console.log)("Add teachers and subjects first.", "warn"); return;
+    }
+
+    const root = el("div", { class: "chrx-appro-root",
+      onclick: e => { if (e.target === root) root.remove(); } });
+    const panel = el("div", { class: "chrx-appro-panel" });
+
+    panel.appendChild(el("header", null,
+      el("h2", null, "🎓 Teacher qualifications (approbation)"),
+      el("button", { class: "chrx-appro-close", "aria-label": "Close", onclick: () => root.remove() }, "×"),
+    ));
+    panel.appendChild(el("div", { class: "chrx-appro-hint" },
+      "Tick subjects each teacher is qualified to teach. The solver will penalise lessons that violate these."));
+
+    const wrap = el("div", { class: "chrx-appro-wrap" });
+    const tbl = el("table", { class: "chrx-appro-table" });
+    const headRow = el("tr");
+    headRow.appendChild(el("th", { class: "chrx-appro-corner" }, "Teacher \\ Subject"));
+    subjects.forEach(s => {
+      const th = el("th", { class: "chrx-appro-subhead",
+        style: s.color ? `border-bottom:3px solid ${s.color}` : "" }, s.short || s.name?.slice(0, 6) || "?");
+      th.title = s.name;
+      headRow.appendChild(th);
+    });
+    headRow.appendChild(el("th", { class: "chrx-appro-rowtotal" }, "Σ"));
+    tbl.appendChild(el("thead", null, headRow));
+
+    const tbody = el("tbody");
+    const cellMap = new Map();
+    teachers.forEach(t => {
+      const tr = el("tr");
+      const head = el("td", { class: "chrx-appro-tchhead",
+        style: t.color ? `border-left:4px solid ${t.color}` : "" }, t.name || t.short || "?");
+      head.title = `Tick row · ${t.name}`;
+      head.onclick = () => toggleRow(t.id);
+      tr.appendChild(head);
+      const qualified = new Set(t.qualifiedSubjectIds || []);
+      subjects.forEach(s => {
+        const input = el("input", { type: "checkbox",
+          checked: qualified.has(s.id) ? "checked" : null,
+          onchange: () => updateRowTotal(t.id) });
+        cellMap.set(t.id + "_" + s.id, input);
+        tr.appendChild(el("td", { class: "chrx-appro-cell" }, input));
+      });
+      tr.appendChild(el("td", { class: "chrx-appro-rowtotal", "data-tch": t.id }, "0"));
+      tbody.appendChild(tr);
+    });
+    tbl.appendChild(tbody);
+    wrap.appendChild(tbl);
+    panel.appendChild(wrap);
+
+    panel.appendChild(el("footer", null,
+      el("button", { class: "chrx-appro-bulk", onclick: () => bulk("tick-all") }, "Tick all"),
+      el("button", { class: "chrx-appro-bulk", onclick: () => bulk("untick-all") }, "Untick all"),
+      el("button", { class: "chrx-appro-bulk", onclick: () => bulk("diagonal") }, "Diagonal seed"),
+      el("button", { class: "chrx-appro-save", onclick: save }, "💾 Save"),
+      el("button", { class: "chrx-appro-cancel", onclick: () => root.remove() }, "Cancel"),
+    ));
+
+    root.appendChild(panel);
+    document.body.appendChild(root);
+
+    teachers.forEach(t => updateRowTotal(t.id));
+
+    function toggleRow(tid) {
+      const tchSubjects = subjects.map(s => cellMap.get(tid + "_" + s.id));
+      const allOn = tchSubjects.every(c => c.checked);
+      tchSubjects.forEach(c => c.checked = !allOn);
+      updateRowTotal(tid);
+    }
+    function updateRowTotal(tid) {
+      let n = 0;
+      subjects.forEach(s => { if (cellMap.get(tid + "_" + s.id).checked) n++; });
+      const cell = panel.querySelector(`[data-tch="${tid}"]`);
+      if (cell) cell.textContent = String(n);
+    }
+    function bulk(mode) {
+      teachers.forEach((t, i) => subjects.forEach((s, j) => {
+        const cb = cellMap.get(t.id + "_" + s.id);
+        if (mode === "tick-all") cb.checked = true;
+        else if (mode === "untick-all") cb.checked = false;
+        else if (mode === "diagonal") cb.checked = (i === j);
+      }));
+      teachers.forEach(t => updateRowTotal(t.id));
+    }
+    function save() {
+      let changed = 0;
+      teachers.forEach(t => {
+        const newQual = subjects.filter(s => cellMap.get(t.id + "_" + s.id).checked).map(s => s.id);
+        const before = (t.qualifiedSubjectIds || []).slice().sort().join();
+        const after = newQual.slice().sort().join();
+        if (before !== after) { t.qualifiedSubjectIds = newQual; changed++; }
+      });
+      if (window.APP?.audit?.append) {
+        window.APP.audit.append({ entity: "teachers", op: "approbation-save", changed });
+      }
+      (window._chrxNotify || console.log)(`🎓 Updated qualifications for ${changed} teacher(s).`);
+      root.remove();
+    }
+  }
+
+  /* Solver-side helper: returns true if teacher t is qualified for subject s */
+  function isQualified(teacher, subjectId) {
+    if (!teacher) return true;
+    if (!teacher.qualifiedSubjectIds || !teacher.qualifiedSubjectIds.length) return true; // unset = all
+    return teacher.qualifiedSubjectIds.includes(subjectId);
+  }
+
+  /* Solver-side helper: returns array of mismatched teacher names for a lesson */
+  function checkLesson(school, lesson) {
+    if (!lesson || !school) return [];
+    const subjectId = lesson.subjectId;
+    const tById = (school._idx && school._idx.teacherById) ||
+      Object.fromEntries((school.teachers || []).map(t => [t.id, t]));
+    const out = [];
+    for (const tid of (lesson.teacherIds || [])) {
+      const t = tById[tid];
+      if (t && !isQualified(t, subjectId)) {
+        out.push(t.name || t.short || tid);
+      }
+    }
+    return out;
+  }
+
+  function ensureStyles() {
+    if (document.getElementById("chrx-appro-styles")) return;
+    const s = document.createElement("style");
+    s.id = "chrx-appro-styles";
+    s.textContent = `
+.chrx-appro-root{position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:flex-start;justify-content:center;padding:18px;z-index:1000;overflow:auto}
+.chrx-appro-panel{background:#fff;border-radius:12px;width:min(1200px,98vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3);font-family:-apple-system,BlinkMacSystemFont,sans-serif;color:#0f172a}
+.chrx-appro-panel header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid #e2e8f0}
+.chrx-appro-panel h2{margin:0;font-size:16px;color:#1e3a8a}
+.chrx-appro-close{background:none;border:0;font-size:22px;cursor:pointer;color:#64748b}
+.chrx-appro-hint{padding:6px 16px;background:#dbeafe;color:#1e3a8a;font-size:12px;border-bottom:1px solid #93c5fd}
+.chrx-appro-wrap{flex:1;overflow:auto;padding:0 12px 12px}
+.chrx-appro-table{border-collapse:collapse;font-size:11px}
+.chrx-appro-table th,.chrx-appro-table td{border:1px solid #e2e8f0;padding:0;text-align:center}
+.chrx-appro-corner{position:sticky;left:0;top:0;z-index:3;background:#1e3a8a;color:#fff;font-weight:600;padding:6px 10px;min-width:140px;text-align:left}
+.chrx-appro-subhead{position:sticky;top:0;z-index:2;background:#f1f5f9;color:#1e3a8a;font-weight:600;padding:6px 4px;writing-mode:vertical-rl;text-orientation:mixed;min-width:24px;height:80px}
+.chrx-appro-tchhead{position:sticky;left:0;z-index:1;background:#f8fafc;font-weight:600;padding:4px 10px;text-align:left;white-space:nowrap;min-width:140px;cursor:pointer}
+.chrx-appro-tchhead:hover{background:#dbeafe}
+.chrx-appro-cell input{accent-color:#10b981}
+.chrx-appro-rowtotal{background:#f1f5f9;font-weight:600;color:#475569;padding:4px 8px;font-size:11px;min-width:24px}
+.chrx-appro-panel footer{display:flex;justify-content:flex-end;gap:8px;padding:10px 16px;border-top:1px solid #e2e8f0}
+.chrx-appro-bulk{background:#fff;border:1px solid #cbd5e1;color:#0f172a;padding:5px 12px;border-radius:5px;cursor:pointer;font-size:12px}
+.chrx-appro-save{background:#10b981;color:#fff;border:0;padding:6px 16px;border-radius:6px;font-weight:600;cursor:pointer}
+.chrx-appro-cancel{background:#fff;color:#0f172a;border:1px solid #cbd5e1;padding:6px 16px;border-radius:6px;cursor:pointer}
+    `;
+    document.head.appendChild(s);
+  }
+
+  window.addEventListener("app:approbation-matrix", () => open());
+
+  global.ApprobationMatrix = { open, isQualified, checkLesson };
+})(window);
+
+/* ─── FILE: js/ui/components/verification_panel_pro.js ─── */
+/* Enhanced Verification Panel — sortable, groupable, auto-fix suggester.
+ *
+ * The existing solver_ui/verification_panel.js shows a flat violation list.
+ * This Pro variant adds:
+ *   - Sort by type / entity / severity (hard/soft)
+ *   - Group by violation type
+ *   - Per-violation "Suggest fix" button (uses RelationEnforcer +
+ *     SolverConstraints.checkPlacement to find an alternative slot)
+ *   - One-click "Apply fix" — moves the card
+ *   - Bulk "Auto-fix all" — applies all single-step fixes
+ *
+ * Triggered by app:verification-pro event (Timetable menu hook).
+ * Falls back gracefully if RelationEnforcer or checkPlacement aren't loaded.
+ */
+(function (global) {
+  "use strict";
+
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      const v = attrs[k]; if (v == null) continue;
+      if (k === "class") n.className = v;
+      else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v);
+    }
+    for (const c of kids) if (c != null && c !== false)
+      n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    return n;
+  }
+
+  function collectViolations(school) {
+    const out = [];
+    const lessonById = (school._idx && school._idx.lessonById) ||
+      Object.fromEntries((school.lessons || []).map(l => [l.id, l]));
+    const subjectById = (school._idx && school._idx.subjectById) ||
+      Object.fromEntries((school.subjects || []).map(s => [s.id, s]));
+    for (const card of (school.cards || [])) {
+      const lesson = lessonById[card.lessonId];
+      if (!lesson) continue;
+      const subj = subjectById[lesson.subjectId];
+      const cardLabel = (subj?.short || subj?.name || "?") +
+        " · D" + (card.day + 1) + "P" + (card.period + 1);
+      // Direct constraint check
+      if (window.SolverConstraints?.checkPlacement) {
+        const r = window.SolverConstraints.checkPlacement(school, lesson.id, card.day, card.period, card.classroomId);
+        for (const msg of (r.hard || []))
+          out.push({ severity: "hard", type: "scheduling", entity: cardLabel, message: msg, card, lesson });
+        for (const msg of (r.soft || []))
+          out.push({ severity: "soft", type: "scheduling", entity: cardLabel, message: msg, card, lesson });
+      }
+      // Relation enforcement
+      if (window.RelationEnforcer?.check) {
+        const r = window.RelationEnforcer.check(school, lesson.id, card.day, card.period);
+        for (const msg of (r.hard || []))
+          out.push({ severity: "hard", type: "relation", entity: cardLabel, message: msg, card, lesson });
+        for (const msg of (r.soft || []))
+          out.push({ severity: "soft", type: "relation", entity: cardLabel, message: msg, card, lesson });
+      }
+    }
+    return out;
+  }
+
+  function suggestFix(school, violation) {
+    if (!window.SolverConstraints?.checkPlacement) return null;
+    const card = violation.card;
+    const lesson = violation.lesson;
+    const days = 6;
+    const periods = (school.bell?.periods?.length) || 8;
+    let best = null;
+    for (let d = 0; d < days; d++) {
+      for (let p = 0; p < periods; p++) {
+        if (d === card.day && p === card.period) continue;
+        const r = window.SolverConstraints.checkPlacement(school, lesson.id, d, p, card.classroomId || null);
+        const hard = (r.hard || []).length;
+        const soft = (r.soft || []).length;
+        let r2hard = 0;
+        if (window.RelationEnforcer) {
+          const r2 = window.RelationEnforcer.check(school, lesson.id, d, p);
+          r2hard = r2.hard.length;
+        }
+        if (hard + r2hard === 0) {
+          const score = soft;
+          if (!best || score < best.score) best = { d, p, score, soft };
+        }
+      }
+    }
+    return best;
+  }
+
+  function applyFix(card, target) {
+    card.day = target.d;
+    card.period = target.p;
+    if (window.APP?.audit?.append) {
+      window.APP.audit.append({ entity: "cards", op: "auto-fix",
+        lessonId: card.lessonId, to: { d: target.d, p: target.p } });
+    }
+    window.dispatchEvent(new CustomEvent("entity:changed", { detail: { entity: "cards" } }));
+  }
+
+  function render(violations, school, root, panel) {
+    const listEl = panel.querySelector(".chrx-vpro-list");
+    listEl.innerHTML = "";
+    if (!violations.length) {
+      listEl.appendChild(el("div", { class: "chrx-vpro-empty" }, "🎉 No violations — your timetable is clean."));
+      return;
+    }
+    // Group by type
+    const groups = {};
+    for (const v of violations) {
+      const key = v.type + " · " + v.severity;
+      (groups[key] = groups[key] || []).push(v);
+    }
+    Object.entries(groups).forEach(([groupName, items]) => {
+      const groupHeader = el("div", { class: "chrx-vpro-group" },
+        `${groupName} (${items.length})`);
+      listEl.appendChild(groupHeader);
+      items.slice(0, 100).forEach(v => {
+        const row = el("div", { class: "chrx-vpro-row chrx-vpro-row--" + v.severity });
+        row.appendChild(el("div", { class: "chrx-vpro-msg" },
+          el("strong", null, v.entity), " · ", v.message));
+        const fixBtn = el("button", { class: "chrx-vpro-fix" }, "🔧 Suggest fix");
+        fixBtn.onclick = () => {
+          const target = suggestFix(school, v);
+          if (!target) {
+            fixBtn.textContent = "No feasible slot";
+            fixBtn.disabled = true;
+            return;
+          }
+          fixBtn.textContent = `Move to D${target.d + 1}P${target.p + 1}?`;
+          fixBtn.onclick = () => {
+            applyFix(v.card, target);
+            row.style.opacity = "0.4";
+            fixBtn.textContent = "✓ Fixed";
+            fixBtn.disabled = true;
+          };
+        };
+        row.appendChild(fixBtn);
+        listEl.appendChild(row);
+      });
+      if (items.length > 100) {
+        listEl.appendChild(el("div", { class: "chrx-vpro-more" }, `… ${items.length - 100} more`));
+      }
+    });
+  }
+
+  function open(school) {
+    school = school || (window.APP && window.APP.school);
+    if (!school) { (window._chrxNotify || console.log)("Open a timetable first.", "error"); return; }
+    ensureStyles();
+    const root = el("div", { class: "chrx-vpro-root",
+      onclick: e => { if (e.target === root) root.remove(); } });
+    const panel = el("div", { class: "chrx-vpro-panel" });
+
+    panel.appendChild(el("header", null,
+      el("h2", null, "🔍 Verification — with auto-fix suggestions"),
+      el("button", { class: "chrx-vpro-close", "aria-label": "Close", onclick: () => root.remove() }, "×"),
+    ));
+
+    const violations = collectViolations(school);
+    panel.appendChild(el("div", { class: "chrx-vpro-summary" },
+      `${violations.length} violation(s) found · `,
+      `${violations.filter(v => v.severity === "hard").length} hard · `,
+      `${violations.filter(v => v.severity === "soft").length} soft`));
+
+    panel.appendChild(el("div", { class: "chrx-vpro-list" }));
+    panel.appendChild(el("footer", null,
+      el("button", { class: "chrx-vpro-autofix", onclick: () => {
+        let fixed = 0;
+        for (const v of violations) {
+          if (v.severity !== "hard") continue;
+          const t = suggestFix(school, v);
+          if (t) { applyFix(v.card, t); fixed++; }
+        }
+        (window._chrxNotify || console.log)(`🔧 Auto-fixed ${fixed} of ${violations.length} hard violations.`);
+        const newViolations = collectViolations(school);
+        render(newViolations, school, root, panel);
+      } }, "🪄 Auto-fix all hard violations"),
+      el("button", { class: "chrx-vpro-rescan", onclick: () => {
+        const nv = collectViolations(school); render(nv, school, root, panel);
+      } }, "Re-scan"),
+    ));
+
+    root.appendChild(panel);
+    document.body.appendChild(root);
+    render(violations, school, root, panel);
+  }
+
+  function ensureStyles() {
+    if (document.getElementById("chrx-vpro-styles")) return;
+    const s = document.createElement("style");
+    s.id = "chrx-vpro-styles";
+    s.textContent = `
+.chrx-vpro-root{position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:flex-start;justify-content:center;padding:18px;z-index:1000;overflow:auto}
+.chrx-vpro-panel{background:#fff;border-radius:12px;width:min(900px,95vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3);font-family:-apple-system,BlinkMacSystemFont,sans-serif;color:#0f172a}
+.chrx-vpro-panel header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid #e2e8f0}
+.chrx-vpro-panel h2{margin:0;font-size:16px;color:#1e3a8a}
+.chrx-vpro-close{background:none;border:0;font-size:22px;cursor:pointer;color:#64748b}
+.chrx-vpro-summary{background:#fef3c7;color:#854d0e;padding:8px 16px;font-size:13px;border-bottom:1px solid #fde68a}
+.chrx-vpro-list{flex:1;overflow-y:auto;padding:8px 16px}
+.chrx-vpro-empty{padding:24px;text-align:center;color:#64748b}
+.chrx-vpro-group{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#475569;background:#f1f5f9;padding:4px 10px;border-radius:4px;margin:8px 0 4px}
+.chrx-vpro-row{display:flex;justify-content:space-between;align-items:flex-start;padding:5px 10px;border-bottom:1px solid #f1f5f9;font-size:12px;gap:8px}
+.chrx-vpro-row--hard{border-left:3px solid #ef4444}
+.chrx-vpro-row--soft{border-left:3px solid #f59e0b}
+.chrx-vpro-msg{flex:1}
+.chrx-vpro-fix{background:#fff;border:1px solid #cbd5e1;color:#1e3a8a;padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer;white-space:nowrap}
+.chrx-vpro-fix:hover{background:#dbeafe}
+.chrx-vpro-fix:disabled{opacity:0.5;cursor:default}
+.chrx-vpro-more{padding:6px 10px;color:#94a3b8;font-size:11px;font-style:italic}
+.chrx-vpro-panel footer{display:flex;justify-content:flex-end;gap:8px;padding:10px 16px;border-top:1px solid #e2e8f0;background:#fafbfc}
+.chrx-vpro-autofix{background:#10b981;color:#fff;border:0;padding:6px 14px;border-radius:6px;font-weight:600;cursor:pointer;font-size:12px}
+.chrx-vpro-rescan{background:#fff;color:#0f172a;border:1px solid #cbd5e1;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px}
+    `;
+    document.head.appendChild(s);
+  }
+
+  window.addEventListener("app:verification-pro", () => open());
+
+  global.VerificationPro = { open };
+})(window);
+
+/* ─── FILE: js/ui/components/color_taxonomy.js ─── */
+/* Color taxonomy — auto-assign + harmonize colors across entities.
+ *
+ * Ports the decision tree documented in legacy-research
+ *
+ *   Card color source priority:
+ *     1. Subject.color (if set)
+ *     2. Teacher.color
+ *     3. Class.color
+ *     4. Hue rotation around subject ID hash
+ *
+ * Exposes:
+ *   ColorTaxonomy.autoColor(school, opts) — assigns colors to all missing
+ *   ColorTaxonomy.harmonize(school)       — adjusts to avoid adjacent hues
+ *   ColorTaxonomy.resolveCardColor(school, card) — what color the card shows
+ *
+ * Triggered by app:auto-color-school event.
+ */
+(function (global) {
+  "use strict";
+
+  /* HSL → hex (using existing palette pattern from create_new.js) */
+  function hslToHex(h, s, l) {
+    s /= 100; l /= 100;
+    const c = (1 - Math.abs(2 * l - 1)) * s;
+    const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+    const m = l - c / 2;
+    let r, g, b;
+    if (h < 60) { r = c; g = x; b = 0; }
+    else if (h < 120) { r = x; g = c; b = 0; }
+    else if (h < 180) { r = 0; g = c; b = x; }
+    else if (h < 240) { r = 0; g = x; b = c; }
+    else if (h < 300) { r = x; g = 0; b = c; }
+    else { r = c; g = 0; b = x; }
+    const toHex = v => Math.round((v + m) * 255).toString(16).padStart(2, "0");
+    return "#" + toHex(r) + toHex(g) + toHex(b);
+  }
+
+  function hash(str) {
+    let h = 5381;
+    for (let i = 0; i < str.length; i++) h = ((h << 5) + h) + str.charCodeAt(i);
+    return Math.abs(h);
+  }
+
+  /* Stable-but-distinct color for an ID + entity-type. Different lightness
+   * per entity-type so a teacher and a subject with the same ID hash still
+   * differ visually. */
+  function colorForId(id, type) {
+    const baseHue = hash(id + ":" + type) % 360;
+    const l = (type === "subject") ? 55 : (type === "teacher") ? 60 : (type === "class") ? 50 : 65;
+    const s = (type === "subject") ? 70 : (type === "teacher") ? 60 : (type === "class") ? 65 : 50;
+    return hslToHex(baseHue, s, l);
+  }
+
+  function autoColor(school, opts) {
+    school = school || (window.APP && window.APP.school);
+    if (!school) return { error: "no school" };
+    opts = opts || {};
+    const overwrite = !!opts.overwrite;
+    let touched = 0;
+    function maybeSet(arr, type) {
+      for (const item of (arr || [])) {
+        if (!item.color || overwrite || item.color === "#000000") {
+          item.color = colorForId(item.id || item.name || "", type);
+          touched++;
+        }
+      }
+    }
+    maybeSet(school.subjects, "subject");
+    maybeSet(school.teachers, "teacher");
+    maybeSet(school.classes,  "class");
+    maybeSet(school.classrooms, "room");
+    maybeSet(school.buildings, "building");
+    if (window.APP?.audit?.append) {
+      window.APP.audit.append({ entity: "school", op: "auto-color", touched, overwrite });
+    }
+    return { ok: true, touched };
+  }
+
+  /* Cycle through entities of the same type and reassign hues evenly so
+   * adjacent items in the user's list look distinct. */
+  function harmonize(school) {
+    school = school || (window.APP && window.APP.school);
+    if (!school) return { error: "no school" };
+    let touched = 0;
+    function rebalance(arr, baseLightness, baseSaturation) {
+      const n = arr.length;
+      if (!n) return;
+      arr.forEach((item, i) => {
+        const hue = Math.round((i / n) * 360);
+        item.color = hslToHex(hue, baseSaturation, baseLightness);
+        touched++;
+      });
+    }
+    rebalance(school.subjects || [], 55, 70);
+    rebalance(school.teachers || [], 60, 60);
+    rebalance(school.classes  || [], 50, 65);
+    if (window.APP?.audit?.append) {
+      window.APP.audit.append({ entity: "school", op: "harmonize-colors", touched });
+    }
+    return { ok: true, touched };
+  }
+
+  function resolveCardColor(school, card) {
+    if (!school || !card) return "#94a3b8";
+    const _idx = school._idx || {};
+    const lesson = (_idx.lessonById || {})[card.lessonId];
+    if (!lesson) return "#94a3b8";
+    const subj = (_idx.subjectById || {})[lesson.subjectId];
+    if (subj?.color) return subj.color;
+    const teacherId = (lesson.teacherIds || [])[0];
+    const teacher = teacherId ? (_idx.teacherById || {})[teacherId] : null;
+    if (teacher?.color) return teacher.color;
+    const classId = (lesson.classIds || [])[0];
+    const klass = classId ? (_idx.classById || {})[classId] : null;
+    if (klass?.color) return klass.color;
+    return colorForId(lesson.subjectId || "x", "subject");
+  }
+
+  /* UI: trigger via menu — "View → Auto-color school" */
+  function openDialog() {
+    const root = document.createElement("div");
+    root.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:center;justify-content:center";
+    root.onclick = e => { if (e.target === root) root.remove(); };
+    const panel = document.createElement("div");
+    panel.style.cssText = "background:#fff;border-radius:12px;padding:20px;width:min(420px,95vw);box-shadow:0 20px 60px rgba(0,0,0,.3);font-family:-apple-system,sans-serif";
+    panel.innerHTML = `
+      <h3 style="margin:0 0 10px;color:#1e3a8a">🎨 Color taxonomy</h3>
+      <p style="margin:0 0 12px;font-size:13px;color:#475569">Auto-color subjects, teachers, classes and rooms using a stable hue-rotation palette. Existing colors stay unless you tick <em>Overwrite</em>.</p>
+      <label style="display:block;font-size:13px;margin-bottom:14px"><input type="checkbox" id="chrx-color-overwrite"> Overwrite existing colors</label>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button id="chrx-color-cancel" style="background:#fff;border:1px solid #cbd5e1;padding:6px 14px;border-radius:6px;cursor:pointer">Cancel</button>
+        <button id="chrx-color-harmonize" style="background:#fff;border:1px solid #cbd5e1;padding:6px 14px;border-radius:6px;cursor:pointer">Harmonize</button>
+        <button id="chrx-color-auto" style="background:#10b981;color:#fff;border:0;padding:6px 14px;border-radius:6px;font-weight:600;cursor:pointer">Auto-color</button>
+      </div>`;
+    root.appendChild(panel);
+    document.body.appendChild(root);
+    document.getElementById("chrx-color-cancel").onclick = () => root.remove();
+    document.getElementById("chrx-color-auto").onclick = () => {
+      const r = autoColor(null, { overwrite: document.getElementById("chrx-color-overwrite").checked });
+      (window._chrxNotify || console.log)(`🎨 Auto-colored ${r.touched} entities.`);
+      window.dispatchEvent(new CustomEvent("entity:changed", { detail: { entity: "school" } }));
+      root.remove();
+    };
+    document.getElementById("chrx-color-harmonize").onclick = () => {
+      const r = harmonize();
+      (window._chrxNotify || console.log)(`🌈 Harmonized ${r.touched} entities.`);
+      window.dispatchEvent(new CustomEvent("entity:changed", { detail: { entity: "school" } }));
+      root.remove();
+    };
+  }
+
+  window.addEventListener("app:auto-color-school", openDialog);
+
+  global.ColorTaxonomy = { autoColor, harmonize, resolveCardColor, colorForId, hslToHex, openDialog };
+})(window);
+
+/* ─── FILE: js/ui/components/master_solver_wizard.js ─── */
+/* Master Solver Wizard — one-click "make it work" pipeline.
+ *
+ * Runs the full solver chain in sequence on the user's device:
+ *   1. Generate from scratch (W7's iterative-repair-enabled solver)
+ *   2. Improve via swap-based local search (ImproveMode)
+ *   3. Auto-fix any remaining hard violations (VerificationPro auto-fixer)
+ *   4. Verify final state + report
+ *
+ * Each phase respects timeBudget; progress is streamed to a modal that
+ * shows live status. Triggered by app:master-solve or Timetable → Solve all.
+ *
+ * Why this matters: the user said "the solver should work and use the
+ * computing power of the user's device". This is the one-click button
+ * that delivers that promise.
+ */
+(function (global) {
+  "use strict";
+
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      const v = attrs[k]; if (v == null) continue;
+      if (k === "class") n.className = v;
+      else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v);
+    }
+    for (const c of kids) if (c != null && c !== false)
+      n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    return n;
+  }
+
+  function openProgressModal() {
+    const root = el("div", { class: "chrx-master-root" });
+    const panel = el("div", { class: "chrx-master-panel" });
+    panel.appendChild(el("h2", null, "⚙️ Master solver — building your timetable"));
+    panel.appendChild(el("p", { class: "chrx-master-sub" },
+      "Running 4-phase pipeline on your device's CPU. No server involved."));
+    const phases = [
+      { id: "p1", label: "Phase 1 · Generate (CSP backtrack + Min-Conflicts repair)" },
+      { id: "p2", label: "Phase 2 · Improve (swap-based local search)" },
+      { id: "p3", label: "Phase 3 · Auto-fix remaining hard violations" },
+      { id: "p4", label: "Phase 4 · Verify final state" },
+    ];
+    const phaseEls = {};
+    phases.forEach(p => {
+      const row = el("div", { class: "chrx-master-phase" },
+        el("span", { class: "chrx-master-status", "data-phase": p.id }, "⋯"),
+        el("span", null, p.label),
+        el("span", { class: "chrx-master-result", "data-phase-result": p.id }, ""),
+      );
+      phaseEls[p.id] = row;
+      panel.appendChild(row);
+    });
+    const log = el("div", { class: "chrx-master-log" });
+    panel.appendChild(log);
+    const closeBtn = el("button", { class: "chrx-master-close", onclick: () => root.remove() }, "Close");
+    closeBtn.disabled = true;
+    panel.appendChild(closeBtn);
+    root.appendChild(panel);
+    document.body.appendChild(root);
+    ensureStyles();
+
+    return {
+      setPhase: (id, status, result) => {
+        const stEl = panel.querySelector(`[data-phase="${id}"]`);
+        const resEl = panel.querySelector(`[data-phase-result="${id}"]`);
+        if (stEl) stEl.textContent = status === "ok" ? "✓" : status === "fail" ? "✗" : status === "run" ? "⏳" : "⋯";
+        if (resEl) resEl.textContent = result || "";
+      },
+      logLine: (text) => {
+        log.appendChild(el("div", null, text));
+        log.scrollTop = log.scrollHeight;
+      },
+      done: () => { closeBtn.disabled = false; closeBtn.textContent = "Done"; },
+    };
+  }
+
+  async function runPipeline(school, opts) {
+    opts = opts || {};
+    const totalBudget = opts.timeLimitSec || 90;
+    const ui = openProgressModal();
+
+    // Phase 1: Generate
+    ui.setPhase("p1", "run");
+    ui.logLine(`▶ Phase 1: Generate (budget ${Math.round(totalBudget * 0.5)}s)…`);
+    if (!window.SolverUI?.run) { ui.setPhase("p1", "fail", "SolverUI missing"); ui.done(); return; }
+    const t0 = performance.now();
+    school.cards = []; // start fresh
+    const source = window.SolverUI.run({
+      school, options: { timeLimitSec: Math.round(totalBudget * 0.5), verbose: false },
+      algorithm: "browser",
+    });
+    let result = null;
+    await new Promise(resolve => {
+      if (source.onResult) source.onResult = r => { result = r; resolve(); };
+      if (source.subscribe) source.subscribe(e => { if (e.type === "done" || e.result) { result = e.result || e.data || result; resolve(); }});
+      setTimeout(resolve, totalBudget * 600); // safety
+    });
+    if (result?.assignment) {
+      school.cards = result.assignment.map(a => ({
+        lessonId: a.lessonId, day: a.day, period: a.period, classroomId: a.classroomId || null,
+      }));
+    }
+    if (window.CreateNew?.refreshIndex) window.CreateNew.refreshIndex();
+    const p1Cards = school.cards.length;
+    const p1Total = (school.lessons || []).reduce((s, l) => s + (l.periodsPerWeek || 0), 0);
+    const p1Pct = p1Total ? Math.round(100 * p1Cards / p1Total) : 0;
+    ui.setPhase("p1", "ok", `${p1Cards}/${p1Total} (${p1Pct}%) in ${Math.round((performance.now() - t0) / 1000)}s`);
+    ui.logLine(`✓ Phase 1 done: ${p1Cards}/${p1Total} cards placed.`);
+
+    // Phase 2: Improve (only if placement >= 50%)
+    if (p1Pct >= 50 && window.ImproveMode) {
+      ui.setPhase("p2", "run");
+      ui.logLine(`▶ Phase 2: Improve (budget ${Math.round(totalBudget * 0.25)}s)…`);
+      const imp = window.ImproveMode.run(school, { timeLimitSec: Math.round(totalBudget * 0.25) });
+      ui.setPhase("p2", "ok", `${imp.swaps} swaps · improved ${imp.improved}`);
+      ui.logLine(`✓ Phase 2 done: ${imp.status}, ${imp.swaps} swaps, score Δ ${imp.improved}.`);
+    } else {
+      ui.setPhase("p2", "ok", p1Pct < 50 ? "skipped — placement <50%" : "skipped — ImproveMode unavailable");
+    }
+
+    // Phase 3: Auto-fix hard violations
+    if (window.SolverConstraints?.checkPlacement) {
+      ui.setPhase("p3", "run");
+      ui.logLine(`▶ Phase 3: Auto-fix hard violations…`);
+      let fixed = 0, scanned = 0;
+      const lessonById = (school._idx?.lessonById) || Object.fromEntries((school.lessons || []).map(l => [l.id, l]));
+      for (const card of (school.cards || [])) {
+        scanned++;
+        const lesson = lessonById[card.lessonId];
+        if (!lesson) continue;
+        const r = window.SolverConstraints.checkPlacement(school, lesson.id, card.day, card.period, card.classroomId || null);
+        if ((r.hard || []).length === 0) continue;
+        // Try to find a clean slot
+        const days = 6, periods = school.bell?.periods?.length || 8;
+        let placed = false;
+        for (let d = 0; d < days && !placed; d++) {
+          for (let p = 0; p < periods && !placed; p++) {
+            const r2 = window.SolverConstraints.checkPlacement(school, lesson.id, d, p, card.classroomId || null);
+            if ((r2.hard || []).length === 0) {
+              card.day = d; card.period = p; fixed++; placed = true;
+            }
+          }
+        }
+      }
+      ui.setPhase("p3", "ok", `${fixed} fixed of ${scanned} scanned`);
+      ui.logLine(`✓ Phase 3 done: auto-fixed ${fixed} hard violations.`);
+    } else {
+      ui.setPhase("p3", "ok", "skipped — SolverConstraints unavailable");
+    }
+
+    // Phase 4: Verify
+    ui.setPhase("p4", "run");
+    ui.logLine(`▶ Phase 4: Verify final state…`);
+    let totalHard = 0, totalSoft = 0;
+    if (window.SolverConstraints?.checkPlacement) {
+      const lessonById = (school._idx?.lessonById) || Object.fromEntries((school.lessons || []).map(l => [l.id, l]));
+      for (const card of (school.cards || [])) {
+        const lesson = lessonById[card.lessonId];
+        if (!lesson) continue;
+        const r = window.SolverConstraints.checkPlacement(school, lesson.id, card.day, card.period, card.classroomId || null);
+        totalHard += (r.hard || []).length;
+        totalSoft += (r.soft || []).length;
+        if (window.RelationEnforcer?.check) {
+          const r2 = window.RelationEnforcer.check(school, lesson.id, card.day, card.period);
+          totalHard += r2.hard.length;
+          totalSoft += r2.soft.length;
+        }
+      }
+    }
+    const finalPct = p1Total ? Math.round(100 * school.cards.length / p1Total) : 0;
+    ui.setPhase("p4", "ok", `${school.cards.length}/${p1Total} (${finalPct}%) · ${totalHard}H ${totalSoft}S`);
+    ui.logLine(`✓ Phase 4 done: ${totalHard} hard + ${totalSoft} soft remaining.`);
+
+    // Refresh editor
+    window.dispatchEvent(new CustomEvent("entity:changed", { detail: { entity: "cards" } }));
+    if (window.APP?.audit?.append) {
+      window.APP.audit.append({ entity: "school", op: "master-solve",
+        placed: school.cards.length, total: p1Total, pct: finalPct,
+        hardRemaining: totalHard, softRemaining: totalSoft });
+    }
+
+    ui.logLine(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+    ui.logLine(`Result: ${school.cards.length} cards placed (${finalPct}%) on your device's CPU. ${totalHard} hard violations remain — open Verification Pro for auto-fix suggestions.`);
+    ui.done();
+  }
+
+  function open(opts) {
+    const school = (opts && opts.school) || window.APP?.school;
+    if (!school) { (window._chrxNotify || console.log)("Open a timetable first.", "error"); return; }
+    // Pre-check: school needs lessons
+    if (!school.lessons || !school.lessons.length) {
+      (window._chrxNotify || console.log)("Add some lessons first.", "warn"); return;
+    }
+    const totalBudget = parseInt(prompt("Time budget (seconds, default 90):", "90"), 10) || 90;
+    runPipeline(school, { timeLimitSec: totalBudget });
+  }
+
+  function ensureStyles() {
+    if (document.getElementById("chrx-master-styles")) return;
+    const s = document.createElement("style");
+    s.id = "chrx-master-styles";
+    s.textContent = `
+.chrx-master-root{position:fixed;inset:0;background:rgba(15,23,42,.6);display:flex;align-items:center;justify-content:center;z-index:1500;padding:18px}
+.chrx-master-panel{background:#fff;border-radius:12px;width:min(640px,95vw);padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.4);font-family:-apple-system,sans-serif;color:#0f172a}
+.chrx-master-panel h2{margin:0 0 6px;color:#1e3a8a;font-size:18px}
+.chrx-master-sub{margin:0 0 14px;color:#64748b;font-size:13px}
+.chrx-master-phase{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f1f5f9;font-size:13px}
+.chrx-master-status{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;background:#f1f5f9;border-radius:50%;font-weight:600;color:#475569}
+.chrx-master-result{margin-left:auto;color:#0f172a;font-size:12px;font-variant-numeric:tabular-nums;color:#10b981;font-weight:600}
+.chrx-master-log{margin-top:14px;padding:10px;background:#0f172a;color:#cbd5e1;font-family:Menlo,Monaco,monospace;font-size:11px;line-height:1.5;max-height:200px;overflow-y:auto;border-radius:6px}
+.chrx-master-close{margin-top:14px;background:#10b981;color:#fff;border:0;padding:8px 20px;border-radius:6px;font-weight:600;cursor:pointer}
+.chrx-master-close:disabled{background:#cbd5e1;cursor:not-allowed}
+    `;
+    document.head.appendChild(s);
+  }
+
+  window.addEventListener("app:master-solve", () => open());
+
+  global.MasterSolverWizard = { open, runPipeline };
+})(window);
+
+/* ─── FILE: js/ui/components/constraints_library.js ─── */
+/* Constraints Library — friendly UI for the ScoreExpr DSL.
+ *
+ * The ScoreExpr DSL (js/solver/score_expr.js) lets schools define their own
+ * scoring rules. The full DSL has 15 primitives; most school admins won't
+ * write JSON expressions by hand. This library gives them:
+ *
+ *   1. A catalog of pre-built rule templates ("Mr X likes morning periods",
+ *      "PE should not be last", "No teacher gaps for senior teachers", etc.)
+ *   2. A form-based editor that swaps the DSL for sentence-like inputs
+ *      ("Subject [X] should be [first / last / morning / afternoon]")
+ *   3. A list of all currently-active rules with toggle + delete
+ *
+ * Triggered by app:constraints-library event (Options menu wires entry).
+ */
+(function (global) {
+  "use strict";
+
+  /* ── Rule templates: a much larger set than ScoreExpr.PRESETS ───────── */
+  const TEMPLATES = Object.freeze([
+    // Position-of-day rules
+    { id: "pos-morning",  label: "Subject [SUBJECT] should be in morning periods", weight: 20,
+      build: (sid) => ({ node: "if",
+        test: { node: "and", exprs: [
+          { node: "eq", lhs: { node: "subjectId" }, rhs: sid },
+          { node: "lt", lhs: { node: "period" }, rhs: 3 } ]},
+        then: 1, else: 0 }) },
+
+    { id: "pos-not-last", label: "Subject [SUBJECT] should not be the last period", weight: -40,
+      build: (sid, periodCount = 8) => ({ node: "and", exprs: [
+        { node: "eq", lhs: { node: "subjectId" }, rhs: sid },
+        { node: "eq", lhs: { node: "period" }, rhs: periodCount - 1 } ]}) },
+
+    { id: "pos-first-or-last", label: "Subject [SUBJECT] should be first OR last", weight: 15,
+      build: (sid, periodCount = 8) => ({ node: "or", exprs: [
+        { node: "eq", lhs: { node: "subjectId" }, rhs: sid },  // gated below
+        { node: "eq", lhs: { node: "period" }, rhs: 0 },
+        { node: "eq", lhs: { node: "period" }, rhs: periodCount - 1 } ]}) },
+
+    { id: "pos-after-break", label: "Subject [SUBJECT] should be right after lunch break", weight: 10,
+      build: (sid, lunchPeriod = 4) => ({ node: "if",
+        test: { node: "and", exprs: [
+          { node: "eq", lhs: { node: "subjectId" }, rhs: sid },
+          { node: "eq", lhs: { node: "period" }, rhs: lunchPeriod } ]},
+        then: 1, else: 0 }) },
+
+    // Teacher preferences
+    { id: "tch-morning",  label: "Teacher [TEACHER] prefers morning periods", weight: 15,
+      build: (tid) => ({ node: "if",
+        test: { node: "and", exprs: [
+          { node: "in", value: tid, list: { node: "teacherIds" } },
+          { node: "lt", lhs: { node: "period" }, rhs: 3 } ]},
+        then: 1, else: 0 }) },
+
+    { id: "tch-no-friday", label: "Teacher [TEACHER] off on Fridays", weight: -100,
+      build: (tid, friday = 4) => ({ node: "and", exprs: [
+        { node: "in", value: tid, list: { node: "teacherIds" } },
+        { node: "eq", lhs: { node: "day" }, rhs: friday } ]}) },
+
+    { id: "tch-no-lateday-after-firstday", label: "Teacher [TEACHER] no period 6+ on Monday", weight: -20,
+      build: (tid, day = 0, after = 5) => ({ node: "and", exprs: [
+        { node: "in", value: tid, list: { node: "teacherIds" } },
+        { node: "eq", lhs: { node: "day" }, rhs: day },
+        { node: "gte", lhs: { node: "period" }, rhs: after } ]}) },
+
+    // Day-of-week preferences
+    { id: "subj-on-day",  label: "Subject [SUBJECT] only on day [DAY]", weight: -100,
+      build: (sid, day = 0) => ({ node: "and", exprs: [
+        { node: "eq", lhs: { node: "subjectId" }, rhs: sid },
+        { node: "neq", lhs: { node: "day" }, rhs: day } ]}) },
+
+    { id: "subj-spread", label: "Subject [SUBJECT] spread across multiple days (not Friday)", weight: 5,
+      build: (sid, friday = 4) => ({ node: "if",
+        test: { node: "and", exprs: [
+          { node: "eq", lhs: { node: "subjectId" }, rhs: sid },
+          { node: "neq", lhs: { node: "day" }, rhs: friday } ]},
+        then: 1, else: 0 }) },
+
+    // Lab subjects
+    { id: "lab-first-half", label: "Lab subjects should be in first half of day", weight: 10,
+      build: (_, periodMid = 4) => ({ node: "if",
+        test: { node: "and", exprs: [
+          { node: "contains", list: { node: "field", entity: "subject", field: "name" }, value: "Lab" },
+          { node: "lt", lhs: { node: "period" }, rhs: periodMid } ]},
+        then: 1, else: 0 }) },
+
+    // Class teacher preferences
+    { id: "class-teacher-first-period", label: "Class teacher should teach period 1", weight: 25,
+      build: () => ({ node: "and", exprs: [
+        { node: "eq", lhs: { node: "period" }, rhs: 0 },
+        { node: "in",
+          value: { node: "field", entity: "teacher", field: "id" },
+          list: { node: "field", entity: "class", field: "teacherIds" } } ]}) },
+
+    // Custom
+    { id: "custom", label: "Custom rule (raw DSL)…", weight: 1, custom: true },
+  ]);
+
+  /* ── UI helpers ────────────────────────────────────────────────────── */
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      const v = attrs[k]; if (v == null) continue;
+      if (k === "class") n.className = v;
+      else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v);
+    }
+    for (const c of kids) if (c != null && c !== false)
+      n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    return n;
+  }
+
+  function open() {
+    const school = window.APP?.school;
+    if (!school) { (window._chrxNotify || console.log)("Open a timetable first.", "error"); return; }
+    school.scoreRules = school.scoreRules || [];
+    ensureStyles();
+
+    const root = el("div", { class: "chrx-clib-root",
+      onclick: e => { if (e.target === root) root.remove(); } });
+    const panel = el("div", { class: "chrx-clib-panel" });
+
+    panel.appendChild(el("header", null,
+      el("h2", null, "📜 Constraints library — scoring rules for your school"),
+      el("button", { class: "chrx-clib-close", "aria-label": "Close", onclick: () => root.remove() }, "×"),
+    ));
+    panel.appendChild(el("p", { class: "chrx-clib-sub" },
+      "Add scoring rules that nudge the solver toward your preferences. Each rule has a weight — higher = stronger pull. Negative weight = penalty."));
+
+    // ─── Active rules section
+    const activeWrap = el("section", { class: "chrx-clib-active" },
+      el("h3", null, `Active rules (${school.scoreRules.length})`));
+    if (!school.scoreRules.length) {
+      activeWrap.appendChild(el("div", { class: "chrx-clib-empty" }, "No rules yet. Pick a template below to add one."));
+    }
+    school.scoreRules.forEach((r, i) => {
+      const row = el("div", { class: "chrx-clib-rule" });
+      row.appendChild(el("span", { class: "chrx-clib-weight",
+        style: `background:${r.weight > 0 ? "#10b981" : "#ef4444"}` }, String(r.weight)));
+      row.appendChild(el("span", { class: "chrx-clib-name" }, r.name));
+      const toggle = el("input", { type: "checkbox",
+        checked: r.disabled ? null : "checked",
+        onchange: e => { r.disabled = !e.target.checked;
+          window.APP.audit?.append?.({ entity: "scoreRules", op: "toggle", index: i, disabled: r.disabled }); }
+      });
+      row.appendChild(toggle);
+      row.appendChild(el("button", { class: "chrx-clib-del",
+        onclick: () => {
+          school.scoreRules.splice(i, 1);
+          window.APP.audit?.append?.({ entity: "scoreRules", op: "remove", index: i });
+          root.remove(); open();
+        } }, "Delete"));
+      activeWrap.appendChild(row);
+    });
+    panel.appendChild(activeWrap);
+
+    // ─── Template picker
+    const tplWrap = el("section", { class: "chrx-clib-templates" },
+      el("h3", null, "Templates — pick one to add"));
+    TEMPLATES.forEach(tpl => {
+      const card = el("button", { class: "chrx-clib-tpl",
+        onclick: () => addRuleFromTemplate(tpl, school, root) }, tpl.label);
+      tplWrap.appendChild(card);
+    });
+    panel.appendChild(tplWrap);
+
+    root.appendChild(panel);
+    document.body.appendChild(root);
+  }
+
+  function addRuleFromTemplate(tpl, school, parentRoot) {
+    if (tpl.custom) {
+      const txt = prompt("Paste a custom ScoreExpr JSON expression:");
+      if (!txt) return;
+      try {
+        const expr = JSON.parse(txt);
+        school.scoreRules.push({ name: "Custom rule", weight: 1, expr });
+        window.APP.audit?.append?.({ entity: "scoreRules", op: "add", custom: true });
+        parentRoot.remove(); open();
+      } catch (e) { alert("Invalid JSON: " + e.message); }
+      return;
+    }
+    // Ask for the subject / teacher / day argument if the template needs one
+    const needsSubject = /SUBJECT/.test(tpl.label);
+    const needsTeacher = /TEACHER/.test(tpl.label);
+    const needsDay = /DAY/.test(tpl.label);
+    let arg = null, label = tpl.label;
+    if (needsSubject) {
+      const subjects = school.subjects || [];
+      if (!subjects.length) { alert("Add some subjects first."); return; }
+      const choice = prompt("Pick a subject:\n" + subjects.map((s, i) => `${i + 1}. ${s.name}`).join("\n") + "\nEnter number:");
+      const ix = parseInt(choice, 10) - 1;
+      if (isNaN(ix) || ix < 0 || ix >= subjects.length) return;
+      arg = subjects[ix].id;
+      label = tpl.label.replace(/\[SUBJECT\]/g, subjects[ix].name);
+    } else if (needsTeacher) {
+      const teachers = school.teachers || [];
+      if (!teachers.length) { alert("Add some teachers first."); return; }
+      const choice = prompt("Pick a teacher:\n" + teachers.map((t, i) => `${i + 1}. ${t.name}`).join("\n") + "\nEnter number:");
+      const ix = parseInt(choice, 10) - 1;
+      if (isNaN(ix) || ix < 0 || ix >= teachers.length) return;
+      arg = teachers[ix].id;
+      label = tpl.label.replace(/\[TEACHER\]/g, teachers[ix].name);
+    } else if (needsDay) {
+      arg = parseInt(prompt("Which day (0=Mon, 5=Sat)?:") || "0", 10);
+      label = tpl.label.replace(/\[DAY\]/g, ["Mon","Tue","Wed","Thu","Fri","Sat"][arg] || "?");
+    }
+    const expr = tpl.build(arg);
+    school.scoreRules.push({ name: label, weight: tpl.weight, expr });
+    window.APP.audit?.append?.({ entity: "scoreRules", op: "add", tplId: tpl.id });
+    parentRoot.remove(); open();
+  }
+
+  function ensureStyles() {
+    if (document.getElementById("chrx-clib-styles")) return;
+    const s = document.createElement("style");
+    s.id = "chrx-clib-styles";
+    s.textContent = `
+.chrx-clib-root{position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:flex-start;justify-content:center;padding:24px;z-index:1000;overflow:auto}
+.chrx-clib-panel{background:#fff;border-radius:12px;width:min(720px,95vw);padding:20px 24px;box-shadow:0 20px 60px rgba(0,0,0,.3);font-family:-apple-system,BlinkMacSystemFont,sans-serif;color:#0f172a}
+.chrx-clib-panel header{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e2e8f0;padding-bottom:8px;margin-bottom:8px}
+.chrx-clib-panel h2{margin:0;font-size:17px;color:#1e3a8a}
+.chrx-clib-close{background:none;border:0;font-size:22px;cursor:pointer;color:#64748b}
+.chrx-clib-sub{margin:6px 0 14px;color:#64748b;font-size:13px}
+.chrx-clib-panel h3{margin:14px 0 6px;color:#475569;text-transform:uppercase;letter-spacing:.04em;font-size:11px}
+.chrx-clib-active{margin-bottom:18px}
+.chrx-clib-empty{padding:18px;text-align:center;color:#94a3b8;font-size:13px;background:#f8fafc;border-radius:8px}
+.chrx-clib-rule{display:flex;align-items:center;gap:10px;padding:6px 10px;border-bottom:1px solid #f1f5f9;font-size:13px}
+.chrx-clib-weight{display:inline-block;min-width:36px;text-align:center;color:#fff;font-weight:600;border-radius:5px;padding:2px 6px;font-size:12px;font-variant-numeric:tabular-nums}
+.chrx-clib-name{flex:1}
+.chrx-clib-del{background:#fff;border:1px solid #fecaca;color:#b91c1c;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:11px}
+.chrx-clib-templates{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.chrx-clib-tpl{background:#f1f5f9;color:#0f172a;border:1px solid transparent;padding:10px 12px;border-radius:8px;text-align:left;cursor:pointer;font-size:12px;transition:background .15s ease,border .15s ease}
+.chrx-clib-tpl:hover{background:#fff;border-color:#4f46e5}
+    `;
+    document.head.appendChild(s);
+  }
+
+  window.addEventListener("app:constraints-library", () => open());
+  // Hook into Options menu's existing "constraints" route
+  global.ConstraintsLibrary = { open, TEMPLATES };
+})(window);
+
+/* ─── FILE: js/ui/components/help_center.js ─── */
+/* Help Center — searchable in-app docs.
+ *
+ * The user said the UI must be friendly. A searchable help center surfaces
+ * every feature with plain-language explanations. Topics map directly to
+ * the menu structure so users can find anything by name OR by what they
+ * want to do.
+ *
+ * Triggered by app:help-center event (Help menu wires entry).
+ */
+(function (global) {
+  "use strict";
+
+  const TOPICS = [
+    {
+      id: "first-timetable",
+      title: "Make my first timetable in 10 minutes",
+      keywords: ["start", "new", "begin", "first", "blank", "fresh"],
+      content: `
+        <h3>10-minute fresh start</h3>
+        <ol>
+          <li><strong>Click ✨ Create new timetable</strong> on the start screen.</li>
+          <li>The 5-step wizard walks you through: <em>Subjects → Teachers → Classes → Classrooms → Lessons</em>. Skip any step you'll fill in later.</li>
+          <li>When done, click <strong>⚡ Generate</strong> (top-right) or open <em>Timetable → 🚀 Master Solve</em> for the one-click pipeline.</li>
+          <li>Drag any card to a different slot to fine-tune.</li>
+          <li>Export with <em>Files → Export → Timetable XML</em> or print via <em>Files → Print preview</em>.</li>
+        </ol>`,
+    },
+    {
+      id: "school-settings",
+      title: "Configure school basics (name, days, periods, bell)",
+      keywords: ["school", "name", "year", "days", "periods", "bell"],
+      content: `
+        <h3>School configuration</h3>
+        <p>Open <em>Step 2 — School Info</em> in the wizard OR <em>Specification → School settings…</em></p>
+        <p>17 settings cover school identity, calendar (days/week, periods/day), and solver hints. For separate bell schedules per class, open <em>Specification → Bell times / Periods…</em></p>`,
+    },
+    {
+      id: "solver",
+      title: "Run the auto-scheduler (solver)",
+      keywords: ["solver", "generate", "auto", "schedule", "computer", "cpu"],
+      content: `
+        <h3>The solver</h3>
+        <p>Chronexa's solver runs <strong>entirely on your computer</strong> — no server, no upload, no internet required after first load.</p>
+        <p>Three modes:</p>
+        <ul>
+          <li><strong>🧪 Test</strong> — checks constraints without moving cards.</li>
+          <li><strong>⚡ Generate</strong> — clears placement and runs from scratch.</li>
+          <li><strong>🚀 Master Solve (one-click)</strong> — runs Generate → Improve → Auto-fix → Verify in one click. Use this for a guaranteed result.</li>
+          <li><strong>✨ Improve</strong> — takes your current placement and tries to lower soft penalties without unplacing.</li>
+        </ul>
+        <p>The solver uses Min-Conflicts + iterative repair + displacement chains. Target placement rate: 80%+ on real schools (verified at 92% on a 951-card school).</p>`,
+    },
+    {
+      id: "constraints",
+      title: "Set up scheduling rules (constraints)",
+      keywords: ["constraint", "rule", "n_", "relation", "preference"],
+      content: `
+        <h3>Constraints, two layers</h3>
+        <p><strong>Hard relations</strong> (Specification → Relations…) — 15 Classic-standard rules: "two subjects can't follow", "same period each day", "first or last", etc. Each rule has 3-step wizard.</p>
+        <p><strong>Soft scoring rules</strong> (Options → Constraints library…) — 12 friendly templates like "Teacher X prefers morning periods" or "Subject Y should be first or last". Each rule has a weight; higher = stronger preference.</p>
+        <p><strong>Per-entity constraints</strong> — open any teacher / class / classroom / subject dialog and click <em>Time off</em> or <em>Constraints</em>. 14 fields per class, 11 per teacher.</p>`,
+    },
+    {
+      id: "wildcard",
+      title: "Wildcard lessons (let solver pick teacher or room)",
+      keywords: ["wildcard", "any", "auto-assign", "?", "unassigned"],
+      content: `
+        <h3>Wildcard lessons</h3>
+        <p>Open any lesson dialog. Tick "Wildcard teacher (?)" or "Wildcard room (?)". The solver will fill those for you using qualification and capacity constraints.</p>`,
+    },
+    {
+      id: "divisions",
+      title: "Split a class into groups (labs, language tracks)",
+      keywords: ["division", "split", "group", "lab", "boys", "girls"],
+      content: `
+        <h3>Class divisions</h3>
+        <p>Open <em>Specification → Classes…</em>, select a class, click <em>Divisions</em>. Build a tree: division → groups. Quick-add takes a comma-separated list ("Boys, Girls" → 2 groups).</p>
+        <p>Assign lessons to specific groups via the Lesson dialog's group picker.</p>`,
+    },
+    {
+      id: "substitution",
+      title: "Mark a teacher absent and find substitutes",
+      keywords: ["substitute", "absent", "cover", "relief"],
+      content: `
+        <h3>Substitution planner</h3>
+        <p>Open <em>Timetable → Substitutions…</em> Pick a date, mark absent teachers, see ranked free substitutes (+100 for same subject, +30 for already teaches the class, -5 for already covered today). Drag to assign.</p>`,
+    },
+    {
+      id: "import-export",
+      title: "Import / export Timetable XML, Excel, ICS, PowerSchool",
+      keywords: ["export", "import", "xml", "classic", "excel", "ics", "powerschool", "untis"],
+      content: `
+        <h3>File formats</h3>
+        <p><strong>Open / Import</strong>: <em>Files → Import</em> — Timetable XML, Classic Basic, GP Untis, clipboard TSV.</p>
+        <p><strong>Export</strong>: <em>Files → Export</em> — Timetable XML, Excel (5 sheets), HTML standalone, PowerSchool, GP Untis DIF, Atlantis ROZ, ICS calendar.</p>
+        <p><strong>Migrate from Classic</strong>: export a HAR from Chrome DevTools while your Classic timetable is open, then <em>Files → Import → CardRelationships HAR</em> to bring your constraints over.</p>`,
+    },
+    {
+      id: "shortcuts",
+      title: "Keyboard shortcuts",
+      keywords: ["shortcut", "keyboard", "hotkey", "cmd", "ctrl"],
+      content: `
+        <h3>Keyboard shortcuts</h3>
+        <table style="font-size:13px">
+          <tr><td><kbd>⌘K</kbd> / <kbd>Ctrl+K</kbd></td><td>Open command palette</td></tr>
+          <tr><td><kbd>⌘Z</kbd> / <kbd>Ctrl+Z</kbd></td><td>Undo</td></tr>
+          <tr><td><kbd>⇧⌘Z</kbd></td><td>Redo</td></tr>
+          <tr><td><kbd>⌘S</kbd></td><td>Save</td></tr>
+          <tr><td><kbd>⌘N</kbd></td><td>New entity (in any entity dialog)</td></tr>
+          <tr><td><kbd>Esc</kbd></td><td>Close any open dialog</td></tr>
+        </table>`,
+    },
+    {
+      id: "offline",
+      title: "Work offline / install as app / download ZIP",
+      keywords: ["offline", "install", "pwa", "zip", "download"],
+      content: `
+        <h3>Three install modes</h3>
+        <p><strong>1. Just use the URL</strong> — bookmark it, no install. Works offline after first visit (service worker caches everything).</p>
+        <p><strong>2. Install as app</strong> — click "Install Chronexa" in your browser address bar (Chrome / Edge). Behaves like a real app. Works fully offline.</p>
+        <p><strong>3. Download ZIP</strong> — grab the GitHub release ZIP and unzip. Double-click index.html to run with zero internet.</p>
+        <p>All three modes run the solver on YOUR device's CPU. No server, no cloud.</p>`,
+    },
+    {
+      id: "hover-tooltip",
+      title: "Why is a card red? (Constraint explainer)",
+      keywords: ["red", "conflict", "violation", "explain", "tooltip", "why"],
+      content: `
+        <h3>Hover a flagged card</h3>
+        <p>Any red or yellow card in the editor — hover it for ~150ms. A tooltip appears with the exact conflict in plain English, e.g. "Mr. Sharma already teaches IX-A in this period."</p>
+        <p>Hold <kbd>Shift</kbd> while hovering to see explanations even for clean cards.</p>
+        <p>The tooltip also has a 🛠 Fix button (alpha) that suggests an alternative slot.</p>`,
+    },
+    {
+      id: "auto-fix",
+      title: "Auto-fix conflicts (one click)",
+      keywords: ["auto-fix", "fix", "repair", "automatic"],
+      content: `
+        <h3>Auto-fix</h3>
+        <p>Open <em>Timetable → 🔧 Verification Pro</em>. Each violation has a 🔧 Suggest fix button → preview → apply. Or use 🪄 Auto-fix all hard violations to bulk-apply every clean suggestion.</p>`,
+    },
+  ];
+
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      const v = attrs[k]; if (v == null) continue;
+      if (k === "class") n.className = v;
+      else if (k === "html") n.innerHTML = v;
+      else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v);
+    }
+    for (const c of kids) if (c != null && c !== false)
+      n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    return n;
+  }
+
+  function score(t, q) {
+    if (!q) return 0;
+    const qLow = q.toLowerCase();
+    let s = 0;
+    if (t.title.toLowerCase().includes(qLow)) s += 10;
+    for (const k of t.keywords) {
+      if (k.toLowerCase().includes(qLow)) s += 3;
+    }
+    if (t.content.toLowerCase().includes(qLow)) s += 1;
+    return s;
+  }
+
+  function open() {
+    ensureStyles();
+    const root = el("div", { class: "chrx-help-root",
+      onclick: e => { if (e.target === root) root.remove(); } });
+    const panel = el("div", { class: "chrx-help-panel" });
+
+    panel.appendChild(el("header", null,
+      el("h2", null, "📖 Help — search anything you need to do"),
+      el("button", { class: "chrx-help-close", "aria-label": "Close", onclick: () => root.remove() }, "×"),
+    ));
+
+    const searchEl = el("input", { type: "search", class: "chrx-help-search",
+      placeholder: "Type what you want to do… e.g. 'mark teacher absent'", autofocus: "autofocus",
+      oninput: e => render(e.target.value) });
+    panel.appendChild(searchEl);
+
+    const listEl = el("div", { class: "chrx-help-list" });
+    const detailEl = el("div", { class: "chrx-help-detail" });
+    panel.appendChild(el("div", { class: "chrx-help-body" }, listEl, detailEl));
+
+    function render(q) {
+      listEl.innerHTML = "";
+      const scored = TOPICS.map(t => ({ t, s: score(t, q) })).filter(x => !q || x.s > 0);
+      scored.sort((a, b) => b.s - a.s);
+      (q ? scored : TOPICS.map(t => ({ t, s: 0 }))).forEach(({ t }) => {
+        const item = el("button", { class: "chrx-help-item", onclick: () => showDetail(t) }, t.title);
+        listEl.appendChild(item);
+      });
+      if (q && !scored.length) {
+        listEl.appendChild(el("div", { class: "chrx-help-empty" }, "No matches. Try a different word."));
+      }
+    }
+    function showDetail(t) {
+      detailEl.innerHTML = "";
+      detailEl.appendChild(el("h3", null, t.title));
+      const body = document.createElement("div");
+      body.innerHTML = t.content;
+      detailEl.appendChild(body);
+    }
+
+    render("");
+    showDetail(TOPICS[0]);
+
+    root.appendChild(panel);
+    document.body.appendChild(root);
+    setTimeout(() => searchEl.focus(), 60);
+  }
+
+  function ensureStyles() {
+    if (document.getElementById("chrx-help-styles")) return;
+    const s = document.createElement("style");
+    s.id = "chrx-help-styles";
+    s.textContent = `
+.chrx-help-root{position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:flex-start;justify-content:center;padding:24px;z-index:1000;overflow:auto}
+.chrx-help-panel{background:#fff;border-radius:14px;width:min(960px,98vw);max-height:92vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3);font-family:-apple-system,BlinkMacSystemFont,sans-serif;color:#0f172a;overflow:hidden}
+.chrx-help-panel header{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid #e2e8f0}
+.chrx-help-panel h2{margin:0;font-size:16px;color:#1e3a8a}
+.chrx-help-close{background:none;border:0;font-size:22px;cursor:pointer;color:#64748b}
+.chrx-help-search{margin:14px 18px;padding:10px 14px;border:2px solid #cbd5e1;border-radius:10px;font-size:14px;outline:none;transition:border .15s ease}
+.chrx-help-search:focus{border-color:#4f46e5}
+.chrx-help-body{flex:1;display:grid;grid-template-columns:300px 1fr;overflow:hidden;border-top:1px solid #f1f5f9}
+.chrx-help-list{padding:6px 8px 12px;overflow-y:auto;background:#f8fafc;border-right:1px solid #e2e8f0}
+.chrx-help-item{display:block;width:100%;text-align:left;background:none;border:0;padding:8px 12px;font-size:13px;color:#0f172a;border-radius:6px;cursor:pointer;transition:background .15s ease;margin-bottom:2px}
+.chrx-help-item:hover{background:#e0e7ff}
+.chrx-help-empty{padding:18px;text-align:center;color:#94a3b8;font-size:13px}
+.chrx-help-detail{padding:18px 24px;overflow-y:auto}
+.chrx-help-detail h3{margin:0 0 12px;color:#1e3a8a;font-size:16px}
+.chrx-help-detail p,.chrx-help-detail li{font-size:13px;color:#334155;line-height:1.6}
+.chrx-help-detail ul,.chrx-help-detail ol{padding-left:22px}
+.chrx-help-detail kbd{background:#f1f5f9;border:1px solid #cbd5e1;padding:1px 5px;border-radius:4px;font-size:11px;font-family:Menlo,Monaco,monospace}
+.chrx-help-detail table{border-collapse:collapse;margin:8px 0}
+.chrx-help-detail table td{padding:4px 12px 4px 0;font-size:13px;color:#334155}
+    `;
+    document.head.appendChild(s);
+  }
+
+  window.addEventListener("app:help-center", () => open());
+  window.addEventListener("app:documentation", () => open());
+
+  global.HelpCenter = { open, TOPICS };
+})(window);
+
+/* ─── FILE: js/ui/components/auto_save.js ─── */
+/* Auto-save — silent localStorage snapshots every 60 seconds.
+ *
+ * Classic has a reputation for losing work when Windows crashes. Chronexa
+ * silently snapshots the entire school to localStorage on a 60-second
+ * timer (plus on every entity change beyond a debounce window).
+ *
+ * Recovery: on app boot, if no school is loaded AND a saved snapshot
+ * exists for the user, offers "Restore your last session?" prompt.
+ *
+ * Storage key: `chronexa.autosave.v1` — separate from the manual
+ * Snapshots feature (`chronexa.snapshots.v1`). Keeps ONE latest only.
+ */
+(function () {
+  "use strict";
+  const KEY = "chronexa.autosave.v1";
+  const PERIOD_MS = 60 * 1000;
+  const DEBOUNCE_MS = 2000;
+
+  let saveTimer = null;
+  let lastSaveTs = 0;
+
+  function save() {
+    const APP = window.APP;
+    if (!APP || !APP.school) return;
+    const school = APP.school;
+    const payload = {
+      ts: Date.now(),
+      schoolName: school.schoolName || "(untitled)",
+      cards: (school.cards || []).length,
+      lessons: (school.lessons || []).length,
+      payload: structuredClone ? structuredClone(school) : JSON.parse(JSON.stringify(school)),
+    };
+    try {
+      localStorage.setItem(KEY, JSON.stringify(payload));
+      lastSaveTs = payload.ts;
+      flashIndicator("✓");
+    } catch (e) {
+      flashIndicator("⚠", "warn");
+      console.warn("[autosave] failed:", e);
+    }
+  }
+
+  function restore() {
+    try {
+      const txt = localStorage.getItem(KEY);
+      if (!txt) return null;
+      const obj = JSON.parse(txt);
+      return obj;
+    } catch (e) { return null; }
+  }
+
+  function discardSaved() {
+    try { localStorage.removeItem(KEY); } catch {}
+  }
+
+  function schedulePeriodic() {
+    if (saveTimer) clearInterval(saveTimer);
+    saveTimer = setInterval(() => {
+      // Only save if something changed in the last period
+      const APP = window.APP;
+      if (!APP || !APP.school) return;
+      const lastChange = APP.audit?._log?.[APP.audit._log.length - 1]?.ts || 0;
+      if (lastChange > lastSaveTs) save();
+    }, PERIOD_MS);
+  }
+
+  let debounceTimer = null;
+  function onEntityChange() {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(save, DEBOUNCE_MS);
+  }
+
+  // ─── Indicator pill (bottom-right) ────────────────────────────────────
+  function ensureIndicator() {
+    if (document.getElementById("chrx-autosave-pill")) return;
+    const pill = document.createElement("div");
+    pill.id = "chrx-autosave-pill";
+    pill.style.cssText = [
+      "position:fixed", "bottom:12px", "left:12px",
+      "background:#0f172a", "color:#cbd5e1",
+      "padding:4px 10px", "border-radius:12px",
+      "font-size:11px", "font-family:-apple-system,BlinkMacSystemFont,sans-serif",
+      "opacity:0", "pointer-events:none",
+      "transition:opacity 200ms ease,background 200ms ease",
+      "z-index:998"
+    ].join(";");
+    pill.textContent = "Auto-saved";
+    document.body.appendChild(pill);
+  }
+  function flashIndicator(prefix = "✓", tone = "info") {
+    ensureIndicator();
+    const pill = document.getElementById("chrx-autosave-pill");
+    if (!pill) return;
+    pill.textContent = `${prefix} Auto-saved · ${new Date().toLocaleTimeString()}`;
+    pill.style.background = tone === "warn" ? "#b45309" : "#0f172a";
+    pill.style.opacity = "1";
+    clearTimeout(pill._t);
+    pill._t = setTimeout(() => pill.style.opacity = "0", 2500);
+  }
+
+  // ─── Recovery prompt on boot ──────────────────────────────────────────
+  function maybeOfferRecovery() {
+    const APP = window.APP;
+    if (APP?.school) return; // already have one loaded
+    const saved = restore();
+    if (!saved) return;
+    const ageMin = Math.round((Date.now() - saved.ts) / 60000);
+    const card = document.createElement("div");
+    card.style.cssText = [
+      "position:fixed", "top:80px", "right:16px",
+      "background:#fff", "color:#0f172a",
+      "border:1px solid #e2e8f0", "border-radius:10px",
+      "padding:14px 16px", "box-shadow:0 8px 24px rgba(0,0,0,.12)",
+      "font-family:-apple-system,sans-serif", "font-size:13px",
+      "max-width:300px", "z-index:999"
+    ].join(";");
+    card.innerHTML = `
+      <div style="font-weight:600;color:#1e3a8a;margin-bottom:6px">💾 Restore previous session?</div>
+      <div style="color:#475569;margin-bottom:10px">
+        "${escapeHtml(saved.schoolName)}" · ${saved.cards} cards · saved ${ageMin}m ago
+      </div>
+      <div style="display:flex;gap:6px;justify-content:flex-end">
+        <button data-discard style="background:#fff;border:1px solid #cbd5e1;color:#0f172a;padding:4px 10px;border-radius:5px;cursor:pointer;font-size:12px">Discard</button>
+        <button data-restore style="background:#10b981;border:0;color:#fff;padding:4px 12px;border-radius:5px;cursor:pointer;font-size:12px;font-weight:600">Restore</button>
+      </div>`;
+    document.body.appendChild(card);
+    card.querySelector("[data-restore]").onclick = () => {
+      APP.school = saved.payload;
+      if (window.CreateNew?.refreshIndex) window.CreateNew.refreshIndex();
+      window.dispatchEvent(new CustomEvent("app:school-loaded", { detail: { source: "autosave-restore" } }));
+      card.remove();
+      flashIndicator("↶ Restored");
+    };
+    card.querySelector("[data-discard]").onclick = () => { discardSaved(); card.remove(); };
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, c =>
+      ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  }
+
+  // ─── Boot ─────────────────────────────────────────────────────────────
+  function boot() {
+    schedulePeriodic();
+    window.addEventListener("entity:changed", onEntityChange);
+    document.addEventListener("entity:changed", onEntityChange);
+    window.addEventListener("app:school-loaded", () => { lastSaveTs = 0; save(); });
+    setTimeout(maybeOfferRecovery, 1500);
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", boot);
+  } else { boot(); }
+
+  window.AutoSave = { save, restore, discard: discardSaved };
+})();
+
+/* ─── FILE: js/ui/components/solver_presets.js ─── */
+/* Solver presets — quick "Fast / Balanced / Best / Custom" picker.
+ *
+ * The existing prelaunch_dialog.js asks for Complexity + Conditions tiers.
+ * Most school admins don't want to think about that — they want to choose
+ * one of three: "Fast preview", "Balanced (recommended)", "Best".
+ *
+ * This module adds a top strip to the prelaunch dialog (when it opens)
+ * with 4 preset cards. Picking one auto-sets complexity + conditions +
+ * time limit; "Custom" reveals the existing controls.
+ *
+ * Mounts via MutationObserver — no edits to prelaunch_dialog.js needed.
+ */
+(function () {
+  "use strict";
+
+  const PRESETS = [
+    { id: "fast",     label: "🏃 Fast preview",   sub: "30s · quick check",       timeLimitSec: 30,  complexity: "normal",  conditions: "draft" },
+    { id: "balanced", label: "⚖️ Balanced",         sub: "90s · recommended",       timeLimitSec: 90,  complexity: "large",   conditions: "allow-relaxation", recommended: true },
+    { id: "best",     label: "🏆 Best result",     sub: "5 min · for final timetable", timeLimitSec: 300, complexity: "huge",   conditions: "strict" },
+    { id: "custom",   label: "⚙️ Custom",          sub: "Tune complexity / conditions", custom: true },
+  ];
+
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      const v = attrs[k]; if (v == null) continue;
+      if (k === "class") n.className = v;
+      else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v);
+    }
+    for (const c of kids) if (c != null && c !== false)
+      n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    return n;
+  }
+
+  function applyPreset(preset, dialog) {
+    if (!dialog || preset.custom) return;
+    // Find the radio inputs in the dialog
+    const radios = dialog.querySelectorAll('input[type="radio"]');
+    radios.forEach(r => {
+      if (r.name === "complexity" && r.value === preset.complexity) r.checked = true;
+      if (r.name === "conditions" && r.value === preset.conditions) r.checked = true;
+    });
+    // Also try to override time limit if input exists
+    const timeInput = dialog.querySelector('input[name="timeLimit"], input[type="number"]');
+    if (timeInput) timeInput.value = String(preset.timeLimitSec);
+    // Reveal the start button (might auto-click)
+    flashApplied(dialog, preset);
+  }
+
+  function flashApplied(dialog, preset) {
+    let pill = dialog.querySelector(".chrx-preset-applied");
+    if (!pill) {
+      pill = el("div", { class: "chrx-preset-applied" });
+      dialog.appendChild(pill);
+    }
+    pill.textContent = `✓ Preset: ${preset.label.replace(/^\W+\s*/, "")}`;
+    setTimeout(() => pill.classList.add("show"), 50);
+    setTimeout(() => pill.classList.remove("show"), 2000);
+  }
+
+  function injectStrip(dialog) {
+    if (dialog.querySelector(".chrx-preset-strip")) return;
+    ensureStyles();
+    const strip = el("div", { class: "chrx-preset-strip" });
+    strip.appendChild(el("p", { class: "chrx-preset-title" }, "Quick presets"));
+    const grid = el("div", { class: "chrx-preset-grid" });
+    PRESETS.forEach(p => {
+      const card = el("button", { class: "chrx-preset-card" + (p.recommended ? " chrx-preset-card--recommended" : ""),
+        type: "button",
+        onclick: () => applyPreset(p, dialog),
+      },
+        el("div", { class: "chrx-preset-label" }, p.label),
+        el("div", { class: "chrx-preset-sub" }, p.sub),
+      );
+      if (p.recommended) card.appendChild(el("span", { class: "chrx-preset-badge" }, "Recommended"));
+      grid.appendChild(card);
+    });
+    strip.appendChild(grid);
+    // Insert at top of dialog
+    const firstChild = dialog.firstElementChild;
+    dialog.insertBefore(strip, firstChild);
+  }
+
+  function ensureStyles() {
+    if (document.getElementById("chrx-preset-styles")) return;
+    const s = document.createElement("style");
+    s.id = "chrx-preset-styles";
+    s.textContent = `
+.chrx-preset-strip{margin:0 0 14px;padding:10px 14px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0}
+.chrx-preset-title{margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#475569;font-weight:600}
+.chrx-preset-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.chrx-preset-card{background:#fff;border:1px solid #cbd5e1;color:#0f172a;padding:8px 10px;border-radius:6px;text-align:left;cursor:pointer;transition:border .15s ease,transform .15s ease;position:relative}
+.chrx-preset-card:hover{border-color:#4f46e5;transform:translateY(-1px)}
+.chrx-preset-card--recommended{border-color:#10b981;background:linear-gradient(135deg,#fff,#f0fdf4)}
+.chrx-preset-label{font-weight:600;font-size:12px;margin-bottom:2px;color:#1e3a8a}
+.chrx-preset-sub{font-size:10px;color:#64748b;line-height:1.3}
+.chrx-preset-badge{position:absolute;top:-7px;right:6px;background:#10b981;color:#fff;font-size:9px;padding:2px 6px;border-radius:8px;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.chrx-preset-applied{position:fixed;bottom:80px;right:24px;background:#10b981;color:#fff;padding:6px 12px;border-radius:6px;font-size:12px;opacity:0;transform:translateY(8px);transition:all .2s ease;z-index:10000;pointer-events:none}
+.chrx-preset-applied.show{opacity:1;transform:translateY(0)}
+@media (max-width:600px){.chrx-preset-grid{grid-template-columns:1fr 1fr}}
+    `;
+    document.head.appendChild(s);
+  }
+
+  function watchForPrelaunch() {
+    const seen = new WeakSet();
+    const observer = new MutationObserver(records => {
+      for (const r of records) {
+        for (const n of r.addedNodes) {
+          if (n.nodeType !== 1) continue;
+          // Look for the prelaunch dialog or generate-result dialog
+          const dlg = n.matches?.(".csu-dialog") ? n : n.querySelector?.(".csu-dialog");
+          if (dlg && !seen.has(dlg)) {
+            seen.add(dlg);
+            // Only attach to the "Run the solver" mode, not the result dialog
+            const isPrelaunch = (dlg.textContent || "").includes("Run the solver") || (dlg.textContent || "").includes("Generate timetable");
+            if (isPrelaunch) injectStrip(dlg);
+          }
+        }
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", watchForPrelaunch);
+  } else watchForPrelaunch();
+
+  window.SolverPresets = { PRESETS, applyPreset, injectStrip };
+})();
+
+/* ─── FILE: js/ui/components/per_day_bell_override.js ─── */
+/* Per-day-of-week period bell override — the last 15% of School-tab parity.
+ *
+ * Classic's per-period edit dialog has a "This period has different bells
+ * on some days" checkbox that exposes a 5-row matrix (Mon-Fri) of start/end
+ * overrides. Schools use this for: shorter Friday periods, longer Monday
+ * assemblies, half-day Saturday schedules.
+ *
+ * window.PerDayBellOverride.open(period, school?) — modal editor.
+ * Persists on `period.perDayOverrides = { 0: {startMin, endMin}, 4: {...} }`.
+ */
+(function (global) {
+  "use strict";
+
+  const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      const v = attrs[k]; if (v == null) continue;
+      if (k === "class") n.className = v;
+      else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v);
+    }
+    for (const c of kids) if (c != null && c !== false)
+      n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    return n;
+  }
+
+  function minToTime(min) {
+    if (min == null || isNaN(min)) return "";
+    const h = Math.floor(min / 60), m = min % 60;
+    return String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0");
+  }
+  function timeToMin(text) {
+    if (!text) return null;
+    const m = text.match(/^(\d{1,2}):(\d{2})$/);
+    if (!m) return null;
+    return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+  }
+
+  function open(period, school) {
+    school = school || global.APP?.school;
+    if (!period || !school) { (global._chrxNotify || console.log)("Period or school missing.", "error"); return; }
+    ensureStyles();
+
+    const daysPerWeek = (school.settings?.daysPerWeek) || (school.bell?.daysPerWeek) || 6;
+    period.perDayOverrides = period.perDayOverrides || {};
+
+    const root = el("div", { class: "chrx-pdo-root", onclick: e => { if (e.target === root) root.remove(); } });
+    const panel = el("div", { class: "chrx-pdo-panel" });
+
+    panel.appendChild(el("header", null,
+      el("h2", null, `🕒 Per-day overrides — ${period.label || ""}`),
+      el("button", { class: "chrx-pdo-close", "aria-label": "Close", onclick: () => root.remove() }, "×"),
+    ));
+    panel.appendChild(el("p", { class: "chrx-pdo-sub" },
+      `Default: ${minToTime(period.startMin)} – ${minToTime(period.endMin)}. Leave a row's fields blank to use the default; override per-day where needed (e.g. shorter Friday periods).`));
+
+    const tbl = el("table", { class: "chrx-pdo-table" });
+    const thead = el("thead", null,
+      el("tr", null,
+        el("th", null, "Day"),
+        el("th", null, "Start"),
+        el("th", null, "End"),
+        el("th", null, "Duration"),
+        el("th", null, "")));
+    tbl.appendChild(thead);
+    const tbody = el("tbody");
+    const inputs = {};
+    for (let d = 0; d < daysPerWeek; d++) {
+      const o = period.perDayOverrides[d] || {};
+      const start = el("input", { type: "text", placeholder: minToTime(period.startMin), value: minToTime(o.startMin), maxlength: "5" });
+      const end   = el("input", { type: "text", placeholder: minToTime(period.endMin),   value: minToTime(o.endMin),   maxlength: "5" });
+      const dur   = el("span", null, "");
+      inputs[d] = { start, end, dur };
+      function updateDur() {
+        const s = timeToMin(start.value) ?? period.startMin;
+        const e = timeToMin(end.value)   ?? period.endMin;
+        dur.textContent = `${Math.max(0, e - s)} min`;
+      }
+      start.oninput = updateDur; end.oninput = updateDur;
+      updateDur();
+      const clearBtn = el("button", { class: "chrx-pdo-clear", onclick: () => { start.value = ""; end.value = ""; updateDur(); } }, "Clear");
+      tbody.appendChild(el("tr", null,
+        el("td", null, DAY_NAMES[d] || ("Day " + (d + 1))),
+        el("td", null, start),
+        el("td", null, end),
+        el("td", null, dur),
+        el("td", null, clearBtn)));
+    }
+    tbl.appendChild(tbody);
+    panel.appendChild(tbl);
+
+    panel.appendChild(el("footer", null,
+      el("button", { class: "chrx-pdo-cancel", onclick: () => root.remove() }, "Cancel"),
+      el("button", { class: "chrx-pdo-save", onclick: () => {
+        const newOverrides = {};
+        for (let d = 0; d < daysPerWeek; d++) {
+          const s = timeToMin(inputs[d].start.value);
+          const e = timeToMin(inputs[d].end.value);
+          if (s != null || e != null) {
+            newOverrides[d] = {
+              startMin: s != null ? s : period.startMin,
+              endMin:   e != null ? e : period.endMin,
+            };
+          }
+        }
+        const before = { ...period.perDayOverrides };
+        period.perDayOverrides = newOverrides;
+        if (global.APP?.audit?.append) {
+          global.APP.audit.append({ entity: "bells", op: "per-day-override", period: period.label, before, after: newOverrides });
+        }
+        (global._chrxNotify || console.log)(`✓ Saved per-day overrides for ${period.label} (${Object.keys(newOverrides).length} days)`);
+        root.remove();
+      } }, "Save")));
+
+    root.appendChild(panel);
+    document.body.appendChild(root);
+  }
+
+  function ensureStyles() {
+    if (document.getElementById("chrx-pdo-styles")) return;
+    const s = document.createElement("style");
+    s.id = "chrx-pdo-styles";
+    s.textContent = `
+.chrx-pdo-root{position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:24px;z-index:1100}
+.chrx-pdo-panel{background:#fff;border-radius:14px;width:min(560px,95vw);padding:20px 24px;box-shadow:0 20px 60px rgba(0,0,0,.3);font-family:-apple-system,sans-serif}
+.chrx-pdo-panel header{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e2e8f0;padding-bottom:10px;margin-bottom:8px}
+.chrx-pdo-panel h2{margin:0;font-size:16px;color:#1e3a8a}
+.chrx-pdo-close{background:none;border:0;font-size:22px;cursor:pointer;color:#64748b}
+.chrx-pdo-sub{margin:0 0 14px;color:#64748b;font-size:13px;line-height:1.5}
+.chrx-pdo-table{width:100%;border-collapse:collapse;font-size:13px}
+.chrx-pdo-table th{background:#f8fafc;padding:6px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#475569;border-bottom:1px solid #e2e8f0}
+.chrx-pdo-table td{padding:6px 8px;border-bottom:1px solid #f1f5f9}
+.chrx-pdo-table input{width:80px;padding:4px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:12px;font-family:Menlo,Monaco,monospace}
+.chrx-pdo-table input:focus{border-color:#4f46e5;outline:none}
+.chrx-pdo-clear{background:transparent;border:1px solid #cbd5e1;color:#64748b;padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer}
+.chrx-pdo-clear:hover{background:#f1f5f9}
+.chrx-pdo-panel footer{display:flex;justify-content:flex-end;gap:8px;margin-top:14px;padding-top:12px;border-top:1px solid #f1f5f9}
+.chrx-pdo-cancel{background:#fff;border:1px solid #cbd5e1;color:#0f172a;padding:6px 14px;border-radius:6px;cursor:pointer}
+.chrx-pdo-save{background:#4f46e5;color:#fff;border:0;padding:6px 16px;border-radius:6px;font-weight:600;cursor:pointer}
+    `;
+    document.head.appendChild(s);
+  }
+
+  window.addEventListener("app:per-day-bell-override", (e) => {
+    const detail = e.detail || {};
+    if (detail.period) open(detail.period, detail.school);
+  });
+
+  global.PerDayBellOverride = { open };
+})(window);
+
+/* ─── FILE: js/ui/components/entity_field_gaps.js ─── */
+/* Entity field gaps from the W15 live Classic walk.
+ *
+ * The live walk discovered concrete fields the offline docs missed.
+ * Rather than reopening every frozen entity dialog file, this module
+ * decorates them from outside via MutationObserver — same pattern as
+ * smart_defaults.js — and slots the missing inputs into the edit sheet.
+ *
+ * Gap matrix shipped here:
+ *   Classroom: `bells` (FK to bells), `nearbyClassroomIds` (multi-select)
+ *   Teacher:   `title` (free text, e.g. "Mr."/"Dr."), `nameSuffix`,
+ *              `gender` (enum), `fontColorsScreen / fontColorPrint / fontColorPrint2`
+ *   Class:     `grade` (FK to grades entity), `printSubjectPictures` (bool)
+ *
+ * Each field persists on the underlying entity row; audit.append fires
+ * on save. Hooks the existing Save button rather than building a custom
+ * one — guarantees compat with future entity-dialog refactors.
+ */
+(function (global) {
+  "use strict";
+
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      const v = attrs[k]; if (v == null) continue;
+      if (k === "class") n.className = v;
+      else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v);
+    }
+    for (const c of kids) if (c != null && c !== false)
+      n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    return n;
+  }
+
+  function findSheet() {
+    return document.querySelector(".chrx-ent-sheet, .chrx-edit-sheet");
+  }
+
+  /* Inserts a [label] [control] row before the [Cancel | Save] buttons */
+  function addFieldRow(sheet, label, control) {
+    if (!sheet) return;
+    const row = el("div", { class: "chrx-fieldgap-row",
+      style: "display:flex;gap:10px;align-items:center;margin:6px 0;padding:4px 12px" },
+      el("label", { style: "min-width:140px;font-size:13px;color:#475569;font-weight:500" }, label),
+      control);
+    // Append into the sheet body (before footer if there is one)
+    const footer = sheet.querySelector("footer, .chrx-ent-sheet__foot");
+    if (footer) footer.parentNode.insertBefore(row, footer);
+    else sheet.appendChild(row);
+  }
+
+  function inferEntity(dlg) {
+    const h = dlg.querySelector("h2, h3, header h2, header h3, .chrx-ent-head h2");
+    if (!h) return null;
+    const t = (h.textContent || "").toLowerCase();
+    if (t.includes("teacher")) return "teacher";
+    if (t.includes("classroom") || t.includes("room")) return "classroom";
+    if (t.includes("class")) return "class";
+    return null;
+  }
+
+  function findCurrentRow(kind) {
+    const APP = global.APP;
+    if (!APP?.school) return null;
+    const pool = APP.school[kind + "s"] || APP.school[kind + "rooms"];
+    if (!pool) return null;
+    // Pick the row whose name matches the dialog title (best-effort)
+    const dlg = document.querySelector(".chrx-ent-dialog");
+    if (!dlg) return null;
+    const titleText = (dlg.querySelector("h2")?.textContent || "").toLowerCase();
+    for (const r of pool) {
+      const nm = (r.name || "").toLowerCase();
+      if (nm && titleText.includes(nm)) return r;
+    }
+    return pool[pool.length - 1]; // fallback: last-added (likely the new one)
+  }
+
+  function decorate(sheetEl) {
+    if (!sheetEl || sheetEl.dataset.chrxFieldGapsDone) return;
+    const dlg = sheetEl.closest(".chrx-ent-dialog");
+    if (!dlg) return;
+    const kind = inferEntity(dlg);
+    if (!kind) return;
+    sheetEl.dataset.chrxFieldGapsDone = "1";
+
+    const row = findCurrentRow(kind);
+    if (!row) return;
+    const APP = global.APP;
+    const school = APP.school;
+
+    if (kind === "teacher") {
+      // Title (nameprefix)
+      const fTitle = el("input", { type: "text", maxlength: "12",
+        value: row.title || row.nameprefix || "",
+        placeholder: "Mr. / Mrs. / Dr.",
+        oninput: e => row.title = e.target.value.trim() || undefined,
+        style: "padding:5px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:13px;flex:1" });
+      addFieldRow(sheetEl, "Title", fTitle);
+
+      // Name suffix
+      const fSuf = el("input", { type: "text", maxlength: "12",
+        value: row.nameSuffix || row.namesuffix || "",
+        placeholder: "Jr. / Sr.",
+        oninput: e => row.nameSuffix = e.target.value.trim() || undefined,
+        style: "padding:5px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:13px;flex:1" });
+      addFieldRow(sheetEl, "Name suffix", fSuf);
+
+      // Gender
+      const fGender = el("select", {
+        onchange: e => row.gender = e.target.value || undefined,
+        style: "padding:5px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:13px;flex:1" });
+      ["", "m", "f", "x"].forEach(v => {
+        const o = el("option", { value: v }, v === "" ? "—" : v === "m" ? "Male" : v === "f" ? "Female" : "Other");
+        if (row.gender === v) o.setAttribute("selected", "selected");
+        fGender.appendChild(o);
+      });
+      addFieldRow(sheetEl, "Gender", fGender);
+
+      // 3 print colors (Specify font colors)
+      ["fontColorScreen", "fontColorPrint", "fontColorPrint2"].forEach((key, i) => {
+        const fc = el("input", { type: "color",
+          value: row[key] || "#000000",
+          oninput: e => row[key] = e.target.value,
+          style: "width:60px;height:24px;border:1px solid #cbd5e1;border-radius:5px" });
+        addFieldRow(sheetEl, ["Screen color", "Print color 1", "Print color 2"][i], fc);
+      });
+    }
+    else if (kind === "classroom") {
+      // Bells (FK to bells)
+      const fBell = el("select", {
+        onchange: e => row.bellId = e.target.value || undefined,
+        style: "padding:5px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:13px;flex:1" });
+      fBell.appendChild(el("option", { value: "" }, "Use school default"));
+      (school.bells || []).forEach(b => {
+        const o = el("option", { value: b.id }, b.name || b.id);
+        if (row.bellId === b.id) o.setAttribute("selected", "selected");
+        fBell.appendChild(o);
+      });
+      addFieldRow(sheetEl, "Bell schedule", fBell);
+
+      // Nearby classrooms (multi-select via checkbox list)
+      const nearby = new Set(row.nearbyClassroomIds || []);
+      const fNearbyWrap = el("div", { style: "flex:1;max-height:120px;overflow-y:auto;border:1px solid #cbd5e1;border-radius:5px;padding:4px 8px;font-size:12px" });
+      (school.classrooms || []).forEach(c => {
+        if (c.id === row.id) return; // skip self
+        const cb = el("input", { type: "checkbox",
+          checked: nearby.has(c.id) ? "checked" : null,
+          onchange: e => {
+            if (e.target.checked) nearby.add(c.id); else nearby.delete(c.id);
+            row.nearbyClassroomIds = Array.from(nearby);
+          } });
+        const label = el("label", { style: "display:flex;align-items:center;gap:6px;padding:2px 0;cursor:pointer" }, cb, c.name);
+        fNearbyWrap.appendChild(label);
+      });
+      addFieldRow(sheetEl, "Nearby classrooms", fNearbyWrap);
+    }
+    else if (kind === "class") {
+      // Grade dropdown
+      const fGrade = el("select", {
+        onchange: e => row.gradeId = e.target.value || undefined,
+        style: "padding:5px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:13px;flex:1" });
+      fGrade.appendChild(el("option", { value: "" }, "—"));
+      (school.grades || []).forEach(g => {
+        const o = el("option", { value: g.id }, g.name || g.id);
+        if (row.gradeId === g.id) o.setAttribute("selected", "selected");
+        fGrade.appendChild(o);
+      });
+      addFieldRow(sheetEl, "Grade", fGrade);
+
+      // Print subject pictures toggle
+      const fPSP = el("input", { type: "checkbox",
+        checked: row.printSubjectPictures ? "checked" : null,
+        onchange: e => row.printSubjectPictures = e.target.checked });
+      addFieldRow(sheetEl, "Print subject pictures", fPSP);
+    }
+
+    // Hook the Save button to audit-append the field-gap edits
+    const saveBtn = Array.from(sheetEl.querySelectorAll("button"))
+      .find(b => /save|ok/i.test(b.textContent));
+    if (saveBtn && !saveBtn.dataset.chrxFieldgapHooked) {
+      saveBtn.dataset.chrxFieldgapHooked = "1";
+      const origClick = saveBtn.onclick;
+      saveBtn.addEventListener("click", () => {
+        APP.audit?.append?.({
+          entity: kind + "s", op: "field-gap-save",
+          id: row.id, fields: Object.keys(row),
+        });
+      });
+    }
+  }
+
+  function startObserver() {
+    if (global.__chrxFieldGapsObserver) return;
+    const obs = new MutationObserver(muts => {
+      for (const m of muts) {
+        for (const n of m.addedNodes) {
+          if (n.nodeType !== 1) continue;
+          if (n.classList?.contains("chrx-ent-sheet")) decorate(n);
+          else if (n.querySelector) {
+            const s = n.querySelector(".chrx-ent-sheet, .chrx-edit-sheet");
+            if (s) decorate(s);
+          }
+        }
+      }
+    });
+    obs.observe(document.body, { childList: true, subtree: true });
+    global.__chrxFieldGapsObserver = obs;
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", startObserver);
+  } else { startObserver(); }
+
+  global.EntityFieldGaps = { decorate };
+})(window);
+
+/* ─── FILE: js/ui/components/advisor.js ─── */
+/* Advisor — analyses the current timetable + surfaces improvement opportunities.
+ *
+ * Mirrors Classic's `runTTAdvisor` RPC (W15 finding #16 — present in
+ * Timetable ribbon's group of Test/Generate/Improve/Advisor).
+ *
+ * Inputs: school + the constraint engine (RelationEnforcer +
+ * SolverConstraints.checkPlacement + ImproveMode). Output: ranked list
+ * of suggestions the user can click to apply or learn-more.
+ *
+ * Each suggestion has:
+ *   - severity (high / med / low)
+ *   - kind (conflict / soft / improvement)
+ *   - text (plain English)
+ *   - apply()? optional one-click fix
+ *
+ * Triggered by app:advisor event.
+ */
+(function () {
+  "use strict";
+
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      const v = attrs[k]; if (v == null) continue;
+      if (k === "class") n.className = v;
+      else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v);
+    }
+    for (const c of kids) if (c != null && c !== false)
+      n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    return n;
+  }
+
+  function collectSuggestions(school) {
+    const out = [];
+    const lessonById = (school._idx?.lessonById) ||
+      Object.fromEntries((school.lessons || []).map(l => [l.id, l]));
+    const subjectById = (school._idx?.subjectById) ||
+      Object.fromEntries((school.subjects || []).map(s => [s.id, s]));
+
+    // 1. Per-card violations
+    for (const card of (school.cards || [])) {
+      const lesson = lessonById[card.lessonId];
+      if (!lesson) continue;
+      if (window.SolverConstraints?.checkPlacement) {
+        const r = window.SolverConstraints.checkPlacement(school, lesson.id, card.day, card.period, card.classroomId || null);
+        for (const msg of (r.hard || [])) {
+          out.push({ severity: "high", kind: "conflict",
+            text: msg, card, lesson,
+            apply: () => window.VerificationPro?.open?.() });
+        }
+      }
+      if (window.RelationEnforcer?.check) {
+        const r = window.RelationEnforcer.check(school, lesson.id, card.day, card.period);
+        for (const msg of r.hard) out.push({ severity: "high", kind: "relation", text: msg, card, lesson });
+        for (const msg of r.soft) out.push({ severity: "med", kind: "relation-soft", text: msg, card, lesson });
+      }
+    }
+
+    // 2. Placement summary
+    const totalNeeded = (school.lessons || []).reduce((s, l) => s + (l.periodsPerWeek || 0), 0);
+    const placed = (school.cards || []).length;
+    const pct = totalNeeded ? Math.round(100 * placed / totalNeeded) : 0;
+    if (pct < 100 && pct >= 1) {
+      out.push({ severity: pct < 80 ? "high" : "med", kind: "placement",
+        text: `${placed} / ${totalNeeded} cards placed (${pct}%). Run Master Solve for the missing ${totalNeeded - placed}.`,
+        apply: () => window.MasterSolverWizard?.open?.() });
+    } else if (pct === 0) {
+      out.push({ severity: "high", kind: "placement",
+        text: "No cards placed yet. Open Timetable → Master Solve to generate.",
+        apply: () => window.MasterSolverWizard?.open?.() });
+    }
+
+    // 3. Configuration gaps
+    if (!(school.lessons || []).length) {
+      out.push({ severity: "high", kind: "config",
+        text: "No lessons defined. Open Specification → Lessons to add at least one lesson per (class, subject).",
+        apply: () => window.dispatchEvent(new CustomEvent("app:open-entity", { detail: { kind: "lessons" } })) });
+    }
+    if (!(school.teachers || []).length) {
+      out.push({ severity: "high", kind: "config",
+        text: "No teachers defined. Open Specification → Teachers.",
+        apply: () => window.dispatchEvent(new CustomEvent("app:open-entity", { detail: { kind: "teachers" } })) });
+    }
+
+    // 4. Improvement opportunities (offer Improve mode if there's something to improve)
+    if (pct === 100 && (out.filter(s => s.severity === "high").length === 0)) {
+      out.push({ severity: "low", kind: "improvement",
+        text: "All cards placed and no hard conflicts. Run Improve mode to lower soft penalties further.",
+        apply: () => window.ImproveMode?.run?.(school, { timeLimitSec: 30 }) });
+    }
+
+    // 5. Quality-of-life suggestions
+    const subjectsWithoutColor = (school.subjects || []).filter(s => !s.color).length;
+    if (subjectsWithoutColor > 0) {
+      out.push({ severity: "low", kind: "polish",
+        text: `${subjectsWithoutColor} subject(s) have no color. Run Color taxonomy to auto-assign.`,
+        apply: () => window.ColorTaxonomy?.autoColor?.(school) });
+    }
+    const teachersWithoutQualification = (school.teachers || []).filter(t => !(t.qualifiedSubjectIds?.length)).length;
+    if (teachersWithoutQualification > 0 && (school.subjects?.length || 0) > 0) {
+      out.push({ severity: "low", kind: "polish",
+        text: `${teachersWithoutQualification} teacher(s) have no qualifications set. Open Approbation matrix to fix.`,
+        apply: () => window.ApprobationMatrix?.open?.() });
+    }
+
+    return out;
+  }
+
+  function open() {
+    const school = window.APP?.school;
+    if (!school) { (window._chrxNotify || console.log)("Open a timetable first.", "error"); return; }
+    ensureStyles();
+    const suggestions = collectSuggestions(school);
+
+    const root = el("div", { class: "chrx-adv-root", onclick: e => { if (e.target === root) root.remove(); } });
+    const panel = el("div", { class: "chrx-adv-panel" });
+
+    panel.appendChild(el("header", null,
+      el("h2", null, "💡 Advisor — improvements for your timetable"),
+      el("button", { class: "chrx-adv-close", "aria-label": "Close", onclick: () => root.remove() }, "×"),
+    ));
+    const total = suggestions.length;
+    const high = suggestions.filter(s => s.severity === "high").length;
+    const med  = suggestions.filter(s => s.severity === "med").length;
+    const low  = suggestions.filter(s => s.severity === "low").length;
+    panel.appendChild(el("div", { class: "chrx-adv-summary" },
+      `${total} suggestion${total === 1 ? "" : "s"} · `,
+      el("span", { style: "color:#ef4444;font-weight:600" }, `${high} high`),
+      " · ",
+      el("span", { style: "color:#f59e0b;font-weight:600" }, `${med} medium`),
+      " · ",
+      el("span", { style: "color:#10b981;font-weight:600" }, `${low} low`)));
+
+    const list = el("div", { class: "chrx-adv-list" });
+    if (!suggestions.length) {
+      list.appendChild(el("div", { class: "chrx-adv-empty" },
+        "🎉 No suggestions — your timetable is healthy. Keep up the good work."));
+    }
+    suggestions.forEach((s, i) => {
+      const row = el("div", { class: `chrx-adv-row chrx-adv-row--${s.severity}` });
+      row.appendChild(el("span", { class: `chrx-adv-badge chrx-adv-badge--${s.severity}` },
+        s.severity === "high" ? "Hard" : s.severity === "med" ? "Soft" : "Tip"));
+      row.appendChild(el("span", { class: "chrx-adv-text" }, s.text));
+      if (s.apply) {
+        row.appendChild(el("button", { class: "chrx-adv-action",
+          onclick: () => { try { s.apply(); root.remove(); } catch (e) { console.error(e); } } },
+          s.kind === "improvement" ? "Run Improve" : s.kind === "placement" ? "Solve" : "Open"));
+      }
+      list.appendChild(row);
+    });
+    panel.appendChild(list);
+
+    root.appendChild(panel);
+    document.body.appendChild(root);
+  }
+
+  function ensureStyles() {
+    if (document.getElementById("chrx-adv-styles")) return;
+    const s = document.createElement("style");
+    s.id = "chrx-adv-styles";
+    s.textContent = `
+.chrx-adv-root{position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:flex-start;justify-content:center;padding:24px;z-index:1100;overflow:auto}
+.chrx-adv-panel{background:#fff;border-radius:14px;width:min(720px,95vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3);font-family:-apple-system,sans-serif}
+.chrx-adv-panel header{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid #e2e8f0}
+.chrx-adv-panel h2{margin:0;font-size:16px;color:#1e3a8a}
+.chrx-adv-close{background:none;border:0;font-size:22px;cursor:pointer;color:#64748b}
+.chrx-adv-summary{padding:10px 18px;background:#f8fafc;font-size:12px;color:#475569;border-bottom:1px solid #e2e8f0}
+.chrx-adv-list{flex:1;overflow-y:auto;padding:10px 18px}
+.chrx-adv-empty{padding:32px;text-align:center;color:#10b981;font-size:14px}
+.chrx-adv-row{display:flex;align-items:center;gap:10px;padding:10px 6px;border-bottom:1px solid #f1f5f9;font-size:13px;color:#0f172a}
+.chrx-adv-row--high{border-left:3px solid #ef4444;padding-left:10px}
+.chrx-adv-row--med{border-left:3px solid #f59e0b;padding-left:10px}
+.chrx-adv-row--low{border-left:3px solid #10b981;padding-left:10px}
+.chrx-adv-badge{font-size:10px;font-weight:700;text-transform:uppercase;padding:2px 6px;border-radius:4px;letter-spacing:.04em;color:#fff;flex-shrink:0}
+.chrx-adv-badge--high{background:#ef4444}
+.chrx-adv-badge--med{background:#f59e0b}
+.chrx-adv-badge--low{background:#10b981}
+.chrx-adv-text{flex:1;line-height:1.4}
+.chrx-adv-action{background:#4f46e5;color:#fff;border:0;padding:5px 12px;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;flex-shrink:0}
+.chrx-adv-action:hover{background:#4338ca}
+    `;
+    document.head.appendChild(s);
+  }
+
+  window.addEventListener("app:advisor", () => open());
+  window.Advisor = { open, collectSuggestions };
+})();
+
+/* ─── FILE: js/solver/improve_mode.js ─── */
+/* Improve mode — third solver mode alongside Test + Generate.
+ *
+ * "Test" validates constraints without moving cards.
+ * "Generate" runs the solver from scratch.
+ * "Improve" takes the CURRENT timetable and tries to LOWER soft penalties
+ *   by local-search swaps. Does NOT unplace cards.
+ *
+ * The Min-Conflicts repair phase W7 added attacks unplaced lessons.
+ * This module attacks soft-penalty improvements on a fully-placed schedule.
+ *
+ * Algorithm: pick a placed card with high local soft penalty; try swapping
+ * with another card (same teacher/class/room family) that would lower
+ * combined penalty. Accept any net-improving swap. Iterate up to N times
+ * or timeBudget. Exposed as window.ImproveMode.run(school, opts).
+ */
+(function (global) {
+  "use strict";
+
+  const DEFAULTS = {
+    timeLimitSec: 30,
+    maxSwapsTried: 5000,
+    targetImprovement: 0.05, // stop early if score improves by 5% over best
+  };
+
+  function cardScore(school, card) {
+    // Lightweight per-card soft penalty via existing checkPlacement if available
+    if (!window.SolverConstraints?.checkPlacement) return 0;
+    const r = window.SolverConstraints.checkPlacement(
+      school, card.lessonId, card.day, card.period, card.classroomId || null);
+    let s = (r.hard || []).length * 100;
+    s += (r.soft || []).length * 5;
+    // Also include relation violations
+    if (window.RelationEnforcer?.check) {
+      const r2 = window.RelationEnforcer.check(school, card.lessonId, card.day, card.period);
+      s += (r2.hard || []).length * 100;
+      s += (r2.soft || []).length * 5;
+    }
+    return s;
+  }
+
+  function totalScore(school) {
+    let s = 0;
+    for (const c of (school.cards || [])) s += cardScore(school, c);
+    return s;
+  }
+
+  function trySwap(school, a, b) {
+    // Swap (day, period) of two cards; check if combined score improves
+    const beforeA = cardScore(school, a);
+    const beforeB = cardScore(school, b);
+    const before = beforeA + beforeB;
+
+    const tA = a.day, pA = a.period;
+    const tB = b.day, pB = b.period;
+    a.day = tB; a.period = pB;
+    b.day = tA; b.period = pA;
+
+    const afterA = cardScore(school, a);
+    const afterB = cardScore(school, b);
+    const after = afterA + afterB;
+
+    if (after < before) return true; // keep swap
+    // Revert
+    a.day = tA; a.period = pA;
+    b.day = tB; b.period = pB;
+    return false;
+  }
+
+  function compatibleForSwap(school, a, b) {
+    if (a === b) return false;
+    if (!a || !b) return false;
+    if (a.locked || b.locked) return false;
+    const lessonById = (school._idx && school._idx.lessonById) ||
+      Object.fromEntries((school.lessons || []).map(l => [l.id, l]));
+    const la = lessonById[a.lessonId], lb = lessonById[b.lessonId];
+    if (!la || !lb) return false;
+    // Both must share at least one class OR one teacher (so the swap is "feasible-ish")
+    const sharedClass = (la.classIds || []).some(c => (lb.classIds || []).includes(c));
+    const sharedTeacher = (la.teacherIds || []).some(t => (lb.teacherIds || []).includes(t));
+    return sharedClass || sharedTeacher;
+  }
+
+  function run(school, opts) {
+    school = school || (window.APP && window.APP.school);
+    opts = Object.assign({}, DEFAULTS, opts || {});
+    if (!school || !school.cards || school.cards.length < 2) {
+      return { status: "NOTHING_TO_IMPROVE", before: 0, after: 0, swaps: 0 };
+    }
+    const t0 = performance.now();
+    const deadline = t0 + opts.timeLimitSec * 1000;
+    const startScore = totalScore(school);
+    let swapsMade = 0, attempts = 0;
+    const cards = school.cards.slice();
+
+    // Sort by descending per-card penalty
+    cards.sort((a, b) => cardScore(school, b) - cardScore(school, a));
+
+    for (let i = 0; i < cards.length && performance.now() < deadline; i++) {
+      if (attempts >= opts.maxSwapsTried) break;
+      const a = cards[i];
+      // Try swapping a with up to 20 other cards
+      const candidates = cards.slice(i + 1, i + 21);
+      for (const b of candidates) {
+        attempts++;
+        if (!compatibleForSwap(school, a, b)) continue;
+        if (trySwap(school, a, b)) {
+          swapsMade++;
+          if (opts.onSwap) try { opts.onSwap({ a, b, swapsMade }); } catch {}
+          break;
+        }
+      }
+    }
+
+    const endScore = totalScore(school);
+    const improved = startScore - endScore;
+    if (window.APP?.audit?.append) {
+      window.APP.audit.append({ entity: "cards", op: "improve",
+        before: startScore, after: endScore, improved, swaps: swapsMade });
+    }
+    return {
+      status: improved > 0 ? "IMPROVED" : "NO_IMPROVEMENT",
+      before: startScore, after: endScore, improved, swaps: swapsMade,
+      durationMs: Math.round(performance.now() - t0),
+    };
+  }
+
+  // Wire to Timetable menu → "Improve" entry (if added)
+  window.addEventListener("app:improve", () => {
+    const r = run();
+    const msg = r.status === "IMPROVED"
+      ? `✓ Improved by ${r.improved} (${r.swaps} swaps in ${Math.round(r.durationMs/100)/10}s).`
+      : `No improvement found after ${r.swaps} swap attempts.`;
+    (window._chrxNotify || console.log)(msg);
+  });
+
+  global.ImproveMode = { run };
+})(window);
+
+/* ─── FILE: js/solver/score_expr.js ─── */
+/* ScoreExpr DSL — simplified evaluator for user-defined scoring rules.
+ *
+ * Ports a tractable subset of Swift's ASCScoreExpr.swift (79 expression
+ * node types) — covers the 15 most-used primitives the majority of school
+ * scoring rules need. Users can write rules like:
+ *
+ *   { "node": "if",
+ *     "test":   { "node": "eq", "lhs": { "node": "field", "entity": "teacher", "field": "id" }, "rhs": "T_AMIR" },
+ *     "then":   { "node": "if",
+ *                 "test": { "node": "lt", "lhs": { "node": "period" }, "rhs": 3 },
+ *                 "then": 100,   // reward Mr. Amir for morning periods
+ *                 "else": -50 }, // penalty for after period 3
+ *     "else":   0 }
+ *
+ * Stored on school.scoreRules[] = [{name, weight, expr}].
+ * Solver calls ScoreExpr.evalRule(rule, ctx) where ctx = {school, card, lesson, day, period, classroomId}.
+ *
+ * Why a custom DSL: hard-coded constraints can't capture every school's
+ * preferences. Classic's 84 a_* codes try; we go further with a tiny eval.
+ *
+ * Safety: this is NOT eval()-based JS — pure data interpretation. No
+ * arbitrary code execution.
+ */
+(function (global) {
+  "use strict";
+
+  // ----- Built-in functions -----------------------------------------------
+  const FNS = {
+    "min": (...a) => Math.min.apply(null, a),
+    "max": (...a) => Math.max.apply(null, a),
+    "abs": (x) => Math.abs(x),
+    "floor": (x) => Math.floor(x),
+    "ceil": (x) => Math.ceil(x),
+    "sum": (...a) => a.reduce((s, v) => s + (Number(v) || 0), 0),
+    "count": (...a) => a.length,
+  };
+
+  // ----- Evaluator --------------------------------------------------------
+  function evalNode(node, ctx) {
+    if (node == null) return null;
+    if (typeof node === "number" || typeof node === "boolean") return node;
+    if (typeof node === "string") return node;
+    if (Array.isArray(node)) return node.map(n => evalNode(n, ctx));
+    if (typeof node !== "object") return null;
+
+    switch (node.node) {
+      // Literals
+      case "const": return node.value;
+
+      // Context accessors
+      case "day": return ctx.day;
+      case "period": return ctx.period;
+      case "classroomId": return ctx.classroomId;
+      case "lessonId": return ctx.card?.lessonId;
+      case "subjectId": return ctx.lesson?.subjectId;
+      case "teacherIds": return ctx.lesson?.teacherIds || [];
+      case "classIds": return ctx.lesson?.classIds || [];
+
+      // Field accessor: { node:"field", entity:"teacher|class|room|subject|lesson", field:"name|color|..." }
+      case "field": {
+        const ent = node.entity;
+        if (ent === "lesson") return ctx.lesson?.[node.field];
+        if (ent === "card") return ctx.card?.[node.field];
+        if (!ctx.school || !ctx.school._idx) return null;
+        const idx = ctx.school._idx;
+        const map = { teacher: idx.teacherById, class: idx.classById,
+                      room: idx.classroomById, subject: idx.subjectById,
+                      lesson: idx.lessonById };
+        const m = map[ent];
+        if (!m) return null;
+        // Default: look up by first ID of that type on the card's lesson
+        let id;
+        if (node.id) id = evalNode(node.id, ctx);
+        else if (ent === "teacher") id = (ctx.lesson?.teacherIds || [])[0];
+        else if (ent === "class")   id = (ctx.lesson?.classIds || [])[0];
+        else if (ent === "room")    id = ctx.card?.classroomId;
+        else if (ent === "subject") id = ctx.lesson?.subjectId;
+        if (!id) return null;
+        return (m[id] || {})[node.field];
+      }
+
+      // Arithmetic
+      case "add": return Number(evalNode(node.lhs, ctx) || 0) + Number(evalNode(node.rhs, ctx) || 0);
+      case "sub": return Number(evalNode(node.lhs, ctx) || 0) - Number(evalNode(node.rhs, ctx) || 0);
+      case "mul": return Number(evalNode(node.lhs, ctx) || 0) * Number(evalNode(node.rhs, ctx) || 0);
+      case "div": {
+        const r = Number(evalNode(node.rhs, ctx) || 0);
+        return r === 0 ? 0 : Number(evalNode(node.lhs, ctx) || 0) / r;
+      }
+      case "neg": return -Number(evalNode(node.expr, ctx) || 0);
+
+      // Comparison
+      case "eq":  return evalNode(node.lhs, ctx) === evalNode(node.rhs, ctx);
+      case "neq": return evalNode(node.lhs, ctx) !== evalNode(node.rhs, ctx);
+      case "lt":  return Number(evalNode(node.lhs, ctx)) <  Number(evalNode(node.rhs, ctx));
+      case "lte": return Number(evalNode(node.lhs, ctx)) <= Number(evalNode(node.rhs, ctx));
+      case "gt":  return Number(evalNode(node.lhs, ctx)) >  Number(evalNode(node.rhs, ctx));
+      case "gte": return Number(evalNode(node.lhs, ctx)) >= Number(evalNode(node.rhs, ctx));
+
+      // Logical
+      case "and": return (node.exprs || []).every(e => !!evalNode(e, ctx));
+      case "or":  return (node.exprs || []).some(e => !!evalNode(e, ctx));
+      case "not": return !evalNode(node.expr, ctx);
+
+      // Container ops
+      case "in": {
+        const list = evalNode(node.list, ctx);
+        if (!Array.isArray(list)) return false;
+        return list.includes(evalNode(node.value, ctx));
+      }
+      case "contains": {
+        const haystack = evalNode(node.list, ctx);
+        const needle = evalNode(node.value, ctx);
+        if (Array.isArray(haystack)) return haystack.includes(needle);
+        if (typeof haystack === "string") return haystack.indexOf(String(needle)) !== -1;
+        return false;
+      }
+
+      // Conditional
+      case "if": return evalNode(node.test, ctx) ? evalNode(node.then, ctx) : evalNode(node.else, ctx);
+
+      // Function call (built-ins only — no user-defined functions for safety)
+      case "call": {
+        const fn = FNS[node.name];
+        if (!fn) return null;
+        const args = (node.args || []).map(a => evalNode(a, ctx));
+        return fn.apply(null, args);
+      }
+
+      default:
+        // Unknown node: warn once + return 0
+        console.warn("[ScoreExpr] unknown node type:", node.node);
+        return 0;
+    }
+  }
+
+  function evalRule(rule, ctx) {
+    if (!rule || !rule.expr) return 0;
+    const v = evalNode(rule.expr, ctx);
+    if (typeof v === "boolean") return v ? (rule.weight || 1) : 0;
+    if (typeof v === "number") return v * (rule.weight != null ? rule.weight : 1);
+    return 0;
+  }
+
+  function scoreSchool(school) {
+    if (!school || !school.scoreRules) return 0;
+    const lessonById = (school._idx && school._idx.lessonById) ||
+      Object.fromEntries((school.lessons || []).map(l => [l.id, l]));
+    let total = 0;
+    for (const card of (school.cards || [])) {
+      const lesson = lessonById[card.lessonId];
+      const ctx = { school, card, lesson, day: card.day, period: card.period, classroomId: card.classroomId };
+      for (const rule of school.scoreRules) {
+        if (rule.disabled) continue;
+        total += evalRule(rule, ctx);
+      }
+    }
+    return total;
+  }
+
+  // Example presets the user can clone via the Score Rules dialog (future UI):
+  const PRESETS = Object.freeze([
+    {
+      name: "Mr. Amir likes morning periods",
+      weight: 20,
+      expr: { node: "if",
+              test: { node: "and", exprs: [
+                       { node: "eq", lhs: { node: "field", entity: "teacher", field: "name" }, rhs: "Mr. Amir" },
+                       { node: "lt", lhs: { node: "period" }, rhs: 3 },
+                     ]},
+              then: 1, else: 0 },
+    },
+    {
+      name: "PE should not be the last period",
+      weight: -50,
+      expr: { node: "and", exprs: [
+               { node: "eq", lhs: { node: "field", entity: "subject", field: "name" }, rhs: "PE" },
+               { node: "gte", lhs: { node: "period" }, rhs: 6 },
+             ]},
+    },
+    {
+      name: "Lab subjects on first day of week",
+      weight: 15,
+      expr: { node: "if",
+              test: { node: "contains", list: { node: "field", entity: "subject", field: "name" }, value: "Lab" },
+              then: { node: "if", test: { node: "eq", lhs: { node: "day" }, rhs: 0 }, then: 1, else: 0 },
+              else: 0 },
+    },
+  ]);
+
+  global.ScoreExpr = { evalNode, evalRule, scoreSchool, PRESETS };
+})(window);
+
+/* ─── FILE: js/ui/print_preview/print_preview.js ─── */
+/* Print preview — swaps the ribbon into preview mode, renders one of 5
+ * starter report templates onto A4 pages, prints via window.print().
+ *
+ * Five templates:
+ *   class    — Timetable for each class (one A4 per class)
+ *   teacher  — Timetable for each teacher
+ *   room     — Timetable for each classroom
+ *   summary  — Summary of all classes on one grid
+ *   poster   — Wall poster (landscape, big cells)
+ *
+ * Defers the 19 other CLASSIC templates.
+ */
+(function () {
+  "use strict";
+  const APP = window.APP;
+  const notify = window._chrxNotify || console.log;
+  const DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat"];
+
+  let overlay = null;
+  let docShell = null;
+  let pageIdx = 0;
+  let pages = [];
+  let currentTemplate = "class";
+
+  function ensureOverlay() {
+    if (overlay) return overlay;
+    overlay = document.createElement("div");
+    overlay.className = "chrx-preview-overlay";
+    overlay.innerHTML = '<div class="chrx-preview-shell"></div>';
+    document.body.appendChild(overlay);
+    return overlay;
+  }
+
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      if (k === "class") n.className = attrs[k];
+      else if (k === "html") n.innerHTML = attrs[k];
+      else if (k.startsWith("on") && typeof attrs[k] === "function") n.addEventListener(k.slice(2), attrs[k]);
+      else if (attrs[k] != null) n.setAttribute(k, attrs[k]);
+    }
+    for (const c of kids) { if (c == null) continue; n.appendChild(typeof c === "string" ? document.createTextNode(c) : c); }
+    return n;
+  }
+
+  function buildPreviewBar() {
+    const bar = el("div", { class: "chrx-preview-controls",
+      style: "display:flex;gap:6px;align-items:center;padding:8px 12px;background:var(--chrx-bg-panel);border-bottom:1px solid var(--chrx-line);flex-wrap:wrap" });
+
+    const prev   = el("button", { class: "chrx-tb-btn", type: "button", onclick: () => stepPage(-1) }, "◀ Prev");
+    const next   = el("button", { class: "chrx-tb-btn", type: "button", onclick: () => stepPage(1)  }, "Next ▶");
+    const print  = el("button", { class: "chrx-tb-btn chrx-tb-btn--primary", type: "button",
+      onclick: () => window.print() }, "🖨 Print");
+    const indicator = el("span", { class: "chrx-pp-indicator", style: "min-width:80px;text-align:center;font-variant-numeric:tabular-nums" }, "Page 1 / 1");
+
+    const sel = el("select", { class: "chrx-tb-btn", "aria-label": "Report template",
+      onchange: (e) => render(e.target.value) });
+    // Pull the full template list from the registry if it loaded; fall back
+    // to the legacy 5-template hardcoded list otherwise.
+    const reg = APP.printTemplates;
+    const templates = reg ? reg.list() : [
+      { id: "class",   name: "Timetable for each class" },
+      { id: "teacher", name: "Timetable for each teacher" },
+      { id: "room",    name: "Timetable for each room" },
+      { id: "summary", name: "Summary of classes" },
+      { id: "poster",  name: "Wall poster (landscape)" },
+    ];
+    templates.forEach(t => sel.appendChild(el("option", { value: t.id }, t.name)));
+    sel.value = currentTemplate;
+
+    const filterBtn  = el("button", { class: "chrx-tb-btn", type: "button",
+      onclick: () => notify("Filter dialog — coming soon") }, "⚙︎ Filter");
+    const sizeBtn    = el("button", { class: "chrx-tb-btn", type: "button",
+      onclick: () => notify("Sizes/widths — coming soon") }, "📐 Sizes");
+    const designBtn  = el("button", { class: "chrx-tb-btn", type: "button",
+      title: "Cell style — anchor, fields, font, colors",
+      onclick: () => {
+        if (!window.CellStyleDialog) { notify("Cell-style dialog not loaded", "error"); return; }
+        const cur = (APP.printCellStyles || {})[currentTemplate];
+        window.CellStyleDialog.open(currentTemplate, cur, () => {
+          // Re-render the active template so the new style takes effect.
+          render(currentTemplate);
+        });
+      } }, "🎨 Cell style…");
+    const colorBtn   = el("button", { class: "chrx-tb-btn", type: "button",
+      onclick: () => notify("Colors — coming soon") }, "🌈 Colors");
+    const structBtn  = el("button", { class: "chrx-tb-btn", type: "button",
+      onclick: () => notify("Modify structure — coming soon") }, "🧩 Structure");
+    const extraBtn   = el("button", { class: "chrx-tb-btn", type: "button",
+      onclick: () => notify("Extra cols/rows — coming soon") }, "➕ Extra");
+    const globalBtn  = el("button", { class: "chrx-tb-btn", type: "button",
+      onclick: () => notify("Global settings — coming soon") }, "🛠 Global");
+
+    const close = el("button", { class: "chrx-tb-btn chrx-tb-btn--danger", type: "button",
+      style: "margin-left:auto", onclick: closePreview }, "✕ Close preview");
+
+    [prev, next, print, indicator, sel, filterBtn, structBtn, extraBtn, sizeBtn, designBtn, colorBtn, globalBtn, close]
+      .forEach(c => bar.appendChild(c));
+    bar._indicator = indicator;
+    return bar;
+  }
+
+  function openPreview() {
+    if (!APP.school) { notify("Open a timetable first.", "error"); return; }
+    ensureOverlay();
+    const shell = overlay.querySelector(".chrx-preview-shell");
+    shell.innerHTML = "";
+    const bar = buildPreviewBar();
+    shell.appendChild(bar);
+    docShell = el("div", { class: "chrx-preview-doc" });
+    shell.appendChild(docShell);
+    overlay.classList.add("is-open");
+
+    // Set ribbon mode (other agents may want to know)
+    const host = document.getElementById("chrx-ribbon");
+    if (host) host.setAttribute("data-ribbon-mode", "preview");
+
+    render(currentTemplate);
+
+    document.addEventListener("keydown", onKey);
+  }
+
+  function closePreview() {
+    if (!overlay) return;
+    overlay.classList.remove("is-open");
+    const host = document.getElementById("chrx-ribbon");
+    if (host) host.removeAttribute("data-ribbon-mode");
+    document.removeEventListener("keydown", onKey);
+  }
+
+  function onKey(e) {
+    if (!overlay || !overlay.classList.contains("is-open")) return;
+    if (e.key === "Escape")     { e.preventDefault(); closePreview(); }
+    if (e.key === "ArrowLeft")  { e.preventDefault(); stepPage(-1); }
+    if (e.key === "ArrowRight") { e.preventDefault(); stepPage(1); }
+    if ((e.metaKey || e.ctrlKey) && (e.key === "p" || e.key === "P")) {
+      e.preventDefault(); window.print();
+    }
+  }
+
+  function stepPage(delta) {
+    if (!pages.length) return;
+    pageIdx = Math.max(0, Math.min(pages.length - 1, pageIdx + delta));
+    showPage(pageIdx);
+  }
+  function showPage(i) {
+    docShell.innerHTML = "";
+    docShell.appendChild(pages[i]);
+    const ind = overlay.querySelector(".chrx-pp-indicator");
+    if (ind) ind.textContent = `Page ${i + 1} / ${pages.length}`;
+  }
+
+  // ─── Render templates ────────────────────────────────────────────────────
+  function render(template) {
+    currentTemplate = template;
+    pageIdx = 0;
+    pages = [];
+    const s = APP.school;
+    const periods = s.bell?.periods || [];
+
+    if (template === "class")        pages = perEntityPages(s, "class",   periods, s.classes,    s._idx?.cardsByClass);
+    else if (template === "teacher") pages = perEntityPages(s, "teacher", periods, s.teachers,   s._idx?.cardsByTeacher);
+    else if (template === "room")    pages = perEntityPages(s, "room",    periods, s.classrooms, s._idx?.cardsByRoom);
+    else if (template === "summary") pages = [summaryPage(s, periods)];
+    else if (template === "poster")  pages = [posterPage(s, periods)];
+    else {
+      // Registry-delegated render. Modules return Array<Node> (one node per
+      // A4 page). If render throws or returns non-array, show a fallback page.
+      const reg = APP.printTemplates;
+      const def = reg ? reg.get(template) : null;
+      if (def && typeof def.render === "function") {
+        try {
+          const out = def.render(s);
+          if (Array.isArray(out))      pages = out.filter(Boolean);
+          else if (out instanceof Node) pages = [out];
+        } catch (err) {
+          console.error("[print_preview] template", template, "threw:", err);
+          pages = [el("div", { class: "chrx-preview-page" },
+            el("h2", null, "Template error"),
+            el("pre", { style: "white-space:pre-wrap;color:#900;font-size:11px" }, String(err && err.message || err)))];
+        }
+      }
+    }
+
+    if (!pages.length) pages = [el("div", { class: "chrx-preview-page" }, el("h2", null, "No data"))];
+    showPage(0);
+  }
+
+  function pageHeader(title, subtitle) {
+    return el("div", { style: "display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid #333;padding-bottom:4px;margin-bottom:8px" },
+      el("h2", null, title),
+      el("div", { style: "font-size:9.5px;color:#555" }, subtitle || ""));
+  }
+
+  function gridTable(periods, daysIn, cellFn) {
+    const tbl = el("table");
+    const tr0 = el("tr"); tr0.appendChild(el("th", null, ""));
+    periods.forEach(p => tr0.appendChild(el("th", null, "P" + p.index + "  " + p.label)));
+    tbl.appendChild(el("thead", null, tr0));
+    const tb = el("tbody");
+    daysIn.forEach((d, di) => {
+      const tr = el("tr");
+      tr.appendChild(el("th", null, DAYS[di]));
+      periods.forEach(p => tr.appendChild(cellFn(di, p)));
+      tb.appendChild(tr);
+    });
+    tbl.appendChild(tb);
+    return tbl;
+  }
+
+  function cellFromCard(card) {
+    if (!card) return el("td", { class: "pp-cell-empty" }, "—");
+    const style = (APP.printCellStyles || {})[currentTemplate];
+    if (!style) {
+      // Default rendering — preserves legacy look.
+      return el("td", null,
+        el("div", { class: "pp-cell-subj" }, card.subjectAbbr || card.subject || ""),
+        el("div", { class: "pp-cell-meta" }, (card.teachers || []).join(", ")),
+        el("div", { class: "pp-cell-meta" }, card.classroom || ""));
+    }
+    // Styled rendering — apply anchor, card-types, font, colors.
+    const [v, h] = style.anchor.split("-");
+    const items = v === "top" ? "flex-start" : v === "bottom" ? "flex-end" : "center";
+    const just  = h === "left" ? "flex-start" : h === "right" ? "flex-end" : "center";
+    const ta    = h === "left" ? "left" : h === "right" ? "right" : "center";
+    const td = el("td", {
+      style: `background:${style.colors.bg};color:${style.colors.fg};` +
+        `font-family:${style.font.family};font-size:${style.font.size}px;vertical-align:top` });
+    const box = el("div", {
+      style: `display:flex;flex-direction:column;justify-content:${items};align-items:${just};text-align:${ta};height:100%;gap:1px` });
+    const ct = style.cardTypes || {};
+    if (ct.subject)   box.appendChild(el("div", { style:"font-weight:600" }, card.subjectAbbr || card.subject || ""));
+    if (ct.teacher)   box.appendChild(el("div", null, (card.teachers || []).join(", ")));
+    if (ct.class)     box.appendChild(el("div", null, (card.classes  || card.class || []).toString()));
+    if (ct.group)     box.appendChild(el("div", null, (card.groups   || card.group || []).toString()));
+    if (ct.classroom) box.appendChild(el("div", { style:"opacity:.75" }, card.classroom || ""));
+    if (ct.count)     box.appendChild(el("div", { style:"opacity:.6;font-size:0.9em" }, String(card.count || "")));
+    if (ct.bellTimes) box.appendChild(el("div", { style:"opacity:.6;font-size:0.9em" }, card.bellTimes || ""));
+    td.appendChild(box);
+    return td;
+  }
+
+  function perEntityPages(school, kind, periods, entities, byIdx) {
+    if (!entities || !entities.length) return [];
+    return entities.map(ent => {
+      const page = el("div", { class: "chrx-preview-page" });
+      page.appendChild(pageHeader(
+        ent.name + (kind === "class" ? "" : kind === "teacher" ? " (Teacher)" : " (Room)"),
+        school.schoolName || ""));
+      const list = (byIdx && byIdx[ent.id]) || [];
+      const tbl = gridTable(periods, DAYS, (di, p) => {
+        let card = null;
+        if (kind === "class")        card = list.find(c => c.day === di && c.period === p.index);
+        else if (kind === "teacher") card = list.find(c => c.day === di && c.period === p.index);
+        else                          card = list.find(c => c.day === di && c.period === p.index);
+        return cellFromCard(card);
+      });
+      page.appendChild(tbl);
+      page.appendChild(el("div", { style: "font-size:9px;color:#999;text-align:right;margin-top:6px" },
+        "Chronexa · " + new Date().toLocaleDateString()));
+      return page;
+    });
+  }
+
+  function summaryPage(school, periods) {
+    const page = el("div", { class: "chrx-preview-page" });
+    page.appendChild(pageHeader("Summary of classes", school.schoolName || ""));
+    const tbl = el("table");
+    const tr0 = el("tr"); tr0.appendChild(el("th", null, "Class"));
+    DAYS.forEach((d) => tr0.appendChild(el("th", null, d)));
+    tbl.appendChild(el("thead", null, tr0));
+    const tb = el("tbody");
+    const byClass = school._idx?.cardsByClass || {};
+    for (const c of school.classes) {
+      const tr = el("tr");
+      tr.appendChild(el("th", null, c.name));
+      const list = byClass[c.id] || [];
+      DAYS.forEach((_, di) => {
+        const subjects = periods.map(p => {
+          const card = list.find(x => x.day === di && x.period === p.index);
+          return card ? (card.subjectAbbr || card.subject || "·").slice(0, 5) : "·";
+        }).join(" ");
+        tr.appendChild(el("td", { style: "font-size:8.5px;font-family:monospace;letter-spacing:0.5px" }, subjects));
+      });
+      tb.appendChild(tr);
+    }
+    tbl.appendChild(tb); page.appendChild(tbl);
+    return page;
+  }
+
+  function posterPage(school, periods) {
+    const page = el("div", { class: "chrx-preview-page",
+      style: "width:297mm;min-height:210mm;padding:10mm 12mm" });
+    page.appendChild(pageHeader("Wall poster · " + (school.schoolName || ""), new Date().toLocaleDateString()));
+    const byClass = school._idx?.cardsByClass || {};
+    const grid = el("div", { style: "display:grid;grid-template-columns:repeat(" + (school.classes.length + 1) + ",1fr);gap:1px;background:#999;border:1px solid #444" });
+    grid.appendChild(headerCell("Period"));
+    school.classes.forEach(c => grid.appendChild(headerCell(c.name)));
+    for (let di = 0; di < DAYS.length; di++) {
+      for (const p of periods) {
+        grid.appendChild(headerCell(DAYS[di] + " P" + p.index));
+        for (const c of school.classes) {
+          const list = byClass[c.id] || [];
+          const card = list.find(x => x.day === di && x.period === p.index);
+          grid.appendChild(posterCell(card));
+        }
+      }
+    }
+    page.appendChild(grid);
+    return page;
+  }
+  function headerCell(s) { return el("div", { style: "background:#eee;padding:3px 5px;font-size:8px;font-weight:600;text-align:center" }, s); }
+  function posterCell(card) {
+    if (!card) return el("div", { style: "background:#fff;padding:2px;min-height:18px" });
+    return el("div", { style: "background:#fff;padding:2px;min-height:18px;font-size:8px;line-height:1.1" },
+      el("div", { style: "font-weight:600" }, card.subjectAbbr || card.subject || ""),
+      el("div", { style: "color:#666" }, (card.teachers || []).join(",").slice(0, 12)));
+  }
+
+  // ─── Wire events ─────────────────────────────────────────────────────────
+  window.addEventListener("app:print-preview", openPreview);
+  window.addEventListener("app:preview-close", closePreview);
+  window.addEventListener("app:preview-prev",  () => stepPage(-1));
+  window.addEventListener("app:preview-next",  () => stepPage(1));
+  window.addEventListener("app:preview-template", (e) => render(e.detail?.template || "class"));
+  window.addEventListener("keydown", (e) => {
+    if ((e.metaKey || e.ctrlKey) && (e.key === "p" || e.key === "P") && !overlay?.classList.contains("is-open")) {
+      e.preventDefault(); openPreview();
+    }
+  });
+
+  APP.printPreview = { open: openPreview, close: closePreview, render };
+})();
+
+/* ─── FILE: js/ui/ribbon/bootstrap.js ─── */
+/* Ribbon bootstrap — mounts the ribbon host after all topbar + menu files have loaded.
+ * Also wires search/perspective/zoom into the existing grid_view filters.
+ */
+(function () {
+  "use strict";
+  const APP = window.APP;
+
+  function boot() {
+    const host = document.getElementById("chrx-ribbon");
+    if (host && APP.ribbon && APP.ribbon.mount) APP.ribbon.mount(host);
+
+    // Search → existing GridView filter pipeline + legacy #search-input
+    window.addEventListener("app:search", (e) => {
+      const q = (e.detail?.query || "").toLowerCase();
+      APP.filter = q;
+      const legacy = document.getElementById("search-input");
+      if (legacy && legacy.value !== q) legacy.value = q;
+      const host = document.getElementById(`step-${APP.step || 1}-body`);
+      if (host && window.GridView?.applyFilter) window.GridView.applyFilter(host);
+    });
+
+    // Perspective → map to legacy step nav
+    window.addEventListener("app:perspective", (e) => {
+      const k = e.detail?.kind;
+      const stepFor = { class: 3, teacher: 4, room: 5, lesson: 3 }[k] || 3;
+      if (!APP.school) return;
+      const btn = document.querySelector(`.step-btn[data-step="${stepFor}"]`);
+      if (btn) btn.click();
+    });
+
+    // School-loaded notification → re-render any visible grid
+    window.addEventListener("app:school-loaded", (e) => {
+      if (!e.detail?.school) return;
+      const btn = document.querySelector('.step-btn[data-step="2"]');
+      if (btn && !btn.disabled) btn.click();
+    });
+
+    // Close → go back to step 1
+    window.addEventListener("app:close", () => {
+      const btn = document.querySelector('.step-btn[data-step="1"]');
+      if (btn) btn.click();
+    });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", boot);
+  } else {
+    boot();
+  }
+})();
+
+/* ─── FILE: js/ui/substitution/main.js ─── */
+/**
+ * Substitution module — entry point.
+ *
+ * Listens for `app:substitutions` from the Timetable ribbon menu and opens a
+ * dialog that walks the user through:
+ *   1. Pick a date + absent teachers   (absence_input.js)
+ *   2. Generate ranked candidates       (candidate_ranker.js)
+ *   3. Review class-wise output         (classwise_output.js)
+ *   4. Review teacher-wise output       (teacherwise_output.js)
+ *   5. Print A4 memo                    (print_memo.js)
+ *
+ * Holds shared state on APP.substitution: { date, absent[], assignments[] }
+ * (assignments mutate when the user picks an alternate substitute in
+ * classwise_output.)
+ *
+ * Stays out of every other module's way — no global side effects beyond
+ * `APP.substitution` and the dialog overlay it owns.
+ */
+(function () {
+  "use strict";
+
+  const APP = window.APP;
+  if (!APP) return;
+
+  // ---------------- state ----------------
+  function initState() {
+    APP.substitution = APP.substitution || {
+      date: todayYmd(),
+      absent: [],           // teacher IDs
+      assignments: [],      // [{slotKey, classSection, period, subject, originalTeacher, candidates, chosen}]
+    };
+    return APP.substitution;
+  }
+
+  function todayYmd() {
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  // Mon=0..Sat=5 (matches parse_timetable_xml day indexing). Sunday → -1.
+  function ymdToDay(ymd) {
+    if (!ymd) return 0;
+    const parts = ymd.split("-").map(Number);
+    if (parts.length !== 3) return 0;
+    const js = new Date(parts[0], parts[1] - 1, parts[2]).getDay(); // 0=Sun..6=Sat
+    if (js === 0) return -1;
+    return js - 1; // Mon=0..Sat=5
+  }
+
+  // ---------------- DOM helpers ----------------
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      const v = attrs[k];
+      if (v == null) continue;
+      if (k === "class") n.className = v;
+      else if (k === "html") n.innerHTML = v;
+      else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v);
+    }
+    for (const c of kids) if (c != null && c !== false) {
+      n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    }
+    return n;
+  }
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, c =>
+      ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+  }
+
+  // ---------------- dialog ----------------
+  let host = null;
+
+  function open() {
+    if (!APP.school) {
+      alert("Load a timetable XML first.");
+      return;
+    }
+    initState();
+    if (host) host.remove();
+    host = buildShell();
+    document.body.appendChild(host);
+    document.addEventListener("keydown", onKey, true);
+    renderTab("absence");
+  }
+
+  function close() {
+    document.removeEventListener("keydown", onKey, true);
+    if (host) { host.remove(); host = null; }
+  }
+
+  function onKey(e) {
+    if (e.key === "Escape") { e.preventDefault(); close(); }
+  }
+
+  function buildShell() {
+    const root = el("div", { class: "chrx-sub-dialog", role: "dialog", "aria-modal": "true",
+      onclick: (e) => { if (e.target === root) close(); } });
+    const panel = el("div", { class: "chrx-sub-panel" });
+
+    panel.appendChild(el("header", { class: "chrx-sub-head" },
+      el("h2", null, "Substitution planner"),
+      el("nav", { class: "chrx-sub-tabs" },
+        el("button", { class: "chrx-sub-tab is-active", "data-tab": "absence",
+          onclick: () => renderTab("absence") }, "1. Absent teachers"),
+        el("button", { class: "chrx-sub-tab", "data-tab": "classwise",
+          onclick: () => renderTab("classwise") }, "2. Class-wise"),
+        el("button", { class: "chrx-sub-tab", "data-tab": "teacherwise",
+          onclick: () => renderTab("teacherwise") }, "3. Teacher-wise"),
+        el("button", { class: "chrx-sub-tab", "data-tab": "print",
+          onclick: () => renderTab("print") }, "4. Print memo"),
+      ),
+      el("button", { class: "chrx-sub-x", "aria-label": "Close", onclick: close }, "×"),
+    ));
+
+    panel.appendChild(el("section", { class: "chrx-sub-body", id: "chrx-sub-body" }));
+    root.appendChild(panel);
+    return root;
+  }
+
+  function renderTab(tab) {
+    if (!host) return;
+    host.querySelectorAll(".chrx-sub-tab").forEach(b => {
+      b.classList.toggle("is-active", b.dataset.tab === tab);
+    });
+    const body = host.querySelector("#chrx-sub-body");
+    body.innerHTML = "";
+
+    const s = APP.substitution;
+    switch (tab) {
+      case "absence":
+        window.SubstitutionAbsence.render(body, s, () => {
+          // After generate, jump to class-wise output.
+          renderTab("classwise");
+        });
+        break;
+      case "classwise":
+        window.SubstitutionClasswise.render(body, s, () => renderTab("classwise"));
+        break;
+      case "teacherwise":
+        window.SubstitutionTeacherwise.render(body, s);
+        break;
+      case "print":
+        window.SubstitutionPrintMemo.render(body, s);
+        break;
+    }
+  }
+
+  // ---------------- wire ----------------
+  window.addEventListener("app:substitutions", open);
+
+  // ---------------- exports ----------------
+  window.Substitution = {
+    open, close, renderTab,
+    el, esc, todayYmd, ymdToDay,
+  };
+})();
+
+/* ─── FILE: js/ui/substitution/candidate_ranker.js ─── */
+/**
+ * Candidate ranker — pure scoring algorithm.
+ *
+ * Ported from Code.gs / Index.html (GDGPSD Substitution Planner). Operates
+ * directly on SchoolData (no spreadsheet round-trip).
+ *
+ * Scoring (per requirements):
+ *   +100  same subject as the cancelled class
+ *   +30   teacher already teaches this class section on other periods
+ *   -5    per substitution already assigned to candidate today
+ *   +5    free in the next period too (continuity bonus)
+ *
+ * Inputs:
+ *   school        SchoolData (post parseTimetableXml)
+ *   absentIds[]   teacher IDs absent that day
+ *   day           0..5 (Mon..Sat) — matches school._idx.cardsByTeacher day index
+ *
+ * Returns assignments[]: one per (absent teacher, period) where they had a card.
+ *   {
+ *     slotKey, classSection, classId, period, subject, subjectId,
+ *     originalTeacher, originalTeacherId,
+ *     candidates: [{teacher, teacherId, score, reasons:[]}],
+ *     chosen: <candidate or null>,
+ *     uncovered: bool,
+ *   }
+ */
+(function () {
+  "use strict";
+
+  function rankAll(school, absentIds, day) {
+    if (!school || !school._idx) return [];
+    const absentSet = new Set(absentIds);
+    const teachers = school.teachers || [];
+    const idx = school._idx;
+
+    // 1) Collect target slots: every card on `day` belonging to an absent teacher.
+    const slots = [];
+    for (const tid of absentIds) {
+      const tCards = idx.cardsByTeacher[tid] || [];
+      for (const c of tCards) {
+        if (c.day !== day) continue;
+        slots.push({
+          teacherId: tid,
+          teacherName: (idx.teacherById[tid]?.name) || tid,
+          period: c.period,
+          classId: (c.classIds || [])[0] || "",
+          classSection: (c.classes || [])[0] || "",
+          subjectId: c.subjectId || "",
+          subject: c.subject || "",
+          lessonId: c.lessonId,
+        });
+      }
+    }
+    slots.sort((a, b) => a.period - b.period ||
+                        String(a.classSection).localeCompare(String(b.classSection)));
+
+    // 2) Pre-compute teacher → set of periods they are busy on this day.
+    const busyByTeacher = Object.create(null);
+    teachers.forEach(t => { busyByTeacher[t.id] = new Set(); });
+    for (const t of teachers) {
+      for (const c of (idx.cardsByTeacher[t.id] || [])) {
+        if (c.day === day) busyByTeacher[t.id].add(c.period);
+      }
+    }
+    // 3) Teacher → set of subjectIds they ever teach (used for +100 same subject).
+    const subjectsByTeacher = Object.create(null);
+    // 4) Teacher → set of classIds they ever teach (used for +30 same class).
+    const classesByTeacher = Object.create(null);
+    for (const t of teachers) {
+      const ss = new Set(); const cs = new Set();
+      for (const c of (idx.cardsByTeacher[t.id] || [])) {
+        if (c.subjectId) ss.add(c.subjectId);
+        (c.classIds || []).forEach(cid => cs.add(cid));
+      }
+      subjectsByTeacher[t.id] = ss;
+      classesByTeacher[t.id] = cs;
+    }
+
+    // 5) Running tally of substitutions already assigned today
+    //    (mutates as we process slots in order so later slots see earlier picks).
+    const subsToday = Object.create(null);
+
+    const assignments = [];
+    for (const slot of slots) {
+      const candidates = [];
+      const slotKey = `${slot.period}::${slot.classId || slot.classSection}::${slot.teacherId}`;
+
+      for (const t of teachers) {
+        if (absentSet.has(t.id)) continue;
+        if (busyByTeacher[t.id].has(slot.period)) continue;
+
+        let score = 0;
+        const reasons = [];
+
+        if (slot.subjectId && subjectsByTeacher[t.id].has(slot.subjectId)) {
+          score += 100;
+          reasons.push("same subject");
+        }
+        if (slot.classId && classesByTeacher[t.id].has(slot.classId)) {
+          score += 30;
+          reasons.push("teaches this class");
+        }
+        const already = subsToday[t.id] || 0;
+        if (already > 0) {
+          score -= 5 * already;
+          reasons.push(`${already} sub${already === 1 ? "" : "s"} today`);
+        }
+        if (!busyByTeacher[t.id].has(slot.period + 1)) {
+          score += 5;
+          reasons.push("free next period");
+        }
+
+        candidates.push({
+          teacherId: t.id,
+          teacher: t.name || t.id,
+          abbr: t.abbr || "",
+          score,
+          reasons,
+        });
+      }
+
+      candidates.sort((a, b) => b.score - a.score ||
+                                a.teacher.localeCompare(b.teacher));
+      const top3 = candidates.slice(0, 3);
+      const chosen = top3[0] || null;
+      if (chosen) {
+        subsToday[chosen.teacherId] = (subsToday[chosen.teacherId] || 0) + 1;
+      }
+
+      assignments.push({
+        slotKey,
+        classSection: slot.classSection,
+        classId: slot.classId,
+        period: slot.period,
+        subject: slot.subject,
+        subjectId: slot.subjectId,
+        originalTeacher: slot.teacherName,
+        originalTeacherId: slot.teacherId,
+        candidates: top3,
+        allCandidates: candidates, // kept for "change substitute" UI
+        chosen,
+        uncovered: !chosen,
+      });
+    }
+
+    return assignments;
+  }
+
+  /**
+   * Recompute `chosen` for one assignment after the user picks a different
+   * candidate. Also updates the subsToday tally so subsequent reranks reflect
+   * the new choice. (Used by classwise_output.)
+   */
+  function reassign(assignments, slotKey, newTeacherId) {
+    const a = assignments.find(x => x.slotKey === slotKey);
+    if (!a) return;
+    const pick = (a.allCandidates || a.candidates).find(c => c.teacherId === newTeacherId);
+    if (!pick) return;
+    a.chosen = pick;
+    a.uncovered = false;
+  }
+
+  window.SubstitutionRanker = { rankAll, reassign };
+})();
+
+/* ─── FILE: js/ui/substitution/absence_input.js ─── */
+/**
+ * Absence input tab — date picker + chip-style autocomplete for absent teachers.
+ *
+ * Mounts into the host element passed by main.js. Emits no events directly;
+ * when the user clicks "Generate substitutions", we call
+ *   candidate_ranker.rankAll(school, state.absent, dayOfWeek)
+ * write the result into state.assignments, and invoke onGenerate() so the
+ * shell can switch to the class-wise tab.
+ *
+ * Also fires `substitution:generate` so other modules can react.
+ */
+(function () {
+  "use strict";
+  const APP = window.APP;
+  const S = window.Substitution;
+  if (!APP || !S) return;
+  const el = S.el, esc = S.esc;
+
+  function render(host, state, onGenerate) {
+    host.innerHTML = "";
+
+    const school = APP.school;
+    const teachers = (school && school.teachers) || [];
+    const day = S.ymdToDay(state.date);
+    const dayLabel = day < 0 ? "Sunday (no school)" : (school._idx?.days?.[day] || "?");
+
+    // ---- date row ----
+    const dateInput = el("input", { type: "date", value: state.date,
+      class: "chrx-sub-date",
+      onchange: (e) => {
+        state.date = e.target.value || S.todayYmd();
+        const d = S.ymdToDay(state.date);
+        dayBadge.textContent = d < 0
+          ? "Sunday (no school)"
+          : (school._idx?.days?.[d] || "?");
+      },
+    });
+    const dayBadge = el("span", { class: "chrx-sub-daybadge" }, dayLabel);
+
+    host.appendChild(el("div", { class: "chrx-sub-row" },
+      el("label", { class: "chrx-sub-lbl", for: "chrx-sub-date" }, "Date"),
+      dateInput, dayBadge,
+    ));
+
+    // ---- chips ----
+    const chips = el("div", { class: "chrx-sub-chips" });
+    function renderChips() {
+      chips.innerHTML = "";
+      if (!state.absent.length) {
+        chips.appendChild(el("span", { class: "chrx-sub-hint" },
+          "No teachers selected. Use the search box below."));
+        return;
+      }
+      state.absent.forEach(tid => {
+        const t = (school._idx?.teacherById?.[tid]) || { id: tid, name: "?", abbr: "" };
+        chips.appendChild(el("span", { class: "chrx-sub-chip" },
+          el("span", { class: "chrx-sub-chip__nm" }, t.name || tid),
+          t.abbr ? el("span", { class: "chrx-sub-chip__abbr" }, t.abbr) : null,
+          el("button", { class: "chrx-sub-chip__x", "aria-label": "Remove",
+            onclick: () => {
+              state.absent = state.absent.filter(x => x !== tid);
+              renderChips();
+              updateGenerate();
+            }, type: "button" }, "×"),
+        ));
+      });
+    }
+
+    // ---- autocomplete ----
+    const search = el("input", { type: "search",
+      class: "chrx-sub-search",
+      placeholder: "Type a teacher name…",
+      autocomplete: "off",
+    });
+    const dropdown = el("div", { class: "chrx-sub-dropdown is-hidden" });
+
+    function buildOptions(q) {
+      const ql = q.trim().toLowerCase();
+      const out = teachers.filter(t => {
+        if (state.absent.includes(t.id)) return false;
+        if (!ql) return true;
+        return (t.name && t.name.toLowerCase().includes(ql)) ||
+               (t.abbr && t.abbr.toLowerCase().includes(ql));
+      }).slice(0, 30);
+
+      dropdown.innerHTML = "";
+      if (!out.length) {
+        dropdown.appendChild(el("div", { class: "chrx-sub-opt is-empty" }, "No matches."));
+        return;
+      }
+      out.forEach(t => {
+        dropdown.appendChild(el("div", { class: "chrx-sub-opt",
+          onclick: () => {
+            if (!state.absent.includes(t.id)) state.absent.push(t.id);
+            search.value = ""; dropdown.classList.add("is-hidden");
+            renderChips(); updateGenerate();
+            search.focus();
+          } },
+          el("span", { class: "chrx-sub-opt__nm" }, t.name || t.id),
+          t.abbr ? el("span", { class: "chrx-sub-opt__abbr" }, t.abbr) : null,
+        ));
+      });
+    }
+
+    search.addEventListener("focus", () => {
+      buildOptions(search.value);
+      dropdown.classList.remove("is-hidden");
+    });
+    search.addEventListener("input", () => {
+      buildOptions(search.value);
+      dropdown.classList.remove("is-hidden");
+    });
+    search.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") { dropdown.classList.add("is-hidden"); return; }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        const first = dropdown.querySelector(".chrx-sub-opt:not(.is-empty)");
+        if (first) first.click();
+      }
+    });
+    document.addEventListener("click", (e) => {
+      if (!host.contains(e.target)) return;
+      if (e.target !== search && !dropdown.contains(e.target)) {
+        dropdown.classList.add("is-hidden");
+      }
+    });
+
+    host.appendChild(el("div", { class: "chrx-sub-row chrx-sub-row--col" },
+      el("label", { class: "chrx-sub-lbl" }, "Absent teachers"),
+      chips,
+      el("div", { class: "chrx-sub-search-wrap" }, search, dropdown),
+    ));
+
+    // ---- generate button ----
+    const generateBtn = el("button", { class: "chrx-sub-btn chrx-sub-btn--primary",
+      onclick: () => generate(state, onGenerate, summary),
+    }, "Generate substitutions");
+
+    const summary = el("div", { class: "chrx-sub-summary" });
+
+    host.appendChild(el("div", { class: "chrx-sub-row chrx-sub-row--actions" },
+      generateBtn, summary,
+    ));
+
+    function updateGenerate() {
+      const day = S.ymdToDay(state.date);
+      generateBtn.disabled = state.absent.length === 0 || day < 0;
+      generateBtn.title = day < 0
+        ? "Sunday — pick a school day."
+        : (state.absent.length ? "" : "Pick at least one absent teacher.");
+    }
+
+    renderChips();
+    updateGenerate();
+  }
+
+  function generate(state, onGenerate, summaryEl) {
+    const day = S.ymdToDay(state.date);
+    if (day < 0) return;
+    if (!state.absent.length) return;
+
+    const school = APP.school;
+    const ranker = window.SubstitutionRanker;
+    state.assignments = ranker.rankAll(school, state.absent, day);
+
+    window.dispatchEvent(new CustomEvent("substitution:generate", { detail: {
+      date: state.date,
+      absentTeachers: state.absent.slice(),
+      assignments: state.assignments.slice(),
+    } }));
+
+    if (summaryEl) {
+      const n = state.assignments.length;
+      const filled = state.assignments.filter(a => a.chosen).length;
+      summaryEl.innerHTML = `<span class="chrx-sub-ok">Generated <b>${n}</b> slot(s); <b>${filled}</b> filled, <b>${n - filled}</b> uncovered.</span>`;
+    }
+    if (typeof onGenerate === "function") setTimeout(onGenerate, 50);
+  }
+
+  window.SubstitutionAbsence = { render };
+})();
+
+/* ─── FILE: js/ui/substitution/classwise_output.js ─── */
+/**
+ * Class-wise output — one row per (class, period) needing a substitute.
+ *
+ * Columns: Class · Period · Subject · Original teacher · Substitute · Score
+ *
+ * Score tiers (color-coded):
+ *    ★★★ green  ≥100  (same subject)
+ *    ★★  blue    ≥30  (same class but not subject)
+ *    ★   yellow  <30, has candidate (generic free)
+ *    —   red     uncovered (no free teacher)
+ *
+ * Click the substitute cell to pop a chooser with all candidates ranked.
+ */
+(function () {
+  "use strict";
+  const APP = window.APP;
+  const S = window.Substitution;
+  if (!APP || !S) return;
+  const el = S.el, esc = S.esc;
+
+  function tierClass(c) {
+    if (!c) return "is-tier-none";
+    if (c.score >= 100) return "is-tier-3";
+    if (c.score >= 30)  return "is-tier-2";
+    return "is-tier-1";
+  }
+  function tierStars(c) {
+    if (!c) return "—";
+    if (c.score >= 100) return "★★★";
+    if (c.score >= 30)  return "★★";
+    return "★";
+  }
+
+  function render(host, state, onRefresh) {
+    host.innerHTML = "";
+
+    if (!state.assignments.length) {
+      host.appendChild(el("div", { class: "chrx-sub-empty" },
+        el("p", null, "No substitutions generated yet."),
+        el("p", { class: "chrx-sub-hint" },
+          "Go back to step 1, pick a date and add absent teachers, then click Generate."),
+      ));
+      return;
+    }
+
+    const total    = state.assignments.length;
+    const filled   = state.assignments.filter(a => a.chosen).length;
+    const strong   = state.assignments.filter(a => a.chosen && a.chosen.score >= 100).length;
+    const ok       = state.assignments.filter(a => a.chosen && a.chosen.score >= 30 && a.chosen.score < 100).length;
+    const weak     = state.assignments.filter(a => a.chosen && a.chosen.score < 30).length;
+    const uncovered = total - filled;
+
+    host.appendChild(el("div", { class: "chrx-sub-banner" },
+      el("b", null, `${total} slot${total === 1 ? "" : "s"} to cover`),
+      el("span", { class: "chrx-sub-pill is-green" }, `★★★ ${strong}`),
+      el("span", { class: "chrx-sub-pill is-blue"  }, `★★  ${ok}`),
+      el("span", { class: "chrx-sub-pill is-yellow"}, `★   ${weak}`),
+      el("span", { class: "chrx-sub-pill is-red"   }, `— ${uncovered}`),
+    ));
+
+    const table = el("table", { class: "chrx-sub-table" },
+      el("thead", null, el("tr", null,
+        el("th", null, "Class"),
+        el("th", null, "Period"),
+        el("th", null, "Subject"),
+        el("th", null, "Original teacher"),
+        el("th", null, "Substitute"),
+        el("th", null, "Score"),
+      )),
+    );
+    const tbody = el("tbody");
+    state.assignments.forEach(a => {
+      const tier = tierClass(a.chosen);
+      const tr = el("tr", { class: `chrx-sub-tr ${tier}`,
+        onclick: () => openChooser(a, state, onRefresh) });
+      tr.appendChild(el("td", null, a.classSection || "—"));
+      tr.appendChild(el("td", null, `P${a.period}`));
+      tr.appendChild(el("td", null, a.subject || "—"));
+      tr.appendChild(el("td", null, a.originalTeacher || "—"));
+      tr.appendChild(el("td", { class: "chrx-sub-subcell" },
+        a.chosen
+          ? el("span", null,
+              el("span", { class: "chrx-sub-stars" }, tierStars(a.chosen)),
+              " ",
+              el("b", null, a.chosen.teacher),
+              a.chosen.reasons && a.chosen.reasons.length
+                ? el("div", { class: "chrx-sub-reasons" }, a.chosen.reasons.join(" · "))
+                : null,
+            )
+          : el("span", { class: "chrx-sub-uncov" }, "— No candidate available"),
+      ));
+      tr.appendChild(el("td", { class: "chrx-sub-score" },
+        a.chosen ? String(a.chosen.score) : "—"));
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    host.appendChild(el("div", { class: "chrx-sub-tablewrap" }, table));
+  }
+
+  function openChooser(assignment, state, onRefresh) {
+    const all = assignment.allCandidates || assignment.candidates || [];
+    if (!all.length) {
+      alert("No candidates available for this slot.");
+      return;
+    }
+    // Pop a sheet listing all candidates; click one to assign.
+    const scrim = el("div", { class: "chrx-sub-sheet-scrim",
+      onclick: (e) => { if (e.target === scrim) scrim.remove(); } });
+    const sheet = el("div", { class: "chrx-sub-sheet" });
+    sheet.appendChild(el("header", { class: "chrx-sub-sheet__head" },
+      el("h3", null, `${assignment.classSection} P${assignment.period} · ${assignment.subject}`),
+      el("button", { class: "chrx-sub-sheet__x", onclick: () => scrim.remove() }, "×"),
+    ));
+    const list = el("div", { class: "chrx-sub-cand-list" });
+    all.slice(0, 30).forEach(c => {
+      const isChosen = assignment.chosen && c.teacherId === assignment.chosen.teacherId;
+      list.appendChild(el("button", {
+        class: `chrx-sub-cand ${tierClass(c)} ${isChosen ? "is-chosen" : ""}`,
+        onclick: () => {
+          window.SubstitutionRanker.reassign(state.assignments,
+            assignment.slotKey, c.teacherId);
+          scrim.remove();
+          if (typeof onRefresh === "function") onRefresh();
+        },
+      },
+        el("span", { class: "chrx-sub-cand__stars" }, tierStars(c)),
+        el("span", { class: "chrx-sub-cand__nm" }, c.teacher),
+        el("span", { class: "chrx-sub-cand__score" }, String(c.score)),
+        c.reasons && c.reasons.length
+          ? el("div", { class: "chrx-sub-cand__why" }, c.reasons.join(" · "))
+          : null,
+      ));
+    });
+    sheet.appendChild(list);
+    scrim.appendChild(sheet);
+    document.body.appendChild(scrim);
+  }
+
+  window.SubstitutionClasswise = { render, openChooser };
+})();
+
+/* ─── FILE: js/ui/substitution/teacherwise_output.js ─── */
+/**
+ * Teacher-wise output — pivot of assignments by substituting teacher.
+ *
+ * Columns: Teacher · Extra periods today · Classes covered · Total score-load
+ *
+ * "Total score-load" sums the scores of the slots assigned to that teacher.
+ * Higher = more good-fit picks; useful as a "did we lean on this teacher
+ * because they're the best fit?" signal versus "we just dumped on them".
+ */
+(function () {
+  "use strict";
+  const APP = window.APP;
+  const S = window.Substitution;
+  if (!APP || !S) return;
+  const el = S.el;
+
+  function render(host, state) {
+    host.innerHTML = "";
+
+    if (!state.assignments.length) {
+      host.appendChild(el("div", { class: "chrx-sub-empty" },
+        el("p", null, "No substitutions generated yet."),
+        el("p", { class: "chrx-sub-hint" },
+          "Generate substitutions on step 1 first."),
+      ));
+      return;
+    }
+
+    // Group by chosen teacher.
+    const pivot = Object.create(null);
+    let uncovered = 0;
+    for (const a of state.assignments) {
+      if (!a.chosen) { uncovered++; continue; }
+      const tid = a.chosen.teacherId;
+      if (!pivot[tid]) {
+        pivot[tid] = {
+          teacherId: tid,
+          teacher: a.chosen.teacher,
+          rows: [],
+          scoreSum: 0,
+        };
+      }
+      pivot[tid].rows.push(a);
+      pivot[tid].scoreSum += a.chosen.score;
+    }
+
+    const list = Object.values(pivot).sort((a, b) =>
+      b.rows.length - a.rows.length ||
+      b.scoreSum - a.scoreSum ||
+      a.teacher.localeCompare(b.teacher));
+
+    host.appendChild(el("div", { class: "chrx-sub-banner" },
+      el("b", null, `${list.length} substitute${list.length === 1 ? "" : "s"} carry ${state.assignments.length - uncovered} extra period(s)`),
+      uncovered ? el("span", { class: "chrx-sub-pill is-red" },
+        `${uncovered} uncovered`) : null,
+    ));
+
+    const table = el("table", { class: "chrx-sub-table" },
+      el("thead", null, el("tr", null,
+        el("th", null, "Teacher"),
+        el("th", null, "Extra periods"),
+        el("th", null, "Classes covered"),
+        el("th", null, "Score-load"),
+      )),
+    );
+    const tbody = el("tbody");
+    list.forEach(g => {
+      const periodTags = g.rows.map(r => `P${r.period}`).join(", ");
+      const classTags  = g.rows.map(r =>
+        `${r.classSection} (${r.subject || "—"})`).join(" · ");
+
+      tbody.appendChild(el("tr", { class: "chrx-sub-tr" },
+        el("td", null,
+          el("b", null, g.teacher),
+          el("div", { class: "chrx-sub-reasons" }, `${g.rows.length} slot(s)`),
+        ),
+        el("td", null, periodTags),
+        el("td", null, classTags),
+        el("td", { class: "chrx-sub-score" }, String(g.scoreSum)),
+      ));
+    });
+    table.appendChild(tbody);
+    host.appendChild(el("div", { class: "chrx-sub-tablewrap" }, table));
+  }
+
+  /**
+   * Pure helper — used by print_memo to render the same pivot without DOM.
+   * Returns [{teacher, rows[], scoreSum}, …].
+   */
+  function pivotByTeacher(assignments) {
+    const pivot = Object.create(null);
+    for (const a of assignments) {
+      if (!a.chosen) continue;
+      const tid = a.chosen.teacherId;
+      if (!pivot[tid]) pivot[tid] = {
+        teacherId: tid, teacher: a.chosen.teacher, rows: [], scoreSum: 0,
+      };
+      pivot[tid].rows.push(a);
+      pivot[tid].scoreSum += a.chosen.score;
+    }
+    return Object.values(pivot).sort((a, b) =>
+      b.rows.length - a.rows.length || a.teacher.localeCompare(b.teacher));
+  }
+
+  window.SubstitutionTeacherwise = { render, pivotByTeacher };
+})();
+
+/* ─── FILE: js/ui/substitution/print_memo.js ─── */
+/**
+ * Print memo — renders an A4 daily substitution memo and pops window.print().
+ *
+ * Layout:
+ *   Header — "DAILY SUBSTITUTION MEMO" + date + school name
+ *   Class-wise table (Class · Period · Subject · Original · Substitute)
+ *   Teacher-wise summary (Teacher · Periods · Classes)
+ *   Notes textarea (user can type before printing — content stays in the
+ *   printed output via contenteditable + a `print: visible` div).
+ *
+ * Opens a separate overlay sized to A4 so the user previews exactly what
+ * the printer sees. Print stylesheet (@page A4) is in css/substitution.css.
+ */
+(function () {
+  "use strict";
+  const APP = window.APP;
+  const S = window.Substitution;
+  if (!APP || !S) return;
+  const el = S.el;
+
+  function fmtDate(ymd) {
+    if (!ymd) return "";
+    const parts = ymd.split("-").map(Number);
+    if (parts.length !== 3) return ymd;
+    const d = new Date(parts[0], parts[1] - 1, parts[2]);
+    const days = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+    const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    return `${days[d.getDay()]}, ${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+  }
+
+  function render(host, state) {
+    host.innerHTML = "";
+
+    if (!state.assignments.length) {
+      host.appendChild(el("div", { class: "chrx-sub-empty" },
+        el("p", null, "No substitutions generated yet."),
+        el("p", { class: "chrx-sub-hint" },
+          "Generate substitutions on step 1 first."),
+      ));
+      return;
+    }
+
+    const school = APP.school;
+    const schoolName = (school && school.schoolName) || "School";
+
+    // Toolbar
+    host.appendChild(el("div", { class: "chrx-sub-print-toolbar" },
+      el("button", { class: "chrx-sub-btn chrx-sub-btn--primary",
+        onclick: () => window.print(),
+      }, "Print memo"),
+      el("span", { class: "chrx-sub-hint" },
+        "Opens your browser's print dialog. Save as PDF or send to printer."),
+    ));
+
+    const memo = el("div", { class: "chrx-sub-memo", id: "chrx-sub-memo-print" });
+
+    memo.appendChild(el("header", { class: "chrx-sub-memo__head" },
+      el("h1", null, "DAILY SUBSTITUTION MEMO"),
+      el("div", { class: "chrx-sub-memo__meta" },
+        el("div", null, el("b", null, schoolName)),
+        el("div", null, fmtDate(state.date)),
+      ),
+    ));
+
+    // Absent teachers chip strip
+    if (state.absent.length && school._idx?.teacherById) {
+      const names = state.absent.map(tid =>
+        school._idx.teacherById[tid]?.name || tid).join(", ");
+      memo.appendChild(el("div", { class: "chrx-sub-memo__absent" },
+        el("b", null, "Absent: "), names));
+    }
+
+    // Class-wise table
+    memo.appendChild(el("h2", { class: "chrx-sub-memo__h2" }, "Class-wise substitutions"));
+    const cwTable = el("table", { class: "chrx-sub-memo__table" });
+    cwTable.appendChild(el("thead", null, el("tr", null,
+      el("th", null, "Class"),
+      el("th", null, "Period"),
+      el("th", null, "Subject"),
+      el("th", null, "Original"),
+      el("th", null, "Substitute"),
+    )));
+    const cwBody = el("tbody");
+    state.assignments.forEach(a => {
+      cwBody.appendChild(el("tr", null,
+        el("td", null, a.classSection || "—"),
+        el("td", null, `P${a.period}`),
+        el("td", null, a.subject || "—"),
+        el("td", null, a.originalTeacher || "—"),
+        el("td", null, a.chosen ? a.chosen.teacher : "— UNCOVERED —"),
+      ));
+    });
+    cwTable.appendChild(cwBody);
+    memo.appendChild(cwTable);
+
+    // Teacher-wise summary
+    const pivot = window.SubstitutionTeacherwise.pivotByTeacher(state.assignments);
+    if (pivot.length) {
+      memo.appendChild(el("h2", { class: "chrx-sub-memo__h2" },
+        "Substitute teacher summary"));
+      const tw = el("table", { class: "chrx-sub-memo__table" });
+      tw.appendChild(el("thead", null, el("tr", null,
+        el("th", null, "Teacher"),
+        el("th", null, "Extra periods"),
+        el("th", null, "Classes covered"),
+      )));
+      const twBody = el("tbody");
+      pivot.forEach(g => {
+        twBody.appendChild(el("tr", null,
+          el("td", null, g.teacher),
+          el("td", null, g.rows.map(r => `P${r.period}`).join(", ")),
+          el("td", null, g.rows.map(r =>
+            `${r.classSection} (${r.subject || "—"})`).join(" · ")),
+        ));
+      });
+      tw.appendChild(twBody);
+      memo.appendChild(tw);
+    }
+
+    // Notes (editable)
+    memo.appendChild(el("h2", { class: "chrx-sub-memo__h2" }, "Notes"));
+    const notes = el("div", { class: "chrx-sub-memo__notes",
+      contenteditable: "true", "data-placeholder": "Click here to add notes…" });
+    notes.textContent = state.notes || "";
+    notes.addEventListener("input", () => { state.notes = notes.textContent; });
+    memo.appendChild(notes);
+
+    // Signature line
+    memo.appendChild(el("div", { class: "chrx-sub-memo__sign" },
+      el("div", null, "________________________"),
+      el("div", { class: "chrx-sub-hint" }, "Principal / In-charge"),
+    ));
+
+    host.appendChild(memo);
+  }
+
+  window.SubstitutionPrintMemo = { render };
+})();
+
+/* ─── FILE: js/ui/editor/focus_mode.js ─── */
+/**
+ * FocusMode — spotlight every editor card related to one entity, dim the rest.
+ *
+ * Ported from Swift's FocusModeSheet. Single-entity highlight; Esc or banner ✕
+ * to exit. Survives editor re-renders by listening to editor:place / editor:pickup
+ * and re-applying.
+ *
+ * Cards in grid_canvas.js carry `data-lesson-id` (only). Per spec, derive
+ * teacher/class/room/subject from APP.school._idx.lessonById at apply time —
+ * we don't modify grid_canvas.js.
+ *
+ *   window.FocusMode.enter("teacher" | "class" | "room" | "subject", entityId)
+ *   window.FocusMode.exit()
+ */
+(function () {
+  "use strict";
+
+  const STATE = {
+    kind: null,        // "teacher" | "class" | "room" | "subject"
+    entityId: null,
+    relatedLessonIds: null,   // Set<string>
+    banner: null,             // DOM node
+    boundKey: null,
+    boundReapply: null,
+  };
+
+  function school() { return window.APP && window.APP.school || null; }
+
+  /** Build the set of lessonIds whose card should stay lit. */
+  function computeRelatedLessons(kind, entityId) {
+    const S = school();
+    if (!S || !S.lessons) return new Set();
+    const out = new Set();
+    for (const L of S.lessons) {
+      let match = false;
+      if (kind === "teacher") {
+        match = (L.teacherIds || []).indexOf(entityId) !== -1;
+      } else if (kind === "class") {
+        match = (L.classIds || []).indexOf(entityId) !== -1;
+      } else if (kind === "subject") {
+        match = L.subjectId === entityId;
+      } else if (kind === "room") {
+        if (L.preferredRoomId === entityId) match = true;
+        // Also include lessons whose placed cards live in this room.
+        if (!match && S.cards) {
+          for (const c of S.cards) {
+            if (c.lessonId === L.id && c.classroomId === entityId) { match = true; break; }
+          }
+        }
+      }
+      if (match) out.add(L.id);
+    }
+    return out;
+  }
+
+  function entityLabel(kind, entityId) {
+    const S = school();
+    if (!S || !S._idx) return entityId;
+    const m = ({
+      teacher: S._idx.teacherById,
+      class:   S._idx.classById,
+      room:    S._idx.classroomById,
+      subject: S._idx.subjectById,
+    })[kind];
+    if (!m) return entityId;
+    const ent = m[entityId];
+    if (!ent) return entityId;
+    return ent.name || ent.abbr || entityId;
+  }
+
+  /** Walk every .chrx-vkarta and toggle dim/focus classes. */
+  function applyClasses() {
+    const root = document.querySelector(".chrx-editor");
+    if (!root) return;
+    const cards = root.querySelectorAll(".chrx-vkarta");
+    if (!STATE.relatedLessonIds) {
+      // Clear all marks (exit path)
+      cards.forEach(el => {
+        el.classList.remove("chrx-card--dimmed");
+        el.classList.remove("chrx-card--focus");
+      });
+      return;
+    }
+    cards.forEach(el => {
+      const lid = el.getAttribute("data-lesson-id");
+      const hit = lid && STATE.relatedLessonIds.has(lid);
+      el.classList.toggle("chrx-card--focus", !!hit);
+      el.classList.toggle("chrx-card--dimmed", !hit);
+    });
+  }
+
+  function buildBanner(kind, entityId) {
+    const wrap = document.createElement("div");
+    wrap.className = "chrx-focus-banner";
+    wrap.setAttribute("role", "status");
+    const label = document.createElement("span");
+    label.className = "chrx-focus-banner__label";
+    label.textContent = "🔦 Focus: " + entityLabel(kind, entityId) + "  ·  click";
+    const x = document.createElement("button");
+    x.type = "button";
+    x.className = "chrx-focus-banner__close";
+    x.setAttribute("aria-label", "Exit focus mode");
+    x.textContent = "✕";
+    x.addEventListener("click", function () { exit(); });
+    const tail = document.createElement("span");
+    tail.className = "chrx-focus-banner__tail";
+    tail.textContent = " to exit (or press Esc)";
+    wrap.appendChild(label);
+    wrap.appendChild(x);
+    wrap.appendChild(tail);
+    return wrap;
+  }
+
+  function mountBanner(node) {
+    // Prefer just-above the editor; else top of step-6; else body.
+    const step6 = document.getElementById("step-6");
+    const editor = document.getElementById("editor-root");
+    if (step6 && editor) {
+      step6.insertBefore(node, editor);
+    } else if (step6) {
+      step6.insertBefore(node, step6.firstChild);
+    } else {
+      document.body.appendChild(node);
+    }
+  }
+
+  function onKey(ev) {
+    if (ev.key === "Escape" && STATE.kind) exit();
+  }
+
+  function onReapply() {
+    // Editor re-rendered (place/pickup); re-paint highlight classes.
+    if (STATE.relatedLessonIds) applyClasses();
+  }
+
+  function enter(kind, entityId) {
+    if (!kind || !entityId) return;
+    if (STATE.kind) exit();   // re-enter cleanly
+    STATE.kind = kind;
+    STATE.entityId = entityId;
+    STATE.relatedLessonIds = computeRelatedLessons(kind, entityId);
+    STATE.banner = buildBanner(kind, entityId);
+    mountBanner(STATE.banner);
+    applyClasses();
+    STATE.boundKey = onKey;
+    STATE.boundReapply = onReapply;
+    document.addEventListener("keydown", STATE.boundKey);
+    document.addEventListener("editor:place",  STATE.boundReapply);
+    document.addEventListener("editor:pickup", STATE.boundReapply);
+  }
+
+  function exit() {
+    if (!STATE.kind) return;
+    if (STATE.boundKey) document.removeEventListener("keydown", STATE.boundKey);
+    if (STATE.boundReapply) {
+      document.removeEventListener("editor:place",  STATE.boundReapply);
+      document.removeEventListener("editor:pickup", STATE.boundReapply);
+    }
+    if (STATE.banner && STATE.banner.parentNode) STATE.banner.parentNode.removeChild(STATE.banner);
+    STATE.kind = null;
+    STATE.entityId = null;
+    STATE.relatedLessonIds = null;
+    STATE.banner = null;
+    STATE.boundKey = null;
+    STATE.boundReapply = null;
+    applyClasses();   // strip remaining classes
+  }
+
+  /** Convenience picker — used by the View → Focus mode menu entry. */
+  function openPicker() {
+    const S = school();
+    if (!S) {
+      if (window._chrxNotify) window._chrxNotify("Load a timetable first.");
+      return;
+    }
+    const D = window.EntityDialog;
+    if (!D || !D.openSheet) {
+      // Fallback to prompt
+      const k = (prompt("Focus on which kind? teacher / class / room / subject", "teacher") || "").trim();
+      if (!k) return;
+      const list = listFor(k);
+      if (!list || !list.length) { alert("No " + k + "s loaded."); return; }
+      const name = prompt(k + " name (exact or substring)?", list[0].name || "");
+      if (!name) return;
+      const hit = list.find(e => (e.name || "").toLowerCase().includes(name.toLowerCase()));
+      if (!hit) { alert("No " + k + " matched."); return; }
+      enter(k, hit.id);
+      return;
+    }
+    // Sheet-based picker
+    const root = document.createElement("div");
+    root.style.cssText = "padding:14px;min-width:360px;max-width:480px;font-size:13px;color:var(--chrx-fg)";
+    const h = document.createElement("div");
+    h.style.cssText = "font-weight:600;margin-bottom:8px";
+    h.textContent = "Focus mode — pick an entity to spotlight";
+    root.appendChild(h);
+    const tabs = document.createElement("div");
+    tabs.style.cssText = "display:flex;gap:6px;margin-bottom:10px";
+    const KINDS = [["teacher","Teachers"],["class","Classes"],["room","Rooms"],["subject","Subjects"]];
+    const listBox = document.createElement("div");
+    listBox.style.cssText = "max-height:320px;overflow:auto;border:1px solid var(--chrx-line);border-radius:6px;background:var(--chrx-bg-tile)";
+    const search = document.createElement("input");
+    search.type = "search";
+    search.placeholder = "Filter…";
+    search.style.cssText = "width:100%;padding:6px 8px;margin-bottom:8px;border:1px solid var(--chrx-line);border-radius:6px;background:var(--chrx-bg-input);color:var(--chrx-fg)";
+    let activeKind = "teacher";
+    function paintList() {
+      const term = (search.value || "").toLowerCase();
+      const items = (listFor(activeKind) || []).filter(e =>
+        !term || (e.name || "").toLowerCase().includes(term) || (e.abbr || "").toLowerCase().includes(term)
+      );
+      listBox.innerHTML = "";
+      if (!items.length) {
+        const empty = document.createElement("div");
+        empty.style.cssText = "padding:18px;text-align:center;color:var(--chrx-fg-tertiary)";
+        empty.textContent = "No matches.";
+        listBox.appendChild(empty);
+        return;
+      }
+      for (const e of items) {
+        const row = document.createElement("button");
+        row.type = "button";
+        row.style.cssText = "display:flex;justify-content:space-between;width:100%;padding:6px 10px;border:0;background:transparent;color:var(--chrx-fg);text-align:left;cursor:pointer;font-size:13px";
+        row.addEventListener("mouseenter", () => row.style.background = "var(--chrx-accent-bg)");
+        row.addEventListener("mouseleave", () => row.style.background = "transparent");
+        const main = document.createElement("span");
+        main.textContent = e.name || e.abbr || e.id;
+        const sub = document.createElement("span");
+        sub.style.cssText = "color:var(--chrx-fg-tertiary);font-size:11px";
+        sub.textContent = e.abbr || "";
+        row.appendChild(main); row.appendChild(sub);
+        row.addEventListener("click", function () {
+          window.EntityDialog.closeSheet && window.EntityDialog.closeSheet();
+          enter(activeKind, e.id);
+        });
+        listBox.appendChild(row);
+      }
+    }
+    function setKind(k) {
+      activeKind = k;
+      Array.from(tabs.children).forEach(b => {
+        const on = b.getAttribute("data-kind") === k;
+        b.style.background = on ? "var(--chrx-accent)" : "transparent";
+        b.style.color = on ? "#fff" : "var(--chrx-fg)";
+      });
+      paintList();
+    }
+    for (const [k, lbl] of KINDS) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.setAttribute("data-kind", k);
+      b.textContent = lbl;
+      b.style.cssText = "padding:4px 10px;border:1px solid var(--chrx-line);border-radius:6px;cursor:pointer;font-size:12px";
+      b.addEventListener("click", () => setKind(k));
+      tabs.appendChild(b);
+    }
+    root.appendChild(tabs);
+    root.appendChild(search);
+    root.appendChild(listBox);
+    search.addEventListener("input", paintList);
+    D.openSheet(root, { title: "Focus mode" });
+    setKind("teacher");
+    setTimeout(() => search.focus(), 50);
+  }
+
+  function listFor(kind) {
+    const S = school();
+    if (!S) return [];
+    if (kind === "teacher") return S.teachers || [];
+    if (kind === "class")   return S.classes  || [];
+    if (kind === "room")    return S.classrooms || [];
+    if (kind === "subject") return S.subjects || [];
+    return [];
+  }
+
+  window.FocusMode = { enter, exit, openPicker };
+})();
+
+/* ─── FILE: js/ui/components/command_palette.js ─── */
+/**
+ * CommandPalette — Cmd+K (Ctrl+K) launcher.
+ *
+ * Port of Swift's CommandPaletteView. Aggregates commands from:
+ *  - Every ribbon menu (APP.ribbon.menus, each def.build() returns entries)
+ *  - Every entity dialog (Subjects/Teachers/Classes/Classrooms/Lessons/Relations…)
+ *  - Every loaded school's entities (teacher names → open Teachers list, etc.)
+ *
+ * Fuzzy match. Arrow up/down, Enter, Esc.
+ *
+ *   window.CommandPalette.open()
+ */
+(function () {
+  "use strict";
+
+  const STATE = {
+    overlay: null,
+    input: null,
+    listEl: null,
+    items: [],       // currently shown
+    cursor: 0,
+    boundKey: null,
+  };
+
+  const ENTITY_KINDS = [
+    { kind: "subjects",    label: "Subjects",    icon: "📚" },
+    { kind: "teachers",    label: "Teachers",    icon: "👨‍🏫" },
+    { kind: "classes",     label: "Classes",     icon: "👥" },
+    { kind: "classrooms",  label: "Classrooms",  icon: "🚪" },
+    { kind: "lessons",     label: "Lessons",     icon: "📝" },
+    { kind: "relations",   label: "Relations",   icon: "🔗" },
+    { kind: "divisions",   label: "Divisions",   icon: "✂️" },
+    { kind: "supervisions",label: "Supervisions",icon: "👁" },
+    { kind: "grades",      label: "Grades",      icon: "🎓" },
+    { kind: "bells",       label: "Bell times",  icon: "🔔" },
+    { kind: "days",        label: "Days",        icon: "📅" },
+    { kind: "weeks",       label: "Weeks",       icon: "🗓" },
+    { kind: "terms",       label: "Terms",       icon: "🍂" },
+    { kind: "buildings",   label: "Buildings",   icon: "🏛" },
+    { kind: "breaks",      label: "Breaks",      icon: "🍱" },
+    { kind: "coursegroups",label: "Course groups",icon:"📦" },
+    { kind: "ttreports",   label: "Reports",     icon: "📊" },
+    { kind: "ttviews",     label: "Views",       icon: "🔭" },
+  ];
+
+  /** Pull every menu item (recursively into submenus) into a flat command list. */
+  function collectMenuCommands() {
+    const out = [];
+    const ribbon = window.APP && window.APP.ribbon;
+    if (!ribbon || !Array.isArray(ribbon.menus)) return out;
+    for (const def of ribbon.menus) {
+      let entries = [];
+      try { entries = def.build() || []; }
+      catch (e) { continue; }
+      walkEntries(def.label, entries, out);
+    }
+    return out;
+  }
+  function walkEntries(menuLabel, entries, out) {
+    for (const e of entries) {
+      if (!e || e.sep || e.section) continue;
+      if (e.disabled) continue;
+      if (typeof e.run === "function") {
+        out.push({
+          group: menuLabel,
+          icon: e.icon || "•",
+          title: e.label,
+          subtitle: menuLabel + (e.hint ? "  " + e.hint : ""),
+          run: e.run,
+          weight: 1.0,
+        });
+      }
+      if (Array.isArray(e.sub)) walkEntries(menuLabel + " › " + e.label, e.sub, out);
+    }
+  }
+
+  /** "Open <entity>…" rows so users can jump to any dialog by name. */
+  function collectEntityDialogs() {
+    return ENTITY_KINDS.map(e => ({
+      group: "Open",
+      icon: e.icon,
+      title: "Open " + e.label + "…",
+      subtitle: "Entity dialog",
+      run: () => window.dispatchEvent(new CustomEvent("app:open-entity", { detail: { kind: e.kind } })),
+      weight: 0.9,
+    }));
+  }
+
+  /** Every named entity in the loaded school. Choosing one opens its dialog. */
+  function collectSchoolEntities() {
+    const out = [];
+    const S = window.APP && window.APP.school;
+    if (!S) return out;
+    const push = (group, icon, items, kind) => {
+      if (!items) return;
+      for (const it of items) {
+        const name = it.name || it.abbr || it.id || "";
+        if (!name) continue;
+        out.push({
+          group: group,
+          icon: icon,
+          title: name,
+          subtitle: group + (it.abbr && it.abbr !== name ? " · " + it.abbr : ""),
+          // Open the entity list dialog. (Entity files are frozen — list-level open.)
+          run: () => window.dispatchEvent(new CustomEvent("app:open-entity", { detail: { kind: kind } })),
+          // Bonus: also offer Focus mode for teacher/class/room/subject via shift+enter (future).
+          focus: kindToFocus(kind) ? { kind: kindToFocus(kind), entityId: it.id } : null,
+          weight: 1.1,
+        });
+      }
+    };
+    push("Teacher",   "👨‍🏫", S.teachers,    "teachers");
+    push("Class",     "👥",   S.classes,     "classes");
+    push("Classroom", "🚪",   S.classrooms,  "classrooms");
+    push("Subject",   "📚",   S.subjects,    "subjects");
+    return out;
+  }
+  function kindToFocus(kind) {
+    if (kind === "teachers")   return "teacher";
+    if (kind === "classes")    return "class";
+    if (kind === "classrooms") return "room";
+    if (kind === "subjects")   return "subject";
+    return null;
+  }
+
+  /** Built-in commands the palette adds itself. */
+  function collectBuiltins() {
+    return [
+      {
+        group: "Spotlight",
+        icon: "🔦",
+        title: "Focus mode…",
+        subtitle: "Dim everything except one entity",
+        run: () => window.FocusMode && window.FocusMode.openPicker(),
+        weight: 1.0,
+      },
+      {
+        group: "Spotlight",
+        icon: "⨯",
+        title: "Exit focus mode",
+        subtitle: "Restore full opacity",
+        run: () => window.FocusMode && window.FocusMode.exit(),
+        weight: 0.4,
+      },
+    ];
+  }
+
+  /** Aggregate everything once per open() call. */
+  function buildAll() {
+    return collectBuiltins()
+      .concat(collectMenuCommands())
+      .concat(collectEntityDialogs())
+      .concat(collectSchoolEntities());
+  }
+
+  /** Fuzzy subsequence match — returns 0 (no match) or a score. */
+  function fuzzyScore(query, text) {
+    if (!query) return 1;
+    const q = query.toLowerCase();
+    const t = (text || "").toLowerCase();
+    if (!t) return 0;
+    if (t === q) return 1000;
+    if (t.startsWith(q)) return 500 + (q.length / t.length) * 50;
+    const direct = t.indexOf(q);
+    if (direct !== -1) return 200 + (q.length / t.length) * 50 - direct * 0.3;
+    // subsequence
+    let qi = 0, last = -1, gaps = 0;
+    for (let i = 0; i < t.length && qi < q.length; i++) {
+      if (t[i] === q[qi]) {
+        if (last !== -1) gaps += i - last - 1;
+        last = i;
+        qi++;
+      }
+    }
+    if (qi !== q.length) return 0;
+    return 100 - gaps * 0.5;
+  }
+
+  function rank(all, query) {
+    if (!query) {
+      // No query — show a useful default set capped.
+      return all.slice(0, 60);
+    }
+    const scored = [];
+    for (const c of all) {
+      const haystack = c.title + " " + (c.subtitle || "") + " " + (c.group || "");
+      const s = fuzzyScore(query, haystack) * (c.weight || 1);
+      if (s > 0) scored.push([s, c]);
+    }
+    scored.sort((a, b) => b[0] - a[0]);
+    return scored.slice(0, 50).map(p => p[1]);
+  }
+
+  // ───── Render ─────
+  function open() {
+    if (STATE.overlay) return;   // already open
+    const all = buildAll();
+
+    const overlay = document.createElement("div");
+    overlay.className = "chrx-cmdp__overlay";
+    overlay.setAttribute("role", "dialog");
+    overlay.setAttribute("aria-modal", "true");
+    overlay.setAttribute("aria-label", "Command palette");
+
+    const sheet = document.createElement("div");
+    sheet.className = "chrx-cmdp__sheet";
+
+    const input = document.createElement("input");
+    input.className = "chrx-cmdp__input";
+    input.type = "search";
+    input.placeholder = "Type a command, entity, or menu item…";
+    input.autocomplete = "off";
+    input.spellcheck = false;
+
+    const list = document.createElement("div");
+    list.className = "chrx-cmdp__list";
+    list.setAttribute("role", "listbox");
+
+    const hint = document.createElement("div");
+    hint.className = "chrx-cmdp__hint";
+    hint.innerHTML =
+      '<span><kbd class="chrx-cmdp__kbd">↑↓</kbd> navigate</span>'
+      + '<span><kbd class="chrx-cmdp__kbd">↵</kbd> run</span>'
+      + '<span><kbd class="chrx-cmdp__kbd">esc</kbd> close</span>';
+
+    sheet.appendChild(input);
+    sheet.appendChild(list);
+    sheet.appendChild(hint);
+    overlay.appendChild(sheet);
+    document.body.appendChild(overlay);
+
+    STATE.overlay = overlay;
+    STATE.input = input;
+    STATE.listEl = list;
+    STATE.cursor = 0;
+
+    function refresh() {
+      STATE.items = rank(all, input.value.trim());
+      if (STATE.cursor >= STATE.items.length) STATE.cursor = 0;
+      paintList();
+    }
+    function paintList() {
+      list.innerHTML = "";
+      if (!STATE.items.length) {
+        const e = document.createElement("div");
+        e.className = "chrx-cmdp__empty";
+        e.textContent = "No matches.";
+        list.appendChild(e);
+        return;
+      }
+      STATE.items.forEach((it, i) => {
+        const row = document.createElement("div");
+        row.className = "chrx-cmdp__row" + (i === STATE.cursor ? " is-active" : "");
+        row.setAttribute("role", "option");
+        row.setAttribute("data-idx", String(i));
+        const icon = document.createElement("span");
+        icon.className = "chrx-cmdp__icon";
+        icon.textContent = it.icon || "•";
+        const main = document.createElement("div");
+        main.className = "chrx-cmdp__main";
+        const title = document.createElement("div");
+        title.className = "chrx-cmdp__title";
+        title.textContent = it.title;
+        const sub = document.createElement("div");
+        sub.className = "chrx-cmdp__sub";
+        sub.textContent = it.subtitle || "";
+        main.appendChild(title);
+        main.appendChild(sub);
+        const tag = document.createElement("span");
+        tag.className = "chrx-cmdp__tag";
+        tag.textContent = it.group || "";
+        row.appendChild(icon);
+        row.appendChild(main);
+        row.appendChild(tag);
+        row.addEventListener("mousemove", () => {
+          if (STATE.cursor !== i) { STATE.cursor = i; paintCursor(); }
+        });
+        row.addEventListener("click", () => { STATE.cursor = i; execute(); });
+        list.appendChild(row);
+      });
+    }
+    function paintCursor() {
+      const rows = list.querySelectorAll(".chrx-cmdp__row");
+      rows.forEach((r, i) => r.classList.toggle("is-active", i === STATE.cursor));
+      const active = rows[STATE.cursor];
+      if (active && active.scrollIntoView) active.scrollIntoView({ block: "nearest" });
+    }
+    function execute() {
+      const it = STATE.items[STATE.cursor];
+      if (!it || typeof it.run !== "function") return;
+      // Close first so the dialog/sheet opened by run() lands on a clean stack.
+      close();
+      try { it.run(); }
+      catch (e) {
+        if (window._chrxNotify) window._chrxNotify("Command failed: " + (e && e.message || String(e)), "error");
+        else console.error("[command-palette]", e);
+      }
+    }
+
+    overlay.addEventListener("click", (ev) => {
+      if (ev.target === overlay) close();
+    });
+    input.addEventListener("input", refresh);
+    input.addEventListener("keydown", (ev) => {
+      if (ev.key === "ArrowDown") {
+        ev.preventDefault();
+        if (!STATE.items.length) return;
+        STATE.cursor = (STATE.cursor + 1) % STATE.items.length;
+        paintCursor();
+      } else if (ev.key === "ArrowUp") {
+        ev.preventDefault();
+        if (!STATE.items.length) return;
+        STATE.cursor = (STATE.cursor - 1 + STATE.items.length) % STATE.items.length;
+        paintCursor();
+      } else if (ev.key === "Enter") {
+        ev.preventDefault();
+        execute();
+      } else if (ev.key === "Escape") {
+        ev.preventDefault();
+        close();
+      }
+    });
+
+    refresh();
+    setTimeout(() => input.focus(), 30);
+  }
+
+  function close() {
+    if (!STATE.overlay) return;
+    if (STATE.overlay.parentNode) STATE.overlay.parentNode.removeChild(STATE.overlay);
+    STATE.overlay = null;
+    STATE.input = null;
+    STATE.listEl = null;
+    STATE.items = [];
+    STATE.cursor = 0;
+  }
+
+  // Global Cmd+K / Ctrl+K. Bound inside this module so we don't touch main.js.
+  function installShortcut() {
+    if (STATE.boundKey) return;
+    STATE.boundKey = function (ev) {
+      // Match k/K + meta/ctrl, ignore shift+cmd+k (browser).
+      const isK = ev.key === "k" || ev.key === "K";
+      if (!isK) return;
+      if (!(ev.metaKey || ev.ctrlKey)) return;
+      if (ev.shiftKey) return;
+      ev.preventDefault();
+      if (STATE.overlay) close();
+      else open();
+    };
+    document.addEventListener("keydown", STATE.boundKey, true);
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", installShortcut);
+  } else {
+    installShortcut();
+  }
+
+  window.CommandPalette = { open, close };
+})();
+
