@@ -20,7 +20,7 @@
 <!-- Agent D owns css/style.css; we just reference it so it picks up when D ships -->
 <link rel="stylesheet" href="css/style.css">
 <link rel="stylesheet" href="css/chronexa-theme.css">
-<link rel="stylesheet" href="css/components.css?v=20260520-p21-warmstart">
+<link rel="stylesheet" href="css/components.css?v=20260520-p22-edupage">
 <link rel="stylesheet" href="css/solver_ui.css">
 <link rel="stylesheet" href="css/ribbon.css">
 <link rel="stylesheet" href="css/entities.css">
@@ -161,6 +161,7 @@
         <p class="text-sm text-slate-600">Click a card to pick it up. Click an empty slot to place it. Cards in the bottom strip are unplaced — drag them onto the grid.</p>
       </div>
       <div class="flex gap-2">
+        <button id="editor-lesson-grid" class="px-3 py-1.5 text-xs rounded border border-blue-300 bg-blue-50 text-blue-900 hover:bg-blue-100" title="Open the class × subject lesson matrix">📋 Lesson grid…</button>
         <button id="editor-density" class="px-3 py-1.5 text-xs rounded border border-slate-300 hover:bg-slate-100" title="Toggle card density">Compact</button>
         <button id="editor-toggle-skin" class="px-3 py-1.5 text-xs rounded border border-slate-300 hover:bg-slate-100">Classic skin</button>
         <button id="editor-perspective" class="px-3 py-1.5 text-xs rounded bg-slate-100 hover:bg-slate-200">By Class</button>
@@ -216,7 +217,7 @@
 
 <!-- ─────────────────────── SCRIPTS ─────────────────────── -->
 <!-- Bump APP_VER on every deploy so the browser refetches the JS bundle -->
-<script>window.APP_VER = "20260520-p21-warmstart";</script>
+<script>window.APP_VER = "20260520-p22-edupage";</script>
 <!-- Backend URL — leave empty to force "Run on this computer". Override at deploy time. -->
 <script>window.CHRONEXA_BACKEND_URL = window.CHRONEXA_BACKEND_URL || "";</script>
 <!-- Bundle mode (default): single HTTP request for all 133 modules.

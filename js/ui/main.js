@@ -270,8 +270,8 @@
     // ─── Perspective rotator in editor header ──────────────────
     const persBtn = document.getElementById("editor-perspective");
     if (persBtn) {
-      const PERS = ["class", "teacher", "room"];
-      const LABEL = { class: "By Class", teacher: "By Teacher", room: "By Room" };
+      const PERS = ["class", "teacher", "room", "subject"];
+      const LABEL = { class: "By Class", teacher: "By Teacher", room: "By Room", subject: "By Subject" };
       persBtn.onclick = () => {
         const cur = (window.APP.editor && window.APP.editor.perspective) || "class";
         const next = PERS[(PERS.indexOf(cur) + 1) % PERS.length];
@@ -280,6 +280,18 @@
         persBtn.textContent = LABEL[next];
         // Re-render
         if (window.EditorActivator) window.EditorActivator.activate();
+      };
+    }
+
+    // ─── Lesson-grid matrix entry in editor header ──────────────
+    const lgBtn = document.getElementById("editor-lesson-grid");
+    if (lgBtn) {
+      lgBtn.onclick = () => {
+        if (window.LessonsGridMatrix && window.LessonsGridMatrix.open) {
+          window.LessonsGridMatrix.open(window.APP.school);
+        } else {
+          alert("Lesson grid matrix is not loaded yet — try again in a moment.");
+        }
       };
     }
 

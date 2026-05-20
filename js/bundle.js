@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-19T19:07:21Z
+/* Chronexa bundle — generated 2026-05-20T10:58:18Z
  *      135 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -11392,6 +11392,7 @@ window.Editor = (function () {
   function rowKeysForCard(lesson, perspective, card) {
     if (perspective === "class") return lesson.classIds;
     if (perspective === "teacher") return lesson.teacherIds;
+    if (perspective === "subject") return lesson.subjectId ? [lesson.subjectId] : [];
     if (perspective === "room") {
       const rid = card.classroomId || lesson.preferredRoomId;
       return rid ? [rid] : [];
@@ -11430,6 +11431,13 @@ window.Editor = (function () {
     }
     if (perspective === "room") {
       return S.classrooms.map(r => ({ key: r.id, label: r.name, sub: "" }));
+    }
+    if (perspective === "subject") {
+      return (S.subjects || []).map(s => ({
+        key: s.id,
+        label: s.name,
+        sub: s.abbr && s.abbr !== s.name ? s.abbr : "",
+      }));
     }
     // default = class
     return S.classes.map(c => ({ key: c.id, label: c.name, sub: "" }));
@@ -12999,8 +13007,8 @@ window.StartScreen = (function () {
     // ─── Perspective rotator in editor header ──────────────────
     const persBtn = document.getElementById("editor-perspective");
     if (persBtn) {
-      const PERS = ["class", "teacher", "room"];
-      const LABEL = { class: "By Class", teacher: "By Teacher", room: "By Room" };
+      const PERS = ["class", "teacher", "room", "subject"];
+      const LABEL = { class: "By Class", teacher: "By Teacher", room: "By Room", subject: "By Subject" };
       persBtn.onclick = () => {
         const cur = (window.APP.editor && window.APP.editor.perspective) || "class";
         const next = PERS[(PERS.indexOf(cur) + 1) % PERS.length];
@@ -13009,6 +13017,18 @@ window.StartScreen = (function () {
         persBtn.textContent = LABEL[next];
         // Re-render
         if (window.EditorActivator) window.EditorActivator.activate();
+      };
+    }
+
+    // ─── Lesson-grid matrix entry in editor header ──────────────
+    const lgBtn = document.getElementById("editor-lesson-grid");
+    if (lgBtn) {
+      lgBtn.onclick = () => {
+        if (window.LessonsGridMatrix && window.LessonsGridMatrix.open) {
+          window.LessonsGridMatrix.open(window.APP.school);
+        } else {
+          alert("Lesson grid matrix is not loaded yet — try again in a moment.");
+        }
       };
     }
 

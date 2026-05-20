@@ -56,6 +56,7 @@ window.Editor = (function () {
   function rowKeysForCard(lesson, perspective, card) {
     if (perspective === "class") return lesson.classIds;
     if (perspective === "teacher") return lesson.teacherIds;
+    if (perspective === "subject") return lesson.subjectId ? [lesson.subjectId] : [];
     if (perspective === "room") {
       const rid = card.classroomId || lesson.preferredRoomId;
       return rid ? [rid] : [];
@@ -94,6 +95,13 @@ window.Editor = (function () {
     }
     if (perspective === "room") {
       return S.classrooms.map(r => ({ key: r.id, label: r.name, sub: "" }));
+    }
+    if (perspective === "subject") {
+      return (S.subjects || []).map(s => ({
+        key: s.id,
+        label: s.name,
+        sub: s.abbr && s.abbr !== s.name ? s.abbr : "",
+      }));
     }
     // default = class
     return S.classes.map(c => ({ key: c.id, label: c.name, sub: "" }));
