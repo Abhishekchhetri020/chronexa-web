@@ -48,6 +48,7 @@ export const FAIL = Object.freeze({
   RELATION_FIRST_OR_LAST: 25,
   RELATION_MUST_FOLLOW: 26,
   RELATION_SIMULTANEOUS: 27,
+  RELATION_BREAK_BETWEEN: 28,
 });
 
 /** Numeric ID → name string. */
@@ -80,6 +81,7 @@ export const FAIL_NAME = Object.freeze({
   25: "relation_first_or_last",
   26: "relation_must_follow",
   27: "relation_simultaneous",
+  28: "relation_break_between",
 });
 
 /** Catalog rows (UI uses these for the violations list). */

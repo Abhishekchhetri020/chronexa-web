@@ -402,7 +402,15 @@ function buildModel(school) {
   const lessonMustFollowBefore = new Array(lessonCount); // n_6: must be at p AND a partner at p+1
   const lessonMustFollowAfter  = new Array(lessonCount); // n_6: must be at p AND a partner at p-1
   const lessonSimultaneous = new Array(lessonCount); // n_12 / n_13
+  const lessonN7Partners = new Array(lessonCount);
+  for (let i = 0; i < lessonCount; i++) lessonN7Partners[i] = null;
   const lessonMustFirstLast = new Uint8Array(lessonCount);
+  // Pre-compute break period indices (0-based) — for n_7 check.
+  const breakPeriods = [];
+  const bellPeriods = (school.bell && school.bell.periods) || [];
+  for (let pi = 0; pi < bellPeriods.length; pi++) {
+    if (bellPeriods[pi] && bellPeriods[pi].isTeaching === false) breakPeriods.push(pi);
+  }
   for (let i = 0; i < lessonCount; i++) {
     lessonN1Partners[i]  = null;
     lessonN0Partners[i]  = null;
@@ -487,6 +495,11 @@ function buildModel(school) {
       case "n_16":
         for (const i of matched) lessonMustFirstLast[i] = 1;
         break;
+      case "n_7":
+        // Break-cannot-be-between: matched lessons cannot have a break period
+        // strictly between two of them on the same day.
+        pairCrossSubject(matched, lessonN7Partners);
+        break;
       // n_6 (ordered must-follow) and soft typs n_4/n_11/n_14/n_17
       // queued for a follow-up.
     }
@@ -519,6 +532,8 @@ function buildModel(school) {
     lessonMustFollowBefore,
     lessonMustFollowAfter,
     lessonSimultaneous,
+    lessonN7Partners,
+    breakPeriods,
     lessonMustFirstLast,
   };
 }
@@ -738,6 +753,23 @@ function canPlace(model, state, lessonIdx, slot, roomIdx) {
         if (ps < 0) continue;
         if (model.slotDay[ps] === d && model.slotPeriod[ps] !== p) {
           return FAIL.RELATION_SIMULTANEOUS;
+        }
+      }
+    }
+  }
+  // n_7: a break period must not sit strictly between this lesson and any
+  // already-placed partner on the same day.
+  const partnersN7 = model.lessonN7Partners && model.lessonN7Partners[lessonIdx];
+  if (partnersN7 && model.breakPeriods && model.breakPeriods.length) {
+    for (const pIdx of partnersN7) {
+      if (state.lessonAssigned && state.lessonAssigned[pIdx]) {
+        const ps = state.lessonAssignedSlot[pIdx];
+        if (ps < 0) continue;
+        if (model.slotDay[ps] !== d) continue;
+        const pp = model.slotPeriod[ps];
+        const lo = Math.min(p, pp), hi = Math.max(p, pp);
+        for (const bp of model.breakPeriods) {
+          if (bp > lo && bp < hi) return FAIL.RELATION_BREAK_BETWEEN;
         }
       }
     }
