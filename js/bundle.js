@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-20T17:14:31Z
+/* Chronexa bundle — generated 2026-05-20T17:20:52Z
  *      136 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -12287,15 +12287,15 @@ window.PendingStrip = (function () {
     const tailCommon = [
       { sep: true },
       { id: "timetable", label: "Timetable",          icon: "📅", run: () => switchToPerspective(perspective, rowId) },
-      { id: "preview",   label: "Print preview…",     icon: "🖨", run: () => fireWindow("app:print-preview", { perspective, rowId }) },
-      { id: "verify",    label: "Verification",       icon: "✔",  run: () => fireWindow("app:verify",        { perspective, rowId }) },
-      { id: "imputed",   label: "Imputed constraints", icon: "📜", run: () => fireWindow("app:imputed",      { perspective, rowId }) },
+      { id: "preview",   label: "Print preview…",     icon: "🖨", run: () => doPrintPreview(perspective, rowId) },
+      { id: "verify",    label: "Verification",       icon: "✔",  run: () => doVerify(perspective, rowId) },
+      { id: "imputed",   label: "Imputed constraints", icon: "📜", run: () => doImputed(perspective, rowId, rowLabel) },
       { sep: true },
       { id: "delete", label: "Delete row",            icon: "🗑", danger: true, run: () => deleteRow(perspective, rowId, rowLabel) },
       { id: "lock",   label: "Lock row",              icon: "🔒", run: () => lockRow(perspective, rowId, true) },
       { id: "unlock", label: "Unlock row",            icon: "🔓", run: () => lockRow(perspective, rowId, false) },
       { sep: true },
-      { id: "quick",  label: "Quick changes…",        icon: "⚡", run: () => fireWindow("app:quick-changes", { perspective, rowId }) },
+      { id: "quick",  label: "Quick changes…",        icon: "⚡", run: () => doQuickChanges(perspective, rowId) },
     ];
     return base.concat(perspective === "class" ? classOnly : []).concat(tailCommon);
   }
@@ -12348,6 +12348,44 @@ window.PendingStrip = (function () {
     }
     if (window.EditorActivator) window.EditorActivator.activate();
     notify("Deleted: " + rowLabel);
+  }
+  function doPrintPreview(perspective, rowId) {
+    // The HTML exporter draws a full timetable per class/teacher/room. It's
+    // the closest thing to a print preview we have today.
+    if (window.APP && window.APP.io && typeof window.APP.io.exportHTML === "function") {
+      try { window.APP.io.exportHTML(); return; } catch (e) { console.error(e); }
+    }
+    window.dispatchEvent(new CustomEvent("app:export-timetable-xml"));
+    notify("Exported timetable — use your browser's print dialog (⌘P).");
+  }
+  function doVerify(perspective, rowId) {
+    // Use the constraint verification panel if it's loaded; otherwise hint.
+    if (window.SolverUI && window.SolverUI.Verification && window.SolverUI.Verification.show) {
+      const violations = (window.APP && window.APP.lastSolverResult && window.APP.lastSolverResult.violations) || [];
+      window.SolverUI.Verification.show(violations, window.APP.school);
+      return;
+    }
+    notify("Verification needs a solver run first — click Generate or Test.");
+  }
+  function doImputed(perspective, rowId, rowLabel) {
+    // Show every relation that touches this row entity.
+    const S = window.APP && window.APP.school;
+    if (!S || !Array.isArray(S.relations) || !S.relations.length) {
+      notify("No card relations defined yet — open Specification → Relations to add some.");
+      return;
+    }
+    const field = perspective === "class" ? "classids"
+                : perspective === "teacher" ? "teacherids"
+                : perspective === "room" ? "classroomids"
+                : "subjectids";
+    const touching = S.relations.filter(r => Array.isArray(r[field]) && r[field].includes(rowId));
+    notify(touching.length
+      ? touching.length + " constraint(s) reference " + rowLabel + ". See Specification → Relations."
+      : "No imputed constraints on " + rowLabel + ".");
+  }
+  function doQuickChanges(perspective, rowId) {
+    // Open the relevant entity dialog so the user can edit fields fast.
+    fireEntity(perspective);
   }
   function lockRow(perspective, rowId, lock) {
     const APP = window.APP;

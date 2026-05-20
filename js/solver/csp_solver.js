@@ -398,11 +398,19 @@ function buildModel(school) {
   const lessonN1Partners  = new Array(lessonCount);
   const lessonN0Partners  = new Array(lessonCount);
   const lessonSamedayPart = new Array(lessonCount); // n_8 / n_10
+  const lessonMustFollowAny = new Array(lessonCount); // n_5: arbitrary order
+  const lessonMustFollowBefore = new Array(lessonCount); // n_6: must be at p AND a partner at p+1
+  const lessonMustFollowAfter  = new Array(lessonCount); // n_6: must be at p AND a partner at p-1
+  const lessonSimultaneous = new Array(lessonCount); // n_12 / n_13
   const lessonMustFirstLast = new Uint8Array(lessonCount);
   for (let i = 0; i < lessonCount; i++) {
     lessonN1Partners[i]  = null;
     lessonN0Partners[i]  = null;
     lessonSamedayPart[i] = null;
+    lessonMustFollowAny[i] = null;
+    lessonMustFollowBefore[i] = null;
+    lessonMustFollowAfter[i] = null;
+    lessonSimultaneous[i] = null;
   }
   function gatherMatched(rel) {
     const subjSet = new Set(rel.subjectids || []);
@@ -443,11 +451,24 @@ function buildModel(school) {
       case "n_10":
         pairCrossSubject(matched, lessonSamedayPart);
         break;
+      case "n_5":
+        pairCrossSubject(matched, lessonMustFollowAny);
+        break;
+      case "n_12":
+      case "n_13":
+        // Same-period requirement across same-subject lessons in different classes
+        for (let a = 0; a < matched.length; a++) {
+          for (let b = a + 1; b < matched.length; b++) {
+            (lessonSimultaneous[matched[a]] = lessonSimultaneous[matched[a]] || new Set()).add(matched[b]);
+            (lessonSimultaneous[matched[b]] = lessonSimultaneous[matched[b]] || new Set()).add(matched[a]);
+          }
+        }
+        break;
       case "n_16":
         for (const i of matched) lessonMustFirstLast[i] = 1;
         break;
-      // n_5 / n_6 (must-follow) and n_12 / n_13 (simultaneous) need different
-      // partner-shape semantics and a follow-up patch.
+      // n_6 (ordered must-follow) and soft typs n_4/n_11/n_14/n_17
+      // queued for a follow-up.
     }
   }
 
@@ -474,6 +495,8 @@ function buildModel(school) {
     lessonN1Partners,
     lessonN0Partners,
     lessonSamedayPart,
+    lessonMustFollowAny,
+    lessonSimultaneous,
     lessonMustFirstLast,
   };
 }
@@ -670,6 +693,31 @@ function canPlace(model, state, lessonIdx, slot, roomIdx) {
     // n_16: must be first (period index 0) or last (periodsPerDay - 1)
     if (p !== 0 && p !== model.periodsPerDay - 1) {
       return FAIL.RELATION_FIRST_OR_LAST;
+    }
+  }
+  const partnersFollow = model.lessonMustFollowAny && model.lessonMustFollowAny[lessonIdx];
+  if (partnersFollow) {
+    // n_5: any placed partner must be at the same day, exactly one period away.
+    for (const pIdx of partnersFollow) {
+      if (state.lessonAssigned && state.lessonAssigned[pIdx]) {
+        const ps = state.lessonAssignedSlot[pIdx];
+        if (ps < 0) continue;
+        const pd = model.slotDay[ps], pp = model.slotPeriod[ps];
+        if (pd !== d || Math.abs(pp - p) !== 1) return FAIL.RELATION_MUST_FOLLOW;
+      }
+    }
+  }
+  const partnersSim = model.lessonSimultaneous && model.lessonSimultaneous[lessonIdx];
+  if (partnersSim) {
+    // n_12 / n_13: if a partner is already placed on the same day, periods must match.
+    for (const pIdx of partnersSim) {
+      if (state.lessonAssigned && state.lessonAssigned[pIdx]) {
+        const ps = state.lessonAssignedSlot[pIdx];
+        if (ps < 0) continue;
+        if (model.slotDay[ps] === d && model.slotPeriod[ps] !== p) {
+          return FAIL.RELATION_SIMULTANEOUS;
+        }
+      }
     }
   }
 
