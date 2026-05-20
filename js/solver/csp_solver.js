@@ -454,6 +454,26 @@ function buildModel(school) {
       case "n_5":
         pairCrossSubject(matched, lessonMustFollowAny);
         break;
+      case "n_6": {
+        // Ordered must-follow: every lesson of subjects[0] must be followed
+        // by a lesson of subjects[1] in the next period of the same day.
+        const ids = rel.subjectids || [];
+        if (ids.length < 2) break;
+        const firstSubj = ids[0], secondSubj = ids[1];
+        for (const i of matched) {
+          const l = expanded[i];
+          if (l.subjectId === firstSubj) {
+            // any lesson of secondSubj in the same scope is the partner
+            for (const j of matched) {
+              if (j === i) continue;
+              if (expanded[j].subjectId !== secondSubj) continue;
+              (lessonMustFollowBefore[i] = lessonMustFollowBefore[i] || new Set()).add(j);
+              (lessonMustFollowAfter[j]  = lessonMustFollowAfter[j]  || new Set()).add(i);
+            }
+          }
+        }
+        break;
+      }
       case "n_12":
       case "n_13":
         // Same-period requirement across same-subject lessons in different classes
@@ -496,6 +516,8 @@ function buildModel(school) {
     lessonN0Partners,
     lessonSamedayPart,
     lessonMustFollowAny,
+    lessonMustFollowBefore,
+    lessonMustFollowAfter,
     lessonSimultaneous,
     lessonMustFirstLast,
   };
@@ -716,6 +738,31 @@ function canPlace(model, state, lessonIdx, slot, roomIdx) {
         if (ps < 0) continue;
         if (model.slotDay[ps] === d && model.slotPeriod[ps] !== p) {
           return FAIL.RELATION_SIMULTANEOUS;
+        }
+      }
+    }
+  }
+  // n_6 ordered must-follow — "before" partners must occupy (d, p+1), "after" must occupy (d, p-1)
+  const fBefore = model.lessonMustFollowBefore && model.lessonMustFollowBefore[lessonIdx];
+  if (fBefore) {
+    for (const pIdx of fBefore) {
+      if (state.lessonAssigned && state.lessonAssigned[pIdx]) {
+        const ps = state.lessonAssignedSlot[pIdx];
+        if (ps < 0) continue;
+        if (!(model.slotDay[ps] === d && model.slotPeriod[ps] === p + 1)) {
+          return FAIL.RELATION_MUST_FOLLOW;
+        }
+      }
+    }
+  }
+  const fAfter = model.lessonMustFollowAfter && model.lessonMustFollowAfter[lessonIdx];
+  if (fAfter) {
+    for (const pIdx of fAfter) {
+      if (state.lessonAssigned && state.lessonAssigned[pIdx]) {
+        const ps = state.lessonAssignedSlot[pIdx];
+        if (ps < 0) continue;
+        if (!(model.slotDay[ps] === d && model.slotPeriod[ps] === p - 1)) {
+          return FAIL.RELATION_MUST_FOLLOW;
         }
       }
     }
