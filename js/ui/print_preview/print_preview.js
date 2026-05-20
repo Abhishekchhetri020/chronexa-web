@@ -69,9 +69,25 @@
     sel.value = currentTemplate;
 
     const filterBtn  = el("button", { class: "chrx-tb-btn", type: "button",
-      onclick: () => notify("Filter dialog — coming soon") }, "⚙︎ Filter");
+      title: "Filter rows shown in this preview",
+      onclick: () => {
+        const q = prompt("Filter rows (subject / teacher / class — leave empty to clear):", APP.printFilter || "");
+        if (q == null) return;
+        APP.printFilter = q.trim();
+        render(currentTemplate);
+        notify(q ? ("Filter: " + q) : "Filter cleared");
+      } }, "⚙︎ Filter");
     const sizeBtn    = el("button", { class: "chrx-tb-btn", type: "button",
-      onclick: () => notify("Sizes/widths — coming soon") }, "📐 Sizes");
+      title: "Page size & scale",
+      onclick: () => {
+        const cur = APP.printScale || 100;
+        const next = prompt("Print scale percent (50–200):", String(cur));
+        const v = Math.max(50, Math.min(200, parseInt(next, 10) || cur));
+        APP.printScale = v;
+        const stage = host.querySelector(".chrx-pp-stage");
+        if (stage) stage.style.zoom = (v / 100).toString();
+        notify("Scale " + v + "%");
+      } }, "📐 Sizes");
     const designBtn  = el("button", { class: "chrx-tb-btn", type: "button",
       title: "Cell style — anchor, fields, font, colors",
       onclick: () => {
@@ -83,13 +99,22 @@
         });
       } }, "🎨 Cell style…");
     const colorBtn   = el("button", { class: "chrx-tb-btn", type: "button",
-      onclick: () => notify("Colors — coming soon") }, "🌈 Colors");
+      title: "Edit per-subject colours",
+      onclick: () => { closePreview(); window.dispatchEvent(new CustomEvent("app:open-entity", { detail: { kind: "subjects" } })); } }, "🌈 Colors");
     const structBtn  = el("button", { class: "chrx-tb-btn", type: "button",
-      onclick: () => notify("Modify structure — coming soon") }, "🧩 Structure");
+      title: "Days, periods, breaks, holidays — opens School Hub",
+      onclick: () => { closePreview(); document.dispatchEvent(new CustomEvent("nav:goto-step", { detail: { step: 2 } })); } }, "🧩 Structure");
     const extraBtn   = el("button", { class: "chrx-tb-btn", type: "button",
-      onclick: () => notify("Extra cols/rows — coming soon") }, "➕ Extra");
+      title: "Toggle extra header / footer / class-total rows",
+      onclick: () => {
+        APP.printExtras = !APP.printExtras;
+        host.classList.toggle("chrx-pp-extras", !!APP.printExtras);
+        render(currentTemplate);
+        notify(APP.printExtras ? "Extras: on" : "Extras: off");
+      } }, "➕ Extra");
     const globalBtn  = el("button", { class: "chrx-tb-btn", type: "button",
-      onclick: () => notify("Global settings — coming soon") }, "🛠 Global");
+      title: "School-wide settings — opens School Hub",
+      onclick: () => { closePreview(); document.dispatchEvent(new CustomEvent("nav:goto-step", { detail: { step: 2 } })); } }, "🛠 Global");
 
     const close = el("button", { class: "chrx-tb-btn chrx-tb-btn--danger", type: "button",
       style: "margin-left:auto", onclick: closePreview }, "✕ Close preview");
