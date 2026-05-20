@@ -43,6 +43,9 @@ export const FAIL = Object.freeze({
   REQUIRED_ROOM_TYPE: 20,
   FIXED_SLOT_MISMATCH: 21,
   RELATION_SAME_DAY_FORBIDDEN: 22,
+  RELATION_CANNOT_FOLLOW: 23,
+  RELATION_MUST_SAME_DAY: 24,
+  RELATION_FIRST_OR_LAST: 25,
 });
 
 /** Numeric ID → name string. */
@@ -70,6 +73,9 @@ export const FAIL_NAME = Object.freeze({
   20: "required_room_type_unmet",
   21: "fixed_slot_mismatch",
   22: "relation_same_day_forbidden",
+  23: "relation_cannot_follow",
+  24: "relation_must_same_day",
+  25: "relation_first_or_last",
 });
 
 /** Catalog rows (UI uses these for the violations list). */

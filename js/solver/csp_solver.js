@@ -378,41 +378,76 @@ function buildModel(school) {
   ]);
 
   // ─── Card relationships (a.k.a. "constraints") ─────────────────────────
-  // Pre-compute the simplest typ — n_1 "cannot be the same day" — into a
-  // per-lesson list of "blocked-other-lessons" so canPlace can reject any
-  // placement that would put two related-subject lessons on the same day in
-  // the same scoped class. This wires school.relations[] into the search.
-  // Other typs (n_0 cannot-follow, n_5 must-follow, n_8 same-day, …) will
-  // hook the same scaffolding; today we cover n_1 only, which is the most
-  // common relation in user-facing reference apps.
-  // lessonN1Partners[i] = Set<lessonIdx> of expanded lessons that share an
-  // n_1 relation with lesson i.
-  const lessonN1Partners = new Array(lessonCount);
-  for (let i = 0; i < lessonCount; i++) lessonN1Partners[i] = null;
-  const rels = Array.isArray(school.relations) ? school.relations : [];
-  for (const rel of rels) {
-    if (!rel || rel.disabled || rel.typ !== "n_1") continue;
+  // Pre-compute relation constraints into per-lesson partner sets that
+  // canPlace can check in O(partners) per placement. Each typ has its own
+  // semantics (cannot-same-day, cannot-follow, must-same-day, must-be-
+  // first-or-last, …) but all of them share the same partner-set scaffold.
+  //
+  // typ groups handled here (all hard):
+  //   n_1  — cannot-same-day        : ≥2 different subjects must NOT share a day
+  //   n_0  — cannot-follow          : ≥2 different subjects must NOT be in
+  //                                   consecutive periods on the same day
+  //   n_8  — must-same-day          : different-subject partners must share day
+  //   n_10 — must-same-day (multi)  : same as n_8 but across listed classes
+  //   n_16 — must-be-first-or-last  : every matched lesson must occupy P1 or
+  //                                   the last period of the day
+  //
+  // Soft typs (n_4 distribution, n_11 divided-same-day, n_14 same-period,
+  // n_17 afternoon, plus the "optimise" weights) hook the soft scorer
+  // and are not yet wired here.
+  const lessonN1Partners  = new Array(lessonCount);
+  const lessonN0Partners  = new Array(lessonCount);
+  const lessonSamedayPart = new Array(lessonCount); // n_8 / n_10
+  const lessonMustFirstLast = new Uint8Array(lessonCount);
+  for (let i = 0; i < lessonCount; i++) {
+    lessonN1Partners[i]  = null;
+    lessonN0Partners[i]  = null;
+    lessonSamedayPart[i] = null;
+  }
+  function gatherMatched(rel) {
     const subjSet = new Set(rel.subjectids || []);
     const classSet = new Set(rel.classids || []);
-    if (subjSet.size < 2) continue;
-    // Collect expanded lesson indices that touch this relation
-    const matched = [];
+    const out = [];
     for (let i = 0; i < lessonCount; i++) {
       const l = expanded[i];
-      if (!subjSet.has(l.subjectId)) continue;
-      if (classSet.size > 0 && !(l.classIds || []).some(cid => classSet.has(cid))) continue;
-      matched.push(i);
+      if (subjSet.size && !subjSet.has(l.subjectId)) continue;
+      if (classSet.size && !(l.classIds || []).some(cid => classSet.has(cid))) continue;
+      out.push(i);
     }
-    // Build undirected pairs — every matched lesson conflicts with every other
-    // matched lesson of a *different* subject (within the relation).
+    return out;
+  }
+  function pairCrossSubject(matched, sinkArr) {
     for (let a = 0; a < matched.length; a++) {
       for (let b = a + 1; b < matched.length; b++) {
         const la = expanded[matched[a]];
         const lb = expanded[matched[b]];
-        if (la.subjectId === lb.subjectId) continue; // same subject → same-day OK
-        (lessonN1Partners[matched[a]] = lessonN1Partners[matched[a]] || new Set()).add(matched[b]);
-        (lessonN1Partners[matched[b]] = lessonN1Partners[matched[b]] || new Set()).add(matched[a]);
+        if (la.subjectId === lb.subjectId) continue;
+        (sinkArr[matched[a]] = sinkArr[matched[a]] || new Set()).add(matched[b]);
+        (sinkArr[matched[b]] = sinkArr[matched[b]] || new Set()).add(matched[a]);
       }
+    }
+  }
+  const rels = Array.isArray(school.relations) ? school.relations : [];
+  for (const rel of rels) {
+    if (!rel || rel.disabled) continue;
+    const matched = gatherMatched(rel);
+    if (matched.length < (rel.typ === "n_16" ? 1 : 2)) continue;
+    switch (rel.typ) {
+      case "n_1":
+        pairCrossSubject(matched, lessonN1Partners);
+        break;
+      case "n_0":
+        pairCrossSubject(matched, lessonN0Partners);
+        break;
+      case "n_8":
+      case "n_10":
+        pairCrossSubject(matched, lessonSamedayPart);
+        break;
+      case "n_16":
+        for (const i of matched) lessonMustFirstLast[i] = 1;
+        break;
+      // n_5 / n_6 (must-follow) and n_12 / n_13 (simultaneous) need different
+      // partner-shape semantics and a follow-up patch.
     }
   }
 
@@ -437,6 +472,9 @@ function buildModel(school) {
     weights,
     teacherLastPeriodCap: new Int32Array(teacherIds.length).fill(-1),
     lessonN1Partners,
+    lessonN0Partners,
+    lessonSamedayPart,
+    lessonMustFirstLast,
   };
 }
 
@@ -595,17 +633,43 @@ function canPlace(model, state, lessonIdx, slot, roomIdx) {
     if ((state.roomOcc[rd] & bit) !== 0) return FAIL.ROOM_CONFLICT;
   }
 
-  // Card relation n_1 — "cannot be the same day". If any of this lesson's
-  // n_1 partners has already been placed on day d, reject.
-  const partners = model.lessonN1Partners && model.lessonN1Partners[lessonIdx];
-  if (partners) {
-    for (const pIdx of partners) {
+  // Card relations — partner-set checks (n_1 cannot-same-day, n_0
+  // cannot-follow, n_8/n_10 must-same-day, n_16 must-be-first-or-last).
+  const partnersN1 = model.lessonN1Partners && model.lessonN1Partners[lessonIdx];
+  if (partnersN1) {
+    for (const pIdx of partnersN1) {
       if (state.lessonAssigned && state.lessonAssigned[pIdx]) {
-        const partnerSlot = state.lessonAssignedSlot[pIdx];
-        if (partnerSlot >= 0 && model.slotDay[partnerSlot] === d) {
-          return FAIL.RELATION_SAME_DAY_FORBIDDEN;
+        const ps = state.lessonAssignedSlot[pIdx];
+        if (ps >= 0 && model.slotDay[ps] === d) return FAIL.RELATION_SAME_DAY_FORBIDDEN;
+      }
+    }
+  }
+  const partnersN0 = model.lessonN0Partners && model.lessonN0Partners[lessonIdx];
+  if (partnersN0) {
+    for (const pIdx of partnersN0) {
+      if (state.lessonAssigned && state.lessonAssigned[pIdx]) {
+        const ps = state.lessonAssignedSlot[pIdx];
+        if (ps >= 0 && model.slotDay[ps] === d && Math.abs(model.slotPeriod[ps] - p) === 1) {
+          return FAIL.RELATION_CANNOT_FOLLOW;
         }
       }
+    }
+  }
+  const partnersSD = model.lessonSamedayPart && model.lessonSamedayPart[lessonIdx];
+  if (partnersSD) {
+    // Must-same-day: if any partner is already placed on a DIFFERENT day,
+    // this placement violates the relation.
+    for (const pIdx of partnersSD) {
+      if (state.lessonAssigned && state.lessonAssigned[pIdx]) {
+        const ps = state.lessonAssignedSlot[pIdx];
+        if (ps >= 0 && model.slotDay[ps] !== d) return FAIL.RELATION_MUST_SAME_DAY;
+      }
+    }
+  }
+  if (model.lessonMustFirstLast && model.lessonMustFirstLast[lessonIdx]) {
+    // n_16: must be first (period index 0) or last (periodsPerDay - 1)
+    if (p !== 0 && p !== model.periodsPerDay - 1) {
+      return FAIL.RELATION_FIRST_OR_LAST;
     }
   }
 
