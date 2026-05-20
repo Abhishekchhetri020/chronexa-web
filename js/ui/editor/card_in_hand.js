@@ -49,6 +49,26 @@
       <div class="chrx-vk-line3">${esc(teacherShort)}</div></div>`;
     document.body.appendChild(ghost);
     document.body.classList.add("chrx-card-in-hand");
+
+    // Sticky banner so users see they're carrying a card.
+    let banner = document.getElementById("chrx-carry-banner");
+    if (!banner) {
+      banner = document.createElement("div");
+      banner.id = "chrx-carry-banner";
+      banner.style.cssText = "position:fixed;top:8px;left:50%;transform:translateX(-50%);background:rgba(15,23,42,.92);color:#fff;padding:8px 18px;border-radius:999px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;font-weight:500;box-shadow:0 8px 24px rgba(15,23,42,.35);z-index:10001;pointer-events:none;display:flex;align-items:center;gap:8px;";
+      document.body.appendChild(banner);
+    }
+    banner.innerHTML = `<span style="font-size:16px;line-height:1">✋</span><span><strong>${esc(subjShort)}</strong>${teacherShort ? ' · ' + esc(teacherShort) : ''}${classShort ? ' · ' + esc(classShort) : ''}</span><span style="opacity:.7;font-size:11px;margin-left:6px">click empty slot to place · Esc to cancel</span>`;
+
+    // Pulse the origin card briefly so the user sees "I picked it up".
+    if (!d.fromPending && d.day != null && d.period != null) {
+      const origin = document.querySelector(`.chrx-editor .chrx-slot[data-day="${d.day}"][data-period="${d.period}"]`);
+      if (origin) {
+        origin.classList.add("chrx-slot-pickup-pulse");
+        setTimeout(() => origin.classList.remove("chrx-slot-pickup-pulse"), 600);
+      }
+    }
+
     const w = ghost.offsetWidth || 60, h = ghost.offsetHeight || 24;
     dx = (w / 2) | 0; dy = (h / 2) | 0;
     px = (typeof d.sourceX === "number") ? d.sourceX : (window.event ? window.event.clientX : 0);
@@ -185,6 +205,8 @@
     lastSlot = null;
     if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
     if (ghost && ghost.parentNode) ghost.parentNode.removeChild(ghost);
+    const banner = document.getElementById("chrx-carry-banner");
+    if (banner && banner.parentNode) banner.parentNode.removeChild(banner);
     ghost = null; inHand = null;
     document.body.classList.remove("chrx-card-in-hand");
   }
