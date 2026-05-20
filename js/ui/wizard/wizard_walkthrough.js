@@ -214,6 +214,20 @@
       ctaWrap.appendChild(bulkBtn);
     }
 
+    // Lessons step: link to the class×subject matrix (10× faster than the
+    // per-lesson dialog when the user has 20+ classes × subjects to fill).
+    if (step.key === "lessons" && window.LessonsGridMatrix && typeof window.LessonsGridMatrix.open === "function") {
+      const matrixBtn = document.createElement("button");
+      matrixBtn.type = "button";
+      matrixBtn.className = "px-3 py-1.5 rounded-lg border border-blue-300 bg-blue-50 text-blue-900 text-sm font-semibold hover:bg-blue-100";
+      matrixBtn.textContent = "📋 Open matrix";
+      matrixBtn.title = "Type weekly periods per class × subject in one fast grid";
+      matrixBtn.addEventListener("click", () => {
+        window.LessonsGridMatrix.open(window.APP && window.APP.school);
+      });
+      ctaWrap.appendChild(matrixBtn);
+    }
+
     countBar.appendChild(countLabel);
     countBar.appendChild(ctaWrap);
     body.appendChild(countBar);

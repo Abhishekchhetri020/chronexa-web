@@ -131,6 +131,9 @@
   }
 
   function showPicker(onPick) {
+    // Bug #2: don't stack duplicate pickers if the user clicks "+ New" twice.
+    const existing = document.querySelector(".chrx-tpl-modal");
+    if (existing) existing.remove();
     ensureStyles();
     const root = document.createElement("div");
     root.className = "chrx-tpl-modal";

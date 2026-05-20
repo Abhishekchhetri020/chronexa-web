@@ -43,16 +43,21 @@
       (window._chrxNotify || console.log)("Add classes and subjects first.", "warn"); return;
     }
 
+    // Track whether the user changed anything so close-without-save can warn.
+    let dirty = false;
+    function tryClose() {
+      if (!dirty || confirm("Discard changes to the lesson matrix?")) root.remove();
+    }
     const root = el("div", { class: "chrx-matrix-root",
-      onclick: e => { if (e.target === root) root.remove(); } });
+      onclick: e => { if (e.target === root) tryClose(); } });
     const panel = el("div", { class: "chrx-matrix-panel" });
 
     panel.appendChild(el("header", null,
-      el("h2", null, `📋 Lessons matrix — type weekly counts (Ctrl+S to save)`),
-      el("button", { class: "chrx-matrix-close", "aria-label": "Close", onclick: () => root.remove() }, "×"),
+      el("h2", null, `📋 Lessons matrix — type weekly counts`),
+      el("button", { class: "chrx-matrix-close", "aria-label": "Close", onclick: tryClose }, "×"),
     ));
     panel.appendChild(el("div", { class: "chrx-matrix-hint" },
-      "Type a number to set weekly lesson count. Blank = no lesson. Click subject header to set defaults."));
+      "Type a number to set weekly lesson count. Blank = no lesson. Click subject header to set defaults. Save button below — or Ctrl+S."));
 
     const wrap = el("div", { class: "chrx-matrix-wrap" });
     const tbl = el("table", { class: "chrx-matrix-table" });
@@ -79,7 +84,7 @@
         const count = lesson ? (lesson.periodsPerWeek || 0) : "";
         const input = el("input", { type: "text", inputmode: "numeric",
           value: String(count), maxlength: "2",
-          oninput: e => { e.target.value = e.target.value.replace(/[^0-9]/g, "").slice(0, 2); updateRowTotal(c.id); },
+          oninput: e => { dirty = true; e.target.value = e.target.value.replace(/[^0-9]/g, "").slice(0, 2); updateRowTotal(c.id); },
           onkeydown: e => {
             if (e.key === "Tab") return;
             if (e.key === "ArrowRight" || e.key === "Enter") { e.preventDefault(); moveCell(c.id, s.id, 1, 0); }
@@ -100,8 +105,8 @@
     panel.appendChild(wrap);
 
     panel.appendChild(el("footer", null,
+      el("button", { class: "chrx-matrix-cancel", onclick: tryClose }, "Cancel"),
       el("button", { class: "chrx-matrix-save", onclick: save }, "💾 Save matrix"),
-      el("button", { class: "chrx-matrix-cancel", onclick: () => root.remove() }, "Cancel"),
     ));
 
     root.appendChild(panel);
