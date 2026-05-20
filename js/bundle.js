@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-20T15:26:44Z
+/* Chronexa bundle — generated 2026-05-20T15:28:08Z
  *      136 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -12248,7 +12248,7 @@ window.PendingStrip = (function () {
  * Editor row right-click context menu.
  *
  * Right-clicking a row label (class / teacher / room / subject) opens a
- * floating menu that mirrors EduPage / aSc TimeTables — Edit, Lessons,
+ * floating menu that mirrors the legacy desktop scheduler — Edit, Lessons,
  * Time off, Verification, Delete row, Lock / Unlock, Quick changes.
  *
  * Items that have a real handler dispatch their entity-router event.

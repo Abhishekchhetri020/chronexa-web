@@ -2,7 +2,7 @@
  * Editor row right-click context menu.
  *
  * Right-clicking a row label (class / teacher / room / subject) opens a
- * floating menu that mirrors EduPage / aSc TimeTables — Edit, Lessons,
+ * floating menu that mirrors the legacy desktop scheduler — Edit, Lessons,
  * Time off, Verification, Delete row, Lock / Unlock, Quick changes.
  *
  * Items that have a real handler dispatch their entity-router event.
