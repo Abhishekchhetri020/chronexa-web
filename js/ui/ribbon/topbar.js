@@ -44,9 +44,17 @@
       if (e.sub) {
         item.appendChild(el("span", { class: "chrx-menu-item__arrow" }, "▶"));
         let subEl = null;
-        item.addEventListener("mouseenter", () => {
-          if (!subEl) { subEl = buildMenuPanel(e.sub); subEl.classList.add("chrx-menu-item__sub"); item.appendChild(subEl); }
-        });
+        function openSub() {
+          if (subEl) return;
+          subEl = buildMenuPanel(e.sub);
+          subEl.classList.add("chrx-menu-item__sub");
+          item.appendChild(subEl);
+        }
+        item.addEventListener("mouseenter", openSub);
+        // Touch + click users couldn't reach Export/Import/Compare submenus
+        // until they were also openable via click. Mouseenter alone failed
+        // on touch devices and during keyboard nav.
+        item.addEventListener("click", (ev) => { ev.stopPropagation(); openSub(); });
       } else if (e.run && !e.disabled) {
         item.addEventListener("click", (ev) => {
           ev.stopPropagation(); closeAllMenus();

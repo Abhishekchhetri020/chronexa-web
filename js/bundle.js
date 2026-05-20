@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-20T11:34:13Z
+/* Chronexa bundle — generated 2026-05-20T12:03:23Z
  *      135 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -10066,6 +10066,15 @@ ${body}
     refs.disc.disabled = false;
     refs.status.textContent = "Applied to timetable.";
     refs.status.style.color = "var(--chrx-green)";
+    // Force the editor (and pending strip) to re-render against the new
+    // school.cards. Without this the grid stays empty and the pending
+    // strip stays full even though the data is now in place.
+    try {
+      const editorRoot = document.querySelector(".chrx-editor");
+      if (editorRoot && global.Editor && global.Editor.render) global.Editor.render(editorRoot);
+      const pendRoot = document.querySelector(".chrx-pending-strip");
+      if (pendRoot && global.PendingStrip && global.PendingStrip.render) global.PendingStrip.render(pendRoot);
+    } catch (e) { console.warn("[result_panel] post-apply re-render failed", e); }
     if (state.onApply) try { state.onApply(newCards); } catch (e) { console.error(e); }
   }
   function isDestructiveApply() {
@@ -14135,9 +14144,17 @@ window.StartScreen = (function () {
       if (e.sub) {
         item.appendChild(el("span", { class: "chrx-menu-item__arrow" }, "▶"));
         let subEl = null;
-        item.addEventListener("mouseenter", () => {
-          if (!subEl) { subEl = buildMenuPanel(e.sub); subEl.classList.add("chrx-menu-item__sub"); item.appendChild(subEl); }
-        });
+        function openSub() {
+          if (subEl) return;
+          subEl = buildMenuPanel(e.sub);
+          subEl.classList.add("chrx-menu-item__sub");
+          item.appendChild(subEl);
+        }
+        item.addEventListener("mouseenter", openSub);
+        // Touch + click users couldn't reach Export/Import/Compare submenus
+        // until they were also openable via click. Mouseenter alone failed
+        // on touch devices and during keyboard nav.
+        item.addEventListener("click", (ev) => { ev.stopPropagation(); openSub(); });
       } else if (e.run && !e.disabled) {
         item.addEventListener("click", (ev) => {
           ev.stopPropagation(); closeAllMenus();

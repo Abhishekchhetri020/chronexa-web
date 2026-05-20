@@ -167,6 +167,15 @@
     refs.disc.disabled = false;
     refs.status.textContent = "Applied to timetable.";
     refs.status.style.color = "var(--chrx-green)";
+    // Force the editor (and pending strip) to re-render against the new
+    // school.cards. Without this the grid stays empty and the pending
+    // strip stays full even though the data is now in place.
+    try {
+      const editorRoot = document.querySelector(".chrx-editor");
+      if (editorRoot && global.Editor && global.Editor.render) global.Editor.render(editorRoot);
+      const pendRoot = document.querySelector(".chrx-pending-strip");
+      if (pendRoot && global.PendingStrip && global.PendingStrip.render) global.PendingStrip.render(pendRoot);
+    } catch (e) { console.warn("[result_panel] post-apply re-render failed", e); }
     if (state.onApply) try { state.onApply(newCards); } catch (e) { console.error(e); }
   }
   function isDestructiveApply() {
