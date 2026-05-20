@@ -325,14 +325,32 @@ window.parseTimetableXml = (function () {
 
   // --- Helpers -------------------------------------------------------------
   const ROMAN_ORDER = { "I":1,"II":2,"III":3,"IV":4,"V":5,"VI":6,"VII":7,"VIII":8,"IX":9,"X":10,"XI":11,"XII":12 };
-  const PRE_ORDER = { "NURSERY":-3, "LKG":-2, "UKG":-1 };
+  // Indian/British pre-primary names land before Class I. Variants matter —
+  // many schools use "NUR" / "PRE NUR" / "JR KG" / "KG" rather than the full
+  // forms; without these they fell through to a generic rank of 100 and ended
+  // up *after* X B in the editor.
+  const PRE_ORDER = {
+    "PRE NURSERY":-6, "PRE-NURSERY":-6, "PRE NUR":-6, "PRENURSERY":-6, "PRE-NUR":-6, "PRENUR":-6, "PN":-6,
+    "PLAYGROUP":-5, "PLAY GROUP":-5, "PG":-5,
+    "NURSERY":-4, "NUR":-4, "NSY":-4,
+    "JR KG":-3, "JR-KG":-3, "JR.KG":-3, "JRKG":-3, "LKG":-3, "L.K.G":-3, "LOWER KG":-3, "JUNIOR KG":-3,
+    "SR KG":-2, "SR-KG":-2, "SR.KG":-2, "SRKG":-2, "UKG":-2, "U.K.G":-2, "UPPER KG":-2, "SENIOR KG":-2,
+    "KG":-1, "K.G":-1, "K G":-1, "KINDERGARTEN":-1,
+    "PREP":-1, "PREPARATORY":-1,
+  };
 
   function classOrder(a, b) {
     return classRank(a.name) - classRank(b.name) || a.name.localeCompare(b.name);
   }
   function classRank(name) {
     const u = (name || "").toUpperCase().trim();
+    // Try exact, then strip trailing section letter ("NUR A" → "NUR")
     if (u in PRE_ORDER) return PRE_ORDER[u];
+    const m0 = u.match(/^(.+?)\s+([A-Z])$/);
+    if (m0 && m0[1] in PRE_ORDER) {
+      const sectBoost = (m0[2].charCodeAt(0) - 64) / 100;
+      return PRE_ORDER[m0[1]] + sectBoost;
+    }
     const m = u.match(/^([IVX]+)\b/);
     if (m && m[1] in ROMAN_ORDER) {
       // Tie-break by section letter
