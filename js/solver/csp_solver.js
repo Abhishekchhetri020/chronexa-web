@@ -2089,6 +2089,76 @@ export function solve(school, options = {}) {
   else if (unplaced > 0) status = "INFEASIBLE";
   else status = "FEASIBLE";
 
+  // Soft card-relation typs — n_4 (distribution), n_11 (divided-same-day),
+  // n_14 (same-period-each-day), n_17 (afternoon). These don't drive
+  // placement choice in the solver (that's the soft-scorer's job and
+  // requires a deeper refactor), but post-solve we surface every relation
+  // that ended up violated so the user can see it in the Verification
+  // panel. This satisfies "all 15 typs are at least observed by the
+  // solver" and lays the groundwork for a future soft-score hookup.
+  if (Array.isArray(school.relations) && school.relations.length) {
+    const cardsByLesson = {};
+    for (const a of assignment) {
+      (cardsByLesson[a.lessonId.replace(/#\d+$/, "")] = cardsByLesson[a.lessonId.replace(/#\d+$/, "")] || [])
+        .push({ day: a.day, period: a.period });
+    }
+    const periodsPerDay = model.periodsPerDay;
+    const halfPoint = Math.floor(periodsPerDay / 2);
+    for (const rel of school.relations) {
+      if (!rel || rel.disabled) continue;
+      const subjSet = new Set(rel.subjectids || []);
+      const classSet = new Set(rel.classids || []);
+      const matched = (school.lessons || []).filter(l =>
+        (!subjSet.size || subjSet.has(l.subjectId)) &&
+        (!classSet.size || (l.classIds || []).some(cid => classSet.has(cid))));
+      if (rel.typ === "n_4") {
+        // Distribution: days used should be >= ceil(periodsPerWeek / 2).
+        for (const l of matched) {
+          const cards = cardsByLesson[l.id] || [];
+          if (!cards.length) continue;
+          const daysUsed = new Set(cards.map(c => c.day)).size;
+          const target = Math.max(1, Math.ceil((l.periodsPerWeek || cards.length) / 2));
+          if (daysUsed < target) {
+            violations.push({ ruleId: "SOFT_n_4_distribution", description:
+              `Lesson ${l.id} concentrated on ${daysUsed} day(s); want at least ${target}.` });
+          }
+        }
+      } else if (rel.typ === "n_11") {
+        // Divided-cards-must-be-same-day: all placements for one lesson on one day.
+        for (const l of matched) {
+          const cards = cardsByLesson[l.id] || [];
+          const daysUsed = new Set(cards.map(c => c.day)).size;
+          if (cards.length > 1 && daysUsed > 1) {
+            violations.push({ ruleId: "SOFT_n_11_divided_same_day", description:
+              `Lesson ${l.id} is split across ${daysUsed} days; n_11 wants one day.` });
+          }
+        }
+      } else if (rel.typ === "n_14") {
+        // Same-period-each-day for matched lessons.
+        for (const l of matched) {
+          const cards = cardsByLesson[l.id] || [];
+          const periodsUsed = new Set(cards.map(c => c.period));
+          if (periodsUsed.size > 1) {
+            violations.push({ ruleId: "SOFT_n_14_same_period_each_day", description:
+              `Lesson ${l.id} uses ${periodsUsed.size} different periods; n_14 wants one.` });
+          }
+        }
+      } else if (rel.typ === "n_17") {
+        // Afternoon: matched lessons should be in bottom half of periods.
+        for (const l of matched) {
+          const cards = cardsByLesson[l.id] || [];
+          for (const c of cards) {
+            if (c.period - 1 < halfPoint) {
+              violations.push({ ruleId: "SOFT_n_17_afternoon", description:
+                `Lesson ${l.id} placed in morning period ${c.period}; n_17 prefers afternoon.` });
+              break;
+            }
+          }
+        }
+      }
+    }
+  }
+
   return {
     status,
     assignment,
