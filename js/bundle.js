@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-21T19:51:18Z
+/* Chronexa bundle — generated 2026-05-21T19:57:32Z
  *      137 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -12190,16 +12190,59 @@ window.PendingStrip = (function () {
 
   function commit(day, period) {
     const S = window.APP && window.APP.school;
-    if (S) {
-      const lesson = S._idx.lessonById[inHand.lessonId];
-      const cid = lesson ? lesson.preferredRoomId : undefined;
-      if (!S.cards.some(c => c.lessonId === inHand.lessonId && c.day === day && c.period === period))
-        S.cards.push({ lessonId: inHand.lessonId, day, period, classroomId: cid });
+    const cardId  = inHand.cardId;
+    const lessonId = inHand.lessonId;
+    const fromPending = !!inHand.fromPending;
+    const originDay = inHand.originDay;
+    const originPeriod = inHand.originPeriod;
+    const isMove = !fromPending && Number.isFinite(originDay) && Number.isFinite(originPeriod);
+    const isSameSlot = isMove && originDay === day && originPeriod === period;
+    const lesson = S && S._idx ? S._idx.lessonById[lessonId] : null;
+    const cid = lesson ? lesson.preferredRoomId : undefined;
+
+    function applyPlacement() {
+      if (!S) return;
+      if (isMove) {
+        const oi = S.cards.findIndex(c => c.lessonId === lessonId && c.day === originDay && c.period === originPeriod);
+        if (oi !== -1) S.cards.splice(oi, 1);
+      }
+      if (!S.cards.some(c => c.lessonId === lessonId && c.day === day && c.period === period))
+        S.cards.push({ lessonId, day, period, classroomId: cid });
     }
-    document.dispatchEvent(new CustomEvent("editor:place",
-      { detail: { cardId: inHand.cardId, lessonId: inHand.lessonId, day, period } }));
+    function revertPlacement() {
+      if (!S) return;
+      const ti = S.cards.findIndex(c => c.lessonId === lessonId && c.day === day && c.period === period);
+      if (ti !== -1) S.cards.splice(ti, 1);
+      if (isMove && !S.cards.some(c => c.lessonId === lessonId && c.day === originDay && c.period === originPeriod))
+        S.cards.push({ lessonId, day: originDay, period: originPeriod, classroomId: cid });
+    }
+
+    // Push onto undo stack so AI → Cleanup last card move can revert it.
+    // Skip the stack for same-slot drops (round-trip is a no-op for the user).
+    const auditCommit = window.APP && window.APP.audit && typeof window.APP.audit.commit === "function";
+    if (auditCommit && !isSameSlot) {
+      const label = fromPending ? "Place card" : "Move card";
+      window.APP.audit.commit({
+        label,
+        do() {
+          applyPlacement();
+          document.dispatchEvent(new CustomEvent("editor:place", { detail: { cardId, lessonId, day, period } }));
+          rerender();
+        },
+        undo() {
+          revertPlacement();
+          document.dispatchEvent(new CustomEvent("editor:unplace", { detail: { cardId, lessonId, day, period, originDay, originPeriod, fromPending } }));
+          rerender();
+        },
+      });
+    } else {
+      applyPlacement();
+      document.dispatchEvent(new CustomEvent("editor:place",
+        { detail: { cardId, lessonId, day, period } }));
+      rerender();
+    }
     if (window.APP.editor) window.APP.editor.cardInHand = null;
-    cleanup(); rerender();
+    cleanup();
   }
 
   function bumpAndCancel(slot) {
@@ -15082,12 +15125,7 @@ window.StartScreen = (function () {
         { icon: on ? "✓" : " ", label: "AI assist", run: toggleAi },
         { sep: true },
         { icon: "🧠", label: "Auto-fill empty cells",      disabled: !has(), run: () => fire("app:ai-auto-fill") },
-        // Cleanup last card move stays gated: grid drag/drop does not yet
-        // push card placements onto APP.audit.undoStack via audit.commit({do,undo}),
-        // so calling AIActions.cleanupLastCardMove (which is APP.audit.undo())
-        // would say "Nothing to undo" almost every time. Wire after the grid
-        // editor learns to commit drops.
-        { icon: "🧹", label: "Cleanup last card move",     soon: true },
+        { icon: "🧹", label: "Cleanup last card move",     disabled: !has(), run: () => fire("app:ai-cleanup") },
         { icon: "🔒", label: "Lock all placed cells",      run: lockAllPlacedCells },
         { sep: true },
         { icon: "✨", label: "Suggest placements (beta)",  disabled: !has(), run: () => fire("app:ai-suggest") },
