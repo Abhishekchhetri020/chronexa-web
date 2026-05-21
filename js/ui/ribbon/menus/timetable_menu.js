@@ -25,7 +25,7 @@
         { icon: "🔁", label: "Substitutions…",            disabled: !has(), run: () => fire("app:substitutions") },
         { icon: "📑", label: "Reports…",                  disabled: !has(), run: () => fire("app:print-preview") },
         { sep: true },
-        { icon: "📆", label: "Export to calendar (ICS)",  disabled: !has(), run: () => fire("app:export-ics"), soon: true },
+        { icon: "📆", label: "Export to calendar (ICS)",  disabled: !has(), run: () => fire("app:export-ics") },
       ];
     },
   });

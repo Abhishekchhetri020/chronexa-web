@@ -87,6 +87,7 @@ js/ui/io/export_gp_untis_dif.js
 js/ui/io/export_atlantis.js
 js/ui/io/export_powerschool.js
 js/ui/io/export_excel_class_register.js
+js/ui/io/export_ics.js
 js/ui/print_preview/cell_style_dialog.js
 js/ui/print_preview/templates_registry.js
 js/ui/print_preview/templates/_helpers.js

@@ -63,7 +63,7 @@
         { icon: "📖", label: "Documentation",  run: () => window.open("https://github.com/Abhishekchhetri020/chronexa-web", "_blank") },
         { icon: "⌨︎", label: "Keyboard shortcuts…", run: showShortcuts },
         { sep: true },
-        { icon: "💬", label: "Questions / Comments", run: () => fire("app:feedback"), soon: true },
+        { icon: "💬", label: "Questions / Comments", run: () => window.open("https://github.com/Abhishekchhetri020/chronexa-web/issues/new", "_blank") },
         { icon: "🎬", label: "Show demo file",       run: () => fire("app:open-demo") },
       ];
     },
