@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-21T19:57:32Z
+/* Chronexa bundle — generated 2026-05-21T20:01:07Z
  *      137 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -21786,7 +21786,7 @@ window.StartScreen = (function () {
     const prev   = el("button", { class: "chrx-tb-btn", type: "button", onclick: () => stepPage(-1) }, "◀ Prev");
     const next   = el("button", { class: "chrx-tb-btn", type: "button", onclick: () => stepPage(1)  }, "Next ▶");
     const print  = el("button", { class: "chrx-tb-btn chrx-tb-btn--primary", type: "button",
-      onclick: () => window.print() }, "🖨 Print");
+      onclick: printAllPages }, "🖨 Print");
     const indicator = el("span", { class: "chrx-pp-indicator", style: "min-width:80px;text-align:center;font-variant-numeric:tabular-nums" }, "Page 1 / 1");
 
     const sel = el("select", { class: "chrx-tb-btn", "aria-label": "Report template",
@@ -21895,7 +21895,7 @@ window.StartScreen = (function () {
     if (e.key === "ArrowLeft")  { e.preventDefault(); stepPage(-1); }
     if (e.key === "ArrowRight") { e.preventDefault(); stepPage(1); }
     if ((e.metaKey || e.ctrlKey) && (e.key === "p" || e.key === "P")) {
-      e.preventDefault(); window.print();
+      e.preventDefault(); printAllPages();
     }
   }
 
@@ -21903,6 +21903,23 @@ window.StartScreen = (function () {
     if (!pages.length) return;
     pageIdx = Math.max(0, Math.min(pages.length - 1, pageIdx + delta));
     showPage(pageIdx);
+  }
+
+  // The previewer keeps a single page in the DOM at a time, but window.print()
+  // only sends whatever is currently in the DOM to the printer. Without this
+  // helper, clicking 🖨 Print would drop every page except the one on screen —
+  // surfacing as "only Monday / only the first class printed". Mount every
+  // page into docShell for the duration of print(), then restore single-page
+  // view afterwards. .chrx-preview-page already has page-break-after:always
+  // in the print CSS so each page gets its own physical sheet.
+  function printAllPages() {
+    if (!pages.length || !docShell) { window.print(); return; }
+    if (pages.length === 1) { window.print(); return; }
+    const saved = pageIdx;
+    while (docShell.firstChild) docShell.removeChild(docShell.firstChild);
+    for (const p of pages) docShell.appendChild(p);
+    try { window.print(); }
+    finally { showPage(saved); }
   }
   function showPage(i) {
     docShell.innerHTML = "";
