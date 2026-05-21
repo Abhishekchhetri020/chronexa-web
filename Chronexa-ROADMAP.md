@@ -1,7 +1,7 @@
 # Chronexa Web — Roadmap
 
-**Last refreshed:** 2026-05-21 (fifth session)
-**Live URL:** https://abhishekchhetri020.github.io/chronexa-web/ — APP_VER `20260521-p38-siblingdeficit`
+**Last refreshed:** 2026-05-21 (sixth session)
+**Live URL:** https://abhishekchhetri020.github.io/chronexa-web/ — APP_VER `20260521-p40-foursolverfields`
 **Repo:** https://github.com/Abhishekchhetri020/chronexa-web
 
 ---
@@ -50,7 +50,19 @@ blank school
  → export Timetable XML → 3,630 bytes of valid `<?xml version="1.0"…><timetable…>`
 ```
 
-## 📝 Today's sprint (2026-05-21, fifth session) — solver levers 1-4 + cold-path transformed by sibling-deficit scorer
+## 📝 Today's sprint (2026-05-21, sixth session) — four more UI-saved-but-solver-ignored fields wired + cold-path variance closed
+
+**4 of 8 remaining solver gaps closed in `p40-foursolverfields`** — each was a "UI saves it, solver doesn't read it" gap, same pattern as the earlier `groupIds` and `lab-double` bug fixes:
+- Top 30 #27 — Time-off `?` conditional state. Solver now reads both 2D and legacy map formats, recognises 3 states (available / conditional / blocked), and soft-penalises conditional placements (`Weight.MED_SOFT`).
+- Top 30 #6 — Per-card classroom variation. Solver now reads `_lessonRoomIds` (full XML classroomids list), not just `preferredRoomId[0]`.
+- Top 30 #7 — `metaclassroomidss_expanded` (Home/Shared/Teacher's/Subject's). Solver reads the UI-curated expansion in priority order over the XML list.
+- Top 30 #5 — `classTeacherPos` 6×9 matrix. New `classTeacherPosPenalty` soft scorer: at marked (class, day, period) slots, lessons that don't include the class's homeroom teacher get penalised.
+
+**Cold-path variance closed.** All 5 seeds now place 937–945 on `sample-school.xml` (was 363–877 with one catastrophic collapse before the sibling-deficit scorer). The variance gap from the audit closes itself once Lever 3 landed.
+
+**Solver state — 13 soft scorers, 23 hard rule codes, all 15 `n_*` relations wired, LNS + WASM scaffolds in place.** Remaining solver work: Improve-mode UI, `globals.constraints` Tier-1, full WASM port (multi-day each).
+
+## 📝 Prior session (2026-05-21, fifth) — solver levers 1-5 + sibling-deficit scorer transformed cold-path
 
 **Headline: cold-path placement median jumped 877 → 938 (+61 cards).** The sibling-subject-deficit scorer (CSIntegerCDNeededCards-equivalent) eliminated the cold-path variance introduced by the lab-double fix in the prior session. All 5 seeds now place 937–945 (was 363–877 with one catastrophic collapse). Warm-start unchanged at 946/0 FEASIBLE.
 
