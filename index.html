@@ -217,7 +217,7 @@
 
 <!-- ─────────────────────── SCRIPTS ─────────────────────── -->
 <!-- Bump APP_VER on every deploy so the browser refetches the JS bundle -->
-<script>window.APP_VER = "20260522-p50-color-by";</script>
+<script>window.APP_VER = "20260522-p51-halo";</script>
 <!-- Backend URL — leave empty to force "Run on this computer". Override at deploy time. -->
 <script>window.CHRONEXA_BACKEND_URL = window.CHRONEXA_BACKEND_URL || "";</script>
 <!-- Bundle mode (default): single HTTP request for all 133 modules.
@@ -298,6 +298,7 @@
     ["ui","pwa_install"],
     // ─── Editor (Agent E) ─────────────────────────────────────
     ["ui","editor/grid_canvas"],
+    ["ui","editor/canvas_geometry"],
     ["ui","editor/pending_strip"],
     // ─── Drag-drop UX (Agent J) ───────────────────────────────
     ["ui","editor/placement_validator"],

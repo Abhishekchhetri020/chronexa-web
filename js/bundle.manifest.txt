@@ -51,6 +51,7 @@ js/ui/wizard/wizard_walkthrough.js
 js/ui/editor/activator.js
 js/ui/pwa_install.js
 js/ui/editor/grid_canvas.js
+js/ui/editor/canvas_geometry.js
 js/ui/editor/pending_strip.js
 js/ui/editor/placement_validator.js
 js/ui/editor/card_in_hand.js
@@ -87,6 +88,7 @@ js/ui/io/export_gp_untis_dif.js
 js/ui/io/export_atlantis.js
 js/ui/io/export_powerschool.js
 js/ui/io/export_excel_class_register.js
+js/ui/io/export_excel_nyc.js
 js/ui/io/export_ics.js
 js/ui/print_preview/cell_style_dialog.js
 js/ui/print_preview/templates_registry.js

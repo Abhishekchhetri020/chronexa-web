@@ -25,7 +25,7 @@ The May-19 audit produced a "Top-30 backlog" that has been pasted into every sub
 | 9 | Statistics dialog | ✅ | `js/ui/components/statistics_panel.js` — listens for `app:statistics`; Timetable menu fires it (line 21+24). |
 | 10 | Advisor — suggest improvements | ✅ | `js/ui/components/advisor.js`; Timetable menu line 20 fires `app:advisor`. Body: pre-flight tabs review still owed (~half-day). |
 | 11 | School settings dialog | ✅ | `js/ui/components/school_settings_dialog.js`; opens standalone after p49 (commit `40c0f61`). 5 sections: Identity · Bell shape · Solver hints · Print defaults · multi-term/week toggles. |
-| 12 | Verification halo paint on grid | ⛔ | True gap. No `halo` / `verifyPaint` code exists. ~1 day canvas-render work. |
+| 12 | Verification halo paint on grid | ✅ | `canvas_geometry.js#paintHalos` walks placed cards on every render/place/pickup and sets `data-halo="red"|"amber"` based on `SolverConstraints.checkPlacement`. CSS in `editor.css` paints a red ring + ⚠ glyph for hard violations, amber ring for soft-only. Hover gives the reason text via the existing constraint explainer (commit `p51`). |
 | 13 | Print preview Monday-drop bug | ✅ | Fixed in `print_preview.js#printAllPages` (commit `cd174e6`). Cmd-P and 🖨 button now print every page. |
 | 14 | Color-a-card-by axis switcher | ✅ | `view_menu.js` — "Color by" section (Subject / Teacher / Class / Room). `grid_canvas.js#cardHue` reads `APP.editor.colorBy` and prefers entity.color (HEX) before hash-fallback. Live re-render on change (commit `p50`). |
 | 15 | Per-card lock | ✅ | Data model: `card.locked` honoured by `improve_mode.js` line 72 + `csp_solver`. UI: `inspector.js` lines 147-148 expose Lock/Unlock button on cell click. AI menu's "Lock all placed cells" sets it in bulk. |
@@ -40,9 +40,9 @@ The May-19 audit produced a "Top-30 backlog" that has been pasted into every sub
 
 ## Score
 
-- ✅ Shipped: **18 of 30** (60 %)
+- ✅ Shipped: **19 of 30** (63 %)
 - 🟡 Partial: **5 of 30** (17 %)
-- ⛔ True gap: **3 of 30** — items #3, #4, #12
+- ⛔ True gap: **2 of 30** — items #3, #4
 
 ## What to actually pick next
 

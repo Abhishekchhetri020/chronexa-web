@@ -57,10 +57,49 @@ window.CanvasGeometry = (function () {
   function decorate(rootEl) {
     if (!rootEl) return;
     rootEl.querySelectorAll(".chrx-floor-row, .chrx-fd-tag").forEach(n => n.remove());
+    paintHalos(rootEl);
     if (document.documentElement.getAttribute("data-skin") !== "classic") return;
     const persp = (window.APP && window.APP.editor && window.APP.editor.perspective) || "class";
     if (persp === "room")  injectFloorRows(rootEl);
     if (persp === "class") injectFDTags(rootEl);
+  }
+
+  // Verification halo (Top-30 #12). Walks every placed card and asks
+  // SolverConstraints.checkPlacement whether the lesson has any rule
+  // violations at its current slot. checkPlacement already excludes the
+  // card from its own sameSlot filter so re-checking a placed card is
+  // safe. Sets data-halo="red" for hard violations, "amber" for soft-only,
+  // clears the attribute otherwise. CSS in editor.css paints the ring.
+  // Disabled if SolverConstraints isn't loaded yet (module import racing
+  // first render) — the next decorate() call re-runs and picks it up.
+  function paintHalos(rootEl) {
+    const APP = window.APP;
+    const S = APP && APP.school;
+    const check = window.SolverConstraints && window.SolverConstraints.checkPlacement;
+    if (!S || !check) {
+      rootEl.querySelectorAll(".chrx-vkarta[data-halo]").forEach(el => el.removeAttribute("data-halo"));
+      return;
+    }
+    rootEl.querySelectorAll(".chrx-vkarta").forEach(el => {
+      const lessonId = el.dataset.lessonId;
+      const day      = parseInt(el.dataset.day, 10);
+      const period   = parseInt(el.dataset.period, 10);
+      if (!lessonId || Number.isNaN(day) || Number.isNaN(period)) {
+        el.removeAttribute("data-halo");
+        return;
+      }
+      const card = (S.cards || []).find(c =>
+        c.lessonId === lessonId && c.day === day && c.period === period);
+      const roomId = (card && card.classroomId) || null;
+      let r;
+      try { r = check(S, lessonId, day, period, roomId); }
+      catch { r = { hard: [], soft: [] }; }
+      const hard = (r.hard || []).length;
+      const soft = (r.soft || []).length;
+      if (hard > 0)      el.setAttribute("data-halo", "red");
+      else if (soft > 0) el.setAttribute("data-halo", "amber");
+      else               el.removeAttribute("data-halo");
+    });
   }
 
   function injectFloorRows(rootEl) {
