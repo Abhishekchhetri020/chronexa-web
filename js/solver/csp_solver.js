@@ -830,6 +830,21 @@ function makeState(model) {
 // ---------------------------------------------------------------------------
 
 function canPlace(model, state, lessonIdx, slot, roomIdx) {
+  // WASM hot-path call site. When globalThis.__chronexaWasmExports is
+  // present (set by wasm/csp_wasm.js after loadWasm() resolves), the
+  // AssemblyScript canPlace runs alongside the JS implementation. JS
+  // remains authoritative; this side-by-side call provides the runway
+  // for the full cutover (next step: bind real flat-buffer pointers
+  // via setShape + bindArrays and use the WASM result as the source of
+  // truth for the basic-conflict checks, with JS only running for
+  // relation + lab-double checks). Cost when WASM isn't loaded: a
+  // single typeof check per call. Cost when loaded: one extra WASM
+  // dispatch with NULL-pointer arrays = immediate short-circuit.
+  const _wx = globalThis.__chronexaWasmExports;
+  if (_wx !== undefined && _wx !== null) {
+    try { _wx.canPlace(lessonIdx, slot, roomIdx); } catch (_e) { /* ignore */ }
+  }
+
   const d = model.slotDay[slot];
   const p = model.slotPeriod[slot];
   const bit = (1 << p) >>> 0;
@@ -2401,6 +2416,22 @@ export function solve(school, options = {}) {
   // lessonFixedSlot >= 0. Callers can also pass these flags individually.
   if (options.mode === "improve") {
     options = { ...options, warmStart: true, useLNS: true };
+  }
+  // WASM hot-path warm-up — fire-and-forget load of the AssemblyScript
+  // canPlace module. When the Promise resolves, globalThis.__chronexaWasmExports
+  // is populated and the canPlace() hot loop starts dispatching to WASM
+  // alongside the JS path. Doesn't block solve(); the JS solver runs
+  // synchronously and authoritatively until the cutover binds real
+  // flat-buffer pointers (next session).
+  if (typeof globalThis.__chronexaWasmExports === "undefined" &&
+      typeof globalThis.__chronexaWasmLoading === "undefined") {
+    globalThis.__chronexaWasmLoading = true;
+    import("./wasm/csp_wasm.js").then(async (m) => {
+      try {
+        const exports = await m.wasmExports();
+        if (exports) globalThis.__chronexaWasmExports = exports;
+      } catch (_e) { /* WASM not available — JS solver continues */ }
+    }).catch(() => { /* import failed — ignore */ });
   }
   const t0 = performance.now();
   const timeLimitSec = options.timeLimitSec ?? 30;
