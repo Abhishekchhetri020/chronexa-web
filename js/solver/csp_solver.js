@@ -96,10 +96,18 @@ function buildModel(school) {
   const roomIdx = new Map(roomIds.map((id, i) => [id, i]));
   const subjectIdx = new Map(subjectIds.map((id, i) => [id, i]));
 
-  // Lessons are expanded by periodsPerWeek — one solver-lesson per period.
+  // Lessons are expanded by periodsPerWeek / periodsPerCard — one solver-
+  // lesson per SESSION. A lab-double (isLabDouble = true) consumes 2
+  // consecutive periods per session, so a lesson with periodsperweek=2 +
+  // periodspercard=2 expands to 1 session (not 2). Without this divide,
+  // warm-start places the first session, applySingle marks BOTH periods
+  // teacher-busy via the lab-double extension, and the second pseudo-
+  // session can't place at the same teacher slot.
   const expanded = [];
   for (const l of school.lessons) {
-    const reps = Math.max(1, l.periodsPerWeek | 0);
+    const periodsPerCard = l.isLabDouble ? 2 : 1;
+    const totalPeriods = l.periodsPerWeek | 0;
+    const reps = Math.max(1, Math.round(totalPeriods / periodsPerCard));
     for (let i = 0; i < reps; i++) {
       expanded.push({
         id: reps === 1 ? l.id : `${l.id}#${i + 1}`,
