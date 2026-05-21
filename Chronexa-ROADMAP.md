@@ -1,7 +1,7 @@
 # Chronexa Web — Roadmap
 
 **Last refreshed:** 2026-05-22 (seventh session)
-**Live URL:** https://abhishekchhetri020.github.io/chronexa-web/ — APP_VER `20260522-p49-school-settings`
+**Live URL:** https://abhishekchhetri020.github.io/chronexa-web/ — APP_VER `20260522-p51-halo`
 **Repo:** https://github.com/Abhishekchhetri020/chronexa-web
 
 ---
@@ -57,6 +57,20 @@ blank school
 - **Print template body review** — the new 20-template registry is loaded into the previewer, but the body of each newer template hasn't had a side-by-side audit against the Classic equivalent. Visual parity may still drift cell-by-cell.
 
 ## 📝 पिछले 7 दिन में क्या हुआ (last 7 days, newest first)
+
+### 2026-05-22 (seventh session — full ledger)
+
+Top-30 backlog gap reduced from 25 untouched (per the May-19 pasted goal) to **2 true gaps remaining** — and those 2 are multi-day architectural items (`#3 multi-bell per class`, `#4 per-fault streaming`). Live audit lives at `Chronexa-TOP30-STATUS.md`.
+
+| Push | What user sees |
+|---|---|
+| `p45-aimenu-2of3` | AI → Auto-fill empty cells + Suggest placements wired (2 of 3 Coming Soon items in the AI menu cleared) |
+| `p46-grid-undo` | Every card drag/drop now goes on the undo stack. ⌘Z reverts the last placement. AI → Cleanup last card move wired (3rd Coming Soon cleared — AI menu has 0 Coming Soon items left) |
+| `p47-print-all-pages` | Fixed "Monday-drop" — Print preview now renders every page (not just the on-screen one) on 🖨 and Cmd-P |
+| `p48-nyc-excel-draft` | Files → Export → NYC Excel (draft) ships a teacher-by-day-by-period workbook + _README sheet (Top-30 #6) |
+| `p49-school-settings` | Specification → School settings… opens the real dialog (Identity / Bell shape / Solver hints / Print defaults / Multi-term-week). `EntityDialog.openSheet` now creates a standalone host so any future "standalone sheet" caller works too |
+| `p50-color-by` | View → Color by → Subject / Teacher / Class / Room. Live re-renders the grid. Persists per-user (Top-30 #14) |
+| `p51-halo` | Placed cards now show a red ring + ⚠ glyph for hard rule violations, amber ring for soft preferences. Hover the constraint explainer for the reason text. Also fixed an orphan `canvas_geometry.js` that was never bundled (Top-30 #12) |
 
 ### 2026-05-22 (seventh session continued — backlog 4-in-a-row)
 
