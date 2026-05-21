@@ -1,7 +1,7 @@
 # Chronexa Web — Roadmap
 
 **Last refreshed:** 2026-05-22 (seventh session)
-**Live URL:** https://abhishekchhetri020.github.io/chronexa-web/ — APP_VER `20260522-p45-aimenu-2of3`
+**Live URL:** https://abhishekchhetri020.github.io/chronexa-web/ — APP_VER `20260522-p49-school-settings`
 **Repo:** https://github.com/Abhishekchhetri020/chronexa-web
 
 ---
@@ -50,13 +50,22 @@ blank school
  → export Timetable XML → 3,630 bytes of valid `<?xml version="1.0"…><timetable…>`
 ```
 
-## 🚧 अभी develop हो रहा है (in-flight, 2026-05-22)
+## 🚧 अभी develop हो रहा है (in-flight, 2026-05-22 evening)
 
-- **Grid-undo hookup** for the editor — when teachers drag a card, that move must push onto `APP.audit.undoStack` via `audit.commit({do, undo})`. Until this lands, the AI menu's "Cleanup last card move" stays greyed-out because clicking it would just say "Nothing to undo" most of the time.
-- **3 export formats** — NYC Excel, Mashov, iSAMS — these are the last 3 "Coming Soon" tags in Files → Export. Each needs the school's actual format spec before coding.
-- **WASM canPlace cutover** — JS solver's hot loop now calls `_wasmExports.canPlace()` (commit dd58575). Benchmark still owed: end-to-end timing vs the JS-only path on `sample-school.xml` to confirm the speedup is real before flipping `WASM_AVAILABLE` to default-on.
+- **Mashov + iSAMS exports** — last 2 "Coming Soon" tags in Files → Export. Each needs a real sample from a Mashov-using or iSAMS-using school before coding; NYC Excel shipped today as a documented "draft" layout the receiving admin can validate.
+- **WASM canPlace cutover** — JS solver's hot loop calls `_wasmExports.canPlace()` (earlier today). Benchmark still owed: end-to-end timing vs the JS-only path on `sample-school.xml` before flipping `WASM_AVAILABLE` to default-on.
+- **Print template body review** — the new 20-template registry is loaded into the previewer, but the body of each newer template hasn't had a side-by-side audit against the Classic equivalent. Visual parity may still drift cell-by-cell.
 
 ## 📝 पिछले 7 दिन में क्या हुआ (last 7 days, newest first)
+
+### 2026-05-22 (seventh session continued — backlog 4-in-a-row)
+
+After the marvel-push + AI-menu cleanup (p45), the same session shipped four more user-asked items end-to-end (`p46` → `p49`):
+
+- **p46 · Grid drag/drop → undo stack.** Every card placement (from pending strip or moving on the grid) now wraps in `APP.audit.commit({do, undo})`. ⌘Z reverts the last drag. AI → Cleanup last card move flipped from grey-tag to wired (calls `APP.audit.undo()`). 0 Coming Soon items left in the AI menu.
+- **p47 · Print preview was dropping every page except the on-screen one.** Root cause: the previewer kept one page in `docShell` at a time and `window.print()` only sends the current DOM. User saw it as "only Monday / only the first class printed." Fix: mount every page into the DOM for the duration of `window.print()`, then restore single-page view. Both the 🖨 button and Cmd-P keyboard shortcut now print the full report.
+- **p48 · NYC Excel export (draft).** Files → Export → "NYC Excel (draft)" emits one sheet per teacher with Period rows × Mon-Fri columns and a `_README` sheet documenting the layout. The "(draft)" label is intentional — NYC DOE STARS templates vary by school; a follow-up will tighten columns once the school admin shares a real sample.
+- **p49 · School settings dialog opens for real.** The dialog had lived at `js/ui/components/school_settings_dialog.js` for weeks, but the entity router was bypassing it because `EntityDialog.openSheet` crashed on null host (it required a full EntityDialog to be open first). Fix: `openSheet` now creates a synthetic position-fixed host when called standalone, and the "school" route in entity_router calls `SchoolSettings.open()` instead of nav-jumping into the wizard. Specification → School settings… now opens 5 sections: Identity, Bell shape, Solver hints, Print defaults, plus the multi-term / multi-week toggles. Edits persist on `school.settings`.
 
 ### 2026-05-22 (seventh session — three machine wins + UI cleanup)
 
