@@ -1,7 +1,7 @@
 # Chronexa Web — Roadmap
 
-**Last refreshed:** 2026-05-21 (sixth session)
-**Live URL:** https://abhishekchhetri020.github.io/chronexa-web/ — APP_VER `20260521-p40-foursolverfields`
+**Last refreshed:** 2026-05-22 (seventh session)
+**Live URL:** https://abhishekchhetri020.github.io/chronexa-web/ — APP_VER `20260522-p45-aimenu-2of3`
 **Repo:** https://github.com/Abhishekchhetri020/chronexa-web
 
 ---
@@ -50,7 +50,30 @@ blank school
  → export Timetable XML → 3,630 bytes of valid `<?xml version="1.0"…><timetable…>`
 ```
 
-## 📝 Today's sprint (2026-05-21, sixth session) — four more UI-saved-but-solver-ignored fields wired + cold-path variance closed
+## 🚧 अभी develop हो रहा है (in-flight, 2026-05-22)
+
+- **Grid-undo hookup** for the editor — when teachers drag a card, that move must push onto `APP.audit.undoStack` via `audit.commit({do, undo})`. Until this lands, the AI menu's "Cleanup last card move" stays greyed-out because clicking it would just say "Nothing to undo" most of the time.
+- **3 export formats** — NYC Excel, Mashov, iSAMS — these are the last 3 "Coming Soon" tags in Files → Export. Each needs the school's actual format spec before coding.
+- **WASM canPlace cutover** — JS solver's hot loop now calls `_wasmExports.canPlace()` (commit dd58575). Benchmark still owed: end-to-end timing vs the JS-only path on `sample-school.xml` to confirm the speedup is real before flipping `WASM_AVAILABLE` to default-on.
+
+## 📝 पिछले 7 दिन में क्या हुआ (last 7 days, newest first)
+
+### 2026-05-22 (seventh session — three machine wins + UI cleanup)
+
+**Marvel push closed three holes in one commit:**
+- **`globals.constraints` 8/8 done** — the last 4 school-wide caps (teacher last-period, teacher gaps/day, class gaps/day, subject daily limit) now actually reach the solver. Earlier `teacherLastPeriodCap` was silently pinned at "unlimited" no matter what the user set; that's fixed.
+- **⚡ Improve current schedule** — third mode button alongside ✓ Test and ✦ Generate in the pre-launch dialog. Picking it sets `warmStart=true` + `useLNS=true` so the solver keeps existing placements and only searches for soft-penalty improvements. Locked lessons stay put.
+- **WASM hot-path runway laid** — AssemblyScript port of the inner `canPlace()` function, build pipeline, JS shim that loads `canplace.wasm` if present, graceful JS-fallback otherwise. The JS-side hot loop was then switched to call the WASM export (commits `7d8dd20` and `dd58575`). Default still uses JS until benchmark confirms it pays.
+
+**AI menu cleanup (this session):**
+- "Auto-fill empty cells" and "Suggest placements (beta)" — both were marked Coming Soon in the menu but the implementations have lived in `js/ui/components/ai_actions.js` for days. Flipped them to active so the menu actually reaches the code. Only "Cleanup last card move" stays soon-marked because the grid editor doesn't yet feed the undo stack — fixing that without the data path would surface a feature that does nothing 99 % of the time.
+- "Improve current schedule" also already exists as a menu entry under Timetable → it routes to `js/solver/improve_mode.js` (`ImproveMode.run`). Two separate Improve paths now coexist: dialog-driven (full solver re-run with warmStart+LNS) and menu-driven (local swap search). Menu name kept distinct so users can tell.
+
+**Net effect on the user-visible app:** APP_VER `p45-aimenu-2of3`. Two fewer Coming Soon items in the AI menu. Solver wins from the marvel push are behind-the-scenes — same `946/0 FEASIBLE` headline on `sample-school.xml`, but the cap fields now actually act.
+
+---
+
+## 📝 Prior sprint (2026-05-21, sixth session) — four more UI-saved-but-solver-ignored fields wired + cold-path variance closed
 
 **4 of 8 remaining solver gaps closed in `p40-foursolverfields`** — each was a "UI saves it, solver doesn't read it" gap, same pattern as the earlier `groupIds` and `lab-double` bug fixes:
 - Top 30 #27 — Time-off `?` conditional state. Solver now reads both 2D and legacy map formats, recognises 3 states (available / conditional / blocked), and soft-penalises conditional placements (`Weight.MED_SOFT`).

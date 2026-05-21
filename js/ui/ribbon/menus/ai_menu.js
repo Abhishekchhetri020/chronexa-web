@@ -41,6 +41,8 @@
     window.dispatchEvent(new CustomEvent("app:school-loaded", { detail: { source: "lock-all" } }));
   }
 
+  const has = () => !!APP.school;
+
   APP.ribbon.registerMenu({
     key: "ai", label: "AI",
     build() {
@@ -48,11 +50,16 @@
       return [
         { icon: on ? "✓" : " ", label: "AI assist", run: toggleAi },
         { sep: true },
-        { icon: "🧠", label: "Auto-fill empty cells",      soon: true },
+        { icon: "🧠", label: "Auto-fill empty cells",      disabled: !has(), run: () => fire("app:ai-auto-fill") },
+        // Cleanup last card move stays gated: grid drag/drop does not yet
+        // push card placements onto APP.audit.undoStack via audit.commit({do,undo}),
+        // so calling AIActions.cleanupLastCardMove (which is APP.audit.undo())
+        // would say "Nothing to undo" almost every time. Wire after the grid
+        // editor learns to commit drops.
         { icon: "🧹", label: "Cleanup last card move",     soon: true },
         { icon: "🔒", label: "Lock all placed cells",      run: lockAllPlacedCells },
         { sep: true },
-        { icon: "✨", label: "Suggest placements (beta)",  soon: true },
+        { icon: "✨", label: "Suggest placements (beta)",  disabled: !has(), run: () => fire("app:ai-suggest") },
       ];
     },
   });
