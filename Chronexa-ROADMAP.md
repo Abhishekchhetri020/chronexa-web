@@ -1,7 +1,7 @@
 # Chronexa Web — Roadmap
 
-**Last refreshed:** 2026-05-21 (end of session)
-**Live URL:** https://abhishekchhetri020.github.io/chronexa-web/ — APP_VER `20260521-p33-softrelhooks`
+**Last refreshed:** 2026-05-21 (later session)
+**Live URL:** https://abhishekchhetri020.github.io/chronexa-web/ — APP_VER `20260521-p35-clearsoonbatch`
 **Repo:** https://github.com/Abhishekchhetri020/chronexa-web
 
 ---
@@ -50,7 +50,15 @@ blank school
  → export Timetable XML → 3,630 bytes of valid `<?xml version="1.0"…><timetable…>`
 ```
 
-## 📝 Today's sprint (2026-05-21) — soft-rel hookup + cross-harness scaffolding
+## 📝 Today's sprint (2026-05-21, later) — Wine cleanup + 10 "Coming Soon" menu items cleared
+
+**Cleared 10 of 16 "Coming Soon" menu items.** The audit found that most of the items the menu was hiding behind "Coming Soon" already had fully working backing modules in `js/ui/io/` — they just needed a one-line menu-handler wire-up. The 8 quick wires: Files → Import (Classic basic data, Classic bell times, Clipboard, GP-Untis/Jupiter) and Files → Export (Classic Timetable .roz, GP-Untis DIF, Atlantis, PowerSchool). Two genuinely new pieces of work also landed: the **Calendar (ICS) export** under Timetable → Export to calendar emits an .ics file with one VEVENT per card and weekly recurrence (verified 951 cards in → 951 VEVENTs out, P1 starts at 08:00); the **AI → Lock all placed cells** action now sets `fixedDay/fixedPeriod` on every lesson that has a card and re-renders. Help → Questions / Comments redirects to the repo's GitHub Issues page.
+
+**6 "Coming Soon" items remain** — these don't have backing code and would need real implementation: Files → Export (NYC Excel, Mashov, iSAMS), AI → Auto-fill empty cells, AI → Cleanup last card move, AI → Suggest placements (beta).
+
+**Wine cleanup.** The Wine setup from the earlier soft-rel session (~2 GB across `/Applications/Wine Stable.app`, `~/.wine-asc/`, and the Homebrew cache tarball) was removed once the legacy column of `docs/SOLVER_VS_LEGACY.md` was filled via XML evaluation instead. MemPalace `wing_user/wine-works-on-m3-via-cache-extraction` keeps the cache-extract methodology documented; `wing_user/wine-removed-2026-05-21` records the cleanup.
+
+## 📝 Prior session (2026-05-21, earlier) — soft-rel hookup + cross-harness scaffolding
 
 **Soft card-relation typs n_4, n_11, n_14, n_17 now actively bias the solver.** Previously these four were observed post-solve and reported in the violations panel only — they had no effect on placement choice. They now add a small per-violation penalty (weight 10 — `Weight.LOW_SOFT`) inside `softScore()`, so the search prefers configurations that satisfy them. On a slack fixture, an Art subject with n_17 (afternoon) attached shifts its average period from 3.00 to 4.00 — primary evidence the penalty steers placement. On the production `sample-school.xml` (no relations defined) the change is a strict no-op: warm-start placement still 916/35 with soft-score −4,950 across all five seeds.
 
