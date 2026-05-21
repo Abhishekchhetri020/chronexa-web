@@ -1810,6 +1810,263 @@ function iterativeRepair(model, state, deadlineMs, ctx) {
 }
 
 /**
+ * Large-Neighborhood Search — runs AFTER iterativeRepair settles, with the
+ * goal of escaping the local optimum the warm-start lands in.
+ *
+ * Algorithm:
+ *   1. Snapshot current best state (placement + soft score).
+ *   2. Loop until deadline:
+ *      a. Pick a destroy strategy (random / class-focused / day-focused /
+ *         subject-focused).
+ *      b. Evict K cards under that strategy. K scales with school size.
+ *      c. Run iterativeRepair on the perturbed state.
+ *      d. If the result strictly improves on the snapshot (more placements,
+ *         or equal placements with better soft score), commit it as the
+ *         new best. Otherwise revert from snapshot and try a different
+ *         strategy / K.
+ *
+ * The key difference vs `iterativeRepair`'s internal randomEvictPlaced:
+ *   - LNS uses LARGER K (10-30% of placed cards vs 8-40 cards flat)
+ *   - LNS uses STRUCTURED destruction (whole-day / whole-class) not just random
+ *   - LNS keeps running until the deadline, not just 50 restart attempts
+ *   - LNS accepts on (placed > best) OR (placed == best AND soft > best)
+ *
+ * Returns count of additional lessons placed (could be 0 or negative — caller
+ * checks state to see final result).
+ */
+function largeNeighborhoodSearch(model, state, deadlineMs, ctx) {
+  if (performance.now() >= deadlineMs) return 0;
+  materializeBestIntoState(model, state);
+
+  const before = state.assignedLessonCount;
+  let rngState = (ctx.seed | 0) ^ 0xA8E5F31D;
+  const rand = () => {
+    rngState = (rngState + 0x6d2b79f5) | 0;
+    let t = rngState;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+
+  // Snapshot the best-so-far. We restore from this on any non-improvement.
+  let bestCount = state.assignedLessonCount;
+  let bestSoft  = -softScore(model, state);
+  let bestAssigned = new Uint8Array(state.lessonAssigned);
+  let bestSlot     = new Int32Array(state.lessonAssignedSlot);
+  let bestRoom     = new Int32Array(state.lessonAssignedRoom);
+
+  // Strategies cycle so we don't get stuck on one perturbation pattern.
+  const strategies = ["random", "byClass", "byDay", "bySubject"];
+  let strategyIdx = 0;
+  let iterations = 0;
+  let accepted   = 0;
+  // K is the number of cards to destroy per LNS round. Start small (1-2%
+  // of placed) and ramp up after several rejections, so the search can both
+  // exploit (small K) and explore (larger K).
+  const baseK = Math.max(5, Math.min(30, Math.round(bestCount * 0.015)));
+  let kMul = 1; // grows on stagnation
+
+  // Inner repair ctx — silent (no progress) so we don't spam onProgress.
+  const innerCtx = { onProgress: null, nodesVisited: 0, backtracks: 0, t0: ctx.t0, seed: ctx.seed };
+
+  let rejectStreak = 0;
+  while (performance.now() < deadlineMs) {
+    iterations += 1;
+    const strategy = strategies[strategyIdx % strategies.length];
+    strategyIdx += 1;
+    let K = Math.max(5, Math.min(60, baseK * kMul));
+
+    // Destroy step.
+    if (strategy === "random") {
+      rngState = randomEvictPlaced(model, state, K, rngState);
+    } else if (strategy === "byClass") {
+      rngState = evictByClass(model, state, K, rngState, rand);
+    } else if (strategy === "byDay") {
+      rngState = evictByDay(model, state, K, rngState, rand);
+    } else if (strategy === "bySubject") {
+      rngState = evictBySubject(model, state, K, rngState, rand);
+    }
+
+    // CRUCIAL: sync the best snapshot to the perturbed live state.
+    // iterativeRepair's first action is materializeBestIntoState, which
+    // restores from state.bestLessonAssigned*. Without this sync, repair
+    // would undo our destruction immediately.
+    state.bestLessonAssigned.set(state.lessonAssigned);
+    state.bestLessonAssignedSlot.set(state.lessonAssignedSlot);
+    state.bestLessonAssignedRoom.set(state.lessonAssignedRoom);
+    state.bestAssignedEntries = state.assignedLessonCount;
+    state.bestSoftScore = -softScore(model, state);
+    state.bestHardCount = model.lessonCount - state.assignedLessonCount;
+
+    // Repair step — give it a slice of the remaining budget.
+    const remaining = Math.max(0, deadlineMs - performance.now());
+    if (remaining < 100) break;
+    const innerDeadline = performance.now() + Math.min(remaining, 1500);
+    iterativeRepair(model, state, innerDeadline, innerCtx);
+
+    // Evaluate.
+    const newCount = state.assignedLessonCount;
+    const newSoft  = -softScore(model, state);
+    const improved =
+      newCount > bestCount ||
+      (newCount === bestCount && newSoft > bestSoft);
+
+    if (improved) {
+      accepted += 1;
+      rejectStreak = 0;
+      kMul = 1;                       // back to exploiting small moves
+      bestCount = newCount;
+      bestSoft  = newSoft;
+      bestAssigned.set(state.lessonAssigned);
+      bestSlot.set(state.lessonAssignedSlot);
+      bestRoom.set(state.lessonAssignedRoom);
+      // Emit a progress event so the UI / harness can see LNS working.
+      if (ctx.onProgress) {
+        try {
+          ctx.onProgress({
+            iter: (ctx.nodesVisited | 0) + iterations,
+            softScore: bestSoft,
+            hardConflicts: model.lessonCount - bestCount,
+            backtracks: ctx.backtracks | 0,
+            durationMs: Math.round(performance.now() - ctx.t0),
+            phase: "lns",
+          });
+        } catch {}
+      }
+    } else {
+      rejectStreak += 1;
+      // Adaptive K: 3 rejects in a row → broaden search; cap at 4×.
+      if (rejectStreak >= 3 && kMul < 4) { kMul += 1; rejectStreak = 0; }
+      // Revert from snapshot.
+      restoreFromSnapshot(model, state, bestAssigned, bestSlot, bestRoom);
+    }
+  }
+
+  // Final write: ensure state.bestLessonAssigned* reflect the LNS best.
+  state.lessonAssigned.set(bestAssigned);
+  state.lessonAssignedSlot.set(bestSlot);
+  state.lessonAssignedRoom.set(bestRoom);
+  state.assignedLessonCount = bestCount;
+  state.bestLessonAssigned.set(bestAssigned);
+  state.bestLessonAssignedSlot.set(bestSlot);
+  state.bestLessonAssignedRoom.set(bestRoom);
+  state.bestAssignedEntries = bestCount;
+  state.bestSoftScore = bestSoft;
+  state.bestHardCount = model.lessonCount - bestCount;
+  return bestCount - before;
+}
+
+function restoreFromSnapshot(model, state, assignedSnap, slotSnap, roomSnap) {
+  // Replay every placement to rebuild the bitmask occupancy + counters.
+  // First clear current state by unplacing everything.
+  for (let i = 0; i < model.lessonCount; i++) {
+    if (state.lessonAssigned[i]) {
+      const slot = state.lessonAssignedSlot[i];
+      const room = state.lessonAssignedRoom[i];
+      if (slot >= 0) {
+        removeSingle(model, state, i, slot, room);
+        if (model.lessonLabDouble[i] === 1) removeSingle(model, state, i, slot + 1, room);
+      }
+      state.lessonAssigned[i] = 0;
+      state.lessonAssignedSlot[i] = -1;
+      state.lessonAssignedRoom[i] = -1;
+    }
+  }
+  state.assignedLessonCount = 0;
+  // Re-apply snapshot.
+  for (let i = 0; i < model.lessonCount; i++) {
+    if (assignedSnap[i]) {
+      const slot = slotSnap[i];
+      const room = roomSnap[i];
+      if (slot >= 0) {
+        applySingle(model, state, i, slot, room);
+        if (model.lessonLabDouble[i] === 1) applySingle(model, state, i, slot + 1, room);
+        state.lessonAssigned[i] = 1;
+        state.lessonAssignedSlot[i] = slot;
+        state.lessonAssignedRoom[i] = room;
+        state.assignedLessonCount += 1;
+      }
+    }
+  }
+}
+
+function evictByClass(model, state, K, rngState, rand) {
+  // Pick a random class, evict all currently-placed cards belonging to that
+  // class. K is the cap so we don't blow out the budget on huge classes.
+  const classCount = model.classCount;
+  if (classCount === 0) return rngState;
+  const targetClass = Math.floor(rand() * classCount);
+  let evicted = 0;
+  for (let i = 0; i < model.lessonCount && evicted < K; i++) {
+    if (!state.lessonAssigned[i]) continue;
+    if (model.lessonFixedSlot[i] >= 0) continue;
+    const start = model.lessonClassStart[i];
+    const count = model.lessonClassCount[i];
+    let hit = false;
+    for (let k = 0; k < count; k++) {
+      if (model.lessonClassFlat[start + k] === targetClass) { hit = true; break; }
+    }
+    if (!hit) continue;
+    const slot = state.lessonAssignedSlot[i];
+    const room = state.lessonAssignedRoom[i];
+    removeSingle(model, state, i, slot, room);
+    if (model.lessonLabDouble[i] === 1) removeSingle(model, state, i, slot + 1, room);
+    state.lessonAssigned[i] = 0;
+    state.lessonAssignedSlot[i] = -1;
+    state.lessonAssignedRoom[i] = -1;
+    state.assignedLessonCount -= 1;
+    evicted += 1;
+  }
+  return rngState;
+}
+
+function evictByDay(model, state, K, rngState, rand) {
+  // Pick a random day, evict all cards on that day up to K cap.
+  const days = model.days;
+  if (days === 0) return rngState;
+  const targetDay = Math.floor(rand() * days);
+  const periodsPerDay = model.periodsPerDay;
+  let evicted = 0;
+  for (let i = 0; i < model.lessonCount && evicted < K; i++) {
+    if (!state.lessonAssigned[i]) continue;
+    if (model.lessonFixedSlot[i] >= 0) continue;
+    const slot = state.lessonAssignedSlot[i];
+    if (model.slotDay[slot] !== targetDay) continue;
+    const room = state.lessonAssignedRoom[i];
+    removeSingle(model, state, i, slot, room);
+    if (model.lessonLabDouble[i] === 1) removeSingle(model, state, i, slot + 1, room);
+    state.lessonAssigned[i] = 0;
+    state.lessonAssignedSlot[i] = -1;
+    state.lessonAssignedRoom[i] = -1;
+    state.assignedLessonCount -= 1;
+    evicted += 1;
+  }
+  return rngState;
+}
+
+function evictBySubject(model, state, K, rngState, rand) {
+  const subjectCount = model.subjectCount;
+  if (subjectCount === 0) return rngState;
+  const targetSubj = Math.floor(rand() * subjectCount);
+  let evicted = 0;
+  for (let i = 0; i < model.lessonCount && evicted < K; i++) {
+    if (!state.lessonAssigned[i]) continue;
+    if (model.lessonFixedSlot[i] >= 0) continue;
+    if (model.lessonSubject[i] !== targetSubj) continue;
+    const slot = state.lessonAssignedSlot[i];
+    const room = state.lessonAssignedRoom[i];
+    removeSingle(model, state, i, slot, room);
+    if (model.lessonLabDouble[i] === 1) removeSingle(model, state, i, slot + 1, room);
+    state.lessonAssigned[i] = 0;
+    state.lessonAssignedSlot[i] = -1;
+    state.lessonAssignedRoom[i] = -1;
+    state.assignedLessonCount -= 1;
+    evicted += 1;
+  }
+  return rngState;
+}
+
+/**
  * Random-eviction escape: pick K currently-placed lessons at random and
  * evict them. Used by `iterativeRepair` when no-improve streak hits the
  * budget. Returns the new rngState so the caller can persist it.
@@ -2092,7 +2349,14 @@ export function solve(school, options = {}) {
       t0,
       seed,
     };
-    repairGained = iterativeRepair(model, globalBest.state, totalDeadlineMs, repairCtx);
+    // When LNS is enabled, cap repair at 40% of remaining post-BT so LNS
+    // has time. With LNS off (default) give repair the full remainder.
+    let repairDeadlineMs = totalDeadlineMs;
+    if (options.useLNS === true) {
+      const remainingPostBt = Math.max(0, totalDeadlineMs - performance.now());
+      repairDeadlineMs = performance.now() + remainingPostBt * 0.4;
+    }
+    repairGained = iterativeRepair(model, globalBest.state, repairDeadlineMs, repairCtx);
     if (repairGained > 0) {
       globalBest.assignedEntries = globalBest.state.bestAssignedEntries;
       globalBest.softScore = globalBest.state.bestSoftScore === -Number.MAX_SAFE_INTEGER
@@ -2111,6 +2375,43 @@ export function solve(school, options = {}) {
           phase: "repair-done",
         });
       } catch {}
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // Phase 3 — Large-Neighborhood Search (LNS).
+    //
+    // Repair settles at a local optimum (warm-start on sample-school.xml
+    // pins at 916/35/-4950 from t=75ms — `tools/warm_trajectory.mjs`
+    // proves it). LNS perturbs with larger, structured destruction
+    // (random / by-class / by-day / by-subject) and re-repairs, keeping
+    // strictly-improving solutions. This is the path to ACTUALLY beating
+    // aSc on this XML — anything else just confirms aSc's placement.
+    // ──────────────────────────────────────────────────────────────────────
+    if (options.useLNS === true && performance.now() < totalDeadlineMs) {
+      const lnsCtx = {
+        onProgress, t0, seed,
+        nodesVisited: totalNodes + repairGained,
+        backtracks: totalBacktracks,
+      };
+      const lnsGained = largeNeighborhoodSearch(model, globalBest.state, totalDeadlineMs, lnsCtx);
+      if (lnsGained !== 0) {
+        globalBest.assignedEntries = globalBest.state.bestAssignedEntries;
+        globalBest.softScore = globalBest.state.bestSoftScore === -Number.MAX_SAFE_INTEGER
+          ? 0
+          : globalBest.state.bestSoftScore;
+      }
+      if (onProgress) {
+        try {
+          onProgress({
+            iter: totalNodes + repairGained + lnsGained,
+            softScore: globalBest.softScore,
+            hardConflicts: model.lessonCount - globalBest.assignedEntries,
+            backtracks: totalBacktracks,
+            durationMs: Math.round(performance.now() - t0),
+            phase: "lns-done",
+          });
+        } catch {}
+      }
     }
   }
   if (performance.now() >= totalDeadlineMs) anyTimedOut = true;

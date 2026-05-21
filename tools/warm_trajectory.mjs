@@ -37,7 +37,9 @@ const res = solve(school, {
   timeLimitSec: 15,
   useIterativeRepair: true,
   seed: 11,
-  onProgress: (p) => trajectory.push({ ms: p.durationMs, iter: p.iter, soft: p.softScore, hard: p.hardConflicts, bt: p.backtracks }),
+  // Pass debug:true through ctx; the LNS path picks it up via ctx.debug.
+  // Hacky but enough for trajectory diagnostics.
+  onProgress: (p) => trajectory.push({ ms: p.durationMs, iter: p.iter, soft: p.softScore, hard: p.hardConflicts, bt: p.backtracks, phase: p.phase }),
 });
 
 console.log("# Warm-start trajectory — seed 11, 15s budget");
