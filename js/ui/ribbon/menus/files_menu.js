@@ -39,7 +39,7 @@
           { icon: "📤", label: "GP-Untis DIF",   run: () => fire("app:export-gp-untis-dif") },
           { icon: "📤", label: "Atlantis",       run: () => fire("app:export-atlantis") },
           { icon: "📤", label: "PowerSchool",    run: () => fire("app:export-powerschool") },
-          { icon: "📤", label: "NYC Excel",      soon: true },
+          { icon: "📤", label: "NYC Excel (draft)", run: () => fire("app:export-nyc-excel") },
           { icon: "📤", label: "Mashov",         soon: true },
           { icon: "📤", label: "iSAMS",          soon: true },
         ]},

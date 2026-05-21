@@ -1,5 +1,5 @@
-/* Chronexa bundle — generated 2026-05-21T20:01:07Z
- *      137 modules concatenated in document order.
+/* Chronexa bundle — generated 2026-05-21T20:03:33Z
+ *      138 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
 /* ─── FILE: js/ui/state.js ─── */
@@ -14796,7 +14796,7 @@ window.StartScreen = (function () {
           { icon: "📤", label: "GP-Untis DIF",   run: () => fire("app:export-gp-untis-dif") },
           { icon: "📤", label: "Atlantis",       run: () => fire("app:export-atlantis") },
           { icon: "📤", label: "PowerSchool",    run: () => fire("app:export-powerschool") },
-          { icon: "📤", label: "NYC Excel",      soon: true },
+          { icon: "📤", label: "NYC Excel (draft)", run: () => fire("app:export-nyc-excel") },
           { icon: "📤", label: "Mashov",         soon: true },
           { icon: "📤", label: "iSAMS",          soon: true },
         ]},
@@ -16750,6 +16750,119 @@ window.StartScreen = (function () {
 
   window.ExportExcelClassRegister = { run };
   window.addEventListener("app:export-class-register", () => run());
+})();
+
+/* ─── FILE: js/ui/io/export_excel_nyc.js ─── */
+/* NYC Excel export — generic "Teacher × Day × Period" schedule layout.
+ *
+ * The NYC Department of Education's STARS Admin system does not publish a
+ * single locked-in import schema; districts and schools customise the
+ * Excel template they accept. The layout below is the one repeatedly seen
+ * in NYC Open Data school-schedule extracts: one sheet per teacher with
+ * Period rows × Mon-Fri columns, each cell carrying
+ * "<Subject>\n<Class>\n<Room>". Schools that need a different column order
+ * or a single flat sheet should ask for a follow-up adjustment.
+ *
+ * Output: workbook with one sheet per teacher + a "_README" sheet
+ * documenting the layout so the receiving admin knows what they're looking
+ * at. SheetJS (window.XLSX) is already loaded by index.html.
+ */
+(function () {
+  "use strict";
+  const APP = window.APP;
+  const notify = window._chrxNotify || console.log;
+  const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"];
+
+  function sanitiseSheetName(name, used) {
+    // Excel forbids : \ / ? * [ ] in sheet names and caps at 31 chars.
+    let safe = String(name || "Sheet")
+      .replace(/[:\\/?*\[\]]/g, " ")
+      .trim()
+      .slice(0, 31) || "Sheet";
+    let candidate = safe, n = 2;
+    while (used.has(candidate.toLowerCase())) {
+      const suffix = " " + n++;
+      candidate = safe.slice(0, 31 - suffix.length) + suffix;
+    }
+    used.add(candidate.toLowerCase());
+    return candidate;
+  }
+
+  function cellText(card) {
+    if (!card) return "";
+    const subj = card.subjectAbbr || card.subject || "";
+    const cls  = (card.classes && card.classes.join(", ")) || "";
+    const room = card.classroom || "";
+    return [subj, cls, room].filter(Boolean).join("\n");
+  }
+
+  function exportNYC() {
+    if (typeof window.XLSX === "undefined") {
+      notify("NYC Excel export needs SheetJS — check internet connection.", "error");
+      return;
+    }
+    const s = APP && APP.school;
+    if (!s) { notify("Open a timetable first.", "error"); return; }
+
+    const teachers = (s.teachers || []).slice().sort((a, b) =>
+      (a.name || "").localeCompare(b.name || ""));
+    const periods = (s.bell && s.bell.periods) || [];
+    const cardsByTeacher = (s._idx && s._idx.cardsByTeacher) || {};
+
+    if (!teachers.length) { notify("No teachers in this school.", "error"); return; }
+    if (!periods.length)  { notify("No bell periods defined.",   "error"); return; }
+
+    const wb = window.XLSX.utils.book_new();
+    const used = new Set();
+
+    // README — what the recipient is looking at.
+    const readme = [
+      ["NYC Excel export — draft layout"],
+      [],
+      ["School:", s.schoolName || "(unnamed)"],
+      ["Exported:", new Date().toISOString().slice(0, 10)],
+      ["Teachers:", String(teachers.length)],
+      ["Periods/day:", String(periods.length)],
+      [],
+      ["Layout"],
+      ["  One sheet per teacher."],
+      ["  Columns: Period | Mon | Tue | Wed | Thu | Fri."],
+      ["  Each cell holds: Subject / Class / Room — newline-separated."],
+      [],
+      ["Note"],
+      ["  NYC DOE STARS templates vary by school. If your admin needs a"],
+      ["  different column order or a single flat sheet, regenerate after"],
+      ["  the Chronexa team updates this exporter — Files → Export → NYC Excel."],
+    ];
+    window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.aoa_to_sheet(readme),
+      sanitiseSheetName("_README", used));
+
+    for (const t of teachers) {
+      const list = cardsByTeacher[t.id] || [];
+      const header = ["Period", ...DAYS];
+      const rows = [header];
+      for (const per of periods) {
+        const row = ["P" + per.index + (per.label ? " (" + per.label + ")" : "")];
+        for (let di = 0; di < DAYS.length; di++) {
+          const card = list.find(c => c.day === di && c.period === per.index) || null;
+          row.push(cellText(card));
+        }
+        rows.push(row);
+      }
+      const ws = window.XLSX.utils.aoa_to_sheet(rows);
+      // Set a reasonable column width so multi-line cells stay readable.
+      ws["!cols"] = [{ wch: 14 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 22 }];
+      window.XLSX.utils.book_append_sheet(wb, ws, sanitiseSheetName(t.name || ("Teacher " + t.id), used));
+    }
+
+    const fname = (s.schoolName || "school").replace(/[^A-Za-z0-9_-]+/g, "_")
+      + "_NYC_schedule_" + new Date().toISOString().slice(0, 10) + ".xlsx";
+    window.XLSX.writeFile(wb, fname);
+    notify("Exported " + fname + " — " + teachers.length + " teacher sheets.");
+  }
+
+  window.addEventListener("app:export-nyc-excel", exportNYC);
+  APP.exportNYCExcel = exportNYC;
 })();
 
 /* ─── FILE: js/ui/io/export_ics.js ─── */
