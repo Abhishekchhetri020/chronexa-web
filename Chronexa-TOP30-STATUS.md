@@ -27,7 +27,7 @@ The May-19 audit produced a "Top-30 backlog" that has been pasted into every sub
 | 11 | School settings dialog | ✅ | `js/ui/components/school_settings_dialog.js`; opens standalone after p49 (commit `40c0f61`). 5 sections: Identity · Bell shape · Solver hints · Print defaults · multi-term/week toggles. |
 | 12 | Verification halo paint on grid | ⛔ | True gap. No `halo` / `verifyPaint` code exists. ~1 day canvas-render work. |
 | 13 | Print preview Monday-drop bug | ✅ | Fixed in `print_preview.js#printAllPages` (commit `cd174e6`). Cmd-P and 🖨 button now print every page. |
-| 14 | Color-a-card-by axis switcher | ⛔ | True gap. No `colorBy` toggle. ~1 day UI + render rewire. |
+| 14 | Color-a-card-by axis switcher | ✅ | `view_menu.js` — "Color by" section (Subject / Teacher / Class / Room). `grid_canvas.js#cardHue` reads `APP.editor.colorBy` and prefers entity.color (HEX) before hash-fallback. Live re-render on change (commit `p50`). |
 | 15 | Per-card lock | ✅ | Data model: `card.locked` honoured by `improve_mode.js` line 72 + `csp_solver`. UI: `inspector.js` lines 147-148 expose Lock/Unlock button on cell click. AI menu's "Lock all placed cells" sets it in bulk. |
 | 16 | Improve solver mode (API level) | ✅ | `js/solver/improve_mode.js` (commit `28fbeb8`) |
 | 17 | `globals.constraints` Tier-1 fallback (8/8 fields) | ✅ | `csp_solver.js#gFallback` reads all 8 caps (commit `e3c89d2`) |
@@ -40,9 +40,9 @@ The May-19 audit produced a "Top-30 backlog" that has been pasted into every sub
 
 ## Score
 
-- ✅ Shipped: **17 of 30** (57 %)
+- ✅ Shipped: **18 of 30** (60 %)
 - 🟡 Partial: **5 of 30** (17 %)
-- ⛔ True gap: **4 of 30** — items #3, #4, #12, #14
+- ⛔ True gap: **3 of 30** — items #3, #4, #12
 
 ## What to actually pick next
 

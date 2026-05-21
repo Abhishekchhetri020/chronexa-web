@@ -20,6 +20,24 @@
   // restore density
   try { const d = localStorage.getItem("chronexa.density"); if (d) document.documentElement.setAttribute("data-density", d); } catch {}
 
+  // Color-by axis — which entity field drives the card hue on the grid.
+  // Persists across sessions; live re-renders the editor on change so the
+  // user sees the new colouring immediately. APP.editor.colorBy is read by
+  // grid_canvas.cardHue() and card_in_hand's pickup ghost.
+  APP.editor = APP.editor || {};
+  try { const cb = localStorage.getItem("chronexa.colorBy"); if (cb) APP.editor.colorBy = cb; } catch {}
+  if (!APP.editor.colorBy) APP.editor.colorBy = "subject";
+  function setColorBy(axis) {
+    APP.editor.colorBy = axis;
+    try { localStorage.setItem("chronexa.colorBy", axis); } catch {}
+    fire("app:color-by", { axis });
+    const editorRoot = document.querySelector(".chrx-editor");
+    if (editorRoot && window.Editor && typeof window.Editor.render === "function") {
+      try { window.Editor.render(editorRoot); } catch {}
+    }
+    (window._chrxNotify || function () {})("Color by: " + axis, "info");
+  }
+
   APP.ribbon.registerMenu({
     key: "view", label: "View",
     build() {
@@ -43,6 +61,12 @@
         { icon: tick(dn==="compact"),     label: "Compact",     run: () => setDensity("compact") },
         { icon: tick(dn==="comfortable"), label: "Comfortable", run: () => setDensity("comfortable") },
         { icon: tick(dn==="spacious"),    label: "Spacious",    run: () => setDensity("spacious") },
+        { sep: true },
+        { section: "Color by" },
+        { icon: tick(APP.editor.colorBy==="subject"), label: "Subject",  run: () => setColorBy("subject") },
+        { icon: tick(APP.editor.colorBy==="teacher"), label: "Teacher",  run: () => setColorBy("teacher") },
+        { icon: tick(APP.editor.colorBy==="class"),   label: "Class",    run: () => setColorBy("class") },
+        { icon: tick(APP.editor.colorBy==="room"),    label: "Room",     run: () => setColorBy("room") },
         { sep: true },
         { section: "Theme" },
         { icon: tick(th==="light"), label: "Light", run: () => setTheme("light") },

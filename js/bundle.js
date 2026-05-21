@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-21T20:06:15Z
+/* Chronexa bundle — generated 2026-05-21T20:12:40Z
  *      138 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -11616,7 +11616,7 @@ window.Editor = (function () {
         .join(", ");
     })();
 
-    const hue = subjectHue(subject);
+    const hue = cardHue(S, card, lesson, subject);
     const cardId = `placed_${card.lessonId}_${day}_${period}`;
     const locked = (lesson?.fixedDay != null || lesson?.fixedPeriod != null) ? " locked" : "";
     // line 2 differs by perspective: class → teacher, teacher → class, room → class
@@ -11742,6 +11742,59 @@ window.Editor = (function () {
     let h = 0;
     for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) & 0xffff;
     return h % 360;
+  }
+
+  // Pick the colour of a placed card based on APP.editor.colorBy:
+  //   "subject" (default) — use the legacy subject-hue palette
+  //   "teacher" — use the first teacher's stored colour, hash-fallback
+  //   "class"   — use the first class's stored colour, hash-fallback
+  //   "room"    — use the resolved classroom's stored colour, hash-fallback
+  // Entity dialogs already write a HEX `color` field on each entity; we
+  // parse it to HSL hue when present so it composes with the existing
+  // --chrx-card-hue CSS variable used by chrx-vkarta.
+  function hashHue(key) {
+    if (!key) return 210;
+    let h = 0;
+    const u = String(key).toUpperCase();
+    for (let i = 0; i < u.length; i++) h = (h * 31 + u.charCodeAt(i)) & 0xffff;
+    return h % 360;
+  }
+  function hexHue(hex) {
+    if (typeof hex !== "string") return null;
+    const m = hex.replace("#", "");
+    if (m.length !== 6) return null;
+    const r = parseInt(m.slice(0, 2), 16) / 255;
+    const g = parseInt(m.slice(2, 4), 16) / 255;
+    const b = parseInt(m.slice(4, 6), 16) / 255;
+    if ([r, g, b].some(v => Number.isNaN(v))) return null;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+    if (d === 0) return 210;
+    let h;
+    if (max === r) h = ((g - b) / d) % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h *= 60; if (h < 0) h += 360;
+    return Math.round(h);
+  }
+  function cardHue(S, card, lesson, subject) {
+    const axis = (window.APP && window.APP.editor && window.APP.editor.colorBy) || "subject";
+    if (axis === "subject") return subjectHue(subject);
+    if (axis === "teacher") {
+      const tid = (lesson && lesson.teacherIds && lesson.teacherIds[0]);
+      const t = tid ? S._idx.teacherById[tid] : null;
+      return (t && hexHue(t.color)) ?? hashHue(t && (t.abbr || t.name));
+    }
+    if (axis === "class") {
+      const cid = (lesson && lesson.classIds && lesson.classIds[0]);
+      const c = cid ? S._idx.classById[cid] : null;
+      return (c && hexHue(c.color)) ?? hashHue(c && (c.short || c.name));
+    }
+    if (axis === "room") {
+      const rid = (card && card.classroomId) || (lesson && lesson.preferredRoomId);
+      const r = rid ? S._idx.classroomById[rid] : null;
+      return (r && hexHue(r.color)) ?? hashHue(r && (r.short || r.name));
+    }
+    return subjectHue(subject);
   }
 
   function esc(s) {
@@ -14914,6 +14967,24 @@ window.StartScreen = (function () {
   // restore density
   try { const d = localStorage.getItem("chronexa.density"); if (d) document.documentElement.setAttribute("data-density", d); } catch {}
 
+  // Color-by axis — which entity field drives the card hue on the grid.
+  // Persists across sessions; live re-renders the editor on change so the
+  // user sees the new colouring immediately. APP.editor.colorBy is read by
+  // grid_canvas.cardHue() and card_in_hand's pickup ghost.
+  APP.editor = APP.editor || {};
+  try { const cb = localStorage.getItem("chronexa.colorBy"); if (cb) APP.editor.colorBy = cb; } catch {}
+  if (!APP.editor.colorBy) APP.editor.colorBy = "subject";
+  function setColorBy(axis) {
+    APP.editor.colorBy = axis;
+    try { localStorage.setItem("chronexa.colorBy", axis); } catch {}
+    fire("app:color-by", { axis });
+    const editorRoot = document.querySelector(".chrx-editor");
+    if (editorRoot && window.Editor && typeof window.Editor.render === "function") {
+      try { window.Editor.render(editorRoot); } catch {}
+    }
+    (window._chrxNotify || function () {})("Color by: " + axis, "info");
+  }
+
   APP.ribbon.registerMenu({
     key: "view", label: "View",
     build() {
@@ -14937,6 +15008,12 @@ window.StartScreen = (function () {
         { icon: tick(dn==="compact"),     label: "Compact",     run: () => setDensity("compact") },
         { icon: tick(dn==="comfortable"), label: "Comfortable", run: () => setDensity("comfortable") },
         { icon: tick(dn==="spacious"),    label: "Spacious",    run: () => setDensity("spacious") },
+        { sep: true },
+        { section: "Color by" },
+        { icon: tick(APP.editor.colorBy==="subject"), label: "Subject",  run: () => setColorBy("subject") },
+        { icon: tick(APP.editor.colorBy==="teacher"), label: "Teacher",  run: () => setColorBy("teacher") },
+        { icon: tick(APP.editor.colorBy==="class"),   label: "Class",    run: () => setColorBy("class") },
+        { icon: tick(APP.editor.colorBy==="room"),    label: "Room",     run: () => setColorBy("room") },
         { sep: true },
         { section: "Theme" },
         { icon: tick(th==="light"), label: "Light", run: () => setTheme("light") },
