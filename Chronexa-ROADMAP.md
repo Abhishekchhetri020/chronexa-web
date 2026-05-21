@@ -1,7 +1,7 @@
 # Chronexa Web — Roadmap
 
-**Last refreshed:** 2026-05-21 (third session)
-**Live URL:** https://abhishekchhetri020.github.io/chronexa-web/ — APP_VER `20260521-p36-groupidsfix`
+**Last refreshed:** 2026-05-21 (fourth session)
+**Live URL:** https://abhishekchhetri020.github.io/chronexa-web/ — APP_VER `20260521-p37-labdoublefix`
 **Repo:** https://github.com/Abhishekchhetri020/chronexa-web
 
 ---
@@ -50,7 +50,20 @@ blank school
  → export Timetable XML → 3,630 bytes of valid `<?xml version="1.0"…><timetable…>`
 ```
 
-## 📝 Today's sprint (2026-05-21, third session) — Chronexa beats aSc on `sample-school.xml`
+## 📝 Today's sprint (2026-05-21, fourth session) — Chronexa now FEASIBLE / beats aSc on `sample-school.xml`
+
+**Headline: warm-start places 946/0 conflicts on sample-school.xml — Chronexa FEASIBLE, +2 placements over aSc, 0 hard violations vs aSc's 2.** Two one-line bugs in `csp_solver.js#buildModel` were the entire story:
+
+1. **groupIds dropped during per-card expansion** — every elective lesson (URDU, SANSKRIT, Music, Dance, Boys/Girls splits) was treated as whole-class under group-aware conflict detection. Fixed by copying `groupIds: l.groupIds || []` into the `expanded.push({...})` object. Effect on warm-start: 916/35 → 944/7. (35 unplaceable URDU cards became 7 unplaceable.)
+2. **Lab-double lessons over-expanded** — `reps = periodsperweek` ignored `periodspercard`, so a lesson with periodsperweek=2 + periodspercard=2 produced 2 sessions instead of 1. Warm-start placed the first via the lab-double extension (marks both periods busy), then the second hit teacher_conflict at the same slot. Fixed by `reps = round(periodsperweek / (isLabDouble ? 2 : 1))`. Effect on warm-start: 944/7 → 946/0 FEASIBLE.
+
+Both bugs were found by diagnose-warm-fails (instrumented warm-start to log canPlace failure reasons per move, then attributed each to a buildModel data-flow drop). Tools live at `tools/diagnose_warm_fails.mjs`, `tools/diagnose_unplaceable.mjs`, `tools/diagnose_urdu.mjs`.
+
+**LNS infrastructure shipped opt-in.** `largeNeighborhoodSearch()` lives at the bottom of `csp_solver.js`. Strategies: random / by-class / by-day / by-subject destruction, adaptive K (1.5 % → 6 % of placed), snapshot-revert on regression. Default OFF because on tight schools like sample-school.xml the warm-start local optimum is too sticky for destroy-and-repair — the real lever turned out to be the two model-build bugs above. LNS infrastructure stays in place for fixtures with more slack.
+
+**Cold-path now has more variance** (one seed in five dropped catastrophically post lab-double fix). Variance is a separate heuristic-tuning issue tracked under "next steps."
+
+## 📝 Prior session (2026-05-21, third) — Chronexa first beat aSc — initial groupIds fix
 
 **Headline: the warm-start now places 946 / 5 conflicts versus aSc's 944 / 7 — Chronexa is +2 placements better than aSc on its own XML.** The win came from a single one-line fix in `js/solver/csp_solver.js#buildModel`: the per-card expansion was dropping `groupIds`, so every lesson with an elective group (URDU, SANSKRIT, Music, Dance, etc.) was being treated as a whole-class lesson under group-aware conflict detection. Result: 28 of the 35 previously-unplaceable URDU electives now schedule cleanly alongside their SANSKRIT counterparts in the same slot for the same class, the way aSc has always done. Cold-path also lifted: median 877 → 905 placements.
 

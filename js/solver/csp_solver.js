@@ -385,7 +385,26 @@ function buildModel(school) {
     w.teacher_consecutive_overload, w.class_consecutive_overload, w.teacher_last_period_overflow,
     w.period_load_balance,
     w.soft_relation_violation ?? 10,
+    w.teacher_consec_heavy_days ?? 10,
+    w.sibling_subject_deficit ?? 25,
   ]);
+
+  // Sibling-subject deficit target — for each (class, subject), sum of
+  // periodsperweek across all lessons that include this class with that
+  // subject. The deficit scorer pulls the solver toward placing
+  // behind-quota subjects first.
+  const classSubjectTarget = new Int32Array(classIds.length * subjectIds.length);
+  for (const l of school.lessons) {
+    const sIdx = subjectIdx.get(l.subjectId);
+    if (sIdx == null) continue;
+    const ppw = l.periodsPerWeek | 0;
+    if (ppw <= 0) continue;
+    for (const cid of (l.classIds || [])) {
+      const cIdx = classIdx.get(cid);
+      if (cIdx == null) continue;
+      classSubjectTarget[cIdx * subjectIds.length + sIdx] += ppw;
+    }
+  }
 
   // ─── Card relationships (a.k.a. "constraints") ─────────────────────────
   // Pre-compute relation constraints into per-lesson partner sets that
@@ -560,6 +579,7 @@ function buildModel(school) {
     teacherAvailabilityMask, teacherMaxPerDay, teacherMaxConsec,
     classMaxPerDay, classMaxConsec,
     subjectDailyLimit,
+    classSubjectTarget,
     lessonAdjacencyDegree,
     slotDay, slotPeriod, periodPref,
     weights,
@@ -1145,7 +1165,62 @@ function softScore(model, state) {
   s += state.totalTeacherLastPeriodOverflow * w[6];
   s += state.totalPeriodLoadBalance * w[7];
   s += softRelationPenalty(model, state) * w[8];
+  s += teacherConsecHeavyDaysPenalty(model, state) * w[9];
+  s += siblingSubjectDeficitPenalty(model, state) * w[10];
   return s;
+}
+
+// CSIntegerCDNeededCards-style scorer: penalise (class, subject) pairs
+// that have fewer placements than their weekly target. The penalty pulls
+// the solver toward placing behind-quota subjects (e.g. URDU 7-per-week)
+// ahead of already-saturated ones. O(classCount × subjectCount × days)
+// — small enough to recompute per softScore call on schools up to
+// ~50 classes × ~50 subjects × 6 days.
+function siblingSubjectDeficitPenalty(model, state) {
+  const target = model.classSubjectTarget;
+  if (!target) return 0;
+  const C = model.classCount;
+  const S = model.subjectCount;
+  const D = model.days;
+  let penalty = 0;
+  for (let c = 0; c < C; c++) {
+    for (let s = 0; s < S; s++) {
+      const tg = target[c * S + s] | 0;
+      if (tg <= 0) continue;
+      let placed = 0;
+      for (let d = 0; d < D; d++) placed += state.classSubjectDayCount[(c * S + s) * D + d] | 0;
+      if (placed < tg) penalty += (tg - placed);
+    }
+  }
+  return penalty;
+}
+
+// CKritResty-style scorer (ported from the legacy C/Kotlin solver). For
+// each teacher, sum the "excess load" of every pair of consecutive days
+// where BOTH days are heavy (load > threshold). Penalty grows with how
+// far over the threshold each day is. Threshold defaults to half the
+// teacher's per-day cap, or 5 if no cap is set. This is a soft pull
+// against burning a teacher out by stacking heavy days back-to-back.
+function teacherConsecHeavyDaysPenalty(model, state) {
+  const T = model.teacherCount;
+  const D = model.days;
+  if (D < 2 || T === 0) return 0;
+  let penalty = 0;
+  for (let t = 0; t < T; t++) {
+    // Per-teacher threshold: half their max-per-day if set, else 5.
+    const cap = model.teacherMaxPerDay ? (model.teacherMaxPerDay[t] | 0) : 0;
+    const threshold = cap > 0 ? Math.max(2, Math.floor(cap / 2)) : 5;
+    let prevLoad = state.teacherDayLoad[t * D] | 0;
+    for (let d = 1; d < D; d++) {
+      const curLoad = state.teacherDayLoad[t * D + d] | 0;
+      if (prevLoad > threshold && curLoad > threshold) {
+        // Excess of both days beyond threshold.
+        penalty += (prevLoad - threshold) + (curLoad - threshold);
+      }
+      prevLoad = curLoad;
+    }
+  }
+  return penalty;
 }
 
 function softRelationPenalty(model, state) {

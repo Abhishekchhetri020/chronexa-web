@@ -125,7 +125,11 @@ export const HARD_CONSTRAINTS = Object.freeze([
 
 /** Default soft weights — same keys as Kotlin ConstraintConfig.defaultSoftWeights. */
 export const DEFAULT_SOFT_WEIGHTS = Object.freeze({
-  teacher_gaps: Weight.LOW_SOFT,
+  // CKritOkno equivalent — teacher gaps in the middle of the day are a
+  // strong soft pull (was LOW_SOFT; bumped to NEAR_HARD to match the legacy
+  // C/Kotlin scorer's "-200,000 hard veto" intent without making it a
+  // true hard rule).
+  teacher_gaps: Weight.NEAR_HARD,
   class_gaps: Weight.LOW_SOFT,
   subject_distribution: Weight.MED_SOFT,
   teacher_room_stability: Weight.HINT,
@@ -134,6 +138,10 @@ export const DEFAULT_SOFT_WEIGHTS = Object.freeze({
   teacher_last_period_overflow: Weight.HIGH_SOFT,
   period_load_balance: Weight.MED_SOFT,
   soft_relation_violation: Weight.LOW_SOFT,
+  teacher_consec_heavy_days: Weight.LOW_SOFT,
+  // CSIntegerCDNeededCards (sibling-subject deficit) — strong pull to
+  // place behind-quota subjects ahead of already-saturated ones.
+  sibling_subject_deficit: Weight.HIGH_SOFT,
 });
 
 /** Soft constraint catalog — for the violations panel. */
