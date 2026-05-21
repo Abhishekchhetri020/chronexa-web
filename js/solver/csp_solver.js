@@ -2377,6 +2377,14 @@ function randomEvictPlaced(model, state, K, rngState) {
  * @returns {object} SolveResponse per DATA_SHAPES.md
  */
 export function solve(school, options = {}) {
+  // Top 30 #16 — Improve solver mode. Alias for "warm-start the current
+  // schedule + use LNS to search outward for improvements". Locked lessons
+  // (fixedDay/fixedPeriod set) stay put through LNS because randomEvictPlaced
+  // and the structured eviction strategies all skip lessons with
+  // lessonFixedSlot >= 0. Callers can also pass these flags individually.
+  if (options.mode === "improve") {
+    options = { ...options, warmStart: true, useLNS: true };
+  }
   const t0 = performance.now();
   const timeLimitSec = options.timeLimitSec ?? 30;
   const totalDeadlineMs = t0 + timeLimitSec * 1000;
