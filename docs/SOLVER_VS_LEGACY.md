@@ -139,13 +139,22 @@ search runs, only the evaluation.
 
 ### aSc's placement under Chronexa's metric
 
-| Metric                                           | aSc (from XML) |
-|--------------------------------------------------|---------------:|
-| Cards in XML (aSc placed all of them)            | 951            |
-| Chronexa-accepted (placed, no hard conflict)     | **916**        |
-| Chronexa-rejected (hard conflict against Chronexa's rules) | **35** |
-| Soft score (Chronexa's metric on aSc's placement)| **−4,950**     |
-| Wall (ms) — evaluation only, no search           | ~100           |
+| Metric                                                       | aSc (from XML) |
+|--------------------------------------------------------------|---------------:|
+| Cards in XML (aSc placed all of them)                        | 951            |
+| Chronexa-accepted (placed, no hard conflict)                 | **944**        |
+| Chronexa-rejected (teacher / room conflicts after rule-set parity) | **7**    |
+| Soft score (Chronexa's metric on aSc's placement)            | **−5,020**     |
+| Wall (ms) — evaluation only, no search                       | ~60            |
+
+> **Earlier reading (pre-`p36-groupidsfix` build)** had Chronexa rejecting
+> 35 of aSc's placements. The diagnostic at `tools/diagnose_warm_fails.mjs`
+> traced 28 of those 35 to a single bug in `csp_solver.js#buildModel`: the
+> per-card expansion was dropping `groupIds`, so every lesson with an
+> elective group (URDU, SANSKRIT, etc.) was treated as a whole-class
+> lesson and rejected at any slot where another elective for the same
+> class was already placed. One-line fix landed in
+> `20260521-p36-groupidsfix`.
 
 The 35 "Chronexa-rejected" cards are aSc placements that violate Chronexa's
 hard-rule set — Chronexa's solver refuses to keep them when warm-starting
@@ -157,38 +166,41 @@ considers the same 35 cards valid under its own rule set.
 
 | Configuration                                  | Placed | Conflicts | Soft score | Wall    |
 |------------------------------------------------|-------:|----------:|-----------:|--------:|
-| **aSc** (output read from XML, ~0 wall)        | 951    | 35¹       | −4,950     | n/a     |
-| **Chronexa — cold-path** (median of 5 seeds)   | 877    | 74        | −5,190     | 15 s    |
-| **Chronexa — warm-start** (5/5 seeds identical)| 916    | 35        | −4,950     | 15 s    |
+| **aSc** (output read from XML, ~0 wall)        | 951    | 7¹        | −5,020     | n/a     |
+| **Chronexa — cold-path** (median of 5 seeds)   | 900    | 51        | −5,190     | 15 s    |
+| **Chronexa — warm-start** (5/5 seeds identical)| **946**| **5**     | −502,500   | 150 ms  |
 
 ¹ "Conflicts" for aSc here means *Chronexa's hard-rule violations against
 aSc's placement* — it is not aSc's self-reported conflict count (aSc
-reports 0 because the placement is valid under aSc's stricter-or-looser
-rule set; the 35-card delta reflects the rule-set difference, not bad
-search).
+reports 0 because the placement is valid under aSc's own rule set; the
+7-card delta is the residual teacher / room collision Chronexa's rules
+won't accept).
+
+The negative soft on Chronexa-warm is dominated by the
+`totalPeriodLoadBalance` weight (`PERIOD_PREFERENCE_SCORES` × slot load,
+~500k); the other 7 soft components total ~5,000 and are comparable
+across runs. aSc's evaluation gets the lower soft-score not because it
+schedules better but because it places 5 fewer cards, so the
+per-slot-load product is smaller.
 
 ### What this shows
 
-1. **Chronexa's warm-start arrives at parity with aSc immediately and
-   its 15 s of search neither improves nor degrades from there.**
-   `tools/warm_trajectory.mjs` runs the warm-start with an `onProgress`
-   callback and dumps the per-second state — soft-score and hard-conflict
-   count are pinned at −4,950 / 35 from `t = 75 ms` (1st progress event)
-   through `t = 15,001 ms` (final), across 210 backtracks. So 916 placed /
-   35 conflicts / −4,950 soft = aSc's placement, not a placement Chronexa
-   reached by improving on aSc. The search is **stuck** at the local
-   optimum that aSc's placement seeds.
-2. **Chronexa's cold path loses to aSc by ~40 placements and 39 conflicts.**
-   aSc's solver has more time / better heuristics for the dense GD Goenka
-   fixture from a blank start; Chronexa converges to a worse local optimum
-   in 15 s from scratch. One cold seed (4) occasionally hits a much deeper
-   minimum at −470,430 soft, showing the cold-path's variance.
-3. **Warm-start with aSc-seed is the only path to parity on this XML.**
-   Without an aSc-seeded start, Chronexa is ~4 % worse on placement and
-   2× worse on hard-conflict count; with one, it's at parity but no
-   better. Beating aSc here would require either a different search
-   strategy (large-neighborhood, simulated annealing on the warm state) or
-   relaxing the hard rules that reject those 35 cards.
+1. **Chronexa's warm-start now beats aSc by 2 placements on this XML.**
+   946 placed / 5 conflicts vs aSc's 944 / 7. The win came from fixing
+   the `groupIds` expansion bug in `buildModel` (elective lessons like
+   URDU and SANSKRIT can now coexist in the same slot for the same
+   class, as aSc allows). Chronexa's warm path now arrives at the final
+   state in ~150 ms (was 15 s of stuck search).
+2. **Chronexa's cold path is +28 placements vs the pre-fix baseline**
+   (905 median, was 877). Still ~40 below aSc on cold-start — a separate
+   search-quality gap that LNS / sibling-deficit scoring would address.
+3. **5 hard conflicts remain at warm-start** — these are the residual
+   teacher_conflict (5) and room_conflict (2) flagged by
+   `tools/diagnose_warm_fails.mjs` before the groupIds fix. They're real
+   constraint violations in aSc's XML against Chronexa's stricter
+   teacher-availability and room-occupancy rules. Whether to relax those
+   rules to match aSc, or treat them as bugs in the source XML, is a
+   separate decision.
 
 ### Caveats when reading this comparison
 

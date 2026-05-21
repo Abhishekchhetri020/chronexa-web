@@ -106,6 +106,7 @@ function buildModel(school) {
         srcId: l.id,
         classIds: l.classIds || [],
         teacherIds: l.teacherIds || [],
+        groupIds: l.groupIds || [],
         subjectId: l.subjectId,
         requiredRoomType: l.requiredRoomType || null,
         preferredRoomId: l.preferredRoomId || null,

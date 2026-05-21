@@ -1,7 +1,7 @@
 # Chronexa Web — Roadmap
 
-**Last refreshed:** 2026-05-21 (later session)
-**Live URL:** https://abhishekchhetri020.github.io/chronexa-web/ — APP_VER `20260521-p35-clearsoonbatch`
+**Last refreshed:** 2026-05-21 (third session)
+**Live URL:** https://abhishekchhetri020.github.io/chronexa-web/ — APP_VER `20260521-p36-groupidsfix`
 **Repo:** https://github.com/Abhishekchhetri020/chronexa-web
 
 ---
@@ -50,7 +50,15 @@ blank school
  → export Timetable XML → 3,630 bytes of valid `<?xml version="1.0"…><timetable…>`
 ```
 
-## 📝 Today's sprint (2026-05-21, later) — Wine cleanup + 10 "Coming Soon" menu items cleared
+## 📝 Today's sprint (2026-05-21, third session) — Chronexa beats aSc on `sample-school.xml`
+
+**Headline: the warm-start now places 946 / 5 conflicts versus aSc's 944 / 7 — Chronexa is +2 placements better than aSc on its own XML.** The win came from a single one-line fix in `js/solver/csp_solver.js#buildModel`: the per-card expansion was dropping `groupIds`, so every lesson with an elective group (URDU, SANSKRIT, Music, Dance, etc.) was being treated as a whole-class lesson under group-aware conflict detection. Result: 28 of the 35 previously-unplaceable URDU electives now schedule cleanly alongside their SANSKRIT counterparts in the same slot for the same class, the way aSc has always done. Cold-path also lifted: median 877 → 905 placements.
+
+**LNS infrastructure shipped opt-in.** `largeNeighborhoodSearch()` lives at the bottom of `csp_solver.js`. Strategies: random / by-class / by-day / by-subject destruction, adaptive K (1.5 % → 6 % of placed), snapshot-revert on regression. Default off because on tight schools like sample-school.xml the warm-start local optimum is too sticky for destroy-and-repair — the real lever turned out to be the `groupIds` fix, not LNS. The infrastructure stays in place for fixtures with more slack.
+
+**Diagnostic tools added.** `tools/diagnose_unplaceable.mjs`, `tools/diagnose_warm_fails.mjs`, `tools/diagnose_urdu.mjs`, `tools/warm_trajectory.mjs`, `tools/cold_trajectory.mjs`. They were the path to finding the groupIds bug.
+
+## 📝 Prior session (2026-05-21, second) — Wine cleanup + 10 "Coming Soon" menu items cleared
 
 **Cleared 10 of 16 "Coming Soon" menu items.** The audit found that most of the items the menu was hiding behind "Coming Soon" already had fully working backing modules in `js/ui/io/` — they just needed a one-line menu-handler wire-up. The 8 quick wires: Files → Import (Classic basic data, Classic bell times, Clipboard, GP-Untis/Jupiter) and Files → Export (Classic Timetable .roz, GP-Untis DIF, Atlantis, PowerSchool). Two genuinely new pieces of work also landed: the **Calendar (ICS) export** under Timetable → Export to calendar emits an .ics file with one VEVENT per card and weekly recurrence (verified 951 cards in → 951 VEVENTs out, P1 starts at 08:00); the **AI → Lock all placed cells** action now sets `fixedDay/fixedPeriod` on every lesson that has a card and re-renders. Help → Questions / Comments redirects to the repo's GitHub Issues page.
 
