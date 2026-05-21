@@ -18,10 +18,14 @@
     "buildings": () => window.EntityBuildings && window.EntityBuildings.open(),
     "holidays":  () => window.EntityHolidays && window.EntityHolidays.open(),
     "school":    () => {
-      // School settings now live in the multi-pane School Hub on Step 2.
-      // The legacy SchoolSettings.open() relied on EntityDialog's host which
-      // isn't initialized here, so it threw appendChild on null. Route to the hub.
-      document.dispatchEvent(new CustomEvent("nav:goto-step", { detail: { step: 2 } }));
+      // EntityDialog.openSheet now creates a standalone position:fixed host
+      // when no full dialog is open, so SchoolSettings.open() works standalone
+      // without the wizard-step bypass.
+      if (window.SchoolSettings && typeof window.SchoolSettings.open === "function") {
+        window.SchoolSettings.open();
+      } else {
+        document.dispatchEvent(new CustomEvent("nav:goto-step", { detail: { step: 2 } }));
+      }
     },
 
     // Edit menu (Subjects/Teachers/Classes/Classrooms/Lessons/Relations/Supervisions)

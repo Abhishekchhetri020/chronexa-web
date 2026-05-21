@@ -57,6 +57,7 @@
     if (lastFocused) try { lastFocused.focus(); } catch(e) {}
   }
   function refresh(rows) { if (!cfg) return; if (rows) cfg.rows = rows; renderRows(); }
+  let standaloneHost = null;
   function openSheet(node, opts) {
     closeSubSheet();
     closeSheet();
@@ -71,9 +72,25 @@
         el("div", { class:"chrx-ent-sheet__body" }, node),
       ),
     );
-    host.appendChild(sheet);
+    // No full EntityDialog is open (e.g. SchoolSettings called directly from
+    // a menu) — mount the sheet in a synthetic position:fixed host so the
+    // scrim's inset:0 covers the viewport instead of crashing on null host.
+    if (!host) {
+      standaloneHost = el("div", { class: "chrx-ent-standalone",
+        style: "position:fixed;inset:0;z-index:5000" });
+      document.body.appendChild(standaloneHost);
+      standaloneHost.appendChild(sheet);
+    } else {
+      host.appendChild(sheet);
+    }
   }
-  function closeSheet() { if (sheet) { sheet.remove(); sheet = null; } }
+  function closeSheet() {
+    if (sheet) { sheet.remove(); sheet = null; }
+    if (standaloneHost && !sheet) {
+      standaloneHost.remove();
+      standaloneHost = null;
+    }
+  }
 
   // openSubSheet — overlay an additional sheet ON TOP of the existing sheet
   // (e.g. "Set for more" picker opened from inside a constraints dialog).

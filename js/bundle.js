@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-21T20:03:33Z
+/* Chronexa bundle — generated 2026-05-21T20:06:15Z
  *      138 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -1087,6 +1087,7 @@ window.Inspector = (function () {
     if (lastFocused) try { lastFocused.focus(); } catch(e) {}
   }
   function refresh(rows) { if (!cfg) return; if (rows) cfg.rows = rows; renderRows(); }
+  let standaloneHost = null;
   function openSheet(node, opts) {
     closeSubSheet();
     closeSheet();
@@ -1101,9 +1102,25 @@ window.Inspector = (function () {
         el("div", { class:"chrx-ent-sheet__body" }, node),
       ),
     );
-    host.appendChild(sheet);
+    // No full EntityDialog is open (e.g. SchoolSettings called directly from
+    // a menu) — mount the sheet in a synthetic position:fixed host so the
+    // scrim's inset:0 covers the viewport instead of crashing on null host.
+    if (!host) {
+      standaloneHost = el("div", { class: "chrx-ent-standalone",
+        style: "position:fixed;inset:0;z-index:5000" });
+      document.body.appendChild(standaloneHost);
+      standaloneHost.appendChild(sheet);
+    } else {
+      host.appendChild(sheet);
+    }
   }
-  function closeSheet() { if (sheet) { sheet.remove(); sheet = null; } }
+  function closeSheet() {
+    if (sheet) { sheet.remove(); sheet = null; }
+    if (standaloneHost && !sheet) {
+      standaloneHost.remove();
+      standaloneHost = null;
+    }
+  }
 
   // openSubSheet — overlay an additional sheet ON TOP of the existing sheet
   // (e.g. "Set for more" picker opened from inside a constraints dialog).
@@ -7111,10 +7128,14 @@ window.Inspector = (function () {
     "buildings": () => window.EntityBuildings && window.EntityBuildings.open(),
     "holidays":  () => window.EntityHolidays && window.EntityHolidays.open(),
     "school":    () => {
-      // School settings now live in the multi-pane School Hub on Step 2.
-      // The legacy SchoolSettings.open() relied on EntityDialog's host which
-      // isn't initialized here, so it threw appendChild on null. Route to the hub.
-      document.dispatchEvent(new CustomEvent("nav:goto-step", { detail: { step: 2 } }));
+      // EntityDialog.openSheet now creates a standalone position:fixed host
+      // when no full dialog is open, so SchoolSettings.open() works standalone
+      // without the wizard-step bypass.
+      if (window.SchoolSettings && typeof window.SchoolSettings.open === "function") {
+        window.SchoolSettings.open();
+      } else {
+        document.dispatchEvent(new CustomEvent("nav:goto-step", { detail: { step: 2 } }));
+      }
     },
 
     // Edit menu (Subjects/Teachers/Classes/Classrooms/Lessons/Relations/Supervisions)
