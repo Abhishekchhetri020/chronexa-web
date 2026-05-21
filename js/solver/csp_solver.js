@@ -109,6 +109,21 @@ function buildModel(school) {
     const totalPeriods = l.periodsPerWeek | 0;
     const reps = Math.max(1, Math.round(totalPeriods / periodsPerCard));
     for (let i = 0; i < reps; i++) {
+      // Allowed-room set, in priority order:
+      //   1. classroomIdsExpanded — user-curated via the Home/Shared/Teacher's/
+      //      Subject's checkbox expansion (Top 30 #7). When set, this wins
+      //      because it's the explicit user choice.
+      //   2. _lessonRoomIds — XML's lesson-level classroomids list (Top 30 #6).
+      //   3. preferredRoomId — single-room fallback.
+      //   4. empty → no-room (homeroom) sentinel.
+      let allowedRoomIds = [];
+      if (Array.isArray(l.classroomIdsExpanded) && l.classroomIdsExpanded.length) {
+        allowedRoomIds = l.classroomIdsExpanded.slice();
+      } else if (Array.isArray(l._lessonRoomIds) && l._lessonRoomIds.length) {
+        allowedRoomIds = l._lessonRoomIds.slice();
+      } else if (l.preferredRoomId) {
+        allowedRoomIds = [l.preferredRoomId];
+      }
       expanded.push({
         id: reps === 1 ? l.id : `${l.id}#${i + 1}`,
         srcId: l.id,
@@ -118,6 +133,7 @@ function buildModel(school) {
         subjectId: l.subjectId,
         requiredRoomType: l.requiredRoomType || null,
         preferredRoomId: l.preferredRoomId || null,
+        allowedRoomIds,
         fixedDay: l.fixedDay == null ? null : l.fixedDay | 0,
         fixedPeriod: l.fixedPeriod == null ? null : l.fixedPeriod | 0,
         isLabDouble: !!l.isLabDouble,
@@ -217,10 +233,15 @@ function buildModel(school) {
     }
   }
 
-  // Teacher availability — pack per-day uint32 occupancy mask. timeOff key
-  // is `${dayIdx}_${periodIdx}` per DATA_SHAPES.md.
+  // Teacher availability + conditional masks. The UI's time-off matrix
+  // has three states (0 available, 1 conditional, 2 blocked) and ships
+  // in two on-disk shapes: 2D array (new) and "d_p" string-keyed map
+  // (legacy). The solver supports both.
+  //   - blocked  → bit cleared in teacherAvailabilityMask
+  //   - conditional → bit SET in teacherConditionalMask (still placeable
+  //     but soft-penalised at scoring time)
   const teacherAvailabilityMask = new Uint32Array(teacherIds.length * days);
-  // Default: every slot available
+  const teacherConditionalMask  = new Uint32Array(teacherIds.length * days);
   for (let t = 0; t < teacherIds.length; t++) {
     for (let d = 0; d < days; d++) {
       teacherAvailabilityMask[t * days + d] = periodsPerDay === 32
@@ -228,16 +249,37 @@ function buildModel(school) {
         : ((1 << periodsPerDay) - 1) >>> 0;
     }
   }
+  function applyTimeOffState(t, d, p, state) {
+    if (d < 0 || d >= days || p < 0 || p >= periodsPerDay) return;
+    if (state === 2) {
+      teacherAvailabilityMask[t * days + d] =
+        (teacherAvailabilityMask[t * days + d] & ~(1 << p)) >>> 0;
+    } else if (state === 1) {
+      teacherConditionalMask[t * days + d] =
+        (teacherConditionalMask[t * days + d] | (1 << p)) >>> 0;
+    }
+  }
   for (let t = 0; t < school.teachers.length; t++) {
-    const off = school.teachers[t].timeOff || {};
-    for (const key of Object.keys(off)) {
-      const [dStr, pStr] = key.split("_");
-      const d = dStr | 0;
-      const p = pStr | 0;
-      if (d < 0 || d >= days || p < 0 || p >= periodsPerDay) continue;
-      if (off[key] === "unavailable") {
-        teacherAvailabilityMask[t * days + d] =
-          (teacherAvailabilityMask[t * days + d] & ~(1 << p)) >>> 0;
+    const off = school.teachers[t].timeOff;
+    if (!off) continue;
+    if (Array.isArray(off)) {
+      for (let d = 0; d < off.length; d++) {
+        const row = off[d];
+        if (!Array.isArray(row)) continue;
+        for (let p = 0; p < row.length; p++) applyTimeOffState(t, d, p, row[p] | 0);
+      }
+    } else if (typeof off === "object") {
+      for (const key of Object.keys(off)) {
+        const parts = String(key).split("_");
+        if (parts.length !== 2) continue;
+        const d = parts[0] | 0;
+        const p1 = parts[1] | 0;
+        const p = (p1 >= 1 && p1 <= periodsPerDay) ? (p1 - 1) : p1;
+        const v = off[key];
+        let state = 0;
+        if (v === "unavailable" || v === "blocked" || v === 2) state = 2;
+        else if (v === "conditional" || v === "preferred" || v === 1) state = 1;
+        applyTimeOffState(t, d, p, state);
       }
     }
   }
@@ -288,15 +330,27 @@ function buildModel(school) {
     // for the same 9-room pool (378 room-slots ≪ 851 lessons), capping the
     // solver at ~40% placement. With it, the solver matches the Swift
     // baseline of 944+/951.
+    // Per Swift port semantics: no preferredRoomId AND no requiredRoomType
+    // → implicit no-room (homeroom). With an explicit allowed-room list we
+    // can pick any room from it (lets the per-card variation flow through
+    // to cold-path search, not just warm-start replay).
     let roomCands;
-    if (l.preferredRoomId) {
+    const allowed = Array.isArray(l.allowedRoomIds) ? l.allowedRoomIds : null;
+    if (allowed && allowed.length) {
+      const ids = [];
+      for (const rid of allowed) {
+        const rx = roomIdx.get(rid);
+        if (rx != null && !ids.includes(rx)) ids.push(rx);
+      }
+      roomCands = ids.length ? ids : [-1];
+    } else if (l.preferredRoomId) {
       const rx = roomIdx.get(l.preferredRoomId);
-      roomCands = rx == null ? [-1] : [rx]; // unknown preferred room → fallback
+      roomCands = rx == null ? [-1] : [rx];
     } else if (l.requiredRoomType) {
       const bucket = roomTypeBuckets.get(l.requiredRoomType) || [];
       roomCands = bucket.length > 0 ? bucket : [-1];
     } else {
-      roomCands = [-1]; // implicit no-room placement (homeroom)
+      roomCands = [-1];
     }
 
     // Resolve slot candidates as a per-day available mask.
@@ -387,6 +441,8 @@ function buildModel(school) {
     w.soft_relation_violation ?? 10,
     w.teacher_consec_heavy_days ?? 10,
     w.sibling_subject_deficit ?? 25,
+    w.teacher_conditional_placement ?? 20,
+    w.class_teacher_pos_violation ?? 20,
   ]);
 
   // Sibling-subject deficit target — for each (class, subject), sum of
@@ -403,6 +459,34 @@ function buildModel(school) {
       const cIdx = classIdx.get(cid);
       if (cIdx == null) continue;
       classSubjectTarget[cIdx * subjectIds.length + sIdx] += ppw;
+    }
+  }
+
+  // Top 30 #5 — classTeacherPos enforcement. Each class can specify a 6×9
+  // mark grid for "the homeroom teacher should be here" slots. If the cell
+  // is marked AND the lesson placed at (class, day, period) doesn't include
+  // the class's homeroom teacher, soft-penalise.
+  // Shape coming from the dialog: class.constraints.classTeacherPos =
+  // [[["001000000", ...×6]]]  (1 term × 1 week × 6 days × 9 periods).
+  const classTeacherPosMask = new Uint8Array(classIds.length * days * periodsPerDay);
+  const classHomeroomTeacher = new Int32Array(classIds.length).fill(-1);
+  for (const c of (school.classes || [])) {
+    const cIdx = classIdx.get(c.id);
+    if (cIdx == null) continue;
+    const hrTid = c._teacherId || c.teacherId;
+    if (hrTid) {
+      const ti = teacherIdx.get(hrTid);
+      if (ti != null) classHomeroomTeacher[cIdx] = ti;
+    }
+    const wire = c.constraints && c.constraints.classTeacherPos;
+    if (!Array.isArray(wire) || !wire[0] || !Array.isArray(wire[0][0])) continue;
+    const grid = wire[0][0]; // [day][period-char]
+    for (let d = 0; d < grid.length && d < days; d++) {
+      const row = grid[d];
+      if (typeof row !== "string") continue;
+      for (let p = 0; p < row.length && p < periodsPerDay; p++) {
+        if (row[p] === "1") classTeacherPosMask[(cIdx * days + d) * periodsPerDay + p] = 1;
+      }
     }
   }
 
@@ -576,10 +660,12 @@ function buildModel(school) {
     lessonSubject, lessonLabDouble, lessonFixedSlot,
     lessonCandidateStart, lessonCandidateCount,
     candidateSlot: candidateSlotArr, candidateRoom: candidateRoomArr,
-    teacherAvailabilityMask, teacherMaxPerDay, teacherMaxConsec,
+    teacherAvailabilityMask, teacherConditionalMask, teacherMaxPerDay, teacherMaxConsec,
     classMaxPerDay, classMaxConsec,
     subjectDailyLimit,
     classSubjectTarget,
+    classTeacherPosMask,
+    classHomeroomTeacher,
     lessonAdjacencyDegree,
     slotDay, slotPeriod, periodPref,
     weights,
@@ -1167,7 +1253,69 @@ function softScore(model, state) {
   s += softRelationPenalty(model, state) * w[8];
   s += teacherConsecHeavyDaysPenalty(model, state) * w[9];
   s += siblingSubjectDeficitPenalty(model, state) * w[10];
+  s += teacherConditionalPlacementPenalty(model, state) * w[11];
+  s += classTeacherPosPenalty(model, state) * w[12];
   return s;
+}
+
+// Top 30 #5 — classTeacherPos. For each (class, slot) where the mask is
+// set, the class's homeroom teacher should be the one teaching. Anyone
+// else gets a soft penalty.
+function classTeacherPosPenalty(model, state) {
+  const mask = model.classTeacherPosMask;
+  const hr   = model.classHomeroomTeacher;
+  if (!mask || !hr) return 0;
+  const days = model.days;
+  const ppd  = model.periodsPerDay;
+  let penalty = 0;
+  for (let i = 0; i < model.lessonCount; i++) {
+    if (!state.lessonAssigned[i]) continue;
+    const slot = state.lessonAssignedSlot[i];
+    const d = model.slotDay[slot];
+    const p = model.slotPeriod[slot];
+    const cStart = model.lessonClassStart[i];
+    const cCount = model.lessonClassCount[i];
+    for (let k = 0; k < cCount; k++) {
+      const c = model.lessonClassFlat[cStart + k];
+      if (mask[(c * days + d) * ppd + p] !== 1) continue;
+      const homeroom = hr[c];
+      if (homeroom < 0) continue;
+      // Does the placement include the homeroom teacher?
+      let hasHomeroom = false;
+      const tStart = model.lessonTeacherStart[i];
+      const tCount = model.lessonTeacherCount[i];
+      for (let j = 0; j < tCount; j++) {
+        if (model.lessonTeacherFlat[tStart + j] === homeroom) { hasHomeroom = true; break; }
+      }
+      if (!hasHomeroom) penalty++;
+    }
+  }
+  return penalty;
+}
+
+// Top 30 #27 — time-off `?` conditional state. UI saves it as 2D
+// timeOff[d][p] = 1 (conditional) but the solver historically treated it
+// the same as available. Now: placement IS allowed on conditional slots,
+// but each such placement is soft-penalised so the solver prefers
+// truly-available slots when both work.
+function teacherConditionalPlacementPenalty(model, state) {
+  const mask = model.teacherConditionalMask;
+  if (!mask) return 0;
+  const D = model.days;
+  let penalty = 0;
+  for (let i = 0; i < model.lessonCount; i++) {
+    if (!state.lessonAssigned[i]) continue;
+    const slot = state.lessonAssignedSlot[i];
+    const d = model.slotDay[slot];
+    const p = model.slotPeriod[slot];
+    const tStart = model.lessonTeacherStart[i];
+    const tCount = model.lessonTeacherCount[i];
+    for (let k = 0; k < tCount; k++) {
+      const t = model.lessonTeacherFlat[tStart + k];
+      if (((mask[t * D + d] >>> p) & 1) === 1) penalty++;
+    }
+  }
+  return penalty;
 }
 
 // CSIntegerCDNeededCards-style scorer: penalise (class, subject) pairs

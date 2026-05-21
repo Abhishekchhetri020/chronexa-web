@@ -142,6 +142,12 @@ export const DEFAULT_SOFT_WEIGHTS = Object.freeze({
   // CSIntegerCDNeededCards (sibling-subject deficit) — strong pull to
   // place behind-quota subjects ahead of already-saturated ones.
   sibling_subject_deficit: Weight.HIGH_SOFT,
+  // Per-teacher conditional time-off — placement allowed but penalised
+  // so the solver avoids it when there's an alternative.
+  teacher_conditional_placement: Weight.MED_SOFT,
+  // classTeacherPos enforcement — at marked slots, the class's homeroom
+  // teacher should be the one teaching. Anyone else → soft penalty.
+  class_teacher_pos_violation: Weight.MED_SOFT,
 });
 
 /** Soft constraint catalog — for the violations panel. */
