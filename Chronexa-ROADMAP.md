@@ -1,7 +1,7 @@
 # Chronexa Web — Roadmap
 
-**Last refreshed:** 2026-05-19 (end of session)
-**Live URL:** https://abhishekchhetri020.github.io/chronexa-web/ — APP_VER `20260519-p2-w6`
+**Last refreshed:** 2026-05-21 (end of session)
+**Live URL:** https://abhishekchhetri020.github.io/chronexa-web/ — APP_VER `20260521-p33-softrelhooks`
 **Repo:** https://github.com/Abhishekchhetri020/chronexa-web
 
 ---
@@ -50,7 +50,13 @@ blank school
  → export Timetable XML → 3,630 bytes of valid `<?xml version="1.0"…><timetable…>`
 ```
 
-## 📝 Today's sprint (2026-05-19) — three waves shipped + feature-gap audit
+## 📝 Today's sprint (2026-05-21) — soft-rel hookup + cross-harness scaffolding
+
+**Soft card-relation typs n_4, n_11, n_14, n_17 now actively bias the solver.** Previously these four were observed post-solve and reported in the violations panel only — they had no effect on placement choice. They now add a small per-violation penalty (weight 10 — `Weight.LOW_SOFT`) inside `softScore()`, so the search prefers configurations that satisfy them. On a slack fixture, an Art subject with n_17 (afternoon) attached shifts its average period from 3.00 to 4.00 — primary evidence the penalty steers placement. On the production `sample-school.xml` (no relations defined) the change is a strict no-op: warm-start placement still 916/35 with soft-score −4,950 across all five seeds.
+
+**Cross-harness for legacy comparison is in place and the legacy column is filled.** Headless Node runner (`tools/run_baseline.mjs`) loads `sample-school.xml` through the existing browser-side XML parser via jsdom, drives `solve()` across N seeds in cold and warm-start modes, and emits a Markdown-ready table. A focused bias test (`tools/test_bias.mjs`) discriminates the soft-rel hookup. The legacy column was filled the right way: `sample-school.xml` is itself an aSc TimeTables export, so the 951 `<card>` entries in it already are aSc's solver output. A new evaluator (`tools/evaluate_asc.mjs`) replays aSc's placement through Chronexa's hard-rule filter + soft-scorer in 100 ms — no Wine, no roz.exe needed. **Headline finding:** Chronexa's warm-start reaches aSc's exact numbers (916 placed / 35 conflicts / −4,950 soft) at `t = 75 ms` and the next 15 seconds of search neither improve nor degrade them; verified by `tools/warm_trajectory.mjs` with the solver's `onProgress` callback. Chronexa's cold-path loses to aSc by ~40 placements / 39 conflicts on this dense GD Goenka fixture. Beating aSc on its own XML would require a different search strategy (LNS / SA on the warm state) or relaxed hard rules. The Wine-via-Homebrew-cache setup is still installed (`/Applications/Wine Stable.app/` + `~/.wine-asc/`) for the optional path of reading aSc's *self-reported* numbers; it's documented at the bottom of `docs/SOLVER_VS_LEGACY.md` but not load-bearing — the placement / conflict / soft comparison ships without it.
+
+## 📝 Prior sprint (2026-05-19) — three waves shipped + feature-gap audit
 
 **Wave 3 — gap audit against Classic (~3 hours, reference only)**
 Wrote `Chronexa-MISSING-FEATURES-2026-05-19.md` — 147 features audited across 16 areas (File menu / Specification / Entities / Relations / Editor / Solver / Print / Snapshots / Collab / View / Options / Keyboard / Students / Divisions / Help-AI / Color). Top-30 leaderboard ranked by `severity × user-visibility × proximity-to-MVP`, with solver-side gaps weighted above UI-side gaps. Headline finding: the biggest "30 % done" trap is dialogs persisting data the solver never reads — `n_*` relations (15 typs all ignored), `classTeacherPos` 6×9 matrix, time-off `?` conditional state, per-card `classroomidss`, supervisions data flow. Next implementation wave should pick from the top-30.

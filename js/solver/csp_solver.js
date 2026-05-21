@@ -375,6 +375,7 @@ function buildModel(school) {
     w.teacher_gaps, w.class_gaps, w.subject_distribution, w.teacher_room_stability,
     w.teacher_consecutive_overload, w.class_consecutive_overload, w.teacher_last_period_overflow,
     w.period_load_balance,
+    w.soft_relation_violation ?? 10,
   ]);
 
   // ─── Card relationships (a.k.a. "constraints") ─────────────────────────
@@ -505,6 +506,35 @@ function buildModel(school) {
     }
   }
 
+  // Soft relations — n_4/n_11/n_14/n_17 add a small per-violation penalty
+  // to softScore() so the search prefers configurations that satisfy them.
+  // Hard rels reject placements in canPlace; soft rels only bias scoring,
+  // so an otherwise-equivalent placement that lights one of these up costs
+  // a little more. Indexed by source lesson because the legacy semantics
+  // (cards-per-source-lesson distribution / divided-same-day / same-period)
+  // operate on the un-expanded view of a lesson.
+  const softRels = [];
+  for (const rel of rels) {
+    if (!rel || rel.disabled) continue;
+    const typ = rel.typ;
+    if (typ !== "n_4" && typ !== "n_11" && typ !== "n_14" && typ !== "n_17") continue;
+    const matched = gatherMatched(rel);
+    if (!matched.length) continue;
+    // Group expanded-lesson indices by source lesson id so the per-source
+    // semantics (n_4/n_11/n_14) can compute days/periods over each source's
+    // cards. n_17 ignores the grouping and treats each placement individually.
+    const bySrc = new Map();
+    for (const i of matched) {
+      const sid = expanded[i].srcId;
+      let g = bySrc.get(sid);
+      if (!g) { g = []; bySrc.set(sid, g); }
+      g.push(i);
+    }
+    const groups = [];
+    for (const [, indices] of bySrc) groups.push(Int32Array.from(indices));
+    softRels.push({ typ, groups, flatIndices: Int32Array.from(matched) });
+  }
+
   return {
     days, periodsPerDay, totalSlots,
     lessonCount, teacherCount: teacherIds.length, classCount: classIds.length,
@@ -535,6 +565,7 @@ function buildModel(school) {
     lessonN7Partners,
     breakPeriods,
     lessonMustFirstLast,
+    softRels,
   };
 }
 
@@ -1104,7 +1135,57 @@ function softScore(model, state) {
   s += state.totalClassConsecutiveOverload * w[5];
   s += state.totalTeacherLastPeriodOverflow * w[6];
   s += state.totalPeriodLoadBalance * w[7];
+  s += softRelationPenalty(model, state) * w[8];
   return s;
+}
+
+function softRelationPenalty(model, state) {
+  const rels = model.softRels;
+  if (!rels || !rels.length) return 0;
+  const slotDay = model.slotDay;
+  const slotPeriod = model.slotPeriod;
+  const halfPoint = Math.floor(model.periodsPerDay / 2);
+  const assigned = state.lessonAssigned;
+  const slot = state.lessonAssignedSlot;
+  let penalty = 0;
+  for (let r = 0; r < rels.length; r++) {
+    const rel = rels[r];
+    if (rel.typ === "n_17") {
+      const idx = rel.flatIndices;
+      for (let k = 0; k < idx.length; k++) {
+        const i = idx[k];
+        if (!assigned[i]) continue;
+        if (slotPeriod[slot[i]] < halfPoint) penalty += 1;
+      }
+      continue;
+    }
+    // n_4 / n_11 / n_14 operate per source lesson (one group per source).
+    const groups = rel.groups;
+    for (let g = 0; g < groups.length; g++) {
+      const indices = groups[g];
+      let cardsPlaced = 0;
+      const dayBits = new Set();
+      const periodBits = new Set();
+      for (let k = 0; k < indices.length; k++) {
+        const i = indices[k];
+        if (!assigned[i]) continue;
+        const sl = slot[i];
+        dayBits.add(slotDay[sl]);
+        periodBits.add(slotPeriod[sl]);
+        cardsPlaced++;
+      }
+      if (cardsPlaced === 0) continue;
+      if (rel.typ === "n_4") {
+        const target = Math.max(1, Math.ceil(cardsPlaced / 2));
+        if (dayBits.size < target) penalty += (target - dayBits.size);
+      } else if (rel.typ === "n_11") {
+        if (cardsPlaced > 1 && dayBits.size > 1) penalty += (dayBits.size - 1);
+      } else if (rel.typ === "n_14") {
+        if (periodBits.size > 1) penalty += (periodBits.size - 1);
+      }
+    }
+  }
+  return penalty;
 }
 
 function snapshotBest(state) {

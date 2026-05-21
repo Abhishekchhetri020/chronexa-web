@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-20T18:03:49Z
+/* Chronexa bundle — generated 2026-05-21T02:28:40Z
  *      136 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 

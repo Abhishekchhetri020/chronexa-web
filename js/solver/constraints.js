@@ -133,6 +133,7 @@ export const DEFAULT_SOFT_WEIGHTS = Object.freeze({
   class_consecutive_overload: Weight.NEAR_HARD,
   teacher_last_period_overflow: Weight.HIGH_SOFT,
   period_load_balance: Weight.MED_SOFT,
+  soft_relation_violation: Weight.LOW_SOFT,
 });
 
 /** Soft constraint catalog — for the violations panel. */
