@@ -1,7 +1,7 @@
 # Chronexa Web — Roadmap
 
-**Last refreshed:** 2026-05-21 (fourth session)
-**Live URL:** https://abhishekchhetri020.github.io/chronexa-web/ — APP_VER `20260521-p37-labdoublefix`
+**Last refreshed:** 2026-05-21 (fifth session)
+**Live URL:** https://abhishekchhetri020.github.io/chronexa-web/ — APP_VER `20260521-p38-siblingdeficit`
 **Repo:** https://github.com/Abhishekchhetri020/chronexa-web
 
 ---
@@ -50,7 +50,25 @@ blank school
  → export Timetable XML → 3,630 bytes of valid `<?xml version="1.0"…><timetable…>`
 ```
 
-## 📝 Today's sprint (2026-05-21, fourth session) — Chronexa now FEASIBLE / beats aSc on `sample-school.xml`
+## 📝 Today's sprint (2026-05-21, fifth session) — solver levers 1-4 + cold-path transformed by sibling-deficit scorer
+
+**Headline: cold-path placement median jumped 877 → 938 (+61 cards).** The sibling-subject-deficit scorer (CSIntegerCDNeededCards-equivalent) eliminated the cold-path variance introduced by the lab-double fix in the prior session. All 5 seeds now place 937–945 (was 363–877 with one catastrophic collapse). Warm-start unchanged at 946/0 FEASIBLE.
+
+| Lever | Status | Effect on sample-school.xml |
+|-------|--------|-----------------------------|
+| 1. LNS (large-neighborhood search) | Built, opt-in | Infrastructure ready; doesn't help on tight schools (sticky local optima) |
+| 2. CKritResty (rest between heavy days) | Done | New soft scorer; small numeric effect on this XML |
+| 3. CSIntegerCDNeededCards (sibling deficit) | **Done — biggest single solver gain** | Cold-path 877 → 938 median; eliminated variance |
+| 4. CKritOkno (gap-creation veto) | Done | `teacher_gaps` weight bumped LOW_SOFT → NEAR_HARD; mostly affects edge cases |
+| 5. WASM solver fallback | Tracked, not started | Multi-day port; not feasible in one session |
+
+Two BIG bug fixes also landed earlier (sessions 3 + 4):
+- `groupIds` was dropped during per-card lesson expansion — every elective lesson (URDU, SANSKRIT, Music, Boys/Girls) was treated as whole-class. Fix: 1 line. Effect: warm-start 916 → 944.
+- Lab-double lessons were over-expanded (periodsperweek=2 + periodspercard=2 produced 2 sessions instead of 1). Fix: 1 line. Effect: warm-start 944 → 946 / FEASIBLE.
+
+**Diagnostic tools added** that drove the bug hunt: `tools/diagnose_unplaceable.mjs`, `tools/diagnose_warm_fails.mjs`, `tools/diagnose_urdu.mjs`, `tools/warm_trajectory.mjs`, `tools/cold_trajectory.mjs`, `tools/evaluate_asc.mjs`. Each shows a different angle on placement failures.
+
+## 📝 Prior sessions (2026-05-21, 1st-4th) — soft-rel hookup, ICS export, 10 Coming Soon items cleared, two model-build bug fixes
 
 **Headline: warm-start places 946/0 conflicts on sample-school.xml — Chronexa FEASIBLE, +2 placements over aSc, 0 hard violations vs aSc's 2.** Two one-line bugs in `csp_solver.js#buildModel` were the entire story:
 
