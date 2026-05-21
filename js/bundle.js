@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-21T08:26:30Z
+/* Chronexa bundle — generated 2026-05-21T08:29:14Z
  *      137 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -14715,27 +14715,27 @@ window.StartScreen = (function () {
         { icon: "🎬", label: "Show demo file",            run: () => fire("app:open-demo") },
         { sep: true },
         { icon: "⬇",  label: "Import", sub: [
-          { icon: "📄", label: "Classic Timetable XML",  run: () => fire("app:import-timetable-xml") },
-          { icon: "🌐", label: "Classic — Basic school data",  soon: true },
-          { icon: "🔔", label: "Classic — Bell times",          soon: true },
-          { icon: "📋", label: "Import from Clipboard",         soon: true },
-          { icon: "🗓",  label: "Classic — Timetable",           soon: true },
-          { icon: "🪐", label: "Jupiter (Stirlingschools)",     soon: true },
+          { icon: "📄", label: "Classic Timetable XML",         run: () => fire("app:import-timetable-xml") },
+          { icon: "🌐", label: "Classic — Basic school data",   run: () => fire("app:import-classic-basic") },
+          { icon: "🔔", label: "Classic — Bell times",          run: () => fire("app:import-classic-bell-times") },
+          { icon: "📋", label: "Import from Clipboard",         run: () => fire("app:import-clipboard") },
+          { icon: "🪐", label: "GP-Untis / Jupiter",            run: () => fire("app:import-gp-untis") },
         ]},
         { icon: "⬆",  label: "Export", disabled: !has(), sub: [
-          { icon: "📦", label: "Classic Timetable (*.roz)",        soon: true },
+          { icon: "📦", label: "Classic Timetable (*.roz)",        run: () => fire("app:export-legacy-roz") },
           { icon: "📄", label: "Classic Timetable XML",            run: () => fire("app:export-timetable-xml") },
+          { icon: "🌐", label: "Standalone HTML",                  run: () => fire("app:export-html") },
           { sep: true },
           { icon: "📊", label: "Excel — Contracts",             run: () => fire("app:export-excel", { kind: "contracts" }) },
           { icon: "📊", label: "Excel — Available teachers",    run: () => fire("app:export-excel", { kind: "available" }) },
           { icon: "📊", label: "Excel — Room supervision",      run: () => fire("app:export-excel", { kind: "supervision" }) },
           { icon: "📊", label: "Excel — Timetable",             run: () => fire("app:export-excel", { kind: "timetable" }) },
+          { icon: "📊", label: "Excel — Class register",        run: () => fire("app:export-class-register") },
           { sep: true },
-          { icon: "📤", label: "GP-Untis DIF",   soon: true },
-          { icon: "📤", label: "Atlantis",       soon: true },
-          { icon: "📤", label: "PowerSchool",    soon: true },
+          { icon: "📤", label: "GP-Untis DIF",   run: () => fire("app:export-gp-untis-dif") },
+          { icon: "📤", label: "Atlantis",       run: () => fire("app:export-atlantis") },
+          { icon: "📤", label: "PowerSchool",    run: () => fire("app:export-powerschool") },
           { icon: "📤", label: "NYC Excel",      soon: true },
-          { icon: "📤", label: "Jupiter",        soon: true },
           { icon: "📤", label: "Mashov",         soon: true },
           { icon: "📤", label: "iSAMS",          soon: true },
         ]},
@@ -15011,17 +15011,47 @@ window.StartScreen = (function () {
 })();
 
 /* ─── FILE: js/ui/ribbon/menus/ai_menu.js ─── */
-/* AI — assist toggle (stub for now) */
+/* AI — assist toggle + maintenance actions on the timetable */
 (function () {
   "use strict";
   const APP = window.APP;
   const fire = (n, d) => window.dispatchEvent(new CustomEvent(n, { detail: d || {} }));
+  const notify = (m, k) => (window._chrxNotify || console.log)(m, k);
+
   function aiOn() { return localStorage.getItem("chronexa.ai") === "1"; }
   function toggleAi() {
     const next = !aiOn();
     try { localStorage.setItem("chronexa.ai", next ? "1" : "0"); } catch {}
     fire("app:ai-toggle", { on: next });
-    window._chrxNotify && window._chrxNotify("AI assist: " + (next ? "on" : "off"));
+    notify("AI assist: " + (next ? "on" : "off"));
+  }
+
+  // Mark every lesson that has at least one placed card as fixed to that
+  // (day, period). Future Generate runs will refuse to move them. Useful
+  // after a hand-tuned schedule the user wants to keep.
+  function lockAllPlacedCells() {
+    const s = APP.school;
+    if (!s) { notify("Open a timetable first.", "error"); return; }
+    const cards = s.cards || [];
+    if (!cards.length) { notify("No placed cards to lock.", "error"); return; }
+    const lessonById = Object.fromEntries((s.lessons || []).map(l => [l.id, l]));
+    let locked = 0, alreadyFixed = 0;
+    for (const c of cards) {
+      // Strip the #N suffix the solver appends to expanded cards.
+      const srcId = String(c.lessonId).replace(/#\d+$/, "");
+      const lesson = lessonById[srcId] || lessonById[c.lessonId];
+      if (!lesson) continue;
+      if (lesson.fixedDay != null && lesson.fixedPeriod != null) { alreadyFixed++; continue; }
+      // fixedDay is 0-based to match card.day; fixedPeriod is 1-based to
+      // match card.period and CLASSIC's convention.
+      lesson.fixedDay = c.day | 0;
+      lesson.fixedPeriod = c.period | 0;
+      locked++;
+    }
+    if (APP.audit && APP.audit.append) APP.audit.append({ entity: "lessons", op: "lock-all-placed", locked, alreadyFixed });
+    notify(`Locked ${locked} placement${locked === 1 ? "" : "s"} as fixed.${alreadyFixed ? ` ${alreadyFixed} already fixed.` : ""}`);
+    // Re-render the editor so the UI reflects the new lock state.
+    window.dispatchEvent(new CustomEvent("app:school-loaded", { detail: { source: "lock-all" } }));
   }
 
   APP.ribbon.registerMenu({
@@ -15033,12 +15063,15 @@ window.StartScreen = (function () {
         { sep: true },
         { icon: "🧠", label: "Auto-fill empty cells",      soon: true },
         { icon: "🧹", label: "Cleanup last card move",     soon: true },
-        { icon: "🔒", label: "Lock all placed cells",      soon: true },
+        { icon: "🔒", label: "Lock all placed cells",      run: lockAllPlacedCells },
         { sep: true },
         { icon: "✨", label: "Suggest placements (beta)",  soon: true },
       ];
     },
   });
+
+  APP.ai = APP.ai || {};
+  APP.ai.lockAllPlacedCells = lockAllPlacedCells;
 })();
 
 /* ─── FILE: js/ui/io/import_timetable_xml.js ─── */
