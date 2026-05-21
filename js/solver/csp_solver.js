@@ -284,17 +284,36 @@ function buildModel(school) {
     }
   }
 
+  // Top 30 #17 — globals.constraints Tier-1. School-wide defaults that
+  // per-entity sentinels inherit when their own field is null/undefined/"*".
+  // 8 supported keys: teacherMaxPerDay, teacherMaxConsecutive,
+  // teacherMaxLastPeriod, teacherMaxGapsPerDay, classMaxPerDay,
+  // classMaxConsecutive, classMaxGapsPerDay, subjectDailyLimit.
+  // Per-entity fields still WIN when set; globals only act as fallback.
+  const g = (school.globals && school.globals.constraints) || {};
+  function gFallback(perEntity, key) {
+    if (perEntity != null && perEntity !== "*" && perEntity !== "i") return perEntity | 0;
+    if (g[key] != null && g[key] !== "*" && g[key] !== "i") return g[key] | 0;
+    return -1;
+  }
+
   // Teacher misc caps
   const teacherMaxPerDay = new Int32Array(teacherIds.length).fill(-1);
   const teacherMaxConsec = new Int32Array(teacherIds.length).fill(-1);
   for (let t = 0; t < school.teachers.length; t++) {
     const tt = school.teachers[t];
-    if (tt.maxConsecutivePeriods != null) teacherMaxConsec[t] = tt.maxConsecutivePeriods | 0;
+    teacherMaxPerDay[t] = gFallback(tt.maxPerDay, "teacherMaxPerDay");
+    teacherMaxConsec[t] = gFallback(tt.maxConsecutivePeriods, "teacherMaxConsecutive");
   }
 
   // Class day caps default to periodsPerDay (effectively unlimited).
   const classMaxPerDay = new Int32Array(classIds.length).fill(-1);
   const classMaxConsec = new Int32Array(classIds.length).fill(-1);
+  for (let c = 0; c < (school.classes || []).length; c++) {
+    const cc = school.classes[c];
+    classMaxPerDay[c] = gFallback(cc.maxPerDay,           "classMaxPerDay");
+    classMaxConsec[c] = gFallback(cc.maxConsecutivePeriods, "classMaxConsecutive");
+  }
 
   // Per-class room type → list of candidate room indices.
   const roomTypeBuckets = new Map();
