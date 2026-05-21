@@ -10,7 +10,12 @@
 // so the Web Worker can swap solvers without changing its message
 // contract. See ./README.md for the integration plan.
 
-const WASM_AVAILABLE = false; // flip when js/solver/wasm/csp_wasm.js ships
+// csp_wasm.js now exists (shim ready); the actual canplace.wasm binary
+// is built via build.sh once AssemblyScript is installed locally. The
+// shim falls through to the JS solver if the .wasm file isn't present,
+// so flipping this true is safe — it just means the adapter will try
+// to load the WASM module first.
+const WASM_AVAILABLE = true;
 
 let _mod = null;
 

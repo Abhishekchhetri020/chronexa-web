@@ -100,7 +100,17 @@
       el("span", { class: "csu-modebtn__title" }, "Generate timetable"),
       el("span", { class: "csu-modebtn__hint" }, "Run the solver from scratch and place cards."),
     );
-    const modeRow = el("div", { class: "csu-mode-row" }, modeBtnTest, modeBtnGen);
+    const modeBtnImp = el("button", {
+      type: "button",
+      class: "csu-modebtn",
+      "data-mode": "improve",
+      onclick: () => setMode("improve"),
+    },
+      el("span", { class: "csu-modebtn__icon" }, "⚡"),
+      el("span", { class: "csu-modebtn__title" }, "Improve current schedule"),
+      el("span", { class: "csu-modebtn__hint" }, "Keep existing placements; search outward via LNS for improvements."),
+    );
+    const modeRow = el("div", { class: "csu-mode-row" }, modeBtnTest, modeBtnGen, modeBtnImp);
 
     // --- Complexity ----------------------------------------------------------
     const complexity = radioGroup("complexity", [
@@ -203,6 +213,14 @@
       showReport: !!dialog.querySelector("#csu-show-report").checked,
     };
     cfg.timeLimitSec = TIME_LIMIT_BY_COMPLEXITY[cfg.complexity] || 60;
+    // Improve mode = warm-start from current cards + LNS perturbation +
+    // longer search budget. The solver also accepts options.mode==="improve"
+    // as a shorthand alias for the same combination, so callers that pass
+    // cfg directly into solve() work either way.
+    if (mode === "improve") {
+      cfg.warmStart = true;
+      cfg.useLNS    = true;
+    }
     const cb = current && current.onConfirm;
     close();
     current = null;

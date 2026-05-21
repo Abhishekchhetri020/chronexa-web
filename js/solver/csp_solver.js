@@ -298,22 +298,29 @@ function buildModel(school) {
   }
 
   // Teacher misc caps
-  const teacherMaxPerDay = new Int32Array(teacherIds.length).fill(-1);
-  const teacherMaxConsec = new Int32Array(teacherIds.length).fill(-1);
+  const teacherMaxPerDay      = new Int32Array(teacherIds.length).fill(-1);
+  const teacherMaxConsec      = new Int32Array(teacherIds.length).fill(-1);
+  const teacherMaxLastPeriod  = new Int32Array(teacherIds.length).fill(-1);
+  const teacherMaxGapsPerDay  = new Int32Array(teacherIds.length).fill(-1);
   for (let t = 0; t < school.teachers.length; t++) {
     const tt = school.teachers[t];
-    teacherMaxPerDay[t] = gFallback(tt.maxPerDay, "teacherMaxPerDay");
-    teacherMaxConsec[t] = gFallback(tt.maxConsecutivePeriods, "teacherMaxConsecutive");
+    teacherMaxPerDay[t]     = gFallback(tt.maxPerDay,             "teacherMaxPerDay");
+    teacherMaxConsec[t]     = gFallback(tt.maxConsecutivePeriods, "teacherMaxConsecutive");
+    teacherMaxLastPeriod[t] = gFallback(tt.maxLastPeriodOverflow, "teacherMaxLastPeriod");
+    teacherMaxGapsPerDay[t] = gFallback(tt.maxGapsPerDay,         "teacherMaxGapsPerDay");
   }
 
   // Class day caps default to periodsPerDay (effectively unlimited).
-  const classMaxPerDay = new Int32Array(classIds.length).fill(-1);
-  const classMaxConsec = new Int32Array(classIds.length).fill(-1);
+  const classMaxPerDay     = new Int32Array(classIds.length).fill(-1);
+  const classMaxConsec     = new Int32Array(classIds.length).fill(-1);
+  const classMaxGapsPerDay = new Int32Array(classIds.length).fill(-1);
   for (let c = 0; c < (school.classes || []).length; c++) {
     const cc = school.classes[c];
-    classMaxPerDay[c] = gFallback(cc.maxPerDay,           "classMaxPerDay");
-    classMaxConsec[c] = gFallback(cc.maxConsecutivePeriods, "classMaxConsecutive");
+    classMaxPerDay[c]     = gFallback(cc.maxPerDay,             "classMaxPerDay");
+    classMaxConsec[c]     = gFallback(cc.maxConsecutivePeriods, "classMaxConsecutive");
+    classMaxGapsPerDay[c] = gFallback(cc.maxGapsPerDay,         "classMaxGapsPerDay");
   }
+
 
   // Per-class room type → list of candidate room indices.
   const roomTypeBuckets = new Map();
@@ -450,6 +457,14 @@ function buildModel(school) {
 
   // Subject daily limit — flat (class, subject, day) → cap. -1 = no cap.
   const subjectDailyLimit = new Int32Array(classIds.length * subjectIds.length * days).fill(-1);
+  // globals.constraints.subjectDailyLimit acts as the school-wide default
+  // for any (class, subject, day) not overridden by a per-class-subject value.
+  const globalSDL = gFallback(undefined, "subjectDailyLimit");
+  if (globalSDL > 0) {
+    for (let i = 0; i < subjectDailyLimit.length; i++) {
+      if (subjectDailyLimit[i] < 0) subjectDailyLimit[i] = globalSDL;
+    }
+  }
 
   // Soft weights
   const w = DEFAULT_SOFT_WEIGHTS;
@@ -688,7 +703,9 @@ function buildModel(school) {
     lessonAdjacencyDegree,
     slotDay, slotPeriod, periodPref,
     weights,
-    teacherLastPeriodCap: new Int32Array(teacherIds.length).fill(-1),
+    teacherLastPeriodCap: teacherMaxLastPeriod,
+    teacherMaxGapsPerDay,
+    classMaxGapsPerDay,
     lessonN1Partners,
     lessonN0Partners,
     lessonSamedayPart,
