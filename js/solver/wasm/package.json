@@ -1,0 +1,16 @@
+{
+  "name": "wasm",
+  "version": "1.0.0",
+  "description": "This directory is the home for the WASM-backed solver path that `js/solver/worker.js` can switch to when the JS solver is too slow on a given school (heuristic: lesson count > 5,000, or expanded-lesson count > 10,000, or measured wall-time on first solve > 60 s).",
+  "main": "adapter.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "assemblyscript": "^0.28.17"
+  }
+}

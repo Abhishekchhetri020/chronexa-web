@@ -20,16 +20,30 @@ async function loadWasm() {
   if (_wasmExports) return _wasmExports;
   try {
     const url = new URL("./canplace.wasm", import.meta.url);
-    const resp = await fetch(url);
-    if (!resp.ok) throw new Error("canplace.wasm not found");
-    const buf  = await resp.arrayBuffer();
+    // Node-side: read the .wasm directly. Browser-side: fetch().
+    let buf;
+    if (typeof fetch === "function") {
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error("canplace.wasm not found");
+      buf = await resp.arrayBuffer();
+    } else {
+      const fs = await import("node:fs/promises");
+      buf = (await fs.readFile(url.pathname)).buffer;
+    }
     const mod  = await WebAssembly.instantiate(buf, { env: {} });
     _wasmExports = mod.instance.exports;
     return _wasmExports;
   } catch (e) {
-    // No WASM module yet — caller falls back to JS.
     return null;
   }
+}
+
+export async function wasmCanPlaceReady() {
+  return (await loadWasm()) !== null;
+}
+
+export async function wasmExports() {
+  return await loadWasm();
 }
 
 export async function solve(school, options = {}) {
