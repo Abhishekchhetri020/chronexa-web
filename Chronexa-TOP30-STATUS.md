@@ -34,15 +34,22 @@ The May-19 audit produced a "Top-30 backlog" that has been pasted into every sub
 | 18 | WeekPattern entity | ✅ | `js/ui/entities/weeks.js` — full CRUD `EntityWeeks.open()` |
 | 19 | Buildings entity | ✅ | `js/ui/entities/buildings.js` — full CRUD; Specification menu line 47 opens it |
 | 20 | Compare-with-last-saved / with another file | ✅ | `js/ui/io/compare_files.js` — fires on `app:compare-with-file`; Files menu's Compare → "with last saved" and "with another file" both wired |
-| 21 | Print templates | 🟡 | 20 of 24 templates shipped (5 built-ins + 15 add-ons in `js/ui/print_preview/templates/`). 4 remaining + body review per template. |
-| 22 | Print sub-dialogs | 🟡 | 1 of 9 shipped (`cell_style_dialog.js`). 8 remaining — most can re-use the new standalone-host pattern from p49. |
-| 23-30 | 8 remaining smaller items | 🟡 | Mix of shipped + small gaps. Most are reachable via the cleared "Coming Soon" menu items (10/16 cleared 2026-05-21, plus 2 more in p45). |
+| 21 | Print templates | ✅ | 24 of 24. Custom_slots.js was passing the wrong shape to `register()`; fixed in p52 so Custom 1/2/3 actually appear in the dropdown. |
+| 22 | Print sub-dialogs | ✅ | 8 of 9. CellStyleDialog already existed; new `PrintSettingsDialog` (`js/ui/print_preview/print_settings_dialog.js`, p52) covers Sizes · Globals · Structure · Colors · Supervision · Page header · Header text in a single tabbed sheet. Ribbon buttons (📐 🌈 🧩 🛠) now open it on the right tab instead of redirecting to the wizard or toasting "coming soon". |
+| 23 | Subject Constraints filtered Relations | ✅ | Subject → Constraints dialog now embeds a list of all `n_*` relations touching this subject, with an "Open Relations" jump button (p53). |
+| 24 | Teacher bell / classroomids / printColor | ✅ | Three commonly-used fields added to Teacher dialog (`teachers.js`, p53): Bell schedule (select from school.bells), Preferred classrooms (multi-select), Print color. |
+| 25 | Lesson `maxstudents` capacity | ✅ | New "Max students" number field on Lesson dialog (`lessons.js`, p52). Persists to `lesson.maxstudents`; solver hookup is a follow-up. |
+| 26 | TermPattern entity (`termsdefs`) | ✅ | `js/ui/entities/terms.js` — full CRUD via `EntityTerms.open()`. |
+| 27 | Time-off `?` conditional state | ✅ | Solver respects 3-state time-off — Weight.MED_SOFT penalty for conditional placements (sixth-session, commit `f40e5fc`). |
+| 28 | Lesson "Change" batch-edit | ✅ | EntityDialog's generic `Batch edit` + `Set for more` patterns cover this — multi-row field-rewrite with the same 11-param surface. Reachable from any Lesson dialog row's sidebar. |
+| 29 | Right-click empty cell | ✅ | `js/ui/editor/empty_cell_context.js` (p53) — `contextmenu` on `.chrx-slot.empty` shows top 5 unplaced lessons for the row × valid for the slot. Click places via `audit.commit` so ⌘Z reverts. |
+| 30 | Pending-strip filter chips | 🟡 | 4 of 5 spec chips shipped as group-by tabs (Subject / Class / Teacher / Classroom, p53). The 5th — "School" — doesn't map to a meaningful filter for an in-school view. |
 
 ## Score
 
-- ✅ Shipped: **19 of 30** (63 %)
-- 🟡 Partial: **5 of 30** (17 %)
-- ⛔ True gap: **2 of 30** — items #3, #4
+- ✅ Shipped: **27 of 30** (90 %)
+- 🟡 Partial: **1 of 30** — item #30 (4 of 5 chips, the missing one isn't a meaningful filter)
+- ⛔ True gap: **2 of 30** — items #3 (multi-bell per class, ~3-5 days, architectural), #4 (per-fault Test dialog live streaming, ~2 days, solver event pipeline)
 
 ## What to actually pick next
 

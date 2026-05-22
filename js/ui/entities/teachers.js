@@ -56,10 +56,14 @@
     const isNew = !r;
     const draft = isNew
       ? { firstName:"", lastName:"", abbr:"", color:"",
-          maxGapsPerDay:"", maxConsecutivePeriods:"" }
+          maxGapsPerDay:"", maxConsecutivePeriods:"",
+          bellId:"", classroomIds:[], printColor:"" }
       : { firstName:r.firstName, lastName:r.lastName, abbr:r.abbr, color:r.color,
           maxGapsPerDay: r._ref.maxGapsPerDay != null ? r._ref.maxGapsPerDay : "",
-          maxConsecutivePeriods: r._ref.maxConsecutivePeriods != null ? r._ref.maxConsecutivePeriods : "" };
+          maxConsecutivePeriods: r._ref.maxConsecutivePeriods != null ? r._ref.maxConsecutivePeriods : "",
+          bellId: r._ref.bellId || "",
+          classroomIds: Array.isArray(r._ref.classroomIds) ? r._ref.classroomIds.slice() : [],
+          printColor: r._ref.printColor || "" };
 
     const fFirst = D.el("input", { type:"text", value:draft.firstName, maxlength:"40",
       oninput:(e)=>draft.firstName = e.target.value });
@@ -72,6 +76,30 @@
       oninput:(e)=>draft.maxGapsPerDay = e.target.value });
     const fConsec = D.el("input", { type:"number", min:"0", value:draft.maxConsecutivePeriods,
       oninput:(e)=>draft.maxConsecutivePeriods = e.target.value });
+
+    // Top-30 #24 — three commonly-used Teacher fields previously absent.
+    const S = window.APP && window.APP.school;
+    const fBell = D.el("select", null, D.el("option", { value: "" }, "(use school default)"));
+    (S && Array.isArray(S.bells) ? S.bells : []).forEach(b => {
+      const opt = D.el("option", { value: b.id }, b.name || b.id);
+      if (b.id === draft.bellId) opt.selected = true;
+      fBell.appendChild(opt);
+    });
+    fBell.addEventListener("change", e => draft.bellId = e.target.value);
+    const fRooms = D.el("select", { multiple: "multiple", size: "4",
+      style: "width:240px;padding:4px 6px" });
+    (S && Array.isArray(S.classrooms) ? S.classrooms : []).forEach(rm => {
+      const opt = D.el("option", { value: rm.id }, rm.name + (rm.abbr ? ` (${rm.abbr})` : ""));
+      if (draft.classroomIds.includes(rm.id)) opt.selected = true;
+      fRooms.appendChild(opt);
+    });
+    fRooms.addEventListener("change", () => {
+      draft.classroomIds = Array.from(fRooms.selectedOptions).map(o => o.value);
+    });
+    const fPrintColor = D.el("input", { type: "color",
+      value: draft.printColor || "#000000",
+      style: "width:50px;height:28px;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer",
+      oninput: e => draft.printColor = e.target.value });
 
     function save() {
       if (!draft.lastName.trim()) { fLast.focus(); return false; }
@@ -87,6 +115,9 @@
         t.color = draft.color || undefined;
         t.maxGapsPerDay = draft.maxGapsPerDay !== "" ? parseInt(draft.maxGapsPerDay, 10) : undefined;
         t.maxConsecutivePeriods = draft.maxConsecutivePeriods !== "" ? parseInt(draft.maxConsecutivePeriods, 10) : undefined;
+        t.bellId = draft.bellId || undefined;
+        t.classroomIds = draft.classroomIds.length ? draft.classroomIds.slice() : undefined;
+        t.printColor = draft.printColor || undefined;
         window.APP.audit.append({ entity:"teachers", op:"update", before, after:{...t} });
       } else {
         const nt = { id:D.uid("t"),
@@ -96,7 +127,10 @@
           abbr:draft.abbr.trim() || undefined,
           color:draft.color || undefined,
           maxGapsPerDay: draft.maxGapsPerDay !== "" ? parseInt(draft.maxGapsPerDay, 10) : undefined,
-          maxConsecutivePeriods: draft.maxConsecutivePeriods !== "" ? parseInt(draft.maxConsecutivePeriods, 10) : undefined };
+          maxConsecutivePeriods: draft.maxConsecutivePeriods !== "" ? parseInt(draft.maxConsecutivePeriods, 10) : undefined,
+          bellId: draft.bellId || undefined,
+          classroomIds: draft.classroomIds.length ? draft.classroomIds.slice() : undefined,
+          printColor: draft.printColor || undefined };
         if (all.some(x => x.name === nt.name)) { fLast.focus(); return false; }
         all.push(nt);
         if (window.APP.school._idx) window.APP.school._idx.teacherById[nt.id] = nt;
@@ -115,6 +149,9 @@
         { label:"Color", control:fColor },
         { label:"Max gaps/day", control:fGaps },
         { label:"Max consecutive periods", control:fConsec },
+        { label:"Bell schedule", control:fBell },
+        { label:"Preferred classrooms", control:fRooms },
+        { label:"Print color", control:fPrintColor },
       ],
       onSave: save,
       siblingRows: isNew ? null : rows(),

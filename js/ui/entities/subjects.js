@@ -100,11 +100,47 @@
       oninput:(e)=> c.maxPerDay = e.target.value });
     const fLab = D.el("input", { type:"checkbox", checked: c.requiresLab ? "checked" : null,
       onchange:(e)=> c.requiresLab = e.target.checked });
+
+    // Top-30 #23 — filtered card-relations view inline on the Subject
+    // Constraints sheet. Surfaces every n_* relation touching this subject
+    // so the admin can see and jump to edit them without scanning the
+    // full Relations dialog.
+    const S = window.APP && window.APP.school;
+    const relations = (S && Array.isArray(S.relations)) ? S.relations : [];
+    const touching = relations.filter(rel =>
+      Array.isArray(rel.subjectids) && rel.subjectids.includes(ref.id));
+    const relList = D.el("div", { style: "margin-top:4px;padding:8px 10px;background:#f8fafc;border-radius:6px" });
+    relList.appendChild(D.el("div", { style: "font-size:11px;color:#475569;font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px" },
+      `Card relations touching ${ref.name} (${touching.length})`));
+    if (!touching.length) {
+      relList.appendChild(D.el("div", { style: "font-size:12px;color:#94a3b8;font-style:italic" },
+        "None. Open Specification → Relations to add."));
+    } else {
+      for (const rel of touching.slice(0, 10)) {
+        const li = D.el("div", { style: "font-size:12px;padding:3px 0" },
+          (rel.typ || "?") + " · " + (rel.name || ""));
+        relList.appendChild(li);
+      }
+      if (touching.length > 10) {
+        relList.appendChild(D.el("div", { style: "font-size:11px;color:#64748b;margin-top:4px" },
+          `+ ${touching.length - 10} more — open Relations to see all.`));
+      }
+      const openRelBtn = D.el("button", { type: "button", class: "chrx-btn",
+        style: "margin-top:6px;padding:4px 10px;font-size:11px",
+        onclick: () => {
+          D.closeSheet();
+          window.dispatchEvent(new CustomEvent("app:open-entity",
+            { detail: { kind: "relations", filterSubjectId: ref.id } }));
+        } }, "Open Relations");
+      relList.appendChild(openRelBtn);
+    }
+
     D.buildEditSheet({
       title:`Constraints — ${ref.name}`,
       fields:[
         { label:"Max periods per day", control:fMax },
         { label:"Requires lab",        control:fLab },
+        { label:null,                  control:relList },
       ],
       onSave:()=>{
         const before = ref.constraints;

@@ -1,0 +1,158 @@
+/* Right-click on an empty grid cell → "Place lesson here" picker.
+ *
+ * Top-30 #29 — the natural fill-the-blank workflow that Classic ships in
+ * its grid right-click menu. Without this, dropping a lesson into a known
+ * gap requires going to the pending strip, finding the right card by name,
+ * and dragging it across the screen.
+ *
+ * Picks the top 5 lessons that:
+ *   - belong to the row's entity (class / teacher / room / subject perspective)
+ *   - are under-placed (placed_count < periodsPerWeek)
+ *   - have no hard violation at (day, period) per Placement.classify
+ *
+ * Click → places the card, wrapped in APP.audit.commit so ⌘Z reverts it.
+ * Same do/undo machinery as the drag-drop path shipped in p46.
+ */
+(function () {
+  "use strict";
+
+  let menu = null;
+
+  function close() {
+    if (menu && menu.parentNode) menu.parentNode.removeChild(menu);
+    menu = null;
+    document.removeEventListener("click", onOutside, true);
+    document.removeEventListener("keydown", onKey, true);
+  }
+  function onOutside(e) { if (menu && !menu.contains(e.target)) close(); }
+  function onKey(e)     { if (e.key === "Escape") { e.preventDefault(); close(); } }
+
+  function candidatesForRow(perspective, rowId, day, period) {
+    const S = window.APP && window.APP.school;
+    if (!S) return [];
+    const lessons = S.lessons || [];
+    const cards   = S.cards   || [];
+    const placedByLesson = {};
+    for (const c of cards) placedByLesson[c.lessonId] = (placedByLesson[c.lessonId] || 0) + 1;
+    const matchesRow = (l) => {
+      if (perspective === "class")   return (l.classIds   || []).includes(rowId);
+      if (perspective === "teacher") return (l.teacherIds || []).includes(rowId);
+      if (perspective === "room")    return (l.preferredRoomId === rowId)
+                                       || ((l.classroomIdsExpanded || []).includes(rowId));
+      if (perspective === "subject") return l.subjectId === rowId;
+      return true;
+    };
+    const out = [];
+    for (const l of lessons) {
+      if (!matchesRow(l)) continue;
+      const need = (l.periodsPerWeek || 0);
+      const placed = placedByLesson[l.id] || 0;
+      if (placed >= need) continue;
+      // Hard-violation pre-check so we don't suggest illegal slots.
+      let validity = "green";
+      if (window.Placement && typeof window.Placement.classify === "function") {
+        const v = window.Placement.classify(l.id, day, period, null);
+        validity = (v && v.validity) || "green";
+      }
+      if (validity === "red") continue;
+      out.push({ lesson: l, gap: need - placed, validity });
+    }
+    out.sort((a, b) => b.gap - a.gap);
+    return out.slice(0, 5);
+  }
+
+  function labelFor(school, lesson) {
+    const subj = school._idx?.subjectById?.[lesson.subjectId];
+    const subjName = subj ? (subj.abbr || subj.name) : lesson.subjectId;
+    const teachers = (lesson.teacherIds || [])
+      .map(tid => school._idx?.teacherById?.[tid])
+      .filter(Boolean)
+      .map(t => t.abbr || t.name)
+      .join(", ");
+    return subjName + (teachers ? " · " + teachers : "");
+  }
+
+  function placeCard(lessonId, day, period) {
+    const S = window.APP && window.APP.school;
+    if (!S) return;
+    const lesson = S._idx?.lessonById?.[lessonId];
+    const cid = lesson ? lesson.preferredRoomId : undefined;
+    function doIt() {
+      if (!S.cards.some(c => c.lessonId === lessonId && c.day === day && c.period === period))
+        S.cards.push({ lessonId, day, period, classroomId: cid });
+      document.dispatchEvent(new CustomEvent("editor:place",
+        { detail: { lessonId, day, period } }));
+      rerender();
+    }
+    function undoIt() {
+      const i = S.cards.findIndex(c => c.lessonId === lessonId && c.day === day && c.period === period);
+      if (i !== -1) S.cards.splice(i, 1);
+      document.dispatchEvent(new CustomEvent("editor:unplace",
+        { detail: { lessonId, day, period } }));
+      rerender();
+    }
+    if (window.APP && window.APP.audit && typeof window.APP.audit.commit === "function") {
+      window.APP.audit.commit({ label: "Place card", do: doIt, undo: undoIt });
+    } else {
+      doIt();
+    }
+  }
+  function rerender() {
+    const host = document.querySelector(".chrx-editor");
+    if (host && window.Editor && typeof window.Editor.render === "function") window.Editor.render(host);
+  }
+
+  function open(day, period, rowKey, x, y) {
+    close();
+    const perspective = (window.APP && window.APP.editor && window.APP.editor.perspective) || "class";
+    const cands = candidatesForRow(perspective, rowKey, day, period);
+
+    menu = document.createElement("div");
+    menu.style.cssText = "position:fixed;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 16px 40px rgba(15,23,42,.22);padding:6px 0;min-width:240px;font-family:-apple-system,BlinkMacSystemFont,sans-serif;font-size:13px;color:#0f172a;z-index:10010";
+    const head = document.createElement("div");
+    head.style.cssText = "padding:6px 14px;color:#475569;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid #f1f5f9;margin-bottom:4px";
+    head.textContent = "Place lesson here";
+    menu.appendChild(head);
+
+    if (!cands.length) {
+      const empty = document.createElement("div");
+      empty.style.cssText = "padding:8px 14px;color:#94a3b8;font-style:italic";
+      empty.textContent = "No unplaced lessons fit this slot.";
+      menu.appendChild(empty);
+    } else {
+      const S = window.APP.school;
+      for (const c of cands) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.style.cssText = "display:flex;width:100%;align-items:center;gap:10px;padding:6px 14px;background:none;border:0;cursor:pointer;text-align:left;color:#0f172a";
+        btn.onmouseenter = () => { btn.style.background = "#f1f5f9"; };
+        btn.onmouseleave = () => { btn.style.background = "none"; };
+        const tag = c.validity === "amber" ? "⚠ " : "";
+        btn.textContent = tag + labelFor(S, c.lesson) + " · " + c.gap + " left";
+        btn.onclick = () => { close(); placeCard(c.lesson.id, day, period); };
+        menu.appendChild(btn);
+      }
+    }
+
+    document.body.appendChild(menu);
+    const rect = menu.getBoundingClientRect();
+    const vw = window.innerWidth, vh = window.innerHeight;
+    menu.style.left = Math.min(x, vw - rect.width  - 6) + "px";
+    menu.style.top  = Math.min(y, vh - rect.height - 6) + "px";
+    document.addEventListener("click", onOutside, true);
+    document.addEventListener("keydown", onKey, true);
+  }
+
+  document.addEventListener("contextmenu", (e) => {
+    const slot = e.target.closest && e.target.closest(".chrx-slot.empty");
+    if (!slot) return;
+    const day    = parseInt(slot.dataset.day, 10);
+    const period = parseInt(slot.dataset.period, 10);
+    const rowKey = slot.dataset.row || slot.closest(".chrx-row")?.getAttribute("data-row") || "";
+    if (Number.isNaN(day) || Number.isNaN(period)) return;
+    e.preventDefault();
+    open(day, period, rowKey, e.clientX, e.clientY);
+  });
+
+  window.EmptyCellContext = { open, close };
+})();

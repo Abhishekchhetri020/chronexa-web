@@ -1,5 +1,5 @@
-/* Chronexa bundle — generated 2026-05-22T02:39:27Z
- *      140 modules concatenated in document order.
+/* Chronexa bundle — generated 2026-05-22T02:44:01Z
+ *      141 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
 /* ─── FILE: js/ui/state.js ─── */
@@ -2726,11 +2726,47 @@ window.Inspector = (function () {
       oninput:(e)=> c.maxPerDay = e.target.value });
     const fLab = D.el("input", { type:"checkbox", checked: c.requiresLab ? "checked" : null,
       onchange:(e)=> c.requiresLab = e.target.checked });
+
+    // Top-30 #23 — filtered card-relations view inline on the Subject
+    // Constraints sheet. Surfaces every n_* relation touching this subject
+    // so the admin can see and jump to edit them without scanning the
+    // full Relations dialog.
+    const S = window.APP && window.APP.school;
+    const relations = (S && Array.isArray(S.relations)) ? S.relations : [];
+    const touching = relations.filter(rel =>
+      Array.isArray(rel.subjectids) && rel.subjectids.includes(ref.id));
+    const relList = D.el("div", { style: "margin-top:4px;padding:8px 10px;background:#f8fafc;border-radius:6px" });
+    relList.appendChild(D.el("div", { style: "font-size:11px;color:#475569;font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px" },
+      `Card relations touching ${ref.name} (${touching.length})`));
+    if (!touching.length) {
+      relList.appendChild(D.el("div", { style: "font-size:12px;color:#94a3b8;font-style:italic" },
+        "None. Open Specification → Relations to add."));
+    } else {
+      for (const rel of touching.slice(0, 10)) {
+        const li = D.el("div", { style: "font-size:12px;padding:3px 0" },
+          (rel.typ || "?") + " · " + (rel.name || ""));
+        relList.appendChild(li);
+      }
+      if (touching.length > 10) {
+        relList.appendChild(D.el("div", { style: "font-size:11px;color:#64748b;margin-top:4px" },
+          `+ ${touching.length - 10} more — open Relations to see all.`));
+      }
+      const openRelBtn = D.el("button", { type: "button", class: "chrx-btn",
+        style: "margin-top:6px;padding:4px 10px;font-size:11px",
+        onclick: () => {
+          D.closeSheet();
+          window.dispatchEvent(new CustomEvent("app:open-entity",
+            { detail: { kind: "relations", filterSubjectId: ref.id } }));
+        } }, "Open Relations");
+      relList.appendChild(openRelBtn);
+    }
+
     D.buildEditSheet({
       title:`Constraints — ${ref.name}`,
       fields:[
         { label:"Max periods per day", control:fMax },
         { label:"Requires lab",        control:fLab },
+        { label:null,                  control:relList },
       ],
       onSave:()=>{
         const before = ref.constraints;
@@ -3566,10 +3602,14 @@ window.Inspector = (function () {
     const isNew = !r;
     const draft = isNew
       ? { firstName:"", lastName:"", abbr:"", color:"",
-          maxGapsPerDay:"", maxConsecutivePeriods:"" }
+          maxGapsPerDay:"", maxConsecutivePeriods:"",
+          bellId:"", classroomIds:[], printColor:"" }
       : { firstName:r.firstName, lastName:r.lastName, abbr:r.abbr, color:r.color,
           maxGapsPerDay: r._ref.maxGapsPerDay != null ? r._ref.maxGapsPerDay : "",
-          maxConsecutivePeriods: r._ref.maxConsecutivePeriods != null ? r._ref.maxConsecutivePeriods : "" };
+          maxConsecutivePeriods: r._ref.maxConsecutivePeriods != null ? r._ref.maxConsecutivePeriods : "",
+          bellId: r._ref.bellId || "",
+          classroomIds: Array.isArray(r._ref.classroomIds) ? r._ref.classroomIds.slice() : [],
+          printColor: r._ref.printColor || "" };
 
     const fFirst = D.el("input", { type:"text", value:draft.firstName, maxlength:"40",
       oninput:(e)=>draft.firstName = e.target.value });
@@ -3582,6 +3622,30 @@ window.Inspector = (function () {
       oninput:(e)=>draft.maxGapsPerDay = e.target.value });
     const fConsec = D.el("input", { type:"number", min:"0", value:draft.maxConsecutivePeriods,
       oninput:(e)=>draft.maxConsecutivePeriods = e.target.value });
+
+    // Top-30 #24 — three commonly-used Teacher fields previously absent.
+    const S = window.APP && window.APP.school;
+    const fBell = D.el("select", null, D.el("option", { value: "" }, "(use school default)"));
+    (S && Array.isArray(S.bells) ? S.bells : []).forEach(b => {
+      const opt = D.el("option", { value: b.id }, b.name || b.id);
+      if (b.id === draft.bellId) opt.selected = true;
+      fBell.appendChild(opt);
+    });
+    fBell.addEventListener("change", e => draft.bellId = e.target.value);
+    const fRooms = D.el("select", { multiple: "multiple", size: "4",
+      style: "width:240px;padding:4px 6px" });
+    (S && Array.isArray(S.classrooms) ? S.classrooms : []).forEach(rm => {
+      const opt = D.el("option", { value: rm.id }, rm.name + (rm.abbr ? ` (${rm.abbr})` : ""));
+      if (draft.classroomIds.includes(rm.id)) opt.selected = true;
+      fRooms.appendChild(opt);
+    });
+    fRooms.addEventListener("change", () => {
+      draft.classroomIds = Array.from(fRooms.selectedOptions).map(o => o.value);
+    });
+    const fPrintColor = D.el("input", { type: "color",
+      value: draft.printColor || "#000000",
+      style: "width:50px;height:28px;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer",
+      oninput: e => draft.printColor = e.target.value });
 
     function save() {
       if (!draft.lastName.trim()) { fLast.focus(); return false; }
@@ -3597,6 +3661,9 @@ window.Inspector = (function () {
         t.color = draft.color || undefined;
         t.maxGapsPerDay = draft.maxGapsPerDay !== "" ? parseInt(draft.maxGapsPerDay, 10) : undefined;
         t.maxConsecutivePeriods = draft.maxConsecutivePeriods !== "" ? parseInt(draft.maxConsecutivePeriods, 10) : undefined;
+        t.bellId = draft.bellId || undefined;
+        t.classroomIds = draft.classroomIds.length ? draft.classroomIds.slice() : undefined;
+        t.printColor = draft.printColor || undefined;
         window.APP.audit.append({ entity:"teachers", op:"update", before, after:{...t} });
       } else {
         const nt = { id:D.uid("t"),
@@ -3606,7 +3673,10 @@ window.Inspector = (function () {
           abbr:draft.abbr.trim() || undefined,
           color:draft.color || undefined,
           maxGapsPerDay: draft.maxGapsPerDay !== "" ? parseInt(draft.maxGapsPerDay, 10) : undefined,
-          maxConsecutivePeriods: draft.maxConsecutivePeriods !== "" ? parseInt(draft.maxConsecutivePeriods, 10) : undefined };
+          maxConsecutivePeriods: draft.maxConsecutivePeriods !== "" ? parseInt(draft.maxConsecutivePeriods, 10) : undefined,
+          bellId: draft.bellId || undefined,
+          classroomIds: draft.classroomIds.length ? draft.classroomIds.slice() : undefined,
+          printColor: draft.printColor || undefined };
         if (all.some(x => x.name === nt.name)) { fLast.focus(); return false; }
         all.push(nt);
         if (window.APP.school._idx) window.APP.school._idx.teacherById[nt.id] = nt;
@@ -3625,6 +3695,9 @@ window.Inspector = (function () {
         { label:"Color", control:fColor },
         { label:"Max gaps/day", control:fGaps },
         { label:"Max consecutive periods", control:fConsec },
+        { label:"Bell schedule", control:fBell },
+        { label:"Preferred classrooms", control:fRooms },
+        { label:"Print color", control:fPrintColor },
       ],
       onSave: save,
       siblingRows: isNew ? null : rows(),
@@ -11992,9 +12065,10 @@ window.PendingStrip = (function () {
   "use strict";
 
   const GROUPS = {
-    subject: { label: "Subject", keyFn: (S,L)=>keyOf(S._idx.subjectById[L.subjectId]) },
-    class:   { label: "Class",   keyFn: (S,L)=>keyOf(S._idx.classById[L.classIds[0]]) },
-    teacher: { label: "Teacher", keyFn: (S,L)=>keyOf(S._idx.teacherById[L.teacherIds[0]]) },
+    subject:   { label: "Subject",   keyFn: (S,L)=>keyOf(S._idx.subjectById[L.subjectId]) },
+    class:     { label: "Class",     keyFn: (S,L)=>keyOf(S._idx.classById[L.classIds[0]]) },
+    teacher:   { label: "Teacher",   keyFn: (S,L)=>keyOf(S._idx.teacherById[L.teacherIds[0]]) },
+    classroom: { label: "Classroom", keyFn: (S,L)=>keyOf(S._idx.classroomById[L.preferredRoomId]) },
   };
 
   let _state = { groupBy: "subject", filter: "" };
@@ -12765,6 +12839,166 @@ window.PendingStrip = (function () {
   });
 
   window.RowContextMenu = { open, close };
+})();
+
+/* ─── FILE: js/ui/editor/empty_cell_context.js ─── */
+/* Right-click on an empty grid cell → "Place lesson here" picker.
+ *
+ * Top-30 #29 — the natural fill-the-blank workflow that Classic ships in
+ * its grid right-click menu. Without this, dropping a lesson into a known
+ * gap requires going to the pending strip, finding the right card by name,
+ * and dragging it across the screen.
+ *
+ * Picks the top 5 lessons that:
+ *   - belong to the row's entity (class / teacher / room / subject perspective)
+ *   - are under-placed (placed_count < periodsPerWeek)
+ *   - have no hard violation at (day, period) per Placement.classify
+ *
+ * Click → places the card, wrapped in APP.audit.commit so ⌘Z reverts it.
+ * Same do/undo machinery as the drag-drop path shipped in p46.
+ */
+(function () {
+  "use strict";
+
+  let menu = null;
+
+  function close() {
+    if (menu && menu.parentNode) menu.parentNode.removeChild(menu);
+    menu = null;
+    document.removeEventListener("click", onOutside, true);
+    document.removeEventListener("keydown", onKey, true);
+  }
+  function onOutside(e) { if (menu && !menu.contains(e.target)) close(); }
+  function onKey(e)     { if (e.key === "Escape") { e.preventDefault(); close(); } }
+
+  function candidatesForRow(perspective, rowId, day, period) {
+    const S = window.APP && window.APP.school;
+    if (!S) return [];
+    const lessons = S.lessons || [];
+    const cards   = S.cards   || [];
+    const placedByLesson = {};
+    for (const c of cards) placedByLesson[c.lessonId] = (placedByLesson[c.lessonId] || 0) + 1;
+    const matchesRow = (l) => {
+      if (perspective === "class")   return (l.classIds   || []).includes(rowId);
+      if (perspective === "teacher") return (l.teacherIds || []).includes(rowId);
+      if (perspective === "room")    return (l.preferredRoomId === rowId)
+                                       || ((l.classroomIdsExpanded || []).includes(rowId));
+      if (perspective === "subject") return l.subjectId === rowId;
+      return true;
+    };
+    const out = [];
+    for (const l of lessons) {
+      if (!matchesRow(l)) continue;
+      const need = (l.periodsPerWeek || 0);
+      const placed = placedByLesson[l.id] || 0;
+      if (placed >= need) continue;
+      // Hard-violation pre-check so we don't suggest illegal slots.
+      let validity = "green";
+      if (window.Placement && typeof window.Placement.classify === "function") {
+        const v = window.Placement.classify(l.id, day, period, null);
+        validity = (v && v.validity) || "green";
+      }
+      if (validity === "red") continue;
+      out.push({ lesson: l, gap: need - placed, validity });
+    }
+    out.sort((a, b) => b.gap - a.gap);
+    return out.slice(0, 5);
+  }
+
+  function labelFor(school, lesson) {
+    const subj = school._idx?.subjectById?.[lesson.subjectId];
+    const subjName = subj ? (subj.abbr || subj.name) : lesson.subjectId;
+    const teachers = (lesson.teacherIds || [])
+      .map(tid => school._idx?.teacherById?.[tid])
+      .filter(Boolean)
+      .map(t => t.abbr || t.name)
+      .join(", ");
+    return subjName + (teachers ? " · " + teachers : "");
+  }
+
+  function placeCard(lessonId, day, period) {
+    const S = window.APP && window.APP.school;
+    if (!S) return;
+    const lesson = S._idx?.lessonById?.[lessonId];
+    const cid = lesson ? lesson.preferredRoomId : undefined;
+    function doIt() {
+      if (!S.cards.some(c => c.lessonId === lessonId && c.day === day && c.period === period))
+        S.cards.push({ lessonId, day, period, classroomId: cid });
+      document.dispatchEvent(new CustomEvent("editor:place",
+        { detail: { lessonId, day, period } }));
+      rerender();
+    }
+    function undoIt() {
+      const i = S.cards.findIndex(c => c.lessonId === lessonId && c.day === day && c.period === period);
+      if (i !== -1) S.cards.splice(i, 1);
+      document.dispatchEvent(new CustomEvent("editor:unplace",
+        { detail: { lessonId, day, period } }));
+      rerender();
+    }
+    if (window.APP && window.APP.audit && typeof window.APP.audit.commit === "function") {
+      window.APP.audit.commit({ label: "Place card", do: doIt, undo: undoIt });
+    } else {
+      doIt();
+    }
+  }
+  function rerender() {
+    const host = document.querySelector(".chrx-editor");
+    if (host && window.Editor && typeof window.Editor.render === "function") window.Editor.render(host);
+  }
+
+  function open(day, period, rowKey, x, y) {
+    close();
+    const perspective = (window.APP && window.APP.editor && window.APP.editor.perspective) || "class";
+    const cands = candidatesForRow(perspective, rowKey, day, period);
+
+    menu = document.createElement("div");
+    menu.style.cssText = "position:fixed;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 16px 40px rgba(15,23,42,.22);padding:6px 0;min-width:240px;font-family:-apple-system,BlinkMacSystemFont,sans-serif;font-size:13px;color:#0f172a;z-index:10010";
+    const head = document.createElement("div");
+    head.style.cssText = "padding:6px 14px;color:#475569;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid #f1f5f9;margin-bottom:4px";
+    head.textContent = "Place lesson here";
+    menu.appendChild(head);
+
+    if (!cands.length) {
+      const empty = document.createElement("div");
+      empty.style.cssText = "padding:8px 14px;color:#94a3b8;font-style:italic";
+      empty.textContent = "No unplaced lessons fit this slot.";
+      menu.appendChild(empty);
+    } else {
+      const S = window.APP.school;
+      for (const c of cands) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.style.cssText = "display:flex;width:100%;align-items:center;gap:10px;padding:6px 14px;background:none;border:0;cursor:pointer;text-align:left;color:#0f172a";
+        btn.onmouseenter = () => { btn.style.background = "#f1f5f9"; };
+        btn.onmouseleave = () => { btn.style.background = "none"; };
+        const tag = c.validity === "amber" ? "⚠ " : "";
+        btn.textContent = tag + labelFor(S, c.lesson) + " · " + c.gap + " left";
+        btn.onclick = () => { close(); placeCard(c.lesson.id, day, period); };
+        menu.appendChild(btn);
+      }
+    }
+
+    document.body.appendChild(menu);
+    const rect = menu.getBoundingClientRect();
+    const vw = window.innerWidth, vh = window.innerHeight;
+    menu.style.left = Math.min(x, vw - rect.width  - 6) + "px";
+    menu.style.top  = Math.min(y, vh - rect.height - 6) + "px";
+    document.addEventListener("click", onOutside, true);
+    document.addEventListener("keydown", onKey, true);
+  }
+
+  document.addEventListener("contextmenu", (e) => {
+    const slot = e.target.closest && e.target.closest(".chrx-slot.empty");
+    if (!slot) return;
+    const day    = parseInt(slot.dataset.day, 10);
+    const period = parseInt(slot.dataset.period, 10);
+    const rowKey = slot.dataset.row || slot.closest(".chrx-row")?.getAttribute("data-row") || "";
+    if (Number.isNaN(day) || Number.isNaN(period)) return;
+    e.preventDefault();
+    open(day, period, rowKey, e.clientX, e.clientY);
+  });
+
+  window.EmptyCellContext = { open, close };
 })();
 
 /* ─── FILE: js/ui/editor/constraint_explainer.js ─── */

@@ -217,7 +217,7 @@
 
 <!-- ─────────────────────── SCRIPTS ─────────────────────── -->
 <!-- Bump APP_VER on every deploy so the browser refetches the JS bundle -->
-<script>window.APP_VER = "20260522-p52-print-settings-plus";</script>
+<script>window.APP_VER = "20260522-p53-partial-cleanup";</script>
 <!-- Backend URL — leave empty to force "Run on this computer". Override at deploy time. -->
 <script>window.CHRONEXA_BACKEND_URL = window.CHRONEXA_BACKEND_URL || "";</script>
 <!-- Bundle mode (default): single HTTP request for all 133 modules.
@@ -304,6 +304,7 @@
     ["ui","editor/placement_validator"],
     ["ui","editor/card_in_hand"],
     ["ui","editor/row_context_menu"],
+    ["ui","editor/empty_cell_context"],
     // ─── Constraint-explanation tooltip (P1-w4 moat feature) ──
     ["ui","editor/constraint_explainer"],
     ["ui","start_screen"],

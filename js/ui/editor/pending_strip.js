@@ -3,9 +3,10 @@ window.PendingStrip = (function () {
   "use strict";
 
   const GROUPS = {
-    subject: { label: "Subject", keyFn: (S,L)=>keyOf(S._idx.subjectById[L.subjectId]) },
-    class:   { label: "Class",   keyFn: (S,L)=>keyOf(S._idx.classById[L.classIds[0]]) },
-    teacher: { label: "Teacher", keyFn: (S,L)=>keyOf(S._idx.teacherById[L.teacherIds[0]]) },
+    subject:   { label: "Subject",   keyFn: (S,L)=>keyOf(S._idx.subjectById[L.subjectId]) },
+    class:     { label: "Class",     keyFn: (S,L)=>keyOf(S._idx.classById[L.classIds[0]]) },
+    teacher:   { label: "Teacher",   keyFn: (S,L)=>keyOf(S._idx.teacherById[L.teacherIds[0]]) },
+    classroom: { label: "Classroom", keyFn: (S,L)=>keyOf(S._idx.classroomById[L.preferredRoomId]) },
   };
 
   let _state = { groupBy: "subject", filter: "" };
