@@ -34,6 +34,10 @@
     // uphill moves.
     useLAHC: false,
     lahcLen: 100,
+    // Tier-A ports — new FET-style toggles surfaced to the user.
+    minRestingPeriods: 0,
+    minGapsBetweenBuildingChanges: 0,
+    maxBuildingChangesPerDay: -1,
   };
 
   function load() {
@@ -44,6 +48,16 @@
   }
   function save() {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(APP.solverParams)); } catch {}
+    // Tier-A wiring — mirror onto school.settings so csp_solver.buildModel
+    // can read them. localStorage covers the cross-session case; school
+    // settings covers the per-school persistence + XML round-trip.
+    if (APP.school) {
+      APP.school.settings = APP.school.settings || {};
+      APP.school.settings.solverParams = Object.assign({}, APP.solverParams);
+      APP.school.settings.minRestingPeriods = APP.solverParams.minRestingPeriods | 0;
+      APP.school.settings.minGapsBetweenBuildingChanges = APP.solverParams.minGapsBetweenBuildingChanges | 0;
+      APP.school.settings.maxBuildingChangesPerDay = APP.solverParams.maxBuildingChangesPerDay | 0;
+    }
     window.dispatchEvent(new CustomEvent("app:solver-params-changed", { detail: APP.solverParams }));
     (window._chrxNotify || function () {})("Solver parameters saved", "info");
   }
@@ -141,6 +155,17 @@
     body.appendChild(row("Enable LAHC in LAS phase", bool("useLAHC")));
     body.appendChild(row("LAHC window size", num("lahcLen", 20, 500, 10),
       "Bigger = more tolerance for uphill moves"));
+
+    const fHead = document.createElement("h3");
+    fHead.style.cssText = "margin:14px 0 6px;font-size:12px;text-transform:uppercase;color:#334155;letter-spacing:.04em";
+    fHead.textContent = "FET-style limits (Tier-A)";
+    body.appendChild(fHead);
+    body.appendChild(row("Min resting periods between days", num("minRestingPeriods", 0, 20, 1),
+      "Penalty if gap < N (last-today + first-tomorrow)"));
+    body.appendChild(row("Min gaps between building changes", num("minGapsBetweenBuildingChanges", 0, 10, 1),
+      "Periods between consecutive building changes for a teacher"));
+    body.appendChild(row("Max building changes per day", num("maxBuildingChangesPerDay", -1, 10, 1),
+      "-1 = unlimited"));
 
     const closeBtn = document.createElement("button");
     closeBtn.className = "chrx-btn"; closeBtn.type = "button";

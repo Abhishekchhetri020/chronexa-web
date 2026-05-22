@@ -39,6 +39,7 @@ js/ui/components/statistics_panel.js
 js/ui/components/school_settings_dialog.js
 js/ui/components/solver_parameters_dialog.js
 js/ui/components/supervision_criteria_dialog.js
+js/ui/components/tag_caps_dialog.js
 js/ui/entities/students.js
 js/ui/entities/studentsubjects.js
 js/ui/components/school_hub.js

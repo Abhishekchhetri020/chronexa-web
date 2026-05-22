@@ -40,6 +40,8 @@
           run: () => fire("app:open-entity", { kind: "studentsubjects" }) },
         { icon: "🛡", label: "Supervision criteria…", disabled: !has(),
           run: () => fire("app:supervision-criteria") },
+        { icon: "🏷", label: "Tag daily caps…", disabled: !has(),
+          run: () => fire("app:tag-caps") },
         { sep: true },
         { section: "School definitions" },
         { icon: "🔔", label: "Bell times / Periods…", disabled: !has(),

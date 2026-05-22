@@ -415,6 +415,14 @@ function buildModel(school) {
   const sset = (school.settings && typeof school.settings.maxBuildingChangesPerDay === "number")
     ? school.settings.maxBuildingChangesPerDay : -1;
   const maxBuildingChangesPerDay = sset | 0;
+  // FET-port — "Min gaps between building changes": when a teacher
+  // changes buildings mid-day, require at least N free periods between
+  // them to walk over. Soft scorer below penalises adjacent changes.
+  const minGapsBetweenBuildingChanges =
+    ((school.settings && school.settings.minGapsBetweenBuildingChanges) | 0) || 0;
+  // FET-port — "Min resting hours for a teacher" (measured in periods).
+  const minRestingPeriods =
+    ((school.settings && school.settings.minRestingPeriods) | 0) || 0;
 
   // FET-port — lesson activity tags + per-tag daily caps. Each lesson
   // can carry lesson.tags = ["PE", "LAB", ...]; the school carries
@@ -569,8 +577,19 @@ function buildModel(school) {
     }
   }
 
-  // Soft weights
-  const w = DEFAULT_SOFT_WEIGHTS;
+  // Soft weights — start from defaults, then apply per-school overrides
+  // from school.settings.solverParams (Tier-A port: the Parameters
+  // dialog's sliders now actually reach the solver). Sliders are 0..100;
+  // 50 = baseline (no change), 0 = effectively off, 100 = double weight.
+  const w = Object.assign({}, DEFAULT_SOFT_WEIGHTS);
+  const sp = (school.settings && school.settings.solverParams) || {};
+  function scale(slider) { return slider == null ? 1 : (slider / 50); }
+  w.teacher_gaps = Math.round((w.teacher_gaps || 1) * scale(sp.teacherGapWeight));
+  w.class_gaps   = Math.round((w.class_gaps   || 1) * scale(sp.classGapWeight));
+  w.subject_distribution      = Math.round((w.subject_distribution      || 1) * scale(sp.distributionWeight));
+  w.teacher_room_stability    = Math.round((w.teacher_room_stability    || 1) * scale(sp.roomStabilityWeight));
+  w.teacher_consecutive_overload = Math.round((w.teacher_consecutive_overload || 1) * scale(sp.consecutiveOverloadWeight));
+  w.teacher_last_period_overflow = Math.round((w.teacher_last_period_overflow || 1) * scale(sp.lastPeriodOverflowWeight));
   const weights = new Int32Array([
     w.teacher_gaps, w.class_gaps, w.subject_distribution, w.teacher_room_stability,
     w.teacher_consecutive_overload, w.class_consecutive_overload, w.teacher_last_period_overflow,
@@ -808,6 +827,8 @@ function buildModel(school) {
     classManualnyBlok,
     classroomBuilding, buildingCount,
     maxBuildingChangesPerDay,
+    minGapsBetweenBuildingChanges,
+    minRestingPeriods,
     lessonTags, tagDailyCaps,
     subjectDailyLimit,
     classSubjectTarget,
@@ -1433,7 +1454,55 @@ function softScore(model, state) {
   s += classBlockPreferencePenalty(model, state) * (w[1] || 1);
   s += teacherBuildingChangesPenalty(model, state) * (w[3] || 1);
   s += lessonTagDailyCapPenalty(model, state) * (w[2] || 1);
+  s += teacherMinRestingHoursPenalty(model, state) * (w[0] || 1);
   return s;
+}
+
+// FET port — "Min resting hours for a teacher". Penalises teachers
+// whose gap between last-period today and first-period tomorrow falls
+// below model.minRestingPeriods (configured via
+// school.settings.minRestingPeriods, default 0 = off). Uses period
+// indices as a proxy when bell-clock times aren't set:
+//   rest_gap = (periodsPerDay - lastPeriodToday) + firstPeriodTomorrow
+// Reuses the teacher-gap soft weight (w[0]).
+function teacherMinRestingHoursPenalty(model, state) {
+  const minRest = model.minRestingPeriods | 0;
+  if (minRest <= 0) return 0;
+  const tc = model.teacherCount, days = model.days, ppd = model.periodsPerDay;
+  let penalty = 0;
+  // Track per-teacher-per-day occupancy bitmask
+  const occ = new Uint32Array(tc * days);
+  for (let i = 0; i < model.lessonCount; i++) {
+    if (!state.lessonAssigned[i]) continue;
+    const slot = state.lessonAssignedSlot[i];
+    const d = model.slotDay[slot], p = model.slotPeriod[slot];
+    const tStart = model.lessonTeacherStart[i];
+    const tCount = model.lessonTeacherCount[i];
+    for (let k = 0; k < tCount; k++) {
+      const t = model.lessonTeacherFlat[tStart + k];
+      occ[t * days + d] |= (1 << p) >>> 0;
+    }
+  }
+  for (let t = 0; t < tc; t++) {
+    for (let d = 0; d < days - 1; d++) {
+      const today = occ[t * days + d];
+      const next  = occ[t * days + d + 1];
+      if (!today || !next) continue;
+      // Find last bit of today, first bit of next.
+      let last = -1;
+      for (let p = ppd - 1; p >= 0; p--) {
+        if ((today & ((1 << p) >>> 0)) !== 0) { last = p; break; }
+      }
+      let first = -1;
+      for (let p = 0; p < ppd; p++) {
+        if ((next & ((1 << p) >>> 0)) !== 0) { first = p; break; }
+      }
+      if (last < 0 || first < 0) continue;
+      const gap = (ppd - 1 - last) + first;
+      if (gap < minRest) penalty += (minRest - gap);
+    }
+  }
+  return penalty;
 }
 
 // FET port — "Max building changes per day for a teacher" + "Min gaps
@@ -1475,11 +1544,21 @@ function teacherBuildingChangesPenalty(model, state) {
         }
         seq.push(bld);
       }
-      // Count transitions between distinct non-(-1) buildings
-      let changes = 0, prev = -1;
-      for (const b of seq) {
+      // Count transitions between distinct non-(-1) buildings + track
+      // gaps between consecutive transitions for min-gaps penalty.
+      const minGaps = model.minGapsBetweenBuildingChanges | 0;
+      let changes = 0, prev = -1, lastChangeAt = -1;
+      for (let p = 0; p < seq.length; p++) {
+        const b = seq[p];
         if (b < 0) continue;
-        if (prev >= 0 && b !== prev) changes++;
+        if (prev >= 0 && b !== prev) {
+          changes++;
+          if (lastChangeAt >= 0 && minGaps > 0) {
+            const gap = p - lastChangeAt;
+            if (gap < minGaps) penalty += (minGaps - gap) * 2;
+          }
+          lastChangeAt = p;
+        }
         prev = b;
       }
       if (changes > 0) {
