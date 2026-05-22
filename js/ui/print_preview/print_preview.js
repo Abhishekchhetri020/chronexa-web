@@ -102,22 +102,54 @@
         render(currentTemplate);
         notify(q ? ("Filter: " + q) : "Filter cleared");
       } }, "⚙︎ Filter");
+    function ensureActiveReport() {
+      const Schema = window.APP && window.APP.PrintReportSchema;
+      const Presets = window.APP && window.APP.PrintPresets;
+      if (!Schema || !Presets) return false;
+      if (!APP.activePrintReport || APP.activePrintReport._presetId !== currentTemplate) {
+        const preset = Presets.get(currentTemplate);
+        if (preset) {
+          const r = Schema.create({ context: preset.context });
+          Schema.applyPreset(r, preset);
+          r._presetId = preset.id;
+          APP.activePrintReport = r;
+        }
+      }
+      return !!APP.activePrintReport;
+    }
     const sizeBtn    = el("button", { class: "chrx-tb-btn", type: "button",
-      title: "Page size, orientation, margins, scale",
-      onclick: () => window.PrintSettingsDialog && window.PrintSettingsDialog.open("sizes") }, "📐 Sizes");
-    const designBtn  = el("button", { class: "chrx-tb-btn", type: "button",
-      title: "Cell style — anchor, fields, font, colors",
+      title: "Sizes / widths — orientation, pages per sheet, copies",
+      onclick: () => {
+        if (ensureActiveReport() && window.APP?.PrintSizesDialog) {
+          window.APP.PrintSizesDialog.open(APP.activePrintReport, () => render(currentTemplate));
+          return;
+        }
+        window.PrintSettingsDialog && window.PrintSettingsDialog.open("sizes");
+      } }, "📐 Sizes/widths");
+    const styleBtn   = el("button", { class: "chrx-tb-btn", type: "button",
+      title: "Cell style — per-element layout, font, B/I/U for every card",
       onclick: () => {
         if (!window.CellStyleDialog) { notify("Cell-style dialog not loaded", "error"); return; }
         const cur = (APP.printCellStyles || {})[currentTemplate];
-        window.CellStyleDialog.open(currentTemplate, cur, () => {
-          // Re-render the active template so the new style takes effect.
-          render(currentTemplate);
-        });
-      } }, "🎨 Cell style…");
+        window.CellStyleDialog.open(currentTemplate, cur, () => render(currentTemplate));
+      } }, "🎨 Style");
+    const designBtn  = el("button", { class: "chrx-tb-btn", type: "button",
+      title: "Design — print logo + header / footer text",
+      onclick: () => {
+        if (ensureActiveReport() && window.APP?.PrintDesignDialog) {
+          window.APP.PrintDesignDialog.open(APP.activePrintReport, () => render(currentTemplate));
+          return;
+        }
+      } }, "🖼 Design");
     const colorBtn   = el("button", { class: "chrx-tb-btn", type: "button",
-      title: "Print-with-colors toggle (per-subject colors edited in Subjects)",
-      onclick: () => window.PrintSettingsDialog && window.PrintSettingsDialog.open("colors") }, "🌈 Colors");
+      title: "Colors — card / row-header / column-header",
+      onclick: () => {
+        if (ensureActiveReport() && window.APP?.PrintColorsDialog) {
+          window.APP.PrintColorsDialog.open(APP.activePrintReport, () => render(currentTemplate));
+          return;
+        }
+        window.PrintSettingsDialog && window.PrintSettingsDialog.open("colors");
+      } }, "🌈 Colors");
     const structBtn  = el("button", { class: "chrx-tb-btn", type: "button",
       title: "Modify structure — choose what's in pages / rows / columns / cells",
       onclick: () => {
@@ -178,7 +210,7 @@
     const close = el("button", { class: "chrx-tb-btn chrx-tb-btn--danger", type: "button",
       style: "margin-left:auto", onclick: closePreview }, "✕ Close preview");
 
-    [prev, next, print, indicator, sel, filterBtn, structBtn, extraBtn, sizeBtn, designBtn, colorBtn, globalBtn, close]
+    [prev, next, print, indicator, sel, filterBtn, structBtn, extraBtn, styleBtn, sizeBtn, designBtn, colorBtn, globalBtn, close]
       .forEach(c => bar.appendChild(c));
     bar._indicator = indicator;
     return bar;
