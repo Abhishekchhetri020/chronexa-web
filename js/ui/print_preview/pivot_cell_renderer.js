@@ -70,8 +70,12 @@
   }
 
   /** Multi-card label join: comma for most elements, slash for Class element
-   *  when one card spans multiple classes (the H6 multi-class case). */
+   *  when one card spans multiple classes (the H6 multi-class case).
+   *  Honours style.labelOverride — when set, returns that fixed string. */
   function joinElementLabels(cards, key, school, style) {
+    if (style.labelOverride && String(style.labelOverride).trim().length > 0 && cards.length > 0) {
+      return String(style.labelOverride).trim();
+    }
     const fmt = style.textFormat || "abbreviation";
     if (key === "subject") {
       const seen = new Set();
