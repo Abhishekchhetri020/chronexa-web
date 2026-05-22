@@ -1,0 +1,119 @@
+/* Supervision criteria dialog — window.SupervisionCriteria.open()
+ * Audit §12.2 (m_DozoryKriteria). Persists the 14-field subobject onto
+ * school.settings.supervisionCriteria. Lightweight CRUD — the solver
+ * doesn't yet read every field, but the values flow through XML round-trip
+ * so Classic's solver picks them up on re-import, and our solver can grow
+ * into them incrementally.
+ */
+(function (global) {
+  "use strict";
+  const D = window.EntityDialog;
+  if (!D) return;
+  const APP = window.APP = window.APP || {};
+
+  const DEFAULTS = {
+    minPerTeacherPerWeek: 0,
+    maxPerTeacherPerWeek: 5,
+    minPerTeacherPerDay: 0,
+    maxPerTeacherPerDay: 2,
+    avoidLastPeriod: true,
+    avoidFirstPeriod: false,
+    preferBeforeOwnLesson: true,
+    preferAfterOwnLesson: true,
+    allowDuringFreePeriod: true,
+    requireSameBuildingAsNextLesson: false,
+    noSupervisionOnTimeOff: true,
+    countLoadAgainstMaxPerDay: false,
+    countLoadAgainstMaxPerWeek: true,
+    notes: "",
+  };
+  function load() {
+    const s = APP.school = APP.school || {};
+    s.settings = s.settings || {};
+    s.settings.supervisionCriteria = Object.assign({}, DEFAULTS, s.settings.supervisionCriteria || {});
+    return s.settings.supervisionCriteria;
+  }
+
+  function row(label, control, hint) {
+    const wrap = document.createElement("div");
+    wrap.style.cssText = "display:flex;align-items:center;gap:12px;margin:6px 0";
+    const lab = document.createElement("label");
+    lab.style.cssText = "min-width:240px;font-size:12px;color:#475569";
+    lab.textContent = label;
+    wrap.appendChild(lab);
+    wrap.appendChild(control);
+    if (hint) {
+      const h = document.createElement("span");
+      h.style.cssText = "font-size:11px;color:#94a3b8";
+      h.textContent = hint;
+      wrap.appendChild(h);
+    }
+    return wrap;
+  }
+  function num(key, min, max, target) {
+    const i = document.createElement("input");
+    i.type = "number"; i.min = String(min); i.max = String(max); i.step = "1";
+    i.value = target[key];
+    i.style.cssText = "width:80px;padding:4px 6px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px";
+    i.oninput = e => target[key] = parseInt(e.target.value, 10) || 0;
+    return i;
+  }
+  function bool(key, target) {
+    const c = document.createElement("input");
+    c.type = "checkbox";
+    if (target[key]) c.checked = true;
+    c.onchange = e => target[key] = e.target.checked;
+    return c;
+  }
+  function textarea(key, target) {
+    const t = document.createElement("textarea");
+    t.style.cssText = "width:100%;min-height:60px;padding:6px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px";
+    t.value = target[key] || "";
+    t.oninput = e => target[key] = e.target.value;
+    return t;
+  }
+
+  function open() {
+    const target = load();
+    const body = document.createElement("div");
+
+    body.appendChild(row("Min supervisions / teacher / week", num("minPerTeacherPerWeek", 0, 40, target)));
+    body.appendChild(row("Max supervisions / teacher / week", num("maxPerTeacherPerWeek", 0, 40, target)));
+    body.appendChild(row("Min supervisions / teacher / day",  num("minPerTeacherPerDay",  0, 10, target)));
+    body.appendChild(row("Max supervisions / teacher / day",  num("maxPerTeacherPerDay",  0, 10, target)));
+    body.appendChild(row("Avoid last period",                 bool("avoidLastPeriod", target)));
+    body.appendChild(row("Avoid first period",                bool("avoidFirstPeriod", target)));
+    body.appendChild(row("Prefer before own lesson",          bool("preferBeforeOwnLesson", target)));
+    body.appendChild(row("Prefer after own lesson",           bool("preferAfterOwnLesson", target)));
+    body.appendChild(row("Allow during teacher's free period", bool("allowDuringFreePeriod", target)));
+    body.appendChild(row("Require same building as next lesson", bool("requireSameBuildingAsNextLesson", target)));
+    body.appendChild(row("No supervision on teacher time-off", bool("noSupervisionOnTimeOff", target)));
+    body.appendChild(row("Count toward max-per-day cap",      bool("countLoadAgainstMaxPerDay", target)));
+    body.appendChild(row("Count toward max-per-week cap",     bool("countLoadAgainstMaxPerWeek", target)));
+    body.appendChild(row("Notes",                              textarea("notes", target)));
+
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:flex;justify-content:flex-end;gap:8px;margin-top:14px;border-top:1px solid #e2e8f0;padding-top:10px";
+    const cancel = document.createElement("button");
+    cancel.className = "chrx-btn"; cancel.type = "button";
+    cancel.textContent = "Cancel"; cancel.onclick = () => D.closeSheet();
+    const save = document.createElement("button");
+    save.className = "chrx-btn chrx-btn--primary"; save.type = "button";
+    save.textContent = "Save";
+    save.onclick = () => {
+      if (APP.audit && APP.audit.append) {
+        APP.audit.append({ entity: "settings", op: "supervisionCriteria", after: { ...target } });
+      }
+      D.closeSheet();
+      (window._chrxNotify || function () {})("Supervision criteria saved", "info");
+    };
+    actions.appendChild(cancel);
+    actions.appendChild(save);
+    body.appendChild(actions);
+
+    D.openSheet(body, { title: "Supervision criteria" });
+  }
+
+  window.addEventListener("app:supervision-criteria", open);
+  global.SupervisionCriteria = { open, load };
+})(window);

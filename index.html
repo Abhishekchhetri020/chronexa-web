@@ -217,7 +217,7 @@
 
 <!-- ─────────────────────── SCRIPTS ─────────────────────── -->
 <!-- Bump APP_VER on every deploy so the browser refetches the JS bundle -->
-<script>window.APP_VER = "20260522-p60-solver-params";</script>
+<script>window.APP_VER = "20260522-p61-students-supervision";</script>
 <!-- Backend URL — leave empty to force "Run on this computer". Override at deploy time. -->
 <script>window.CHRONEXA_BACKEND_URL = window.CHRONEXA_BACKEND_URL || "";</script>
 <!-- Bundle mode (default): single HTTP request for all 133 modules.
@@ -280,6 +280,9 @@
     ["ui","components/statistics_panel"],
     ["ui","components/school_settings_dialog"],
     ["ui","components/solver_parameters_dialog"],
+    ["ui","components/supervision_criteria_dialog"],
+    ["ui","entities/students"],
+    ["ui","entities/studentsubjects"],
     ["ui","components/school_hub"],
     ["ui","components/ai_actions"],
     ["ui","io/export_html"],

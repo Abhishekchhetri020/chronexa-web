@@ -50,7 +50,9 @@
     "preferences":          () => openStub("Account preferences", "No account needed — Chronexa is local-first."),
     "display-settings":     () => openStub("Display settings", "Open the View menu for Density/Theme/Zoom toggles."),
     "print-defaults":       () => openStub("Print defaults", "Use Files → Print preview… to set defaults per-report."),
-    "supervision-criteria": () => window.EntitySupervisions && window.EntitySupervisions.open(),
+    "supervision-criteria": () => window.SupervisionCriteria && window.SupervisionCriteria.open(),
+    "students":         () => window.EntityStudents        && window.EntityStudents.open(),
+    "studentsubjects":  () => window.EntityStudentSubjects && window.EntityStudentSubjects.open(),
   };
 
   function openStub(title, body) {

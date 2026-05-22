@@ -1,5 +1,5 @@
-/* Chronexa bundle — generated 2026-05-22T03:30:30Z
- *      145 modules concatenated in document order.
+/* Chronexa bundle — generated 2026-05-22T03:35:56Z
+ *      148 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
 /* ─── FILE: js/ui/state.js ─── */
@@ -7316,7 +7316,9 @@ window.Inspector = (function () {
     "preferences":          () => openStub("Account preferences", "No account needed — Chronexa is local-first."),
     "display-settings":     () => openStub("Display settings", "Open the View menu for Density/Theme/Zoom toggles."),
     "print-defaults":       () => openStub("Print defaults", "Use Files → Print preview… to set defaults per-report."),
-    "supervision-criteria": () => window.EntitySupervisions && window.EntitySupervisions.open(),
+    "supervision-criteria": () => window.SupervisionCriteria && window.SupervisionCriteria.open(),
+    "students":         () => window.EntityStudents        && window.EntityStudents.open(),
+    "studentsubjects":  () => window.EntityStudentSubjects && window.EntityStudentSubjects.open(),
   };
 
   function openStub(title, body) {
@@ -7908,6 +7910,395 @@ window.Inspector = (function () {
   window.addEventListener("app:solver-params", open);
   global.SolverParametersDialog = { open, load };
   load();
+})(window);
+
+/* ─── FILE: js/ui/components/supervision_criteria_dialog.js ─── */
+/* Supervision criteria dialog — window.SupervisionCriteria.open()
+ * Audit §12.2 (m_DozoryKriteria). Persists the 14-field subobject onto
+ * school.settings.supervisionCriteria. Lightweight CRUD — the solver
+ * doesn't yet read every field, but the values flow through XML round-trip
+ * so Classic's solver picks them up on re-import, and our solver can grow
+ * into them incrementally.
+ */
+(function (global) {
+  "use strict";
+  const D = window.EntityDialog;
+  if (!D) return;
+  const APP = window.APP = window.APP || {};
+
+  const DEFAULTS = {
+    minPerTeacherPerWeek: 0,
+    maxPerTeacherPerWeek: 5,
+    minPerTeacherPerDay: 0,
+    maxPerTeacherPerDay: 2,
+    avoidLastPeriod: true,
+    avoidFirstPeriod: false,
+    preferBeforeOwnLesson: true,
+    preferAfterOwnLesson: true,
+    allowDuringFreePeriod: true,
+    requireSameBuildingAsNextLesson: false,
+    noSupervisionOnTimeOff: true,
+    countLoadAgainstMaxPerDay: false,
+    countLoadAgainstMaxPerWeek: true,
+    notes: "",
+  };
+  function load() {
+    const s = APP.school = APP.school || {};
+    s.settings = s.settings || {};
+    s.settings.supervisionCriteria = Object.assign({}, DEFAULTS, s.settings.supervisionCriteria || {});
+    return s.settings.supervisionCriteria;
+  }
+
+  function row(label, control, hint) {
+    const wrap = document.createElement("div");
+    wrap.style.cssText = "display:flex;align-items:center;gap:12px;margin:6px 0";
+    const lab = document.createElement("label");
+    lab.style.cssText = "min-width:240px;font-size:12px;color:#475569";
+    lab.textContent = label;
+    wrap.appendChild(lab);
+    wrap.appendChild(control);
+    if (hint) {
+      const h = document.createElement("span");
+      h.style.cssText = "font-size:11px;color:#94a3b8";
+      h.textContent = hint;
+      wrap.appendChild(h);
+    }
+    return wrap;
+  }
+  function num(key, min, max, target) {
+    const i = document.createElement("input");
+    i.type = "number"; i.min = String(min); i.max = String(max); i.step = "1";
+    i.value = target[key];
+    i.style.cssText = "width:80px;padding:4px 6px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px";
+    i.oninput = e => target[key] = parseInt(e.target.value, 10) || 0;
+    return i;
+  }
+  function bool(key, target) {
+    const c = document.createElement("input");
+    c.type = "checkbox";
+    if (target[key]) c.checked = true;
+    c.onchange = e => target[key] = e.target.checked;
+    return c;
+  }
+  function textarea(key, target) {
+    const t = document.createElement("textarea");
+    t.style.cssText = "width:100%;min-height:60px;padding:6px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px";
+    t.value = target[key] || "";
+    t.oninput = e => target[key] = e.target.value;
+    return t;
+  }
+
+  function open() {
+    const target = load();
+    const body = document.createElement("div");
+
+    body.appendChild(row("Min supervisions / teacher / week", num("minPerTeacherPerWeek", 0, 40, target)));
+    body.appendChild(row("Max supervisions / teacher / week", num("maxPerTeacherPerWeek", 0, 40, target)));
+    body.appendChild(row("Min supervisions / teacher / day",  num("minPerTeacherPerDay",  0, 10, target)));
+    body.appendChild(row("Max supervisions / teacher / day",  num("maxPerTeacherPerDay",  0, 10, target)));
+    body.appendChild(row("Avoid last period",                 bool("avoidLastPeriod", target)));
+    body.appendChild(row("Avoid first period",                bool("avoidFirstPeriod", target)));
+    body.appendChild(row("Prefer before own lesson",          bool("preferBeforeOwnLesson", target)));
+    body.appendChild(row("Prefer after own lesson",           bool("preferAfterOwnLesson", target)));
+    body.appendChild(row("Allow during teacher's free period", bool("allowDuringFreePeriod", target)));
+    body.appendChild(row("Require same building as next lesson", bool("requireSameBuildingAsNextLesson", target)));
+    body.appendChild(row("No supervision on teacher time-off", bool("noSupervisionOnTimeOff", target)));
+    body.appendChild(row("Count toward max-per-day cap",      bool("countLoadAgainstMaxPerDay", target)));
+    body.appendChild(row("Count toward max-per-week cap",     bool("countLoadAgainstMaxPerWeek", target)));
+    body.appendChild(row("Notes",                              textarea("notes", target)));
+
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:flex;justify-content:flex-end;gap:8px;margin-top:14px;border-top:1px solid #e2e8f0;padding-top:10px";
+    const cancel = document.createElement("button");
+    cancel.className = "chrx-btn"; cancel.type = "button";
+    cancel.textContent = "Cancel"; cancel.onclick = () => D.closeSheet();
+    const save = document.createElement("button");
+    save.className = "chrx-btn chrx-btn--primary"; save.type = "button";
+    save.textContent = "Save";
+    save.onclick = () => {
+      if (APP.audit && APP.audit.append) {
+        APP.audit.append({ entity: "settings", op: "supervisionCriteria", after: { ...target } });
+      }
+      D.closeSheet();
+      (window._chrxNotify || function () {})("Supervision criteria saved", "info");
+    };
+    actions.appendChild(cancel);
+    actions.appendChild(save);
+    body.appendChild(actions);
+
+    D.openSheet(body, { title: "Supervision criteria" });
+  }
+
+  window.addEventListener("app:supervision-criteria", open);
+  global.SupervisionCriteria = { open, load };
+})(window);
+
+/* ─── FILE: js/ui/entities/students.js ─── */
+/* Students CRUD dialog — window.EntityStudents.open() (audit §15.1).
+ *
+ * Individual student records. Each entry: { id, firstName, lastName, classId,
+ * grade, gender, dob, email, parentEmail, notes }. Stored on
+ * window.APP.school.students. Used by StudentSubjects (elective enrollment)
+ * and by the Grades dialog for per-class roster export.
+ *
+ * Light dialog — primary use case is rostering rather than analytics. Schools
+ * that need full SIS features should pair Chronexa with a dedicated SIS.
+ * Chronexa's job is to give the timetable tool an awareness of who's in
+ * each class so substitution exports and printed class registers come out
+ * with real names.
+ */
+(function (global) {
+  "use strict";
+  const D = window.EntityDialog;
+  if (!D) return;
+
+  function ensure() {
+    const s = window.APP.school = window.APP.school || {};
+    if (!Array.isArray(s.students)) s.students = [];
+    return s.students;
+  }
+  function classMap() { return window.APP.school?._idx?.classById || {}; }
+
+  function rows() {
+    const cMap = classMap();
+    return ensure().map(st => ({
+      id: st.id,
+      name: ((st.firstName || "") + " " + (st.lastName || "")).trim() || "(unnamed)",
+      classLabel: (cMap[st.classId] && (cMap[st.classId].abbr || cMap[st.classId].name)) || "",
+      gender: st.gender || "",
+      email: st.email || "",
+      _ref: st,
+    }));
+  }
+
+  function columns() {
+    return [
+      { key: "name",       label: "Name" },
+      { key: "classLabel", label: "Class" },
+      { key: "gender",     label: "Gender" },
+      { key: "email",      label: "Email" },
+    ];
+  }
+
+  function openEdit(r) {
+    const isNew = !r;
+    const draft = isNew
+      ? { firstName: "", lastName: "", classId: "", gender: "", dob: "",
+          email: "", parentEmail: "", notes: "" }
+      : { firstName: r._ref.firstName || "", lastName: r._ref.lastName || "",
+          classId: r._ref.classId || "", gender: r._ref.gender || "",
+          dob: r._ref.dob || "", email: r._ref.email || "",
+          parentEmail: r._ref.parentEmail || "", notes: r._ref.notes || "" };
+
+    function textIn(key, opts) {
+      const i = D.el("input", { type: (opts && opts.type) || "text",
+        value: draft[key], maxlength: String((opts && opts.max) || 80),
+        placeholder: (opts && opts.placeholder) || "",
+        oninput: e => draft[key] = e.target.value });
+      return i;
+    }
+    function classSelect() {
+      const sel = D.el("select", null, D.el("option", { value: "" }, "(unassigned)"));
+      ((window.APP.school?.classes) || []).forEach(c => {
+        const o = D.el("option", { value: c.id }, c.name);
+        if (c.id === draft.classId) o.selected = true;
+        sel.appendChild(o);
+      });
+      sel.addEventListener("change", e => draft.classId = e.target.value);
+      return sel;
+    }
+    function genderSelect() {
+      const sel = D.el("select");
+      ["", "F", "M", "X"].forEach(g => {
+        const o = D.el("option", { value: g }, g || "—");
+        if (g === draft.gender) o.selected = true;
+        sel.appendChild(o);
+      });
+      sel.addEventListener("change", e => draft.gender = e.target.value);
+      return sel;
+    }
+
+    D.buildEditSheet({
+      title: isNew ? "New student" : "Edit student — " + ((draft.firstName + " " + draft.lastName).trim() || ""),
+      fields: [
+        { label: "First name",   control: textIn("firstName") },
+        { label: "Last name",    control: textIn("lastName") },
+        { label: "Class",        control: classSelect() },
+        { label: "Gender",       control: genderSelect() },
+        { label: "Date of birth",control: textIn("dob", { type: "date" }) },
+        { label: "Email",        control: textIn("email", { type: "email", max: 120 }) },
+        { label: "Parent email", control: textIn("parentEmail", { type: "email", max: 120 }) },
+        { label: "Notes",        control: textIn("notes", { max: 240 }) },
+      ],
+      onSave: () => {
+        const all = ensure();
+        if (!isNew) {
+          const st = r._ref;
+          const before = { ...st };
+          Object.assign(st, draft);
+          window.APP.audit.append({ entity: "students", op: "update", before, after: { ...st } });
+        } else {
+          const ns = Object.assign({ id: D.uid("st") }, draft);
+          all.push(ns);
+          window.APP.audit.append({ entity: "students", op: "add", after: { ...ns } });
+        }
+        D.closeSheet();
+        D.refresh(rows());
+        return true;
+      },
+      siblingRows: isNew ? null : rows(),
+      currentRowId: isNew ? null : r.id,
+      onNavigate: openEdit,
+    });
+  }
+
+  function open() {
+    D.open({
+      entity: "students", title: "Students",
+      columns: columns(), rows: rows(),
+      extras: [],
+      onRowOpen: openEdit,
+      onAdd: () => openEdit(null),
+      onDelete: (r) => {
+        const list = ensure();
+        const i = list.findIndex(x => x.id === r.id);
+        if (i !== -1) {
+          const removed = list[i];
+          list.splice(i, 1);
+          window.APP.audit.append({ entity: "students", op: "remove", before: { ...removed } });
+        }
+        D.refresh(rows());
+      },
+    });
+  }
+
+  global.EntityStudents = { open };
+})(window);
+
+/* ─── FILE: js/ui/entities/studentsubjects.js ─── */
+/* StudentSubjects (elective enrollment) — window.EntityStudentSubjects.open()
+ * Audit §15.2. Maps student → subjects they take when those subjects aren't
+ * automatic from their class (i.e. electives, seminar groups, language
+ * choices). Stored on school.studentSubjects as
+ * { id, studentId, subjectId, group?, term? }.
+ *
+ * The dialog is a row-per-enrollment list. For schools without electives
+ * this entity stays empty — the bundled class lesson assignment already
+ * covers the common case.
+ */
+(function (global) {
+  "use strict";
+  const D = window.EntityDialog;
+  if (!D) return;
+
+  function ensure() {
+    const s = window.APP.school = window.APP.school || {};
+    if (!Array.isArray(s.studentSubjects)) s.studentSubjects = [];
+    return s.studentSubjects;
+  }
+  function studentMap() {
+    const m = {};
+    ((window.APP.school?.students) || []).forEach(st => m[st.id] = st);
+    return m;
+  }
+  function subjectMap() {
+    return window.APP.school?._idx?.subjectById || {};
+  }
+
+  function rows() {
+    const stM = studentMap();
+    const sbM = subjectMap();
+    return ensure().map(e => ({
+      id: e.id,
+      student: stM[e.studentId]
+        ? ((stM[e.studentId].firstName || "") + " " + (stM[e.studentId].lastName || "")).trim()
+        : e.studentId,
+      subject: sbM[e.subjectId]?.name || e.subjectId,
+      group: e.group || "",
+      term: e.term || "",
+      _ref: e,
+    }));
+  }
+
+  function columns() {
+    return [
+      { key: "student", label: "Student" },
+      { key: "subject", label: "Subject" },
+      { key: "group",   label: "Group" },
+      { key: "term",    label: "Term" },
+    ];
+  }
+
+  function openEdit(r) {
+    const isNew = !r;
+    const draft = isNew
+      ? { studentId: "", subjectId: "", group: "", term: "" }
+      : { studentId: r._ref.studentId, subjectId: r._ref.subjectId,
+          group: r._ref.group || "", term: r._ref.term || "" };
+
+    function selectFrom(list, key, label) {
+      const sel = D.el("select", null, D.el("option", { value: "" }, "—"));
+      (list || []).forEach(o => {
+        const opt = D.el("option", { value: o.id }, label(o));
+        if (o.id === draft[key]) opt.selected = true;
+        sel.appendChild(opt);
+      });
+      sel.addEventListener("change", e => draft[key] = e.target.value);
+      return sel;
+    }
+
+    D.buildEditSheet({
+      title: isNew ? "New enrollment" : "Edit enrollment",
+      fields: [
+        { label: "Student", control: selectFrom(window.APP.school?.students || [], "studentId",
+            o => ((o.firstName || "") + " " + (o.lastName || "")).trim()) },
+        { label: "Subject", control: selectFrom(window.APP.school?.subjects || [], "subjectId",
+            o => o.name + (o.abbr ? ` (${o.abbr})` : "")) },
+        { label: "Group",   control: D.el("input", { type: "text", value: draft.group,
+            placeholder: "(optional, e.g. Boys / Girls)",
+            oninput: e => draft.group = e.target.value }) },
+        { label: "Term",    control: selectFrom(window.APP.school?.terms || [], "term",
+            o => o.name) },
+      ],
+      onSave: () => {
+        const all = ensure();
+        if (!draft.studentId || !draft.subjectId) return false;
+        if (!isNew) {
+          Object.assign(r._ref, draft);
+          window.APP.audit.append({ entity: "studentSubjects", op: "update", after: { ...r._ref } });
+        } else {
+          const ne = Object.assign({ id: D.uid("ss") }, draft);
+          all.push(ne);
+          window.APP.audit.append({ entity: "studentSubjects", op: "add", after: { ...ne } });
+        }
+        D.closeSheet();
+        D.refresh(rows());
+        return true;
+      },
+    });
+  }
+
+  function open() {
+    D.open({
+      entity: "studentSubjects", title: "Student elective enrollment",
+      columns: columns(), rows: rows(),
+      extras: [],
+      onRowOpen: openEdit,
+      onAdd: () => openEdit(null),
+      onDelete: (r) => {
+        const list = ensure();
+        const i = list.findIndex(x => x.id === r.id);
+        if (i !== -1) {
+          const removed = list[i];
+          list.splice(i, 1);
+          window.APP.audit.append({ entity: "studentSubjects", op: "remove", before: { ...removed } });
+        }
+        D.refresh(rows());
+      },
+    });
+  }
+
+  global.EntityStudentSubjects = { open };
 })(window);
 
 /* ─── FILE: js/ui/components/school_hub.js ─── */
@@ -15818,6 +16209,12 @@ window.StartScreen = (function () {
           run: () => fire("app:open-entity", { kind: "supervisions" }) },
         { icon: "🎓", label: "Grades…",          disabled: !has(),
           run: () => fire("app:open-entity", { kind: "grades" }) },
+        { icon: "👤", label: "Students…",        disabled: !has(),
+          run: () => fire("app:open-entity", { kind: "students" }) },
+        { icon: "📑", label: "Elective enrollment…", disabled: !has(),
+          run: () => fire("app:open-entity", { kind: "studentsubjects" }) },
+        { icon: "🛡", label: "Supervision criteria…", disabled: !has(),
+          run: () => fire("app:supervision-criteria") },
         { sep: true },
         { section: "School definitions" },
         { icon: "🔔", label: "Bell times / Periods…", disabled: !has(),
