@@ -536,3 +536,146 @@ input:focus,select:focus,textarea:focus{
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{transition:none !important; animation:none !important}
 }
+
+/* ───── Legacy step-tab strip — editorialized ─────────────────
+   The "1. Start | 🪄 Editor | School Info | Class Grid | Teacher Grid |
+   Room Grid" navigation lives inside chrx-main and still ships with
+   Tailwind utilities (bg-blue-700, bg-emerald-600, bg-slate-200…) baked
+   into its className from legacy code. Override here so it matches the
+   editorial paper aesthetic. The active state is detected by the
+   bg-blue-700 / bg-emerald-600 substring in the class attribute (which
+   is how the legacy JS toggles state). */
+.chrx-shell .chrx-main > nav:has(button.step-btn){
+  background:rgba(246,241,230,.82) !important;
+  backdrop-filter:blur(20px) saturate(180%);
+  -webkit-backdrop-filter:blur(20px) saturate(180%);
+  border-bottom:1px solid var(--line) !important;
+  box-shadow:none !important;
+}
+.chrx-shell .chrx-main > nav:has(button.step-btn) > div{
+  max-width:none !important;
+  padding:10px 22px !important;
+  gap:6px !important;
+}
+.chrx-shell button.step-btn{
+  background:transparent !important;
+  border:1px solid transparent !important;
+  color:var(--ink-2) !important;
+  font-family:var(--chrx-font-sans) !important;
+  font-weight:500 !important;
+  font-size:13px !important;
+  letter-spacing:-.005em !important;
+  padding:6px 14px !important;
+  border-radius:8px !important;
+  transition:background 120ms ease, color 120ms ease, border-color 120ms ease;
+  box-shadow:none !important;
+}
+.chrx-shell button.step-btn:hover:not(:disabled){
+  background:var(--paper-2) !important;
+  border-color:var(--line) !important;
+  color:var(--ink) !important;
+}
+.chrx-shell button.step-btn[class*="bg-blue-700"],
+.chrx-shell button.step-btn[class*="bg-emerald-600"]{
+  background:var(--teal) !important;
+  color:var(--paper) !important;
+  border-color:var(--teal) !important;
+  font-family:var(--chrx-font-display) !important;
+  font-style:italic;
+  font-weight:500 !important;
+}
+.chrx-shell button.step-btn[class*="bg-blue-700"]:hover:not(:disabled),
+.chrx-shell button.step-btn[class*="bg-emerald-600"]:hover:not(:disabled){
+  background:var(--teal-2) !important;
+  border-color:var(--teal-2) !important;
+}
+.chrx-shell button.step-btn:disabled{
+  color:var(--ink-3) !important;
+  opacity:.72; cursor:not-allowed;
+}
+
+/* ───── Editor (step-6) heading + toolbar — editorialized ─────
+   The "🪄 Timetable Editor" heading row, the instruction paragraph, and
+   the 4 toolbar buttons (Lesson grid / Compact / Classic skin / By Class)
+   all ship with Tailwind utilities. Override to match the editorial
+   paper aesthetic. The whole row is hidden in fullscreen mode (.is-fullscreen) — these rules only matter in non-fullscreen views. */
+.chrx-shell #step-6 > div:first-child{
+  padding:14px 4px 12px !important;
+  margin-bottom:8px !important;
+}
+.chrx-shell #step-6 h2.text-blue-900,
+.chrx-shell #step-6 h2{
+  font-family:var(--chrx-font-display) !important;
+  font-weight:500 !important;
+  font-size:22px !important;
+  color:var(--ink) !important;
+  letter-spacing:-.015em !important;
+  line-height:1.15 !important;
+  margin:0 0 2px 0 !important;
+}
+.chrx-shell #step-6 > div:first-child p.text-slate-600,
+.chrx-shell #step-6 > div:first-child p{
+  color:var(--ink-3) !important;
+  font-family:var(--chrx-font-sans) !important;
+  font-size:13px !important;
+  letter-spacing:-.005em !important;
+  margin:0 !important;
+}
+.chrx-shell #editor-lesson-grid,
+.chrx-shell #editor-density,
+.chrx-shell #editor-toggle-skin,
+.chrx-shell #editor-perspective{
+  background:transparent !important;
+  border:1px solid var(--line) !important;
+  color:var(--ink-2) !important;
+  font-family:var(--chrx-font-sans) !important;
+  font-weight:500 !important;
+  font-size:12px !important;
+  letter-spacing:-.005em !important;
+  padding:6px 12px !important;
+  border-radius:6px !important;
+  box-shadow:none !important;
+  transition:background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+.chrx-shell #editor-lesson-grid:hover,
+.chrx-shell #editor-density:hover,
+.chrx-shell #editor-toggle-skin:hover,
+.chrx-shell #editor-perspective:hover{
+  background:var(--paper-2) !important;
+  border-color:var(--ink-3) !important;
+  color:var(--ink) !important;
+}
+/* The "Lesson grid" button has a softer-than-default treatment in the
+   legacy classes (bg-blue-50). Give it a subtle teal accent here so it
+   reads as the primary action of the toolbar row. */
+.chrx-shell #editor-lesson-grid{
+  background:var(--teal-soft) !important;
+  border-color:rgba(13,79,84,.18) !important;
+  color:var(--teal) !important;
+}
+.chrx-shell #editor-lesson-grid:hover{
+  background:rgba(13,79,84,.15) !important;
+  border-color:var(--teal) !important;
+}
+
+/* Also restyle the "Pending cards" heading + container in the editor
+   (was bg-slate-50 with a slate-700 heading). */
+.chrx-shell #step-6 h3{
+  font-family:var(--chrx-font-sans) !important;
+  color:var(--ink-2) !important;
+  font-size:12px !important;
+  text-transform:uppercase;
+  letter-spacing:.06em !important;
+  font-weight:600 !important;
+}
+.chrx-shell #pending-strip-root{
+  background:var(--paper-2) !important;
+  border:1px solid var(--line) !important;
+  border-radius:var(--chrx-radius-md) !important;
+}
+.chrx-shell #editor-root{
+  background:var(--paper) !important;
+  border:1px solid var(--line) !important;
+  border-radius:var(--chrx-radius-md) !important;
+  box-shadow:var(--chrx-shadow-sm, 0 1px 2px rgba(26,23,20,.04)) !important;
+}
