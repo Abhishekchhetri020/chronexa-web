@@ -36,6 +36,7 @@ js/ui/entities/holidays.js
 js/ui/entity_router.js
 js/ui/components/statistics_panel.js
 js/ui/components/school_settings_dialog.js
+js/ui/components/solver_parameters_dialog.js
 js/ui/components/school_hub.js
 js/ui/components/ai_actions.js
 js/ui/io/export_html.js
