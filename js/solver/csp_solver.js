@@ -2511,7 +2511,9 @@ function largeNeighborhoodSearch(model, state, deadlineMs, ctx) {
   let bestRoom     = new Int32Array(state.lessonAssignedRoom);
 
   // Strategies cycle so we don't get stuck on one perturbation pattern.
-  const strategies = ["random", "byClass", "byDay", "bySubject"];
+  // "twoPeriods" is the Kempe-chain-inspired pair-swap perturbation
+  // ported from the CSP-timetabling literature.
+  const strategies = ["random", "byClass", "byDay", "bySubject", "twoPeriods"];
   let strategyIdx = 0;
   let iterations = 0;
   let accepted   = 0;
@@ -2551,6 +2553,8 @@ function largeNeighborhoodSearch(model, state, deadlineMs, ctx) {
       rngState = evictByDay(model, state, K, rngState, rand);
     } else if (strategy === "bySubject") {
       rngState = evictBySubject(model, state, K, rngState, rand);
+    } else if (strategy === "twoPeriods") {
+      rngState = evictByTwoPeriods(model, state, K, rngState, rand);
     }
 
     // CRUCIAL: sync the best snapshot to the perturbed live state.
@@ -2717,6 +2721,41 @@ function evictByDay(model, state, K, rngState, rand) {
     if (model.lessonFixedSlot[i] >= 0) continue;
     const slot = state.lessonAssignedSlot[i];
     if (model.slotDay[slot] !== targetDay) continue;
+    const room = state.lessonAssignedRoom[i];
+    removeSingle(model, state, i, slot, room);
+    if (model.lessonLabDouble[i] === 1) removeSingle(model, state, i, slot + 1, room);
+    state.lessonAssigned[i] = 0;
+    state.lessonAssignedSlot[i] = -1;
+    state.lessonAssignedRoom[i] = -1;
+    state.assignedLessonCount -= 1;
+    evicted += 1;
+  }
+  return rngState;
+}
+
+// Kempe-chain-inspired eviction (CSP-literature port). Pick TWO random
+// periods within the same day and evict every card assigned to either
+// of them. The subsequent repair phase then re-packs the freed slots
+// with whatever order/room combination scores best — equivalent in spirit
+// to a Kempe-chain pair swap but works inside the existing
+// destroy-then-repair LNS scaffold without needing a separate graph
+// builder. Strong at escaping local optima where single-day or
+// single-class evictions don't break a tight overlap pattern.
+function evictByTwoPeriods(model, state, K, rngState, rand) {
+  const days = model.days, ppd = model.periodsPerDay;
+  if (days === 0 || ppd < 2) return rngState;
+  const d  = Math.floor(rand() * days);
+  let p1 = Math.floor(rand() * ppd);
+  let p2 = Math.floor(rand() * ppd);
+  if (p1 === p2) p2 = (p1 + 1) % ppd;
+  let evicted = 0;
+  for (let i = 0; i < model.lessonCount && evicted < K; i++) {
+    if (!state.lessonAssigned[i]) continue;
+    if (model.lessonFixedSlot[i] >= 0) continue;
+    const slot = state.lessonAssignedSlot[i];
+    if (model.slotDay[slot] !== d) continue;
+    const p = model.slotPeriod[slot];
+    if (p !== p1 && p !== p2) continue;
     const room = state.lessonAssignedRoom[i];
     removeSingle(model, state, i, slot, room);
     if (model.lessonLabDouble[i] === 1) removeSingle(model, state, i, slot + 1, room);
