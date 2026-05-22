@@ -172,6 +172,7 @@ function buildModel(school) {
         fixedDay: l.fixedDay == null ? null : l.fixedDay | 0,
         fixedPeriod: l.fixedPeriod == null ? null : l.fixedPeriod | 0,
         isLabDouble: !!l.isLabDouble,
+        tags: Array.isArray(l.tags) ? l.tags.slice() : [],
       });
     }
   }
@@ -395,6 +396,34 @@ function buildModel(school) {
     classManualnyBlok[c] = parseInt(cons.m_nManualnyBlok, 10) || 0;
   }
 
+
+  // FET-port — classroom → building index map for the teacherBuilding-
+  // ChangesPenalty soft scorer. school.buildings[] is a list of named
+  // buildings; classrooms reference one via classroom.buildingId.
+  // Rooms without a building map to -1 (treated as same-as-previous,
+  // never a "change").
+  const buildings = Array.isArray(school.buildings) ? school.buildings : [];
+  const buildingIdxById = Object.create(null);
+  for (let b = 0; b < buildings.length; b++) buildingIdxById[buildings[b].id] = b;
+  const classroomBuilding = new Int8Array(roomIds.length).fill(-1);
+  for (let r = 0; r < roomIds.length; r++) {
+    const rm = school.classrooms[r];
+    const bid = rm && (rm.buildingId || rm.buildingid);
+    if (bid && buildingIdxById[bid] != null) classroomBuilding[r] = buildingIdxById[bid];
+  }
+  const buildingCount = buildings.length;
+  const sset = (school.settings && typeof school.settings.maxBuildingChangesPerDay === "number")
+    ? school.settings.maxBuildingChangesPerDay : -1;
+  const maxBuildingChangesPerDay = sset | 0;
+
+  // FET-port — lesson activity tags + per-tag daily caps. Each lesson
+  // can carry lesson.tags = ["PE", "LAB", ...]; the school carries
+  // school.settings.tagDailyCaps = [{ tag, scope, max }]. Soft penalty
+  // when a teacher or class exceeds the cap on any given day.
+  const lessonTags = new Array(lessonCount);
+  for (let i = 0; i < lessonCount; i++) lessonTags[i] = expanded[i].tags || [];
+  const tagDailyCaps = Array.isArray(school.settings && school.settings.tagDailyCaps)
+    ? school.settings.tagDailyCaps.slice() : [];
 
   // Per-class room type → list of candidate room indices.
   const roomTypeBuckets = new Map();
@@ -777,6 +806,9 @@ function buildModel(school) {
     classDruheHodiny,
     classKoncitNaraz,
     classManualnyBlok,
+    classroomBuilding, buildingCount,
+    maxBuildingChangesPerDay,
+    lessonTags, tagDailyCaps,
     subjectDailyLimit,
     classSubjectTarget,
     classTeacherPosMask,
@@ -1399,7 +1431,111 @@ function softScore(model, state) {
   s += classLunchWindowPenalty(model, state) * (w[1] || 1);
   s += classTeachingWindowPenalty(model, state) * (w[1] || 1);
   s += classBlockPreferencePenalty(model, state) * (w[1] || 1);
+  s += teacherBuildingChangesPenalty(model, state) * (w[3] || 1);
+  s += lessonTagDailyCapPenalty(model, state) * (w[2] || 1);
   return s;
+}
+
+// FET port — "Max building changes per day for a teacher" + "Min gaps
+// between building changes for a teacher". Penalty grows linearly with
+// the number of building transitions a teacher makes per day. A teacher
+// with 5 lessons in building A and 1 in building B has 1 change (still
+// painful if A and B are far). school.settings.maxBuildingChangesPerDay
+// caps the soft tolerance — changes beyond the cap are penalised heavier.
+// Reuses the teacher-room-stability soft weight (w[3]).
+function teacherBuildingChangesPenalty(model, state) {
+  const roomBuilding = model.classroomBuilding;
+  if (!roomBuilding) return 0;
+  const cap = model.maxBuildingChangesPerDay; // -1 = unlimited
+  let penalty = 0;
+  const tc = model.teacherCount, days = model.days, ppd = model.periodsPerDay;
+  // Bucket: teacher × day × period → buildingIdx (-1 = free)
+  for (let t = 0; t < tc; t++) {
+    for (let d = 0; d < days; d++) {
+      // Walk this teacher's lessons on day d in period order, count
+      // building transitions.
+      const seq = [];
+      for (let p = 0; p < ppd; p++) {
+        // Find any assigned lesson with this teacher at (d, p)
+        // — O(lessons) inner loop; fine for editor sizes.
+        let bld = -1;
+        for (let i = 0; i < model.lessonCount; i++) {
+          if (!state.lessonAssigned[i]) continue;
+          const slot = state.lessonAssignedSlot[i];
+          if (model.slotDay[slot] !== d || model.slotPeriod[slot] !== p) continue;
+          const tStart = model.lessonTeacherStart[i];
+          const tCount = model.lessonTeacherCount[i];
+          let has = false;
+          for (let k = 0; k < tCount; k++) {
+            if (model.lessonTeacherFlat[tStart + k] === t) { has = true; break; }
+          }
+          if (!has) continue;
+          const roomIdx = state.lessonAssignedRoom[i];
+          if (roomIdx >= 0) { bld = roomBuilding[roomIdx]; break; }
+        }
+        seq.push(bld);
+      }
+      // Count transitions between distinct non-(-1) buildings
+      let changes = 0, prev = -1;
+      for (const b of seq) {
+        if (b < 0) continue;
+        if (prev >= 0 && b !== prev) changes++;
+        prev = b;
+      }
+      if (changes > 0) {
+        penalty += changes;
+        if (cap >= 0 && changes > cap) penalty += (changes - cap) * 3;
+      }
+    }
+  }
+  return penalty;
+}
+
+// FET port — "An activity tag has max periods per day". Adds support for
+// lesson.tags[] (string list) + school.settings.tagDailyCaps[{tag,
+// scope: "teacher"|"class", max: N}]. Soft-penalises any teacher (or
+// class) that has more than max lessons with that tag in a single day.
+// Lets schools express "max 2 PE lessons per class per day" or "max 1
+// LAB session per teacher per day" without enumerating every lesson.
+function lessonTagDailyCapPenalty(model, state) {
+  const caps = model.tagDailyCaps;
+  if (!caps || !caps.length) return 0;
+  const tags = model.lessonTags;
+  if (!tags) return 0;
+  let penalty = 0;
+  const days = model.days;
+  for (const cap of caps) {
+    const counts = {}; // "scope_entityIdx_day" → count
+    for (let i = 0; i < model.lessonCount; i++) {
+      if (!state.lessonAssigned[i]) continue;
+      const lt = tags[i];
+      if (!lt || !lt.includes(cap.tag)) continue;
+      const slot = state.lessonAssignedSlot[i];
+      const d = model.slotDay[slot];
+      if (cap.scope === "teacher") {
+        const tStart = model.lessonTeacherStart[i];
+        const tCount = model.lessonTeacherCount[i];
+        for (let k = 0; k < tCount; k++) {
+          const t = model.lessonTeacherFlat[tStart + k];
+          const key = "t_" + t + "_" + d;
+          counts[key] = (counts[key] || 0) + 1;
+        }
+      } else {
+        const cStart = model.lessonClassStart[i];
+        const cCount = model.lessonClassCount[i];
+        for (let k = 0; k < cCount; k++) {
+          const c = model.lessonClassFlat[cStart + k];
+          const key = "c_" + c + "_" + d;
+          counts[key] = (counts[key] || 0) + 1;
+        }
+      }
+    }
+    for (const k of Object.keys(counts)) {
+      const over = counts[k] - cap.max;
+      if (over > 0) penalty += over * (cap.scope === "teacher" ? 2 : 1);
+    }
+  }
+  return penalty;
 }
 
 // Audit §3.6 + §3.7 — combined class-block preferences scorer covering

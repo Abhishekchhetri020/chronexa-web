@@ -8,6 +8,14 @@
     if (!idx || !ids) return "";
     return ids.map(id => idx[id]?.name).filter(Boolean).join(", ");
   }
+  // Parse comma- / whitespace-separated tag string into a clean string[].
+  // Empty input → undefined so the field stays absent on serialised lessons
+  // when the user clears it.
+  function parseTags(s) {
+    if (s == null) return undefined;
+    const arr = String(s).split(/[,\s]+/).map(t => t.trim()).filter(Boolean);
+    return arr.length ? arr : undefined;
+  }
 
   // Display string for the lesson's room column. Per-card overrides win,
   // then the expansion mode label, then the single preferredRoomId.
@@ -157,6 +165,7 @@
           weeksDefId: defWk,
           termsDefId: defTerm,
           maxstudents: "",
+          tags: "",
           fixedDay:"", fixedPeriod:"" }
       : { subjectId:r._ref.subjectId, classIds:r._ref.classIds.slice(),
           teacherIds:r._ref.teacherIds.slice(),
@@ -173,6 +182,7 @@
           weeksDefId: r._ref.weeksDefId || defWk,
           termsDefId: r._ref.termsDefId || defTerm,
           maxstudents: r._ref.maxstudents != null ? r._ref.maxstudents : "",
+          tags: Array.isArray(r._ref.tags) ? r._ref.tags.join(", ") : (r._ref.tags || ""),
           fixedDay: r._ref.fixedDay != null ? r._ref.fixedDay : "",
           fixedPeriod: r._ref.fixedPeriod != null ? r._ref.fixedPeriod : "" };
 
@@ -227,6 +237,12 @@
     const fMaxStudents = D.el("input", { type:"number", min:"0", max:"500",
       placeholder:"unlimited", value:draft.maxstudents,
       oninput:(e)=>draft.maxstudents = e.target.value });
+    // FET-port — activity tags. Comma-separated; persists as string[]
+    // on lesson.tags. Solver reads them for per-tag daily-cap scorers
+    // declared on school.settings.tagDailyCaps.
+    const fTags = D.el("input", { type:"text", value:draft.tags,
+      placeholder:"e.g. LAB, PE, HEAVY",
+      oninput:(e)=>draft.tags = e.target.value });
     const fDay = D.el("input", { type:"number", min:"0", max:"5",
       placeholder:"any", value:draft.fixedDay,
       oninput:(e)=>draft.fixedDay = e.target.value });
@@ -396,6 +412,7 @@
         { label:"Week pattern",     control:fWeeksDef },
         { label:"Term",             control:fTermsDef },
         { label:"Max students",     control:fMaxStudents },
+        { label:"Activity tags",    control:fTags },
         { label:"Fixed day (0–5)",  control:fDay },
         { label:"Fixed period",     control:fPeriod },
       ],
@@ -441,6 +458,7 @@
           l.fixedDay = draft.fixedDay !== "" ? parseInt(draft.fixedDay, 10) : undefined;
           l.fixedPeriod = draft.fixedPeriod !== "" ? parseInt(draft.fixedPeriod, 10) : undefined;
           l.maxstudents = draft.maxstudents !== "" ? parseInt(draft.maxstudents, 10) : undefined;
+          l.tags = parseTags(draft.tags);
           window.APP.audit.append({ entity:"lessons", op:"update", before, after:{...l} });
         } else {
           const nl = { id:D.uid("l"),
@@ -459,7 +477,8 @@
             termsDefId: draft.termsDefId || undefined,
             fixedDay: draft.fixedDay !== "" ? parseInt(draft.fixedDay, 10) : undefined,
             fixedPeriod: draft.fixedPeriod !== "" ? parseInt(draft.fixedPeriod, 10) : undefined,
-            maxstudents: draft.maxstudents !== "" ? parseInt(draft.maxstudents, 10) : undefined };
+            maxstudents: draft.maxstudents !== "" ? parseInt(draft.maxstudents, 10) : undefined,
+            tags: parseTags(draft.tags) };
           all.push(nl);
           if (s._idx) s._idx.lessonById[nl.id] = nl;
           window.APP.audit.append({ entity:"lessons", op:"add", after:{...nl} });

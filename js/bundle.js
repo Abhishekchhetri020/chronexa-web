@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-22T03:48:34Z
+/* Chronexa bundle — generated 2026-05-22T05:07:53Z
  *      150 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -3382,10 +3382,11 @@ window.Inspector = (function () {
   function openEdit(r) {
     const isNew = !r;
     const draft = isNew
-      ? { name:"", short:"", building:"", capacity:"", color:"",
+      ? { name:"", short:"", building:"", buildingId:"", capacity:"", color:"",
           needsSupervision:false, isShared:false,
           allowedSubjectIds:[], bell:"" }
       : { name:r.name, short:r.short, building:r.building,
+          buildingId: r._ref.buildingId || r._ref.buildingid || "",
           capacity:r.capacity, color:r.color,
           needsSupervision: !!r._ref.needsSupervision,
           isShared: !!r._ref.isShared,
@@ -3398,6 +3399,17 @@ window.Inspector = (function () {
       oninput:(e)=>draft.short = e.target.value });
     const fBuilding = D.el("input", { type:"text", value:draft.building,
       oninput:(e)=>draft.building = e.target.value });
+    // FET-port — pick a Building entity (so the solver's
+    // teacherBuildingChangesPenalty has structured data). The free-text
+    // `building` above is kept for backward-compatibility with older
+    // schools that haven't migrated.
+    const fBuildingId = D.el("select", null, D.el("option", { value:"" }, "(no building)"));
+    ((window.APP.school?.buildings) || []).forEach(b => {
+      const opt = D.el("option", { value:b.id }, b.name || b.short || b.id);
+      if (b.id === draft.buildingId) opt.selected = true;
+      fBuildingId.appendChild(opt);
+    });
+    fBuildingId.addEventListener("change", e => draft.buildingId = e.target.value);
     const fCap = D.el("input", { type:"number", min:"0", value:draft.capacity,
       oninput:(e)=>draft.capacity = e.target.value });
     const fColor = D.buildSwatchPicker(draft.color, v => draft.color = v);
@@ -3429,6 +3441,7 @@ window.Inspector = (function () {
         rm.name = draft.name.trim();
         rm.abbr = draft.short.trim() || undefined;
         rm.building = draft.building.trim() || undefined;
+        rm.buildingId = draft.buildingId || undefined;
         rm.capacity = draft.capacity ? parseInt(draft.capacity, 10) : undefined;
         rm.color = draft.color || undefined;
         rm.needsSupervision = !!draft.needsSupervision;
@@ -3440,6 +3453,7 @@ window.Inspector = (function () {
         const nr = { id:D.uid("r"), name:draft.name.trim(),
           abbr:draft.short.trim() || undefined,
           building:draft.building.trim() || undefined,
+          buildingId: draft.buildingId || undefined,
           capacity:draft.capacity ? parseInt(draft.capacity, 10) : undefined,
           color:draft.color || undefined,
           needsSupervision: !!draft.needsSupervision,
@@ -3460,7 +3474,8 @@ window.Inspector = (function () {
       fields:[
         { label:"Name", control:fName },
         { label:"Short", control:fShort },
-        { label:"Building", control:fBuilding },
+        { label:"Building (text)", control:fBuilding },
+        { label:"Building (entity)", control:fBuildingId },
         { label:"Capacity", control:fCap },
         { label:"Color", control:fColor },
         { label:"Needs supervision", control:fSup },
@@ -3943,6 +3958,14 @@ window.Inspector = (function () {
     if (!idx || !ids) return "";
     return ids.map(id => idx[id]?.name).filter(Boolean).join(", ");
   }
+  // Parse comma- / whitespace-separated tag string into a clean string[].
+  // Empty input → undefined so the field stays absent on serialised lessons
+  // when the user clears it.
+  function parseTags(s) {
+    if (s == null) return undefined;
+    const arr = String(s).split(/[,\s]+/).map(t => t.trim()).filter(Boolean);
+    return arr.length ? arr : undefined;
+  }
 
   // Display string for the lesson's room column. Per-card overrides win,
   // then the expansion mode label, then the single preferredRoomId.
@@ -4092,6 +4115,7 @@ window.Inspector = (function () {
           weeksDefId: defWk,
           termsDefId: defTerm,
           maxstudents: "",
+          tags: "",
           fixedDay:"", fixedPeriod:"" }
       : { subjectId:r._ref.subjectId, classIds:r._ref.classIds.slice(),
           teacherIds:r._ref.teacherIds.slice(),
@@ -4108,6 +4132,7 @@ window.Inspector = (function () {
           weeksDefId: r._ref.weeksDefId || defWk,
           termsDefId: r._ref.termsDefId || defTerm,
           maxstudents: r._ref.maxstudents != null ? r._ref.maxstudents : "",
+          tags: Array.isArray(r._ref.tags) ? r._ref.tags.join(", ") : (r._ref.tags || ""),
           fixedDay: r._ref.fixedDay != null ? r._ref.fixedDay : "",
           fixedPeriod: r._ref.fixedPeriod != null ? r._ref.fixedPeriod : "" };
 
@@ -4162,6 +4187,12 @@ window.Inspector = (function () {
     const fMaxStudents = D.el("input", { type:"number", min:"0", max:"500",
       placeholder:"unlimited", value:draft.maxstudents,
       oninput:(e)=>draft.maxstudents = e.target.value });
+    // FET-port — activity tags. Comma-separated; persists as string[]
+    // on lesson.tags. Solver reads them for per-tag daily-cap scorers
+    // declared on school.settings.tagDailyCaps.
+    const fTags = D.el("input", { type:"text", value:draft.tags,
+      placeholder:"e.g. LAB, PE, HEAVY",
+      oninput:(e)=>draft.tags = e.target.value });
     const fDay = D.el("input", { type:"number", min:"0", max:"5",
       placeholder:"any", value:draft.fixedDay,
       oninput:(e)=>draft.fixedDay = e.target.value });
@@ -4331,6 +4362,7 @@ window.Inspector = (function () {
         { label:"Week pattern",     control:fWeeksDef },
         { label:"Term",             control:fTermsDef },
         { label:"Max students",     control:fMaxStudents },
+        { label:"Activity tags",    control:fTags },
         { label:"Fixed day (0–5)",  control:fDay },
         { label:"Fixed period",     control:fPeriod },
       ],
@@ -4376,6 +4408,7 @@ window.Inspector = (function () {
           l.fixedDay = draft.fixedDay !== "" ? parseInt(draft.fixedDay, 10) : undefined;
           l.fixedPeriod = draft.fixedPeriod !== "" ? parseInt(draft.fixedPeriod, 10) : undefined;
           l.maxstudents = draft.maxstudents !== "" ? parseInt(draft.maxstudents, 10) : undefined;
+          l.tags = parseTags(draft.tags);
           window.APP.audit.append({ entity:"lessons", op:"update", before, after:{...l} });
         } else {
           const nl = { id:D.uid("l"),
@@ -4394,7 +4427,8 @@ window.Inspector = (function () {
             termsDefId: draft.termsDefId || undefined,
             fixedDay: draft.fixedDay !== "" ? parseInt(draft.fixedDay, 10) : undefined,
             fixedPeriod: draft.fixedPeriod !== "" ? parseInt(draft.fixedPeriod, 10) : undefined,
-            maxstudents: draft.maxstudents !== "" ? parseInt(draft.maxstudents, 10) : undefined };
+            maxstudents: draft.maxstudents !== "" ? parseInt(draft.maxstudents, 10) : undefined,
+            tags: parseTags(draft.tags) };
           all.push(nl);
           if (s._idx) s._idx.lessonById[nl.id] = nl;
           window.APP.audit.append({ entity:"lessons", op:"add", after:{...nl} });

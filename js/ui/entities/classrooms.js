@@ -35,10 +35,11 @@
   function openEdit(r) {
     const isNew = !r;
     const draft = isNew
-      ? { name:"", short:"", building:"", capacity:"", color:"",
+      ? { name:"", short:"", building:"", buildingId:"", capacity:"", color:"",
           needsSupervision:false, isShared:false,
           allowedSubjectIds:[], bell:"" }
       : { name:r.name, short:r.short, building:r.building,
+          buildingId: r._ref.buildingId || r._ref.buildingid || "",
           capacity:r.capacity, color:r.color,
           needsSupervision: !!r._ref.needsSupervision,
           isShared: !!r._ref.isShared,
@@ -51,6 +52,17 @@
       oninput:(e)=>draft.short = e.target.value });
     const fBuilding = D.el("input", { type:"text", value:draft.building,
       oninput:(e)=>draft.building = e.target.value });
+    // FET-port — pick a Building entity (so the solver's
+    // teacherBuildingChangesPenalty has structured data). The free-text
+    // `building` above is kept for backward-compatibility with older
+    // schools that haven't migrated.
+    const fBuildingId = D.el("select", null, D.el("option", { value:"" }, "(no building)"));
+    ((window.APP.school?.buildings) || []).forEach(b => {
+      const opt = D.el("option", { value:b.id }, b.name || b.short || b.id);
+      if (b.id === draft.buildingId) opt.selected = true;
+      fBuildingId.appendChild(opt);
+    });
+    fBuildingId.addEventListener("change", e => draft.buildingId = e.target.value);
     const fCap = D.el("input", { type:"number", min:"0", value:draft.capacity,
       oninput:(e)=>draft.capacity = e.target.value });
     const fColor = D.buildSwatchPicker(draft.color, v => draft.color = v);
@@ -82,6 +94,7 @@
         rm.name = draft.name.trim();
         rm.abbr = draft.short.trim() || undefined;
         rm.building = draft.building.trim() || undefined;
+        rm.buildingId = draft.buildingId || undefined;
         rm.capacity = draft.capacity ? parseInt(draft.capacity, 10) : undefined;
         rm.color = draft.color || undefined;
         rm.needsSupervision = !!draft.needsSupervision;
@@ -93,6 +106,7 @@
         const nr = { id:D.uid("r"), name:draft.name.trim(),
           abbr:draft.short.trim() || undefined,
           building:draft.building.trim() || undefined,
+          buildingId: draft.buildingId || undefined,
           capacity:draft.capacity ? parseInt(draft.capacity, 10) : undefined,
           color:draft.color || undefined,
           needsSupervision: !!draft.needsSupervision,
@@ -113,7 +127,8 @@
       fields:[
         { label:"Name", control:fName },
         { label:"Short", control:fShort },
-        { label:"Building", control:fBuilding },
+        { label:"Building (text)", control:fBuilding },
+        { label:"Building (entity)", control:fBuildingId },
         { label:"Capacity", control:fCap },
         { label:"Color", control:fColor },
         { label:"Needs supervision", control:fSup },
