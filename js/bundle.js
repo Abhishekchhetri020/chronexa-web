@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-22T05:07:53Z
+/* Chronexa bundle — generated 2026-05-22T05:10:59Z
  *      150 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -8003,6 +8003,11 @@ window.Inspector = (function () {
     roomStabilityWeight: 20,
     consecutiveOverloadWeight: 60,
     lastPeriodOverflowWeight: 50,
+    // Timefold port — Late Acceptance Hill-Climbing in the LNS accept
+    // rule. lahcLen is the history window; bigger = more tolerance for
+    // uphill moves.
+    useLAHC: false,
+    lahcLen: 100,
   };
 
   function load() {
@@ -8062,6 +8067,13 @@ window.Inspector = (function () {
     wrap.appendChild(out);
     return wrap;
   }
+  function bool(key) {
+    const c = document.createElement("input");
+    c.type = "checkbox";
+    if (APP.solverParams[key]) c.checked = true;
+    c.onchange = e => APP.solverParams[key] = e.target.checked;
+    return c;
+  }
   function pick(key, options) {
     const s = document.createElement("select");
     s.style.cssText = "padding:4px 6px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px";
@@ -8095,6 +8107,14 @@ window.Inspector = (function () {
     body.appendChild(row("Teacher room stability", slider("roomStabilityWeight", 0, 100)));
     body.appendChild(row("Consecutive overload", slider("consecutiveOverloadWeight", 0, 100)));
     body.appendChild(row("Last-period overflow", slider("lastPeriodOverflowWeight", 0, 100)));
+
+    const lHead = document.createElement("h3");
+    lHead.style.cssText = "margin:14px 0 6px;font-size:12px;text-transform:uppercase;color:#334155;letter-spacing:.04em";
+    lHead.textContent = "Late Acceptance Hill-Climbing (Timefold port)";
+    body.appendChild(lHead);
+    body.appendChild(row("Enable LAHC in LAS phase", bool("useLAHC")));
+    body.appendChild(row("LAHC window size", num("lahcLen", 20, 500, 10),
+      "Bigger = more tolerance for uphill moves"));
 
     const closeBtn = document.createElement("button");
     closeBtn.className = "chrx-btn"; closeBtn.type = "button";

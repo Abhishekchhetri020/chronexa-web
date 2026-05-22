@@ -2525,6 +2525,17 @@ function largeNeighborhoodSearch(model, state, deadlineMs, ctx) {
   const innerCtx = { onProgress: null, nodesVisited: 0, backtracks: 0, t0: ctx.t0, seed: ctx.seed };
 
   let rejectStreak = 0;
+  // Late Acceptance Hill-Climbing (Timefold port) — opt-in via
+  // ctx.useLAHC. Maintains a sliding history of the last L scores; a
+  // move is accepted if it beats either the current score OR the score
+  // from L steps ago. Single tunable parameter (L), no temperature
+  // schedule. Climbs through plateaus where strict-improvement LNS
+  // would reject and revert.
+  const useLAHC = !!(ctx && ctx.useLAHC);
+  const lahcLen = Math.max(20, Math.min(500, (ctx && ctx.lahcLen) || 100));
+  const lahcHist = useLAHC ? new Float64Array(lahcLen).fill(bestSoft) : null;
+  let lahcIdx = 0;
+
   while (performance.now() < deadlineMs) {
     iterations += 1;
     const strategy = strategies[strategyIdx % strategies.length];
@@ -2566,6 +2577,19 @@ function largeNeighborhoodSearch(model, state, deadlineMs, ctx) {
       newCount > bestCount ||
       (newCount === bestCount && newSoft > bestSoft);
 
+    // LAHC acceptance: accept if candidate beats either current best OR
+    // the score recorded L iterations ago. Cycles through history slot
+    // even on rejections so the rolling window remains current.
+    let accept = improved;
+    if (!accept && useLAHC) {
+      const old = lahcHist[lahcIdx];
+      if (newCount >= bestCount && newSoft > old) accept = true;
+    }
+    if (useLAHC) {
+      lahcHist[lahcIdx] = newSoft;
+      lahcIdx = (lahcIdx + 1) % lahcLen;
+    }
+
     if (improved) {
       accepted += 1;
       rejectStreak = 0;
@@ -2588,6 +2612,12 @@ function largeNeighborhoodSearch(model, state, deadlineMs, ctx) {
           });
         } catch {}
       }
+    } else if (accept) {
+      // LAHC late-accept — keep the current state to descend through a
+      // plateau, but do NOT promote it as the global best. The best
+      // snapshot stays unchanged so a future improvement can still
+      // measure against it; only the live state advances.
+      rejectStreak = 0;
     } else {
       rejectStreak += 1;
       // Adaptive K: 3 rejects in a row → broaden search; cap at 4×.
@@ -3101,6 +3131,10 @@ export function solve(school, options = {}) {
         onProgress, t0, seed,
         nodesVisited: totalNodes + repairGained,
         backtracks: totalBacktracks,
+        // Timefold port — opt-in Late Acceptance Hill-Climbing inside
+        // the LNS accept rule. Single tunable: lahcLen window size.
+        useLAHC: !!options.useLAHC,
+        lahcLen: options.lahcLen,
       };
       const lnsGained = largeNeighborhoodSearch(model, globalBest.state, totalDeadlineMs, lnsCtx);
       if (lnsGained !== 0) {
