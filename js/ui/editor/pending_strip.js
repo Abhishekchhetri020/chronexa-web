@@ -3,6 +3,7 @@ window.PendingStrip = (function () {
   "use strict";
 
   const GROUPS = {
+    all:       { label: "All",       keyFn: () => "all" },
     subject:   { label: "Subject",   keyFn: (S,L)=>keyOf(S._idx.subjectById[L.subjectId]) },
     class:     { label: "Class",     keyFn: (S,L)=>keyOf(S._idx.classById[L.classIds[0]]) },
     teacher:   { label: "Teacher",   keyFn: (S,L)=>keyOf(S._idx.teacherById[L.teacherIds[0]]) },

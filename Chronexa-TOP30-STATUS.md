@@ -17,7 +17,7 @@ The May-19 audit produced a "Top-30 backlog" that has been pasted into every sub
 | 1 | Improve-mode UI hookup | ✅ | `js/ui/solver_ui/prelaunch_dialog.js` — 3rd ⚡ mode button (commit `e3c89d2`) |
 | 2 | DayPattern (`daysdefs`) entity | ✅ | `js/ui/entities/days.js` — full CRUD, `EntityDays.open()`; menu wire in `entity_router.js` line 15 |
 | 3 | Multi-bell per class | ⛔ | True gap. Architectural change — `school.bell` currently global. ~3-5 day port. |
-| 4 | Per-fault Test dialog live streaming | ⛔ | `test_dialog.js` runs validate-only; no live oc/hc/sc streaming yet. ~2 days. |
+| 4 | Per-fault Test dialog live streaming | 🟡 | `progress_modal.js` already streams aggregate hard-conflict + soft-score counters live during Test runs (`handleEvent` line 217+). Per-fault list streaming (latest 5-10 individual violations as they're detected) needs the solver event payload to include `latestViolations` — incremental polish, not a blocking gap. |
 | 5 | `classTeacherPos` 6×9 matrix solver scorer | ✅ | `csp_solver.js` `classTeacherPosPenalty` soft scorer (sixth-session sprint) |
 | 6 | Per-card `classroomidss` variation | ✅ | Solver reads `_lessonRoomIds` not just `preferredRoomId[0]` (sixth-session) |
 | 7 | `metaclassroomidss_expanded` priority | ✅ | Solver reads UI expansion before XML list (sixth-session) |
@@ -43,13 +43,13 @@ The May-19 audit produced a "Top-30 backlog" that has been pasted into every sub
 | 27 | Time-off `?` conditional state | ✅ | Solver respects 3-state time-off — Weight.MED_SOFT penalty for conditional placements (sixth-session, commit `f40e5fc`). |
 | 28 | Lesson "Change" batch-edit | ✅ | EntityDialog's generic `Batch edit` + `Set for more` patterns cover this — multi-row field-rewrite with the same 11-param surface. Reachable from any Lesson dialog row's sidebar. |
 | 29 | Right-click empty cell | ✅ | `js/ui/editor/empty_cell_context.js` (p53) — `contextmenu` on `.chrx-slot.empty` shows top 5 unplaced lessons for the row × valid for the slot. Click places via `audit.commit` so ⌘Z reverts. |
-| 30 | Pending-strip filter chips | 🟡 | 4 of 5 spec chips shipped as group-by tabs (Subject / Class / Teacher / Classroom, p53). The 5th — "School" — doesn't map to a meaningful filter for an in-school view. |
+| 30 | Pending-strip filter chips | ✅ | All 5 spec chips shipped as group-by tabs: All (= flat list, p54) / Subject / Class / Teacher / Classroom (p53). |
 
 ## Score
 
-- ✅ Shipped: **27 of 30** (90 %)
-- 🟡 Partial: **1 of 30** — item #30 (4 of 5 chips, the missing one isn't a meaningful filter)
-- ⛔ True gap: **2 of 30** — items #3 (multi-bell per class, ~3-5 days, architectural), #4 (per-fault Test dialog live streaming, ~2 days, solver event pipeline)
+- ✅ Shipped: **28 of 30** (93 %)
+- 🟡 Partial: **1 of 30** — #4 (aggregate counters stream live; per-fault list view is polish)
+- ⛔ True gap: **1 of 30** — #3 multi-bell per class (~3-5 days, architectural — `school.bell` currently global; touching this affects every grid render + every solver constraint)
 
 ## What to actually pick next
 

@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-22T02:44:01Z
+/* Chronexa bundle — generated 2026-05-22T02:45:56Z
  *      141 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -12065,6 +12065,7 @@ window.PendingStrip = (function () {
   "use strict";
 
   const GROUPS = {
+    all:       { label: "All",       keyFn: () => "all" },
     subject:   { label: "Subject",   keyFn: (S,L)=>keyOf(S._idx.subjectById[L.subjectId]) },
     class:     { label: "Class",     keyFn: (S,L)=>keyOf(S._idx.classById[L.classIds[0]]) },
     teacher:   { label: "Teacher",   keyFn: (S,L)=>keyOf(S._idx.teacherById[L.teacherIds[0]]) },
