@@ -1,5 +1,5 @@
-/* Chronexa bundle — generated 2026-05-22T15:13:22Z
- *      160 modules concatenated in document order.
+/* Chronexa bundle — generated 2026-05-22T15:34:46Z
+ *      161 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
 /* ─── FILE: js/ui/state.js ─── */
@@ -20804,9 +20804,19 @@ window.StartScreen = (function () {
     if (style.italic)    fontStyle.push("font-style:italic");
     if (style.underline) fontStyle.push("text-decoration:underline");
     if (style.font && style.font !== "system-ui") fontStyle.push("font-family:'" + style.font + "', system-ui");
-    const sizePx = Math.max(7, Math.round((style.size || 14) * 0.6));
+    // Phase 7 — text-shrink-to-fit. Use container-query units (cqi) for size
+    // when supported, clamped between a 6px floor and the configured % as
+    // the ceiling. Browsers that don't support container queries gracefully
+    // fall back to the second clamp arg.
+    const ceilingPx = Math.max(7, Math.round((style.size || 14) * 0.6));
+    const floorPx = 6;
+    fontStyle.push("font-size:clamp(" + floorPx + "px, " + Math.max(6, Math.round((style.size || 14) * 0.35)) + "cqi, " + ceilingPx + "px)");
+    fontStyle.push("overflow-wrap:break-word");
+    fontStyle.push("word-break:break-word");
+    fontStyle.push("hyphens:auto");
+    fontStyle.push("max-width:100%");
     return el("div", {
-      style: "font-size:" + sizePx + "px;line-height:1.15;" + fontStyle.join(";"),
+      style: "line-height:1.15;" + fontStyle.join(";"),
     }, text);
   }
 
@@ -20828,7 +20838,7 @@ window.StartScreen = (function () {
     cards = cards || [];
     const cell = el("div", {
       class: "chrx-pivot-cell",
-      style: "width:100%;height:100%;min-height:48px;position:relative",
+      style: "width:100%;height:100%;min-height:48px;position:relative;container-type:inline-size",
     });
     if (cards.length === 0) return cell;
 
@@ -21229,10 +21239,30 @@ window.StartScreen = (function () {
   /** Join card.lessonId → lesson fields so the renderer can read
    *  classIds / teacherIds / subjectId / roomId / groupIds directly off
    *  each card. Chronexa stores these on the lesson, not the card. */
+  /** Phase 6 — convert school.duties[] into card-like records that flow
+   *  through the same pivot pipeline. Each duty becomes a card with
+   *  subject="FD" (Floor Duty) + classroom=duty.locationName. */
+  function dutiesAsCards(school) {
+    const duties = school.duties || [];
+    return duties.map(d => ({
+      lessonId: "__duty_" + (d.id || Math.random()),
+      day: d.day, period: d.period,
+      classIds: [],
+      teacherIds: d.teacherIds || (d.teacherId ? [d.teacherId] : []),
+      subjectId: "__FD__",
+      subjectLabel: d.code || "FD",
+      groupIds: [],
+      roomId: null,
+      roomIds: [],
+      roomLabel: d.locationName || d.location || "",
+      _isDuty: true,
+    }));
+  }
+
   function joinCardsWithLessons(school) {
     const lessons = school.lessons || [];
     const lessonById = new Map(lessons.map(l => [l.id, l]));
-    return (school.cards || []).map(card => {
+    const lessonCards = (school.cards || []).map(card => {
       const l = lessonById.get(card.lessonId);
       if (!l) return card;
       return {
@@ -21246,13 +21276,13 @@ window.StartScreen = (function () {
         studentIds: l.studentIds || [],
       };
     });
+    // Phase 6 — append floor-duty cards so they pivot like real lessons
+    const dutyCards = dutiesAsCards(school);
+    return lessonCards.concat(dutyCards);
   }
 
   function renderReport(report, school, periods) {
     if (!report || !school) return [];
-    // Materialise a `joinedSchool` whose cards carry the lesson fields
-    // the pivot needs. This is the only place we modify the school view —
-    // every downstream function reads `joinedCards` instead of school.cards.
     const joinedCards = joinCardsWithLessons(school);
     const joinedSchool = Object.assign({}, school, { cards: joinedCards });
     const pageCombos = axisCombinations(report.pages, joinedSchool, periods || PERIODS_DEFAULT, report.filters);
@@ -22508,6 +22538,233 @@ window.StartScreen = (function () {
   APP.PrintSizesDialog  = { open: openSizes };
   APP.PrintDesignDialog = { open: openDesign };
   APP.PrintColorsDialog = { open: openColors };
+})();
+
+/* ─── FILE: js/ui/print_preview/header_dialog.js ─── */
+/* Period-header sub-dialog — Phase 8 of the print-system rewrite.
+ *
+ * Edits report.periodHeader (already in Phase 0 schema). Matches aSc
+ * screenshot 17 — separate anchor / size / font / B/I/U for the period
+ * number and (optionally) for the time-interval label below it.
+ *
+ *   APP.PrintHeaderDialog.open(report, onSave)
+ */
+(function () {
+  "use strict";
+  const APP = (window.APP = window.APP || {});
+
+  const ANCHORS = [
+    "top-left","top-center","top-right",
+    "middle-left","middle-center","middle-right",
+    "bottom-left","bottom-center","bottom-right",
+  ];
+
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      const v = attrs[k]; if (v == null) continue;
+      if (k === "class") n.className = v;
+      else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v);
+    }
+    for (const c of kids) if (c != null && c !== false) {
+      n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    }
+    return n;
+  }
+
+  function anchorGrid(current, onChange) {
+    const grid = el("div", {
+      style: "display:grid;grid-template-columns:repeat(3,18px);grid-template-rows:repeat(3,18px);gap:2px",
+    });
+    let active = current || "top-center";
+    ANCHORS.forEach(a => {
+      const btn = el("button", {
+        type: "button",
+        style: "width:18px;height:18px;border:1px solid #999;background:" + (a === active ? "#1a1714" : "#fff") + ";border-radius:3px;cursor:pointer;padding:0",
+        title: a,
+        onclick: () => {
+          active = a;
+          onChange(a);
+          grid.querySelectorAll("button").forEach(b => {
+            b.style.background = b.title === a ? "#1a1714" : "#fff";
+          });
+        },
+      });
+      grid.appendChild(btn);
+    });
+    return grid;
+  }
+
+  function styleToggle(label, getter, setter, extraStyle) {
+    const btn = el("button", {
+      type: "button",
+      style: "width:28px;height:28px;border:1px solid #d8cfbb;border-radius:5px;cursor:pointer;font-size:13px;font-weight:700;font-family:'JetBrains Mono',ui-monospace,monospace;" + (extraStyle || ""),
+    }, label);
+    function paint() {
+      const on = !!getter();
+      btn.style.background = on ? "#1a1714" : "#fff";
+      btn.style.color = on ? "#f6f1e6" : "#1a1714";
+    }
+    paint();
+    btn.addEventListener("click", () => { setter(!getter()); paint(); });
+    return btn;
+  }
+
+  function subSection(title, getCfg, onChange, prefix) {
+    const wrap = el("div", {
+      style: "border:1px solid #d8cfbb;background:#efe9da;padding:14px 16px;border-radius:8px;display:flex;flex-direction:column;gap:10px",
+    });
+    wrap.appendChild(el("div", {
+      style: "font-family:'Fraunces',serif;font-style:italic;font-weight:500;font-size:14px",
+    }, title));
+
+    const c = getCfg();
+    const anchorRow = el("div", { style: "display:flex;align-items:flex-start;gap:12px" });
+    anchorRow.appendChild(el("div", { style: "font-size:12px;color:#4a4339;padding-top:8px;min-width:60px" }, "Position:"));
+    anchorRow.appendChild(anchorGrid(c[prefix + "Anchor"] || c.anchor, (v) => {
+      const cfg = getCfg();
+      cfg[prefix + "Anchor"] = v;
+      if (prefix === "") cfg.anchor = v;
+      onChange();
+    }));
+    wrap.appendChild(anchorRow);
+
+    const sizeRow = el("div", { style: "display:flex;align-items:center;gap:12px" });
+    sizeRow.appendChild(el("div", { style: "font-size:12px;color:#4a4339;min-width:60px" }, "Size:"));
+    const slider = el("input", {
+      type: "range", min: "5", max: "100",
+      value: String(c[prefix + "Size"] || c.size || 40),
+      style: "flex:1;accent-color:#0d4f54",
+    });
+    const out = el("span", { style: "font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;min-width:36px;text-align:right" },
+      String(c[prefix + "Size"] || c.size || 40) + "%");
+    slider.addEventListener("input", (e) => {
+      const v = parseInt(e.target.value, 10);
+      const cfg = getCfg();
+      cfg[prefix + "Size"] = v;
+      if (prefix === "") cfg.size = v;
+      out.textContent = v + "%";
+      onChange();
+    });
+    sizeRow.appendChild(slider);
+    sizeRow.appendChild(out);
+    wrap.appendChild(sizeRow);
+
+    const fontRow = el("div", { style: "display:flex;align-items:center;gap:8px" });
+    fontRow.appendChild(el("div", { style: "font-size:12px;color:#4a4339;min-width:60px" }, "Font:"));
+    const fontSel = el("select", {
+      style: "flex:1;padding:4px 6px;border:1px solid #d8cfbb;background:#fff;border-radius:5px;font-size:12px",
+    });
+    ["system-ui","Bahnschrift","Arial","Helvetica","Times New Roman","Georgia","Inter Tight","Fraunces"].forEach(f => {
+      const o = el("option", { value: f }, f);
+      const cfg = getCfg();
+      if ((cfg[prefix + "Font"] || cfg.font) === f) o.selected = true;
+      fontSel.appendChild(o);
+    });
+    fontSel.addEventListener("change", (e) => {
+      const cfg = getCfg();
+      cfg[prefix + "Font"] = e.target.value;
+      if (prefix === "") cfg.font = e.target.value;
+      onChange();
+    });
+    fontRow.appendChild(fontSel);
+    if (prefix === "") {
+      fontRow.appendChild(styleToggle("B", () => c.bold, (v) => { const cfg = getCfg(); cfg.bold = v; onChange(); }));
+      fontRow.appendChild(styleToggle("I", () => c.italic, (v) => { const cfg = getCfg(); cfg.italic = v; onChange(); }, "font-style:italic"));
+      fontRow.appendChild(styleToggle("U", () => c.underline, (v) => { const cfg = getCfg(); cfg.underline = v; onChange(); }, "text-decoration:underline"));
+    }
+    wrap.appendChild(fontRow);
+    return wrap;
+  }
+
+  function open(report, onSave) {
+    if (!report) return;
+    const Schema = APP.PrintReportSchema;
+    if (!Schema) return;
+    const draft = Schema.clone(report);
+    draft.periodHeader = draft.periodHeader || { anchor:"top-center", size:40, font:"system-ui", bold:true, italic:false, underline:false, showTimeIntervals:true, timeAnchor:"bottom-center", timeSize:17, timeFont:"system-ui", timeTwoLines:false };
+
+    const scrim = el("div", {
+      style: "position:fixed;inset:0;background:rgba(26,23,20,.42);backdrop-filter:blur(6px);z-index:9350;display:flex;align-items:flex-start;justify-content:center;padding-top:10vh",
+      onclick: (e) => { if (e.target === scrim) close(); },
+    });
+    const dlg = el("div", {
+      style: "background:#f6f1e6;width:min(640px,92vw);max-height:84vh;overflow:auto;border-radius:14px;box-shadow:0 30px 80px rgba(0,0,0,.25);font-family:system-ui;color:#1a1714",
+    });
+    scrim.appendChild(dlg);
+
+    function close() { scrim.remove(); document.removeEventListener("keydown", onKey, true); }
+    function onKey(e) { if (e.key === "Escape") { e.preventDefault(); close(); } }
+    document.addEventListener("keydown", onKey, true);
+
+    const header = el("div", {
+      style: "background:#2f3940;color:#fff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;border-radius:14px 14px 0 0",
+    });
+    header.appendChild(el("div", { style: "font-weight:600;font-size:14px;letter-spacing:.04em;text-transform:uppercase" }, "Reports"));
+    header.appendChild(el("button", {
+      type: "button",
+      style: "background:transparent;border:0;color:#fff;font-size:22px;cursor:pointer;padding:0 6px",
+      onclick: close,
+    }, "×"));
+    dlg.appendChild(header);
+
+    const titleSection = el("div", { style: "padding:14px 24px 8px;border-bottom:1px solid #d8cfbb" });
+    titleSection.appendChild(el("h2", {
+      style: "margin:0;font-family:'Fraunces',serif;font-style:italic;font-weight:500;font-size:22px",
+    }, "Header: Periods"));
+    dlg.appendChild(titleSection);
+
+    const body = el("div", { style: "padding:18px 24px;display:flex;flex-direction:column;gap:14px" });
+    body.appendChild(subSection("Period number", () => draft.periodHeader, () => {}, ""));
+
+    const timeToggle = el("label", {
+      style: "display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer",
+    });
+    const timeCb = el("input", { type: "checkbox", style: "accent-color:#0d4f54;width:16px;height:16px" });
+    if (draft.periodHeader.showTimeIntervals) timeCb.checked = true;
+    timeCb.addEventListener("change", (e) => { draft.periodHeader.showTimeIntervals = e.target.checked; });
+    timeToggle.appendChild(timeCb);
+    timeToggle.appendChild(el("span", null, "Print time intervals (e.g. 08:00 – 08:40)"));
+    body.appendChild(timeToggle);
+
+    body.appendChild(subSection("Time interval label", () => draft.periodHeader, () => {}, "time"));
+
+    const twoLineToggle = el("label", {
+      style: "display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer",
+    });
+    const twoCb = el("input", { type: "checkbox", style: "accent-color:#0d4f54;width:16px;height:16px" });
+    if (draft.periodHeader.timeTwoLines) twoCb.checked = true;
+    twoCb.addEventListener("change", (e) => { draft.periodHeader.timeTwoLines = e.target.checked; });
+    twoLineToggle.appendChild(twoCb);
+    twoLineToggle.appendChild(el("span", null, "Print time in two lines (start / end on separate lines)"));
+    body.appendChild(twoLineToggle);
+
+    dlg.appendChild(body);
+
+    const footer = el("div", {
+      style: "padding:14px 24px 18px;display:flex;justify-content:flex-end;gap:8px;border-top:1px solid #d8cfbb;background:#f6f1e6;border-radius:0 0 14px 14px",
+    });
+    footer.appendChild(el("button", {
+      type: "button",
+      style: "padding:6px 14px;border:1px solid #d8cfbb;background:#fff;border-radius:6px;cursor:pointer;font-size:13px",
+      onclick: close,
+    }, "Cancel"));
+    footer.appendChild(el("button", {
+      type: "button",
+      style: "padding:6px 18px;border:0;background:#0d4f54;color:#fff;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600",
+      onclick: () => {
+        report.periodHeader = draft.periodHeader;
+        close();
+        if (typeof onSave === "function") onSave(report);
+      },
+    }, "OK"));
+    dlg.appendChild(footer);
+
+    document.body.appendChild(scrim);
+  }
+
+  APP.PrintHeaderDialog = { open };
 })();
 
 /* ─── FILE: js/ui/print_preview/templates/timetable_for_student.js ─── */
@@ -24057,6 +24314,42 @@ window.StartScreen = (function () {
       context: "summary",
       pages: [], rows: ["teacher"], cols: ["subject"],
       cells: "count-lessons", fitWidth: true, fitHeight: true,
+    },
+
+    // ── Wait-points reports (Phase 9 — uses "count-placed" cell for gap analysis) ─
+    {
+      id: "wait_points_classes",
+      name: "Wait points of classes",
+      context: "summary",
+      pages: [], rows: ["class"], cols: ["day","period"],
+      cells: "count-placed", fitWidth: true, fitHeight: true, hideEmptyCols: false,
+    },
+    {
+      id: "wait_points_teachers",
+      name: "Wait points of teachers",
+      context: "summary",
+      pages: [], rows: ["teacher"], cols: ["day","period"],
+      cells: "count-placed", fitWidth: true, fitHeight: true, hideEmptyCols: false,
+    },
+    {
+      id: "wait_points_classrooms",
+      name: "Wait points of classrooms",
+      context: "summary",
+      pages: [], rows: ["classroom"], cols: ["day","period"],
+      cells: "count-placed", fitWidth: true, fitHeight: true, hideEmptyCols: false,
+    },
+
+    // ── Timetable for each day — with table (Phase 9) ────────────────────
+    {
+      id: "timetable_for_each_day_with_table",
+      name: "TimeTable for each day — with table",
+      context: "day",
+      pages: ["day"], rows: ["class"], cols: ["period"],
+      cells: "draw-lessons", fitWidth: true, fitHeight: true,
+      extraCols: [
+        { type: "subjects-count", header: "Subjects", width: 16 },
+        { type: "sum-of-lessons", header: "Count",    width: 7 },
+      ],
     },
 
     // ── Custom 1/2/3 — user-editable starting points ─────────────────────

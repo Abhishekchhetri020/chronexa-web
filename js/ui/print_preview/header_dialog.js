@@ -1,0 +1,225 @@
+/* Period-header sub-dialog — Phase 8 of the print-system rewrite.
+ *
+ * Edits report.periodHeader (already in Phase 0 schema). Matches aSc
+ * screenshot 17 — separate anchor / size / font / B/I/U for the period
+ * number and (optionally) for the time-interval label below it.
+ *
+ *   APP.PrintHeaderDialog.open(report, onSave)
+ */
+(function () {
+  "use strict";
+  const APP = (window.APP = window.APP || {});
+
+  const ANCHORS = [
+    "top-left","top-center","top-right",
+    "middle-left","middle-center","middle-right",
+    "bottom-left","bottom-center","bottom-right",
+  ];
+
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      const v = attrs[k]; if (v == null) continue;
+      if (k === "class") n.className = v;
+      else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v);
+    }
+    for (const c of kids) if (c != null && c !== false) {
+      n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    }
+    return n;
+  }
+
+  function anchorGrid(current, onChange) {
+    const grid = el("div", {
+      style: "display:grid;grid-template-columns:repeat(3,18px);grid-template-rows:repeat(3,18px);gap:2px",
+    });
+    let active = current || "top-center";
+    ANCHORS.forEach(a => {
+      const btn = el("button", {
+        type: "button",
+        style: "width:18px;height:18px;border:1px solid #999;background:" + (a === active ? "#1a1714" : "#fff") + ";border-radius:3px;cursor:pointer;padding:0",
+        title: a,
+        onclick: () => {
+          active = a;
+          onChange(a);
+          grid.querySelectorAll("button").forEach(b => {
+            b.style.background = b.title === a ? "#1a1714" : "#fff";
+          });
+        },
+      });
+      grid.appendChild(btn);
+    });
+    return grid;
+  }
+
+  function styleToggle(label, getter, setter, extraStyle) {
+    const btn = el("button", {
+      type: "button",
+      style: "width:28px;height:28px;border:1px solid #d8cfbb;border-radius:5px;cursor:pointer;font-size:13px;font-weight:700;font-family:'JetBrains Mono',ui-monospace,monospace;" + (extraStyle || ""),
+    }, label);
+    function paint() {
+      const on = !!getter();
+      btn.style.background = on ? "#1a1714" : "#fff";
+      btn.style.color = on ? "#f6f1e6" : "#1a1714";
+    }
+    paint();
+    btn.addEventListener("click", () => { setter(!getter()); paint(); });
+    return btn;
+  }
+
+  function subSection(title, getCfg, onChange, prefix) {
+    const wrap = el("div", {
+      style: "border:1px solid #d8cfbb;background:#efe9da;padding:14px 16px;border-radius:8px;display:flex;flex-direction:column;gap:10px",
+    });
+    wrap.appendChild(el("div", {
+      style: "font-family:'Fraunces',serif;font-style:italic;font-weight:500;font-size:14px",
+    }, title));
+
+    const c = getCfg();
+    const anchorRow = el("div", { style: "display:flex;align-items:flex-start;gap:12px" });
+    anchorRow.appendChild(el("div", { style: "font-size:12px;color:#4a4339;padding-top:8px;min-width:60px" }, "Position:"));
+    anchorRow.appendChild(anchorGrid(c[prefix + "Anchor"] || c.anchor, (v) => {
+      const cfg = getCfg();
+      cfg[prefix + "Anchor"] = v;
+      if (prefix === "") cfg.anchor = v;
+      onChange();
+    }));
+    wrap.appendChild(anchorRow);
+
+    const sizeRow = el("div", { style: "display:flex;align-items:center;gap:12px" });
+    sizeRow.appendChild(el("div", { style: "font-size:12px;color:#4a4339;min-width:60px" }, "Size:"));
+    const slider = el("input", {
+      type: "range", min: "5", max: "100",
+      value: String(c[prefix + "Size"] || c.size || 40),
+      style: "flex:1;accent-color:#0d4f54",
+    });
+    const out = el("span", { style: "font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;min-width:36px;text-align:right" },
+      String(c[prefix + "Size"] || c.size || 40) + "%");
+    slider.addEventListener("input", (e) => {
+      const v = parseInt(e.target.value, 10);
+      const cfg = getCfg();
+      cfg[prefix + "Size"] = v;
+      if (prefix === "") cfg.size = v;
+      out.textContent = v + "%";
+      onChange();
+    });
+    sizeRow.appendChild(slider);
+    sizeRow.appendChild(out);
+    wrap.appendChild(sizeRow);
+
+    const fontRow = el("div", { style: "display:flex;align-items:center;gap:8px" });
+    fontRow.appendChild(el("div", { style: "font-size:12px;color:#4a4339;min-width:60px" }, "Font:"));
+    const fontSel = el("select", {
+      style: "flex:1;padding:4px 6px;border:1px solid #d8cfbb;background:#fff;border-radius:5px;font-size:12px",
+    });
+    ["system-ui","Bahnschrift","Arial","Helvetica","Times New Roman","Georgia","Inter Tight","Fraunces"].forEach(f => {
+      const o = el("option", { value: f }, f);
+      const cfg = getCfg();
+      if ((cfg[prefix + "Font"] || cfg.font) === f) o.selected = true;
+      fontSel.appendChild(o);
+    });
+    fontSel.addEventListener("change", (e) => {
+      const cfg = getCfg();
+      cfg[prefix + "Font"] = e.target.value;
+      if (prefix === "") cfg.font = e.target.value;
+      onChange();
+    });
+    fontRow.appendChild(fontSel);
+    if (prefix === "") {
+      fontRow.appendChild(styleToggle("B", () => c.bold, (v) => { const cfg = getCfg(); cfg.bold = v; onChange(); }));
+      fontRow.appendChild(styleToggle("I", () => c.italic, (v) => { const cfg = getCfg(); cfg.italic = v; onChange(); }, "font-style:italic"));
+      fontRow.appendChild(styleToggle("U", () => c.underline, (v) => { const cfg = getCfg(); cfg.underline = v; onChange(); }, "text-decoration:underline"));
+    }
+    wrap.appendChild(fontRow);
+    return wrap;
+  }
+
+  function open(report, onSave) {
+    if (!report) return;
+    const Schema = APP.PrintReportSchema;
+    if (!Schema) return;
+    const draft = Schema.clone(report);
+    draft.periodHeader = draft.periodHeader || { anchor:"top-center", size:40, font:"system-ui", bold:true, italic:false, underline:false, showTimeIntervals:true, timeAnchor:"bottom-center", timeSize:17, timeFont:"system-ui", timeTwoLines:false };
+
+    const scrim = el("div", {
+      style: "position:fixed;inset:0;background:rgba(26,23,20,.42);backdrop-filter:blur(6px);z-index:9350;display:flex;align-items:flex-start;justify-content:center;padding-top:10vh",
+      onclick: (e) => { if (e.target === scrim) close(); },
+    });
+    const dlg = el("div", {
+      style: "background:#f6f1e6;width:min(640px,92vw);max-height:84vh;overflow:auto;border-radius:14px;box-shadow:0 30px 80px rgba(0,0,0,.25);font-family:system-ui;color:#1a1714",
+    });
+    scrim.appendChild(dlg);
+
+    function close() { scrim.remove(); document.removeEventListener("keydown", onKey, true); }
+    function onKey(e) { if (e.key === "Escape") { e.preventDefault(); close(); } }
+    document.addEventListener("keydown", onKey, true);
+
+    const header = el("div", {
+      style: "background:#2f3940;color:#fff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;border-radius:14px 14px 0 0",
+    });
+    header.appendChild(el("div", { style: "font-weight:600;font-size:14px;letter-spacing:.04em;text-transform:uppercase" }, "Reports"));
+    header.appendChild(el("button", {
+      type: "button",
+      style: "background:transparent;border:0;color:#fff;font-size:22px;cursor:pointer;padding:0 6px",
+      onclick: close,
+    }, "×"));
+    dlg.appendChild(header);
+
+    const titleSection = el("div", { style: "padding:14px 24px 8px;border-bottom:1px solid #d8cfbb" });
+    titleSection.appendChild(el("h2", {
+      style: "margin:0;font-family:'Fraunces',serif;font-style:italic;font-weight:500;font-size:22px",
+    }, "Header: Periods"));
+    dlg.appendChild(titleSection);
+
+    const body = el("div", { style: "padding:18px 24px;display:flex;flex-direction:column;gap:14px" });
+    body.appendChild(subSection("Period number", () => draft.periodHeader, () => {}, ""));
+
+    const timeToggle = el("label", {
+      style: "display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer",
+    });
+    const timeCb = el("input", { type: "checkbox", style: "accent-color:#0d4f54;width:16px;height:16px" });
+    if (draft.periodHeader.showTimeIntervals) timeCb.checked = true;
+    timeCb.addEventListener("change", (e) => { draft.periodHeader.showTimeIntervals = e.target.checked; });
+    timeToggle.appendChild(timeCb);
+    timeToggle.appendChild(el("span", null, "Print time intervals (e.g. 08:00 – 08:40)"));
+    body.appendChild(timeToggle);
+
+    body.appendChild(subSection("Time interval label", () => draft.periodHeader, () => {}, "time"));
+
+    const twoLineToggle = el("label", {
+      style: "display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer",
+    });
+    const twoCb = el("input", { type: "checkbox", style: "accent-color:#0d4f54;width:16px;height:16px" });
+    if (draft.periodHeader.timeTwoLines) twoCb.checked = true;
+    twoCb.addEventListener("change", (e) => { draft.periodHeader.timeTwoLines = e.target.checked; });
+    twoLineToggle.appendChild(twoCb);
+    twoLineToggle.appendChild(el("span", null, "Print time in two lines (start / end on separate lines)"));
+    body.appendChild(twoLineToggle);
+
+    dlg.appendChild(body);
+
+    const footer = el("div", {
+      style: "padding:14px 24px 18px;display:flex;justify-content:flex-end;gap:8px;border-top:1px solid #d8cfbb;background:#f6f1e6;border-radius:0 0 14px 14px",
+    });
+    footer.appendChild(el("button", {
+      type: "button",
+      style: "padding:6px 14px;border:1px solid #d8cfbb;background:#fff;border-radius:6px;cursor:pointer;font-size:13px",
+      onclick: close,
+    }, "Cancel"));
+    footer.appendChild(el("button", {
+      type: "button",
+      style: "padding:6px 18px;border:0;background:#0d4f54;color:#fff;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600",
+      onclick: () => {
+        report.periodHeader = draft.periodHeader;
+        close();
+        if (typeof onSave === "function") onSave(report);
+      },
+    }, "OK"));
+    dlg.appendChild(footer);
+
+    document.body.appendChild(scrim);
+  }
+
+  APP.PrintHeaderDialog = { open };
+})();

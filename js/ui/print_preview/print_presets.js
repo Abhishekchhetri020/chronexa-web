@@ -195,6 +195,42 @@
       cells: "count-lessons", fitWidth: true, fitHeight: true,
     },
 
+    // ── Wait-points reports (Phase 9 — uses "count-placed" cell for gap analysis) ─
+    {
+      id: "wait_points_classes",
+      name: "Wait points of classes",
+      context: "summary",
+      pages: [], rows: ["class"], cols: ["day","period"],
+      cells: "count-placed", fitWidth: true, fitHeight: true, hideEmptyCols: false,
+    },
+    {
+      id: "wait_points_teachers",
+      name: "Wait points of teachers",
+      context: "summary",
+      pages: [], rows: ["teacher"], cols: ["day","period"],
+      cells: "count-placed", fitWidth: true, fitHeight: true, hideEmptyCols: false,
+    },
+    {
+      id: "wait_points_classrooms",
+      name: "Wait points of classrooms",
+      context: "summary",
+      pages: [], rows: ["classroom"], cols: ["day","period"],
+      cells: "count-placed", fitWidth: true, fitHeight: true, hideEmptyCols: false,
+    },
+
+    // ── Timetable for each day — with table (Phase 9) ────────────────────
+    {
+      id: "timetable_for_each_day_with_table",
+      name: "TimeTable for each day — with table",
+      context: "day",
+      pages: ["day"], rows: ["class"], cols: ["period"],
+      cells: "draw-lessons", fitWidth: true, fitHeight: true,
+      extraCols: [
+        { type: "subjects-count", header: "Subjects", width: 16 },
+        { type: "sum-of-lessons", header: "Count",    width: 7 },
+      ],
+    },
+
     // ── Custom 1/2/3 — user-editable starting points ─────────────────────
     {
       id: "custom_1",

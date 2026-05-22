@@ -183,9 +183,19 @@
     if (style.italic)    fontStyle.push("font-style:italic");
     if (style.underline) fontStyle.push("text-decoration:underline");
     if (style.font && style.font !== "system-ui") fontStyle.push("font-family:'" + style.font + "', system-ui");
-    const sizePx = Math.max(7, Math.round((style.size || 14) * 0.6));
+    // Phase 7 — text-shrink-to-fit. Use container-query units (cqi) for size
+    // when supported, clamped between a 6px floor and the configured % as
+    // the ceiling. Browsers that don't support container queries gracefully
+    // fall back to the second clamp arg.
+    const ceilingPx = Math.max(7, Math.round((style.size || 14) * 0.6));
+    const floorPx = 6;
+    fontStyle.push("font-size:clamp(" + floorPx + "px, " + Math.max(6, Math.round((style.size || 14) * 0.35)) + "cqi, " + ceilingPx + "px)");
+    fontStyle.push("overflow-wrap:break-word");
+    fontStyle.push("word-break:break-word");
+    fontStyle.push("hyphens:auto");
+    fontStyle.push("max-width:100%");
     return el("div", {
-      style: "font-size:" + sizePx + "px;line-height:1.15;" + fontStyle.join(";"),
+      style: "line-height:1.15;" + fontStyle.join(";"),
     }, text);
   }
 
@@ -207,7 +217,7 @@
     cards = cards || [];
     const cell = el("div", {
       class: "chrx-pivot-cell",
-      style: "width:100%;height:100%;min-height:48px;position:relative",
+      style: "width:100%;height:100%;min-height:48px;position:relative;container-type:inline-size",
     });
     if (cards.length === 0) return cell;
 

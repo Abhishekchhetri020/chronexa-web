@@ -362,10 +362,30 @@
   /** Join card.lessonId → lesson fields so the renderer can read
    *  classIds / teacherIds / subjectId / roomId / groupIds directly off
    *  each card. Chronexa stores these on the lesson, not the card. */
+  /** Phase 6 — convert school.duties[] into card-like records that flow
+   *  through the same pivot pipeline. Each duty becomes a card with
+   *  subject="FD" (Floor Duty) + classroom=duty.locationName. */
+  function dutiesAsCards(school) {
+    const duties = school.duties || [];
+    return duties.map(d => ({
+      lessonId: "__duty_" + (d.id || Math.random()),
+      day: d.day, period: d.period,
+      classIds: [],
+      teacherIds: d.teacherIds || (d.teacherId ? [d.teacherId] : []),
+      subjectId: "__FD__",
+      subjectLabel: d.code || "FD",
+      groupIds: [],
+      roomId: null,
+      roomIds: [],
+      roomLabel: d.locationName || d.location || "",
+      _isDuty: true,
+    }));
+  }
+
   function joinCardsWithLessons(school) {
     const lessons = school.lessons || [];
     const lessonById = new Map(lessons.map(l => [l.id, l]));
-    return (school.cards || []).map(card => {
+    const lessonCards = (school.cards || []).map(card => {
       const l = lessonById.get(card.lessonId);
       if (!l) return card;
       return {
@@ -379,13 +399,13 @@
         studentIds: l.studentIds || [],
       };
     });
+    // Phase 6 — append floor-duty cards so they pivot like real lessons
+    const dutyCards = dutiesAsCards(school);
+    return lessonCards.concat(dutyCards);
   }
 
   function renderReport(report, school, periods) {
     if (!report || !school) return [];
-    // Materialise a `joinedSchool` whose cards carry the lesson fields
-    // the pivot needs. This is the only place we modify the school view —
-    // every downstream function reads `joinedCards` instead of school.cards.
     const joinedCards = joinCardsWithLessons(school);
     const joinedSchool = Object.assign({}, school, { cards: joinedCards });
     const pageCombos = axisCombinations(report.pages, joinedSchool, periods || PERIODS_DEFAULT, report.filters);
