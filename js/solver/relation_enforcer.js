@@ -107,6 +107,47 @@
       const sink = meta.hard ? result.hard : result.soft;
 
       switch (meta.scope) {
+        // Item 9 — n_2 "must not be at same time" (no same-period for
+        // any other matched lesson). Hard violation if any matched
+        // lesson is at the SAME (day, period).
+        case "sameTime": {
+          const others = placedMatching(school, rel, lessonMatches);
+          for (const o of others) {
+            if (o.card.day === day && o.card.period === period &&
+                o.card.lessonId !== lessonId) {
+              sink.push(`${meta.label} — another matched lesson already at this period`);
+              break;
+            }
+          }
+          break;
+        }
+        // Item 9 — n_3 "alternate days". Soft. Penalise placement at a
+        // day where any other matched lesson already sits.
+        case "alternateDay": {
+          const others = placedMatching(school, rel, lessonMatches);
+          for (const o of others) {
+            if (o.card.day === day && o.card.lessonId !== lessonId) {
+              sink.push(`${meta.label} — already placed on this day`);
+              break;
+            }
+          }
+          break;
+        }
+        // Item 9 — n_15 "evenly spaced across the week". Soft. Penalise
+        // when the placement creates back-to-back days for matched
+        // lessons (variance proxy: any same-or-adjacent day with another
+        // matched lesson).
+        case "evenSpacing": {
+          const others = placedMatching(school, rel, lessonMatches);
+          for (const o of others) {
+            if (o.card.lessonId === lessonId) continue;
+            if (Math.abs(o.card.day - day) <= 1) {
+              sink.push(`${meta.label} — spacing too tight (adjacent day)`);
+              break;
+            }
+          }
+          break;
+        }
         case "consecutive": {
           // n_0: cannot follow.  Means: A then B (or vice-versa) cannot be consecutive periods.
           // Check existing placements at (day, period±1) for the "other side" of the relation.

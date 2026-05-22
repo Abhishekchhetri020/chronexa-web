@@ -62,13 +62,37 @@
     return id;
   }
 
+  // Item 6 — per-tab undo stacks. Store undo/redo alongside the school
+  // snapshot so switching tabs restores the per-tab edit history. Each
+  // cmd in the stack is a {do, undo} pair; functions don't survive
+  // JSON serialisation, so the stack is held in-memory keyed by tabId
+  // and only the school payload goes to localStorage.
+  const tabUndoStacks = Object.create(null); // id → {undo:[], redo:[]}
+
+  function captureAuditState() {
+    if (!APP.audit) return { undo: [], redo: [] };
+    return {
+      undo: APP.audit.undoStack ? APP.audit.undoStack.slice() : [],
+      redo: APP.audit.redoStack ? APP.audit.redoStack.slice() : [],
+    };
+  }
+  function restoreAuditState(s) {
+    if (!APP.audit) return;
+    APP.audit.undoStack = (s && s.undo) || [];
+    APP.audit.redoStack = (s && s.redo) || [];
+  }
+
   function switchTo(id) {
     // Save the currently-active tab back before swapping.
-    if (activeId && APP.school) persistTab(activeId, APP.school);
+    if (activeId && APP.school) {
+      persistTab(activeId, APP.school);
+      tabUndoStacks[activeId] = captureAuditState();
+    }
     const school = loadTab(id);
     if (!school) { (global._chrxNotify || console.log)("Tab missing or corrupt", "error"); return; }
     APP.school = school;
     activeId = id;
+    restoreAuditState(tabUndoStacks[id]);
     global.dispatchEvent(new CustomEvent("app:school-loaded",
       { detail: { school, source: "multi-doc-tab" } }));
     render();

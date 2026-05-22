@@ -21,22 +21,40 @@
       const p = page(false);
       p.appendChild(header(c.name + " — class-wise with table", school.schoolName || ""));
 
-      // Grid
+      // Grid — honour per-template structure override (Item 5).
+      const structure = (U.structureFor && U.structureFor("classwise_with_table")) || "rows-days";
       const tbl = el("table", { style: U.tableCSS() });
       const head = el("tr");
       head.appendChild(el("th", { style: U.thCSS() }, ""));
-      periods.forEach(per => head.appendChild(el("th", { style: U.thCSS() }, "P" + per.index)));
+      if (structure === "columns-days") {
+        DAYS.forEach(d => head.appendChild(el("th", { style: U.thCSS() }, d)));
+      } else {
+        periods.forEach(per => head.appendChild(el("th", { style: U.thCSS() }, "P" + per.index)));
+      }
       tbl.appendChild(el("thead", null, head));
       const body = el("tbody");
-      for (let d = 0; d < DAYS.length; d++) {
-        const tr = el("tr");
-        tr.appendChild(el("th", { style: U.thCSS() }, DAYS[d]));
+      if (structure === "columns-days") {
         for (const per of periods) {
-          const card = cardAtFor(list, d, per.index);
-          tr.appendChild(el("td", { style: U.tdCSS() + (card ? "" : ";color:#bbb;text-align:center") },
-            card ? subjectLabel(card) : "—"));
+          const tr = el("tr");
+          tr.appendChild(el("th", { style: U.thCSS() }, "P" + per.index));
+          for (let d = 0; d < DAYS.length; d++) {
+            const card = cardAtFor(list, d, per.index);
+            tr.appendChild(el("td", { style: U.tdCSS() + (card ? "" : ";color:#bbb;text-align:center") },
+              card ? subjectLabel(card) : "—"));
+          }
+          body.appendChild(tr);
         }
-        body.appendChild(tr);
+      } else {
+        for (let d = 0; d < DAYS.length; d++) {
+          const tr = el("tr");
+          tr.appendChild(el("th", { style: U.thCSS() }, DAYS[d]));
+          for (const per of periods) {
+            const card = cardAtFor(list, d, per.index);
+            tr.appendChild(el("td", { style: U.tdCSS() + (card ? "" : ";color:#bbb;text-align:center") },
+              card ? subjectLabel(card) : "—"));
+          }
+          body.appendChild(tr);
+        }
       }
       tbl.appendChild(body);
       p.appendChild(tbl);

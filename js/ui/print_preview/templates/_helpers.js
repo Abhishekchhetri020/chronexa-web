@@ -75,9 +75,23 @@
     return "border:1px solid #bbb;padding:3px 5px;vertical-align:top";
   }
 
+  // Item 5 — per-template structure resolver. Templates that want to
+  // honour APP.printTemplateStructure overrides call this to learn
+  // whether days should be rows (default) or columns. Inherits from
+  // the global APP.printSettings.structure when no per-template
+  // override is set. Returns "rows-days" or "columns-days".
+  function structureFor(templateId) {
+    const APP2 = window.APP || {};
+    const perTpl = APP2.printTemplateStructure && APP2.printTemplateStructure[templateId];
+    if (perTpl && perTpl !== "inherit") return perTpl;
+    const global2 = (APP2.printSettings && APP2.printSettings.structure) || "rows-days";
+    return global2;
+  }
+
   APP.printTemplateUtils = {
     DAYS, el, page, header, footer, emptyPage,
     cardAtFor, subjectLabel, teacherList,
     tableCSS, thCSS, tdCSS,
+    structureFor,
   };
 })();

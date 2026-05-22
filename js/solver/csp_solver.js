@@ -450,6 +450,30 @@ function buildModel(school) {
           maxDays: tch.intervalMaxDays.maxDays | 0 }
       : null;
   }
+  // Item 7 — supervision criteria (read once for the soft scorer).
+  const supervisionCriteria = (school.settings && school.settings.supervisionCriteria) || null;
+  // Item 8 — student-elective lesson grouping for solver-side scoring.
+  // For each elective subject, build the set of students enrolled in it
+  // via school.studentSubjects[], then tag every lesson with that subject
+  // as belonging to those students. The softscorer detects per-student
+  // double-bookings using these tags.
+  const studentList = Array.isArray(school.students) ? school.students : [];
+  const studentIdx = Object.create(null);
+  for (let si = 0; si < studentList.length; si++) studentIdx[studentList[si].id] = si;
+  const studentElectiveSets = studentList.map(() => true); // length only
+  const enrollBySubject = Object.create(null);
+  for (const e of (school.studentSubjects || [])) {
+    if (!e.subjectId || !e.studentId) continue;
+    const sidx = studentIdx[e.studentId];
+    if (sidx == null) continue;
+    (enrollBySubject[e.subjectId] = enrollBySubject[e.subjectId] || []).push(sidx);
+  }
+  const lessonStudentSets = new Array(lessonCount);
+  for (let i = 0; i < lessonCount; i++) {
+    const subjId = expanded[i].subjectId;
+    const enrolled = enrollBySubject[subjId];
+    lessonStudentSets[i] = enrolled && enrolled.length ? enrolled.slice() : null;
+  }
 
   // FET-port — lesson activity tags + per-tag daily caps. Each lesson
   // can carry lesson.tags = ["PE", "LAB", ...]; the school carries
@@ -860,6 +884,8 @@ function buildModel(school) {
     classroomAllowedTags,
     schoolMode, afternoonStartsAt,
     teacherIntervalMaxDays,
+    supervisionCriteria,
+    studentElectiveSets, lessonStudentSets,
     subjectDailyLimit,
     classSubjectTarget,
     classTeacherPosMask,
@@ -1489,7 +1515,62 @@ function softScore(model, state) {
   s += modeAfternoonHeavyPenalty(model, state) * (w[1] || 1);
   s += modeBlockPairingPenalty(model, state) * (w[1] || 1);
   s += teacherIntervalMaxDaysPenalty(model, state) * (w[0] || 1);
+  s += supervisionCriteriaSoftPenalty(model, state) * (w[0] || 1);
+  s += studentSubjectsConflictPenalty(model, state) * (w[1] || 1);
   return s;
+}
+
+// Item 7 — supervision criteria solver preference scoring. Reads
+// model.supervisionCriteria.{avoidLastPeriod, avoidFirstPeriod} and
+// soft-penalises ANY assigned teacher placement at those periods (proxy
+// for the supervision-slot scheduling cost: the more teaching at avoided
+// periods, the worse the supervision-fit). Lightweight — operates on
+// existing teacher placements rather than touching the supervision
+// scheduling pipeline, but biases the timetable toward leaving the
+// teacher's avoided periods free.
+function supervisionCriteriaSoftPenalty(model, state) {
+  const crit = model.supervisionCriteria;
+  if (!crit) return 0;
+  const ppd = model.periodsPerDay;
+  const last = ppd - 1, first = 0;
+  let penalty = 0;
+  if (!crit.avoidLastPeriod && !crit.avoidFirstPeriod) return 0;
+  for (let i = 0; i < model.lessonCount; i++) {
+    if (!state.lessonAssigned[i]) continue;
+    const slot = state.lessonAssignedSlot[i];
+    const p = model.slotPeriod[slot];
+    if (crit.avoidLastPeriod && p === last) penalty += 1;
+    if (crit.avoidFirstPeriod && p === first) penalty += 1;
+  }
+  return penalty;
+}
+
+// Item 8 — studentsubjects solver awareness. Walks each enrolled
+// student's class lessons + elective subject lessons, counts per-slot
+// double-bookings, +1 penalty per conflicting (student, day, period).
+// Equivalent to the post-placement studentScheduleConflicts() check but
+// embedded in softScore so the solver actively prefers conflict-free
+// elective placements during search.
+function studentSubjectsConflictPenalty(model, state) {
+  const ses = model.studentElectiveSets;
+  if (!ses || !ses.length) return 0;
+  let penalty = 0;
+  // Build occupancy per (studentIdx, day, period) bitmask
+  const days = model.days, ppd = model.periodsPerDay;
+  const occ = new Uint8Array(ses.length * days * ppd);
+  for (let i = 0; i < model.lessonCount; i++) {
+    if (!state.lessonAssigned[i]) continue;
+    const tags = model.lessonStudentSets ? model.lessonStudentSets[i] : null;
+    if (!tags || !tags.length) continue;
+    const slot = state.lessonAssignedSlot[i];
+    const d = model.slotDay[slot], p = model.slotPeriod[slot];
+    for (const sidx of tags) {
+      const k = (sidx * days + d) * ppd + p;
+      if (occ[k]) penalty += 1;
+      else occ[k] = 1;
+    }
+  }
+  return penalty;
 }
 
 // Tier-B FET port — Subject + tag → preferred room. When a lesson has

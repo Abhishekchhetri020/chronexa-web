@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-22T05:27:32Z
+/* Chronexa bundle — generated 2026-05-22T05:44:06Z
  *      151 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -7508,13 +7508,37 @@ window.Inspector = (function () {
     return id;
   }
 
+  // Item 6 — per-tab undo stacks. Store undo/redo alongside the school
+  // snapshot so switching tabs restores the per-tab edit history. Each
+  // cmd in the stack is a {do, undo} pair; functions don't survive
+  // JSON serialisation, so the stack is held in-memory keyed by tabId
+  // and only the school payload goes to localStorage.
+  const tabUndoStacks = Object.create(null); // id → {undo:[], redo:[]}
+
+  function captureAuditState() {
+    if (!APP.audit) return { undo: [], redo: [] };
+    return {
+      undo: APP.audit.undoStack ? APP.audit.undoStack.slice() : [],
+      redo: APP.audit.redoStack ? APP.audit.redoStack.slice() : [],
+    };
+  }
+  function restoreAuditState(s) {
+    if (!APP.audit) return;
+    APP.audit.undoStack = (s && s.undo) || [];
+    APP.audit.redoStack = (s && s.redo) || [];
+  }
+
   function switchTo(id) {
     // Save the currently-active tab back before swapping.
-    if (activeId && APP.school) persistTab(activeId, APP.school);
+    if (activeId && APP.school) {
+      persistTab(activeId, APP.school);
+      tabUndoStacks[activeId] = captureAuditState();
+    }
     const school = loadTab(id);
     if (!school) { (global._chrxNotify || console.log)("Tab missing or corrupt", "error"); return; }
     APP.school = school;
     activeId = id;
+    restoreAuditState(tabUndoStacks[id]);
     global.dispatchEvent(new CustomEvent("app:school-loaded",
       { detail: { school, source: "multi-doc-tab" } }));
     render();
@@ -9880,6 +9904,47 @@ ${body}
       const sink = meta.hard ? result.hard : result.soft;
 
       switch (meta.scope) {
+        // Item 9 — n_2 "must not be at same time" (no same-period for
+        // any other matched lesson). Hard violation if any matched
+        // lesson is at the SAME (day, period).
+        case "sameTime": {
+          const others = placedMatching(school, rel, lessonMatches);
+          for (const o of others) {
+            if (o.card.day === day && o.card.period === period &&
+                o.card.lessonId !== lessonId) {
+              sink.push(`${meta.label} — another matched lesson already at this period`);
+              break;
+            }
+          }
+          break;
+        }
+        // Item 9 — n_3 "alternate days". Soft. Penalise placement at a
+        // day where any other matched lesson already sits.
+        case "alternateDay": {
+          const others = placedMatching(school, rel, lessonMatches);
+          for (const o of others) {
+            if (o.card.day === day && o.card.lessonId !== lessonId) {
+              sink.push(`${meta.label} — already placed on this day`);
+              break;
+            }
+          }
+          break;
+        }
+        // Item 9 — n_15 "evenly spaced across the week". Soft. Penalise
+        // when the placement creates back-to-back days for matched
+        // lessons (variance proxy: any same-or-adjacent day with another
+        // matched lesson).
+        case "evenSpacing": {
+          const others = placedMatching(school, rel, lessonMatches);
+          for (const o of others) {
+            if (o.card.lessonId === lessonId) continue;
+            if (Math.abs(o.card.day - day) <= 1) {
+              sink.push(`${meta.label} — spacing too tight (adjacent day)`);
+              break;
+            }
+          }
+          break;
+        }
         case "consecutive": {
           // n_0: cannot follow.  Means: A then B (or vice-versa) cannot be consecutive periods.
           // Check existing placements at (day, period±1) for the "other side" of the relation.
@@ -19607,10 +19672,24 @@ window.StartScreen = (function () {
     return "border:1px solid #bbb;padding:3px 5px;vertical-align:top";
   }
 
+  // Item 5 — per-template structure resolver. Templates that want to
+  // honour APP.printTemplateStructure overrides call this to learn
+  // whether days should be rows (default) or columns. Inherits from
+  // the global APP.printSettings.structure when no per-template
+  // override is set. Returns "rows-days" or "columns-days".
+  function structureFor(templateId) {
+    const APP2 = window.APP || {};
+    const perTpl = APP2.printTemplateStructure && APP2.printTemplateStructure[templateId];
+    if (perTpl && perTpl !== "inherit") return perTpl;
+    const global2 = (APP2.printSettings && APP2.printSettings.structure) || "rows-days";
+    return global2;
+  }
+
   APP.printTemplateUtils = {
     DAYS, el, page, header, footer, emptyPage,
     cardAtFor, subjectLabel, teacherList,
     tableCSS, thCSS, tdCSS,
+    structureFor,
   };
 })();
 
@@ -20099,22 +20178,40 @@ window.StartScreen = (function () {
       const p = page(false);
       p.appendChild(header(c.name + " — class-wise with table", school.schoolName || ""));
 
-      // Grid
+      // Grid — honour per-template structure override (Item 5).
+      const structure = (U.structureFor && U.structureFor("classwise_with_table")) || "rows-days";
       const tbl = el("table", { style: U.tableCSS() });
       const head = el("tr");
       head.appendChild(el("th", { style: U.thCSS() }, ""));
-      periods.forEach(per => head.appendChild(el("th", { style: U.thCSS() }, "P" + per.index)));
+      if (structure === "columns-days") {
+        DAYS.forEach(d => head.appendChild(el("th", { style: U.thCSS() }, d)));
+      } else {
+        periods.forEach(per => head.appendChild(el("th", { style: U.thCSS() }, "P" + per.index)));
+      }
       tbl.appendChild(el("thead", null, head));
       const body = el("tbody");
-      for (let d = 0; d < DAYS.length; d++) {
-        const tr = el("tr");
-        tr.appendChild(el("th", { style: U.thCSS() }, DAYS[d]));
+      if (structure === "columns-days") {
         for (const per of periods) {
-          const card = cardAtFor(list, d, per.index);
-          tr.appendChild(el("td", { style: U.tdCSS() + (card ? "" : ";color:#bbb;text-align:center") },
-            card ? subjectLabel(card) : "—"));
+          const tr = el("tr");
+          tr.appendChild(el("th", { style: U.thCSS() }, "P" + per.index));
+          for (let d = 0; d < DAYS.length; d++) {
+            const card = cardAtFor(list, d, per.index);
+            tr.appendChild(el("td", { style: U.tdCSS() + (card ? "" : ";color:#bbb;text-align:center") },
+              card ? subjectLabel(card) : "—"));
+          }
+          body.appendChild(tr);
         }
-        body.appendChild(tr);
+      } else {
+        for (let d = 0; d < DAYS.length; d++) {
+          const tr = el("tr");
+          tr.appendChild(el("th", { style: U.thCSS() }, DAYS[d]));
+          for (const per of periods) {
+            const card = cardAtFor(list, d, per.index);
+            tr.appendChild(el("td", { style: U.tdCSS() + (card ? "" : ";color:#bbb;text-align:center") },
+              card ? subjectLabel(card) : "—"));
+          }
+          body.appendChild(tr);
+        }
       }
       tbl.appendChild(body);
       p.appendChild(tbl);
