@@ -14,7 +14,7 @@
  */
 
 const CACHE_PREFIX = "chronexa-";
-const APP_VER = "20260522-p84-defensive-grid-entries";
+const APP_VER = "20260522-p85-fix-generate-button";
 const CACHE_NAME = CACHE_PREFIX + APP_VER;
 
 // Minimal app shell — the rest is cached lazily on first fetch

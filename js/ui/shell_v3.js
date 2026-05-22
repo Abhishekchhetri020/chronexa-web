@@ -99,9 +99,17 @@
     search.appendChild(el("span", null, "Search anything…"));
     search.appendChild(el("span", { class: "chrx-kbd-search__kbd" }, "⌘K"));
 
+    // Generate / Test: delegate to the legacy #cta-generate / #cta-test
+    // click handlers (the real wiring lives in index.html bind block).
+    // Firing an event alone doesn't work — nothing listens to app:generate.
+    function clickLegacy(id, eventName) {
+      const legacy = document.getElementById(id);
+      if (legacy && !legacy.disabled) { legacy.click(); return; }
+      fire(eventName);
+    }
     const actions = el("div", { class: "chrx-action-row", style: "display:flex; gap:8px" },
-      el("button", { class: "chrx-btn", onclick: () => fire("app:test") }, "Test"),
-      el("button", { class: "chrx-btn chrx-btn--primary", onclick: () => fire("app:generate") }, "Generate"));
+      el("button", { class: "chrx-btn", onclick: () => clickLegacy("cta-test", "app:test") }, "Test"),
+      el("button", { class: "chrx-btn chrx-btn--primary", onclick: () => clickLegacy("cta-generate", "app:generate") }, "Generate"));
 
     const fsBtn = el("button", { class: "chrx-shell-toggle", "data-toggle": "fs",
       title: "Fullscreen editor  F (Esc to exit)", "aria-label": "Toggle fullscreen editor",
@@ -214,8 +222,16 @@
       if (n.section) continue;
       items.push({ icon: n.icon, label: n.label, sub: "open", run: n.on });
     }
-    items.push({ icon: "⚡", label: "Generate timetable",  sub: "⌘G", run: () => fire("app:generate") });
-    items.push({ icon: "🧪", label: "Test timetable",      sub: "⌘T", run: () => fire("app:test") });
+    items.push({ icon: "⚡", label: "Generate timetable",  sub: "⌘G", run: () => {
+      const legacy = document.getElementById("cta-generate");
+      if (legacy && !legacy.disabled) { legacy.click(); return; }
+      fire("app:generate");
+    } });
+    items.push({ icon: "🧪", label: "Test timetable",      sub: "⌘T", run: () => {
+      const legacy = document.getElementById("cta-test");
+      if (legacy && !legacy.disabled) { legacy.click(); return; }
+      fire("app:test");
+    } });
     items.push({ icon: "↻",  label: "Improve schedule",    sub: "⌘I", run: () => fire("app:improve") });
     items.push({ icon: "💾", label: "Save",                sub: "⌘S", run: () => fire("app:save") });
     items.push({ icon: "↘",  label: "Export XML",          sub: "⌘E", run: () => fire("app:export-timetable-xml") });
