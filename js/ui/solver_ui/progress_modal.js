@@ -89,20 +89,58 @@
     // ---- heatmap
     const heat = el("div", { class: "csu-heatmap", "aria-hidden": "true" });
 
+    // ---- live fault list (Top-30 #4). Populated from progress payload's
+    // latestViolations array which the solver now ships every ~500ms with
+    // a rotating window of currently-unassigned lessons.
+    const faultsHead = el("div", { class: "csu-faults__head" }, "Currently stuck");
+    const faultsList = el("ul", { class: "csu-faults__list" });
+    const faultsEmpty = el("li", { class: "csu-faults__empty" }, "—");
+    faultsList.appendChild(faultsEmpty);
+    const faults = el("section", { class: "csu-faults" }, faultsHead, faultsList);
+
     // ---- buttons
     const pauseBtn  = el("button", { type: "button", class: "chrx-btn", onclick: doPauseResume }, "Pause");
     const cancelBtn = el("button", { type: "button", class: "chrx-btn chrx-btn--danger", onclick: doCancel }, "Cancel");
     const acceptBtn = el("button", { type: "button", class: "chrx-btn chrx-btn--primary", onclick: doAcceptPartial }, "Accept partial result");
     const actions = el("div", { class: "csu-dialog__actions" }, pauseBtn, acceptBtn, cancelBtn);
 
-    dlg.append(title, sub, bar1, bar2, tiles, heat, actions);
+    dlg.append(title, sub, bar1, bar2, tiles, heat, faults, actions);
     host.appendChild(dlg);
     document.body.appendChild(host);
 
     refs = {
       title, sub, bar1Fill, bar2Fill, tSpeed, tIter, tHard, tSoft, tElapsed, tStuck,
-      heat, pauseBtn, cancelBtn, acceptBtn,
+      heat, faultsList, pauseBtn, cancelBtn, acceptBtn,
     };
+  }
+
+  // Render up to 5 violations as <li> rows. Uses textContent (no innerHTML)
+  // so descriptions with HTML-special chars don't break or inject markup.
+  function renderFaults(items) {
+    if (!refs || !refs.faultsList) return;
+    const list = refs.faultsList;
+    while (list.firstChild) list.removeChild(list.firstChild);
+    if (!items || !items.length) {
+      const empty = document.createElement("li");
+      empty.className = "csu-faults__empty";
+      empty.textContent = "—";
+      list.appendChild(empty);
+      return;
+    }
+    for (const v of items.slice(0, 5)) {
+      const li = document.createElement("li");
+      const severity = (v && v.severity) === "soft" ? "soft" : "hard";
+      li.className = "csu-faults__item csu-faults__item--" + severity;
+      const icon = document.createElement("span");
+      icon.className = "csu-faults__icon";
+      icon.textContent = severity === "hard" ? "⚠" : "•";
+      const text = document.createElement("span");
+      text.className = "csu-faults__text";
+      text.textContent = (v && v.description) || (v && v.ruleId) || "violation";
+      li.appendChild(icon);
+      li.appendChild(text);
+      list.appendChild(li);
+    }
   }
 
   function buildHeatmap() {
@@ -233,6 +271,7 @@
       refs.tSoft.textContent    = fmtInt(ev.softScore);
       refs.tElapsed.textContent = fmtTime(dt);
       pulseHeatmap(iter);
+      if (Array.isArray(ev.latestViolations)) renderFaults(ev.latestViolations);
     } else if (ev.type === "done") {
       state.lastResult = ev.result;
       // Bar fills to 100% before we transition.

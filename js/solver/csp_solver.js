@@ -1544,14 +1544,42 @@ function maybeEmitProgress(ctx, state, unassignedCount0, initiallyInfeasibleCoun
   if (iterDelta < 500 && timeDelta < 500) return;
   ctx.progressLastIter = ctx.nodesVisited;
   ctx.progressLastMs = now;
+
+  // Per-fault sample for the live Test/Generate dialog (Top-30 #4). Scan
+  // state.lessonAssigned[] and pull up to 5 currently-unassigned lesson
+  // labels. Rotating window starts from progressEmitCount so the user
+  // sees different stuck lessons across ticks even when the count is
+  // larger than 5.
+  let latestViolations = null;
+  const labels = ctx.lessonLabels;
+  if (labels && state.lessonAssigned && labels.length) {
+    const out = [];
+    const start = ctx.progressEmitCount * 5;
+    const n = labels.length;
+    for (let off = 0; off < n && out.length < 5; off++) {
+      const i = (start + off) % n;
+      if (!state.lessonAssigned[i]) {
+        out.push({
+          ruleId: "unassigned",
+          severity: "hard",
+          description: labels[i] + " — not yet placed",
+        });
+      }
+    }
+    if (out.length) latestViolations = out;
+    ctx.progressEmitCount = (ctx.progressEmitCount + 1) | 0;
+  }
+
   try {
-    ctx.onProgress({
+    const payload = {
       iter: ctx.nodesVisited,
       softScore: state.bestSoftScore === -Number.MAX_SAFE_INTEGER ? 0 : state.bestSoftScore,
       hardConflicts: (state.bestHardCount === Number.MAX_SAFE_INTEGER ? unassignedCount0 : state.bestHardCount) + initiallyInfeasibleCount,
       backtracks: ctx.backtracks,
       durationMs: Math.round(now - t0),
-    });
+    };
+    if (latestViolations) payload.latestViolations = latestViolations;
+    ctx.onProgress(payload);
   } catch {}
 }
 
@@ -2476,6 +2504,29 @@ export function solve(school, options = {}) {
     if (model.lessonCandidateCount[i] === 0) initiallyInfeasible.push(i);
   }
 
+  // Per-lesson human label cache used by maybeEmitProgress() to stream a
+  // sample of currently-unassigned lessons to the UI. Built once after
+  // buildModel so the cost (subject/class/teacher name lookups) doesn't
+  // re-pay on every progress tick. Each entry is "<Subject> <Classes>".
+  const _subjById  = Object.fromEntries((school.subjects  || []).map(s => [s.id, s]));
+  const _classById = Object.fromEntries((school.classes   || []).map(c => [c.id, c]));
+  const _teachById = Object.fromEntries((school.teachers  || []).map(t => [t.id, t]));
+  const lessonLabels = new Array(model.lessonCount);
+  for (let i = 0; i < model.lessonCount; i++) {
+    const l = model.lessons[i];
+    const subj = _subjById[l.subjectId];
+    const subjShort = subj ? (subj.abbr || subj.name) : l.subjectId;
+    const cls = (l.classIds || []).map(cid => {
+      const c = _classById[cid];
+      return c ? (c.short || c.name) : cid;
+    }).filter(Boolean).join("/");
+    const tch = (l.teacherIds || []).map(tid => {
+      const t = _teachById[tid];
+      return t ? (t.abbr || t.name) : tid;
+    }).filter(Boolean).join("/");
+    lessonLabels[i] = subjShort + (cls ? " " + cls : "") + (tch ? " · " + tch : "");
+  }
+
   // Warm-start: when the school has cards already placed (XML import or a
   // previous solver run that the user wants to keep), pre-populate each
   // branch's initial state from those placements. The search then has only
@@ -2588,6 +2639,13 @@ export function solve(school, options = {}) {
       t0,
       unassignedCount0,
       initiallyInfeasibleCount: initiallyInfeasible.length,
+      // Per-fault streaming (Top-30 #4) — labels for the human-readable
+      // unassigned sample, the model so maybeEmitProgress can scan
+      // state.lessonAssigned[], and an event-counter to keep the sample
+      // visibly rotating during long runs.
+      lessonLabels,
+      model,
+      progressEmitCount: 0,
     };
 
     // Wall-clock safety net: even if the search never reaches a `backtrack`
