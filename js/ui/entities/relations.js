@@ -373,6 +373,35 @@
       checked: draft.disabled ? "checked" : null,
       onchange:(e)=>draft.disabled = e.target.checked });
     wrap.appendChild(D.buildField("Disabled", disChk));
+
+    // Advanced fields — audit §4.3-4.5. Surface positions / positions2
+    // (bitstring) and filter / filter2 (row-filter expressions) so the
+    // import-from-HAR / XML round-trip values are user-editable, not just
+    // preserved-as-opaque. Collapsible to keep the common Type+Scope flow
+    // uncluttered.
+    const details = D.el("details", { style: "margin-top:10px" });
+    const summary = D.el("summary",
+      { style: "cursor:pointer;font-size:11px;color:#475569;text-transform:uppercase;letter-spacing:.04em;font-weight:600" },
+      "Advanced (positions · filter)");
+    details.appendChild(summary);
+    function textF(key, placeholder) {
+      const i = D.el("input", { type: "text",
+        value: draft[key] != null ? String(draft[key]) : "",
+        placeholder: placeholder || "",
+        style: "width:100%;padding:4px 6px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px",
+        oninput: e => draft[key] = e.target.value || undefined });
+      return i;
+    }
+    details.appendChild(D.buildField("Positions (n_16/n_17 bitstring)",
+      textF("positions", "e.g. 100000 = period 1 only")));
+    details.appendChild(D.buildField("Positions 2",
+      textF("positions2", "second-axis bitstring (rare)")));
+    details.appendChild(D.buildField("Filter",
+      textF("filter", "row-filter expression (advanced)")));
+    details.appendChild(D.buildField("Filter 2",
+      textF("filter2", "second filter expression")));
+    wrap.appendChild(details);
+
     return wrap;
   }
 
