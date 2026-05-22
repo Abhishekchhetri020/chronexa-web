@@ -1,7 +1,7 @@
 # Chronexa Web — Roadmap
 
 **Last refreshed:** 2026-05-22 (seventh session)
-**Live URL:** https://abhishekchhetri020.github.io/chronexa-web/ — APP_VER `20260522-p51-halo`
+**Live URL:** https://abhishekchhetri020.github.io/chronexa-web/ — APP_VER `20260522-p54-final-cleanup`
 **Repo:** https://github.com/Abhishekchhetri020/chronexa-web
 
 ---
@@ -57,6 +57,20 @@ blank school
 - **Print template body review** — the new 20-template registry is loaded into the previewer, but the body of each newer template hasn't had a side-by-side audit against the Classic equivalent. Visual parity may still drift cell-by-cell.
 
 ## 📝 पिछले 7 दिन में क्या हुआ (last 7 days, newest first)
+
+### 2026-05-22 (seventh session continued — partial-items cleanup p52-p54)
+
+After the audit revealed only 2 true gaps remained, three more pushes closed almost all the 🟡 partial items:
+
+| Push | What user sees |
+|---|---|
+| `p52-print-settings-plus` | (a) Files → Print preview ribbon: 📐 Sizes / 🌈 Colors / 🧩 Structure / 🛠 Global all now open a real "Print settings" sheet with 7 tabs (Sizes · Globals · Structure · Colors · Supervision · Page header · Header text) instead of toasting "coming soon" or jumping into the wizard. (b) Custom 1/2/3 report templates now actually register — the dropdown shows 24 of 24. (c) Lesson dialog gained a "Max students" field. |
+| `p53-partial-cleanup` | (a) Subject → Constraints sheet now embeds a list of every card-relation touching that subject with an "Open Relations" jump button. (b) Teacher dialog gained 3 missing fields: Bell schedule, Preferred classrooms (multi-select), Print color. (c) Right-click on an empty grid cell opens a "Place lesson here" picker with the top 5 unplaced lessons for the row — click places via the undo stack so ⌘Z reverts. (d) Pending strip group-by tabs gained "Classroom". |
+| `p54-final-cleanup` | Pending strip gained an "All" tab (flat list of every unplaced card). All 5 chips from the Classic spec are now there. |
+
+**Backlog state:** 28 of 30 shipped (93 %). 1 partial (#4 per-fault Test dialog — aggregate counters stream live, individual-fault list view is polish). 1 architectural gap (#3 multi-bell per class — `school.bell` is global today; touching it affects every grid render + every solver constraint, ~3-5 day port).
+
+Live status is verifiable at `Chronexa-TOP30-STATUS.md`.
 
 ### 2026-05-22 (seventh session — full ledger)
 
