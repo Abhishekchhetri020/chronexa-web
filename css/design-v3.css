@@ -130,6 +130,25 @@ body::before{
    topbar; data-search + lang-toggle migration to the new shell is TODO. */
 .chrx-shell .chrx-main > header[class*="from-slate-900"]{display:none !important}
 
+/* Sidebar / right-rail visible collapse handles — sit at each end of the
+   topbar. Label is the keybind so the shortcut is self-documenting. */
+.chrx-shell-toggle{
+  border:1px solid var(--line); background:transparent; color:var(--ink-2);
+  width:28px; height:28px; border-radius:6px;
+  font-family:var(--chrx-font-mono); font-size:15px; font-weight:600;
+  line-height:1; cursor:pointer; flex:0 0 auto;
+  display:inline-flex; align-items:center; justify-content:center;
+  transition:background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+.chrx-shell-toggle:hover{background:var(--paper-2); border-color:var(--ink-3); color:var(--ink)}
+.chrx-shell-toggle:active{transform:translateY(1px)}
+/* When the panel that this button toggles is hidden, paint the button "active"
+   (filled ink) so the user knows what state they're in. */
+.chrx-shell.is-side-hidden .chrx-shell-toggle[data-toggle="side"],
+.chrx-shell.is-rail-hidden .chrx-shell-toggle[data-toggle="rail"]{
+  background:var(--ink); color:var(--paper); border-color:var(--ink);
+}
+
 /* Wordmark cell */
 .chrx-wordmark{
   grid-area:logo; display:flex; align-items:center; gap:12px;

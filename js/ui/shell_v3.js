@@ -84,6 +84,10 @@
   }
 
   function buildTopbar() {
+    const sideBtn = el("button", { class: "chrx-shell-toggle", "data-toggle": "side",
+      title: "Toggle sidebar  [", "aria-label": "Toggle sidebar",
+      onclick: () => togglePanel("side") }, "[");
+
     const crumbs = el("div", { class: "chrx-crumbs", id: "chrx-crumbs" });
     crumbs.appendChild(el("span", null, "Untitled"));
     crumbs.appendChild(el("span", { class: "chrx-crumbs__sep" }, "/"));
@@ -99,11 +103,17 @@
       el("button", { class: "chrx-btn", onclick: () => fire("app:test") }, "Test"),
       el("button", { class: "chrx-btn chrx-btn--primary", onclick: () => fire("app:generate") }, "Generate"));
 
+    const railBtn = el("button", { class: "chrx-shell-toggle", "data-toggle": "rail",
+      title: "Toggle right rail  ]", "aria-label": "Toggle right rail",
+      onclick: () => togglePanel("rail") }, "]");
+
     return el("header", { class: "chrx-topbar" },
+      sideBtn,
       crumbs,
       el("div", { class: "chrx-topbar__spacer" }),
       search,
-      actions);
+      actions,
+      railBtn);
   }
 
   function buildRail() {
