@@ -31,10 +31,11 @@
 <!-- p7-polish: motion utilities + final theme overrides. Load LAST so the
      .chrx-lift / .chrx-press / .chrx-rise-stagger utilities win the cascade. -->
 <link rel="stylesheet" href="css/motion.css">
-<!-- Chronexa Design v2 — "Studio". Loaded LAST so its overrides win the
-     cascade against the legacy chronexa-theme + ribbon + editor stylesheets.
-     See Chronexa-DESIGN.md for the language + anti-references. -->
-<link rel="stylesheet" href="css/design-v2.css">
+<!-- Chronexa Design v3 — "Studio". Loaded LAST so its overrides win the
+     cascade. Editorial-refined: Fraunces display + Inter Tight body +
+     JetBrains Mono stats; paper neutrals + deep teal accent.
+     See Chronexa-DESIGN.md and mockups/chronexa-studio-v3.html. -->
+<link rel="stylesheet" href="css/design-v3.css">
 
 <!-- Excel + gzip libs for ribbon Export/Snapshot (loaded once) -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
@@ -221,7 +222,7 @@
 
 <!-- ─────────────────────── SCRIPTS ─────────────────────── -->
 <!-- Bump APP_VER on every deploy so the browser refetches the JS bundle -->
-<script>window.APP_VER = "20260522-p72-design-v2";</script>
+<script>window.APP_VER = "20260522-p73-studio-v3";</script>
 <!-- Backend URL — leave empty to force "Run on this computer". Override at deploy time. -->
 <script>window.CHRONEXA_BACKEND_URL = window.CHRONEXA_BACKEND_URL || "";</script>
 <!-- Bundle mode (default): single HTTP request for all 133 modules.
@@ -281,6 +282,7 @@
     ["ui","entities/holidays"],
     ["ui","entity_router"],
     ["ui","multi_doc_tabs"],
+    ["ui","shell_v3"],
     // ─── P3 main-thread components (Statistics, Settings, AI, HTML export) ──
     ["ui","components/statistics_panel"],
     ["ui","components/school_settings_dialog"],

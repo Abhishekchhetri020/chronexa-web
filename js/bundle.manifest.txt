@@ -35,6 +35,7 @@ js/ui/entities/grades.js
 js/ui/entities/holidays.js
 js/ui/entity_router.js
 js/ui/multi_doc_tabs.js
+js/ui/shell_v3.js
 js/ui/components/statistics_panel.js
 js/ui/components/school_settings_dialog.js
 js/ui/components/solver_parameters_dialog.js
