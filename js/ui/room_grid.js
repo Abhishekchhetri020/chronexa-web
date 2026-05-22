@@ -51,11 +51,11 @@ window.RoomGrid = (function () {
           .map(e => ({
             ...e,
             // For the room view, cell line 2 = the class, line 3 = teacher
-            teachers: e.classes.slice(),
-            classroom: e.teachers.join(", "),
+            teachers: Array.isArray(e.classes) ? e.classes.slice() : [],
+            classroom: Array.isArray(e.teachers) ? e.teachers.join(", ") : "",
           })),
       rowSearchText: (row) => row.label,
-      cellSearchText: (e) => `${e.subject} ${e.subjectAbbr} ${e.classes.join(" ")} ${e.teachers.join(" ")}`,
+      cellSearchText: (e) => `${e.subject || ""} ${e.subjectAbbr || ""} ${Array.isArray(e.classes) ? e.classes.join(" ") : ""} ${Array.isArray(e.teachers) ? e.teachers.join(" ") : ""}`,
       onCellClick: (entry, rowId) => Inspector.open(entry, { context: "room", rowId }),
     });
   }

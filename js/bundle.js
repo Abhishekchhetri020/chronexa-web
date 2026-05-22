@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-22T15:34:46Z
+/* Chronexa bundle — generated 2026-05-22T18:04:19Z
  *      161 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -804,7 +804,7 @@ window.ClassGrid = (function () {
       periods: S.bell.periods,
       cellEntries: (rowId, day, period) => filterEntries(S._idx.cardsByClass[rowId], day, period),
       rowSearchText: (row) => `${row.label} ${row.sublabel || ""}`,
-      cellSearchText: (e) => `${e.subject} ${e.subjectAbbr} ${e.teachers.join(" ")} ${e.classroom}`,
+      cellSearchText: (e) => `${e.subject || ""} ${e.subjectAbbr || ""} ${Array.isArray(e.teachers) ? e.teachers.join(" ") : ""} ${e.classroom || ""}`,
       onCellClick: (entry, rowId) => Inspector.open(entry, { context: "class", rowId }),
     });
   }
@@ -875,10 +875,10 @@ window.TeacherGrid = (function () {
           .map(e => ({
             ...e,
             // For the teacher view, show the class instead of the teacher in the cell body
-            teachers: e.classes.slice(),
+            teachers: Array.isArray(e.classes) ? e.classes.slice() : [],
           })),
       rowSearchText: (row) => row.label,
-      cellSearchText: (e) => `${e.subject} ${e.subjectAbbr} ${e.teachers.join(" ")} ${e.classroom}`,
+      cellSearchText: (e) => `${e.subject || ""} ${e.subjectAbbr || ""} ${Array.isArray(e.teachers) ? e.teachers.join(" ") : ""} ${e.classroom || ""}`,
       onCellClick: (entry, rowId) => Inspector.open(entry, { context: "teacher", rowId }),
     });
   }
@@ -942,11 +942,11 @@ window.RoomGrid = (function () {
           .map(e => ({
             ...e,
             // For the room view, cell line 2 = the class, line 3 = teacher
-            teachers: e.classes.slice(),
-            classroom: e.teachers.join(", "),
+            teachers: Array.isArray(e.classes) ? e.classes.slice() : [],
+            classroom: Array.isArray(e.teachers) ? e.teachers.join(", ") : "",
           })),
       rowSearchText: (row) => row.label,
-      cellSearchText: (e) => `${e.subject} ${e.subjectAbbr} ${e.classes.join(" ")} ${e.teachers.join(" ")}`,
+      cellSearchText: (e) => `${e.subject || ""} ${e.subjectAbbr || ""} ${Array.isArray(e.classes) ? e.classes.join(" ") : ""} ${Array.isArray(e.teachers) ? e.teachers.join(" ") : ""}`,
       onCellClick: (entry, rowId) => Inspector.open(entry, { context: "room", rowId }),
     });
   }

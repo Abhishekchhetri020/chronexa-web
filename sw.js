@@ -14,7 +14,7 @@
  */
 
 const CACHE_PREFIX = "chronexa-";
-const APP_VER = "20260522-p83-print-phases-6-9";
+const APP_VER = "20260522-p84-defensive-grid-entries";
 const CACHE_NAME = CACHE_PREFIX + APP_VER;
 
 // Minimal app shell — the rest is cached lazily on first fetch

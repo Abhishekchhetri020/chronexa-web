@@ -45,7 +45,7 @@ window.ClassGrid = (function () {
       periods: S.bell.periods,
       cellEntries: (rowId, day, period) => filterEntries(S._idx.cardsByClass[rowId], day, period),
       rowSearchText: (row) => `${row.label} ${row.sublabel || ""}`,
-      cellSearchText: (e) => `${e.subject} ${e.subjectAbbr} ${e.teachers.join(" ")} ${e.classroom}`,
+      cellSearchText: (e) => `${e.subject || ""} ${e.subjectAbbr || ""} ${Array.isArray(e.teachers) ? e.teachers.join(" ") : ""} ${e.classroom || ""}`,
       onCellClick: (entry, rowId) => Inspector.open(entry, { context: "class", rowId }),
     });
   }

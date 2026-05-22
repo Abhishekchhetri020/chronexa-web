@@ -48,10 +48,10 @@ window.TeacherGrid = (function () {
           .map(e => ({
             ...e,
             // For the teacher view, show the class instead of the teacher in the cell body
-            teachers: e.classes.slice(),
+            teachers: Array.isArray(e.classes) ? e.classes.slice() : [],
           })),
       rowSearchText: (row) => row.label,
-      cellSearchText: (e) => `${e.subject} ${e.subjectAbbr} ${e.teachers.join(" ")} ${e.classroom}`,
+      cellSearchText: (e) => `${e.subject || ""} ${e.subjectAbbr || ""} ${Array.isArray(e.teachers) ? e.teachers.join(" ") : ""} ${e.classroom || ""}`,
       onCellClick: (entry, rowId) => Inspector.open(entry, { context: "teacher", rowId }),
     });
   }
