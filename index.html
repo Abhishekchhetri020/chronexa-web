@@ -222,7 +222,7 @@
 
 <!-- ─────────────────────── SCRIPTS ─────────────────────── -->
 <!-- Bump APP_VER on every deploy so the browser refetches the JS bundle -->
-<script>window.APP_VER = "20260522-p79-per-element-cell-style";</script>
+<script>window.APP_VER = "20260522-p80-print-filter-modal";</script>
 <!-- Backend URL — leave empty to force "Run on this computer". Override at deploy time. -->
 <script>window.CHRONEXA_BACKEND_URL = window.CHRONEXA_BACKEND_URL || "";</script>
 <!-- Bundle mode (default): single HTTP request for all 133 modules.
@@ -376,6 +376,7 @@
     ["ui","print_preview/pivot_cell_renderer"],
     ["ui","print_preview/pivot_engine"],
     ["ui","print_preview/modify_structure_dialog"],
+    ["ui","print_preview/filter_dialog"],
     // 11 existing template modules (registered via APP.printTemplates.register).
     ["ui","print_preview/templates/timetable_for_student"],
     ["ui","print_preview/templates/timetable_for_each_student"],

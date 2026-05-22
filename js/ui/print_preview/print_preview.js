@@ -75,8 +75,27 @@
     sel.value = currentTemplate;
 
     const filterBtn  = el("button", { class: "chrx-tb-btn", type: "button",
-      title: "Filter rows shown in this preview",
+      title: "Filter — pick which classes / teachers / rooms / subjects / periods / days to print",
       onclick: () => {
+        const FilterDlg = window.APP && window.APP.PrintFilterDialog;
+        const Schema = window.APP && window.APP.PrintReportSchema;
+        const Presets = window.APP && window.APP.PrintPresets;
+        if (FilterDlg && Schema && Presets) {
+          if (!APP.activePrintReport || APP.activePrintReport._presetId !== currentTemplate) {
+            const preset = Presets.get(currentTemplate);
+            if (preset) {
+              const r = Schema.create({ context: preset.context });
+              Schema.applyPreset(r, preset);
+              r._presetId = preset.id;
+              APP.activePrintReport = r;
+            }
+          }
+          if (APP.activePrintReport) {
+            FilterDlg.open(APP.activePrintReport, () => render(currentTemplate));
+            return;
+          }
+        }
+        // Fallback: legacy prompt
         const q = prompt("Filter rows (subject / teacher / class — leave empty to clear):", APP.printFilter || "");
         if (q == null) return;
         APP.printFilter = q.trim();
