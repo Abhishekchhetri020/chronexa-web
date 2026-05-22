@@ -74,9 +74,29 @@
     px = (typeof d.sourceX === "number") ? d.sourceX : (window.event ? window.event.clientX : 0);
     py = (typeof d.sourceY === "number") ? d.sourceY : (window.event ? window.event.clientY : 0);
     apply();
+    paintAllSlots();
     document.addEventListener("mousemove", onMove, true);
     document.addEventListener("mouseup", onUp, true);
     document.addEventListener("keydown", onKey, true);
+  }
+
+  // Heatmap-on-pickup (audit §5.3). For every empty slot in the grid, run
+  // Placement.classify and set data-validity so green/amber/red slots show
+  // at a glance — the user no longer has to drag-hover each slot to learn
+  // where their card would land cleanly. Out-of-bell slots already render
+  // hatched and are skipped here.
+  function paintAllSlots() {
+    if (!inHand || !window.Placement || typeof window.Placement.classify !== "function") return;
+    const slots = document.querySelectorAll(".chrx-editor .chrx-slot.empty:not(.out-of-bell)");
+    for (const slot of slots) {
+      const d = parseInt(slot.dataset.day, 10);
+      const p = parseInt(slot.dataset.period, 10);
+      if (Number.isNaN(d) || Number.isNaN(p)) continue;
+      try {
+        const v = window.Placement.classify(inHand.lessonId, d, p);
+        if (v && v.validity) slot.setAttribute("data-validity", v.validity);
+      } catch (_e) { /* ignore */ }
+    }
   }
 
   function onMove(e) {
@@ -246,6 +266,9 @@
     document.removeEventListener("keydown", onKey, true);
     if (lastSlot) { lastSlot.removeAttribute("data-validity"); lastSlot.removeAttribute("title"); }
     lastSlot = null;
+    // Clear the at-pickup heatmap painted by paintAllSlots().
+    document.querySelectorAll(".chrx-editor .chrx-slot.empty[data-validity]").forEach(
+      s => s.removeAttribute("data-validity"));
     if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
     if (ghost && ghost.parentNode) ghost.parentNode.removeChild(ghost);
     const banner = document.getElementById("chrx-carry-banner");

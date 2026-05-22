@@ -1,0 +1,28 @@
+/* Double-click on a placed card → opens the Lessons dialog focused on this
+ * lesson. Audit §5.7 — mirrors Classic's Lesson-info modal on dblclick.
+ *
+ * Single-click on a card is already wired to pickup (grid_canvas.onMouseDown).
+ * Dblclick fires AFTER mousedown→mouseup→mousedown→mouseup, by which time
+ * the pickup has been processed. We cancel the in-hand pickup before
+ * dispatching the open-entity event so the user doesn't end up "holding"
+ * the card while staring at the dialog.
+ */
+(function () {
+  "use strict";
+  document.addEventListener("dblclick", (e) => {
+    if (!e.target.closest) return;
+    const vk = e.target.closest(".chrx-vkarta");
+    if (!vk) return;
+    if (vk.classList.contains("locked")) return;
+    const lessonId = vk.dataset.lessonId;
+    if (!lessonId) return;
+    e.preventDefault();
+    // Drop the in-hand pickup so the dialog opens cleanly.
+    if (window.CardInHand && typeof window.CardInHand._cleanup === "function") {
+      try { window.CardInHand._cleanup(); } catch {}
+    }
+    if (window.APP && window.APP.editor) window.APP.editor.cardInHand = null;
+    window.dispatchEvent(new CustomEvent("app:open-entity",
+      { detail: { kind: "lessons", focusLessonId: lessonId } }));
+  });
+})();

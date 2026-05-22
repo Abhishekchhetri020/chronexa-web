@@ -58,6 +58,8 @@ js/ui/editor/placement_validator.js
 js/ui/editor/card_in_hand.js
 js/ui/editor/row_context_menu.js
 js/ui/editor/empty_cell_context.js
+js/ui/editor/header_context.js
+js/ui/editor/card_double_click.js
 js/ui/editor/constraint_explainer.js
 js/ui/start_screen.js
 js/ui/main.js
