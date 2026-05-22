@@ -287,19 +287,46 @@
       }
       const subjList = Object.keys(subjectsInPage).map(sid => {
         const subj = (school.subjects || []).find(s => s.id === sid);
-        return { name: subj?.name || sid, count: subjectsInPage[sid] };
+        return { id: sid, name: subj?.name || sid, count: subjectsInPage[sid] };
       }).sort((a,b) => b.count - a.count);
       const totalLessons = subjList.reduce((s,x) => s+x.count, 0);
       const cellPattern = report.extraCols.map(ec => ec.type);
+      // Helper: list distinct entities from this subject's cards
+      function distinctTeachersForSubject(sid) {
+        const set = new Set();
+        for (const c of pageCards) {
+          if (c.subjectId !== sid) continue;
+          for (const tid of (c.teacherIds || [])) set.add(tid);
+        }
+        return Array.from(set).map(tid => {
+          const t = (school.teachers || []).find(x => x.id === tid);
+          return t?.abbreviation || t?.name || tid;
+        }).join(", ");
+      }
+      function distinctRoomsForSubject(sid) {
+        const set = new Set();
+        for (const c of pageCards) {
+          if (c.subjectId !== sid) continue;
+          if (c.roomId) set.add(c.roomId);
+          for (const rid of (c.roomIds || [])) set.add(rid);
+        }
+        return Array.from(set).map(rid => {
+          const r = (school.classrooms || []).find(x => x.id === rid);
+          return r?.abbreviation || r?.name || rid;
+        }).join(", ");
+      }
       for (const sub of subjList) {
         const tr = el("tr");
         for (let i = 0; i < cellPattern.length; i++) {
           const type = cellPattern[i];
           let text = "";
-          if (type === "subjects-count") text = sub.name;
-          else if (type === "sum-of-lessons") text = String(sub.count);
-          else if (type === "empty") text = "";
-          else text = sub.name;
+          if (type === "subjects-count")             text = sub.name;
+          else if (type === "sum-of-lessons")        text = String(sub.count);
+          else if (type === "teachers-of-lessons")   text = distinctTeachersForSubject(sub.id);
+          else if (type === "classrooms-of-lessons") text = distinctRoomsForSubject(sub.id);
+          else if (type === "sum-of-covered-lessons") text = "0";  // Chronexa substitution data not yet wired
+          else if (type === "empty")                 text = "";
+          else                                       text = sub.name;
           tr.appendChild(el("td", { style: "border:1px solid #ccc;padding:3px 6px;font-size:11px" }, text));
         }
         extBody.appendChild(tr);
@@ -308,8 +335,10 @@
       for (let i = 0; i < cellPattern.length; i++) {
         const type = cellPattern[i];
         let text = "";
-        if (type === "subjects-count") text = "Lessons/week";
-        else if (type === "sum-of-lessons") text = String(totalLessons);
+        if (type === "subjects-count")          text = "Lessons/week";
+        else if (type === "sum-of-lessons")     text = String(totalLessons);
+        else if (type === "teachers-of-lessons") text = "";
+        else if (type === "classrooms-of-lessons") text = "";
         totalTr.appendChild(el("td", {
           style: "border:1px solid #999;padding:3px 6px;font-weight:600;background:#fafafa;font-size:11px",
         }, text));

@@ -145,13 +145,32 @@
         window.PrintSettingsDialog && window.PrintSettingsDialog.open("structure");
       } }, "🏗 Modify structure");
     const extraBtn   = el("button", { class: "chrx-tb-btn", type: "button",
-      title: "Toggle extra header / footer / class-total rows",
+      title: "Add / edit extra columns and rows (subject counts, lesson totals, …)",
       onclick: () => {
+        const ExtrasDlg = window.APP && window.APP.PrintExtrasDialog;
+        const Schema = window.APP && window.APP.PrintReportSchema;
+        const Presets = window.APP && window.APP.PrintPresets;
+        if (ExtrasDlg && Schema && Presets) {
+          if (!APP.activePrintReport || APP.activePrintReport._presetId !== currentTemplate) {
+            const preset = Presets.get(currentTemplate);
+            if (preset) {
+              const r = Schema.create({ context: preset.context });
+              Schema.applyPreset(r, preset);
+              r._presetId = preset.id;
+              APP.activePrintReport = r;
+            }
+          }
+          if (APP.activePrintReport) {
+            ExtrasDlg.open(APP.activePrintReport, () => render(currentTemplate));
+            return;
+          }
+        }
+        // Fallback: legacy toggle
         APP.printExtras = !APP.printExtras;
         host.classList.toggle("chrx-pp-extras", !!APP.printExtras);
         render(currentTemplate);
         notify(APP.printExtras ? "Extras: on" : "Extras: off");
-      } }, "➕ Extra");
+      } }, "➕ Extra columns/rows");
     const globalBtn  = el("button", { class: "chrx-tb-btn", type: "button",
       title: "Bell-times / teacher-names / room-names print toggles",
       onclick: () => window.PrintSettingsDialog && window.PrintSettingsDialog.open("globals") }, "🛠 Global");
