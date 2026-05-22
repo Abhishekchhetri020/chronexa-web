@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-22T06:27:55Z
+/* Chronexa bundle — generated 2026-05-22T07:01:31Z
  *      152 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -7863,10 +7863,18 @@ window.Inspector = (function () {
     const p = document.getElementById("chrx-palette");
     if (p) p.classList.remove("is-open");
   }
+  function isTypingTarget(t) {
+    if (!t) return false;
+    const tag = (t.tagName || "").toLowerCase();
+    return tag === "input" || tag === "textarea" || tag === "select" || t.isContentEditable;
+  }
   document.addEventListener("keydown", (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
       e.preventDefault();
       openPalette();
+    } else if ((e.key === "[" || e.key === "]") && !e.metaKey && !e.ctrlKey && !e.altKey && !isTypingTarget(e.target)) {
+      e.preventDefault();
+      togglePanel(e.key === "[" ? "side" : "rail");
     } else if (e.key === "Escape") {
       const p = document.getElementById("chrx-palette");
       if (p && p.classList.contains("is-open")) closePalette();
@@ -7890,6 +7898,32 @@ window.Inspector = (function () {
   });
 
   // ───────── Mount ─────────
+  const PANEL_STATE_KEY = "chrxShellPanels";
+
+  function applyStoredPanels(shellEl) {
+    try {
+      const raw = localStorage.getItem(PANEL_STATE_KEY);
+      if (!raw) return;
+      const s = JSON.parse(raw);
+      if (s && s.sideHidden) shellEl.classList.add("is-side-hidden");
+      if (s && s.railHidden) shellEl.classList.add("is-rail-hidden");
+    } catch (e) {}
+  }
+  function persistPanels(shellEl) {
+    try {
+      localStorage.setItem(PANEL_STATE_KEY, JSON.stringify({
+        sideHidden: shellEl.classList.contains("is-side-hidden"),
+        railHidden: shellEl.classList.contains("is-rail-hidden"),
+      }));
+    } catch (e) {}
+  }
+  function togglePanel(which) {
+    const shellEl = document.getElementById("chrx-shell");
+    if (!shellEl) return;
+    shellEl.classList.toggle(which === "side" ? "is-side-hidden" : "is-rail-hidden");
+    persistPanels(shellEl);
+  }
+
   function mount() {
     if (mounted) return;
     const body = document.body;
@@ -7912,6 +7946,7 @@ window.Inspector = (function () {
     // Move existing app content into main
     for (const node of existing) main.appendChild(node);
 
+    applyStoredPanels(shell);
     mounted = true;
   }
 
@@ -7994,7 +8029,8 @@ window.Inspector = (function () {
     mount();
   }
 
-  global.ChrxShell = { mount, openPalette, closePalette, refresh: () => { updateCrumbs(); updateSolverPanel(null); updateFaults(lastFaults); } };
+  global.ChrxShell = { mount, openPalette, closePalette, togglePanel,
+    refresh: () => { updateCrumbs(); updateSolverPanel(null); updateFaults(lastFaults); } };
 })(window);
 
 /* ─── FILE: js/ui/components/statistics_panel.js ─── */

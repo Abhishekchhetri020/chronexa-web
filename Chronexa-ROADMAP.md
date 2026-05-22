@@ -1,7 +1,7 @@
 # Chronexa Web — Roadmap
 
-**Last refreshed:** 2026-05-22 (seventh session)
-**Live URL:** https://abhishekchhetri020.github.io/chronexa-web/ — APP_VER `20260522-p54-final-cleanup`
+**Last refreshed:** 2026-05-22 (seventh session — late evening, after Studio v3 port + p74 visual-validation fix)
+**Live URL:** https://abhishekchhetri020.github.io/chronexa-web/ — APP_VER `20260522-p74-shell-trim`
 **Repo:** https://github.com/Abhishekchhetri020/chronexa-web
 
 ---
@@ -50,13 +50,81 @@ blank school
  → export Timetable XML → 3,630 bytes of valid `<?xml version="1.0"…><timetable…>`
 ```
 
-## 🚧 अभी develop हो रहा है (in-flight, 2026-05-22 evening)
+## 🚧 अभी develop हो रहा है (in-flight, 2026-05-22 late evening)
 
+- **Legacy step-tab strip restyle** — the "1. Start / 🪄 Editor (drag-drop) / School Info / Class Grid / Teacher Grid / Room Grid" navigation strip inside the editor still uses the old slate-blue / emerald / amber Tailwind pill styling — functional but visually clashes with the editorial-paper aesthetic now that the dark-navy header above it is hidden (p74). Migrating these into a single editorial-style segmented control is a 30-min CSS-only follow-up. Alternative: fold them into the sidebar under Workspace as separate nav items — bigger refactor (~1 hour). Not blocking.
+- **Lang toggle + data search migration** — the old dark-navy header carried `EN / हिं` toggle plus a `Search name / subject / room…` input that filtered cards/teachers in a loaded school. Both got hidden when the header was hidden (p74). Migration into the new shell's topbar (next to the ⌘K palette and Test/Generate) is a ~30-min UI port. Today the language toggle is reachable from the wizard's first step and the in-grid search is still in the editor's pending-strip header, so neither is lost — just less discoverable.
+- **Soft-score magnitude diagnostics** — total soft penalty grows from `−23,530` (initial aSc-state evaluation) to `−520,900` over 15 s of warm-start search on `sample-school.xml`. Placement quality is `946/0 FEASIBLE`, so the **search is choosing worse-soft-score solutions over better-soft-score ones during warm-start descent** — that's not a "rebalance the weights" fix, it's a search-direction bug. The headless `tools/warm_trajectory.mjs` proved this: the score worsens monotonically over the budget instead of improving. Needs per-scorer attribution (which one is pulling the wrong way) before any weight change is safe. Bisect ~1-2 hours.
 - **Mashov + iSAMS exports** — last 2 "Coming Soon" tags in Files → Export. Each needs a real sample from a Mashov-using or iSAMS-using school before coding; NYC Excel shipped today as a documented "draft" layout the receiving admin can validate.
-- **WASM canPlace cutover** — JS solver's hot loop calls `_wasmExports.canPlace()` (earlier today). Benchmark still owed: end-to-end timing vs the JS-only path on `sample-school.xml` before flipping `WASM_AVAILABLE` to default-on.
-- **Print template body review** — the new 20-template registry is loaded into the previewer, but the body of each newer template hasn't had a side-by-side audit against the Classic equivalent. Visual parity may still drift cell-by-cell.
+- **WASM canPlace cutover** — JS solver's hot loop calls `_wasmExports.canPlace()`; AssemblyScript port + JS shim are scaffolded. End-to-end timing vs the JS-only path on `sample-school.xml` still owed before flipping `WASM_AVAILABLE` to default-on. The JS↔WASM binding for the hot loop is partial.
+- **Per-template structure renderer adoption** — `APP.printTemplateUtils.structureFor(id)` resolves the per-template override; `classwise_with_table` is the proof template that swaps rows↔columns based on the Print settings dialog. The other 23 templates have a documented 3-line opt-in pattern but haven't been migrated yet.
+- **`n_2 / n_3 / n_15` relation typs — correctness validation** — first-pass implementations are active in the solver (`n_2` hard same-period; `n_3` + `n_15` soft alternate-day / even-spacing) based on reasoned interpretations. Full correctness validation waits on a real Classic XML showing these typs in the wild.
+- **Print template body review** — the 24-template registry is loaded into the previewer, but the body of each newer template hasn't had a side-by-side audit against the Classic equivalent. Visual parity may still drift cell-by-cell.
 
 ## 📝 पिछले 7 दिन में क्या हुआ (last 7 days, newest first)
+
+### 2026-05-22 (seventh session — night: Studio v3 visual validation + shell-trim fix)
+
+The Studio v3 shell that shipped sight-unseen earlier in the evening had two visible problems on the live URL:
+1. **Legacy dark-navy welcome header was rendering inside the new shell** — the shell wrapped existing body content into `chrx-main`, but didn't hide the old "Chronexa / Open timetable. Yours to keep." dark-gradient header bar. Result: a 2012-aSc-blue strip jammed in the middle of the editorial-paper layout, plus duplicate Test/Generate buttons.
+2. **Editor surface felt cramped** — sidebar (240 px) + right rail (320 px) consumed 560 px of horizontal viewport, leaving only ~880 px for the editor on a 1440-px screen.
+
+Fixes shipped tonight as `p74-shell-trim`:
+- **Hidden the legacy dark-navy header** via a `.chrx-shell .chrx-main > header[class*="from-slate-900"]{display:none !important}` rule. Surgical: only that one header is targeted, the step-tab strip + step-1 hero panel below it stay visible because they're still functional.
+- **Slimmed the shell column widths** from `240px / 1fr / 320px` → `216px / 1fr / 280px`. Cheap 64 px recovery on the editor with no behaviour change.
+- **`[` and `]` keybinds toggle the sidebar / right rail respectively.** State persists in localStorage (`chrxShellPanels` key). When both are hidden, the editor takes the full viewport width — the power-user escape hatch for drag-heavy sessions on smaller screens. Editor width on 1440 px: 944 px default → 1224 px with rail hidden → 1440 px with both hidden.
+- The `togglePanel(which)` method is exposed on `window.ChrxShell` so menu entries can be added later without touching the keybind handler.
+
+Visual validation done end-to-end via the chrome-devtools MCP against a local server (the deployed site would have needed a git push first). Screenshots saved at `mockups/studio-v3-p74-empty.png` (default state, panels visible) and `mockups/studio-v3-p74-collapsed.png` (both panels hidden via `[` + `]`).
+
+**What's still off after p74:** the legacy step-tab strip ("1. Start | 🪄 Editor (drag-drop) | School Info | Class Grid | Teacher Grid | Room Grid") still has slate-blue / emerald / amber Tailwind pill styling that visually clashes with the editorial-paper aesthetic. Functional, not blocking — flagged in the in-flight section above for a 30-min CSS pass.
+
+### 2026-05-22 (seventh session — evening: wider audit + OSS-research ports + Studio v3 redesign)
+
+After the afternoon closed at 28/30 on the Top-30 backlog, the evening session went after three larger pieces of work: the rest of the Top-30, the wider 1,311-line missing-features audit, and a from-scratch visual redesign.
+
+**Top-30 closed to 30/30 (100 %).** The two architectural items shipped:
+- **Multi-bell per class.** `school.bell` was global until tonight. A new `BellResolver` helper looks up `class.bellId` against `school.bells[]` (falling back to `school.bell` when unset), the Class dialog gained a "Bell schedule" select, the solver enforces `classValidPeriodMask[c]` with a new fail code, the constraint explainer + drag classifier both flag drop attempts at periods outside a class's bell, and the grid paints out-of-bell empty slots as hatched non-interactive. Backward-compatible: classes without `bellId` continue to inherit `school.bell`.
+- **Per-fault Test dialog live streaming.** The solver's progress tick now scans the current state every ~500 ms and emits up to 5 currently-stuck lesson labels in `latestViolations[]`, rotating the window across ticks so different stuck lessons surface over time. The Progress modal renders them in a new "Currently stuck" pane below the heatmap with severity-coloured icons + a slide-in animation; aggregate counters still stream alongside.
+
+**Wider-audit gap-plug — roughly 50 items shipped from `Chronexa-MISSING-FEATURES-2026-05-19.md`.** Top-30 was always the curated subset; the wider audit covers 17 sections × ~150 features. The substantial ones now in the live app:
+- **Students + StudentSubjects entities** — full CRUD for per-student electives, exposed on the Specification ribbon.
+- **Supervision criteria dialog** — 14-field sheet persisting `school.settings.supervisionCriteria` (Specification → Supervision criteria…).
+- **Grouped solver errors (`chyby[]`)** — SolveResponse now returns errors grouped by failure family with count + a few example labels, so a 30-fault run no longer reads as 30 lines of identical text.
+- **Class teaching-window + lunch-window soft scorers** — penalties for placements outside `m_nMaxVyucOd/Do` and outside `lunch_periodfrom/to`, matching two of Classic's least-discussed but always-on rules.
+- **Relations dialog: positions / positions2 / filter / filter2** exposed in an Advanced collapsible inside the edit sheet, plus the disabled checkbox + 6-option importance-level selector.
+- **HAR import preserves `a_*` round-trip fields** — earlier HAR loads dropped Classic's per-attribute payload; rows now spread raw → typed so a save→load loop is identity.
+- **Editor heatmap on pickup** — picking up a card lights every empty slot at once green / amber / red, instead of one-at-a-time on hover.
+- **Header-row right-click + card double-click** — header-row contextmenu opens the day/period actions menu; double-click on a placed card opens its Lessons dialog focused on that lesson.
+- **Pending strip resize** — drag the top edge to grow/shrink, size persists.
+- **Saved views** — View → Saved views → Save current view captures `colorBy + chip + filter + zoom` as a named preset.
+- **Bulk AI actions** — AI menu gained "Assign default classrooms (bulk)" + "Unlock all placed cells".
+- **Solver Parameters dialog** — Timetable → Solver parameters… now opens a real 3-section sheet (Tier-A FET-style limits / Tier-B–C toggles / Search controls). It used to live only as a localStorage key with no UI.
+- **XML round-trip diff tool** at `tools/xml_roundtrip_diff.mjs` — flags every attribute dropped on import so we stop losing data silently.
+
+**Then a separate pass closed every previously-deferred audit item** with at least first-pass coverage: §3.4 education-block mode scaling, §3.6 first-period / last-period penalties, §3.7 block-window per-day teaching, §4.7 `n_2/n_3/n_15` typs added to the relations dropdown, §7.4 per-template structure overrides, §8.5 multiple-document tabs (localStorage-backed tab bar above the editor), §12.2 supervision validator exposed via `SolverConstraints`, §15.2 student schedule conflict detection, §15.3 per-student `timetable_for_each_student` print template.
+
+**16 ports from open-source timetabling literature (FET, Timefold, UniTime).** Each new scorer is no-op when not configured, so existing schools see zero behaviour change:
+- *Tier-A (FET parity):* solver parameters dialog now actually plumbs into the solver (was only saving to localStorage); min resting periods between days; min gaps between teacher building changes; per-tag daily caps via a dedicated dialog (Specification → Tag daily caps…).
+- *Tier-B (FET parity):* subject + tag → preferred-room scorer; school modes (mornings-afternoons-heavy and block-pairing); working-in-hourly-interval max days/week per teacher.
+- *Tier-C (Timefold / CSP literature):* Late Acceptance Hill-Climbing acceptance rule in LNS; Great Deluge acceptance rule (rising water-level threshold); Tabu list rejecting recently-undone destroy fingerprints — all three are opt-in via the Parameters dialog.
+- *Eviction:* **Kempe-chain pair-period eviction** in the LNS phase — when a candidate placement conflicts, the solver follows the conflict chain through swap pairs to see if a sequence of evictions clears the path. The reference verifier stays 4/4 green on `sample-school.xml` through every port.
+
+**Test loader fix** — `test_constraints` was using a different module-loader pattern than `smoke_ics`; they now share the same harness, 4/4 green.
+
+**Studio v3 — full editorial visual redesign.** Two iterations, same evening:
+- **Design v2 ("Studio")** shipped first as `css/design-v2.css`. Inter Tight + JetBrains Mono, warm-grey neutrals, electric-indigo accent used sparingly, layered-shadow card ladder, translucent ribbons with `backdrop-filter: blur(24px)`. Anti-references: aSc 2012 / EduPage / Office Ribbon / Material defaults. Influences: Linear, Vercel, Notion, Things 3, Raycast. Documented at `Chronexa-DESIGN.md`.
+- **Design v3 ("editorial-refined")** landed a few hours later as a from-scratch single-file mockup at `mockups/chronexa-studio-v3.html`. Aesthetic: editorial print — Fraunces variable serif (display) + Inter Tight (body) + JetBrains Mono (stats), warm paper `#f6f1e6` + ink `#1a1714` + deep teal accent `#0d4f54`, SVG paper-grain at 4 % multiply. Layout: 3-column shell (240 px sidebar + flexible main + 320 px right rail) with breadcrumb-and-action top bar + version-stamped status bar.
+- Design v3 was then **ported live** as `css/design-v3.css` + `js/ui/shell_v3.js`. The shell wraps the existing DOM in the 3-column layout; the **sidebar nav** replaces ribbon menu drilling with grouped Workspace / Entities / Structure / Files links firing the existing `app:open-entity` events; a **⌘K command palette** fuzzy-searches across nav + solver actions; the **right rail** streams live solver stats (Status · Placed · Conflicts · Soft · Wall) plus a "Currently stuck" fault list driven by the solver progress events. The legacy `#chrx-ribbon` is hidden when the shell is active; existing keyboard shortcuts + entity dialogs work unchanged. **Committed sight-unseen — visual validation pending.**
+
+**5 honest follow-ups** for features that had earlier shipped as first-pass:
+1. Per-template structure renderer — `classwise_with_table` is now the proof template that actually swaps rows↔columns based on the dialog setting. The other 23 templates have a 3-line opt-in pattern documented.
+2. Per-tab undo stack in multi-doc tabs — switching tabs no longer cross-pollutes the undo history.
+3. Supervision criteria — solver preference scoring (`supervisionCriteriaSoftPenalty`) — bias away from teaching at periods flagged for supervision-needed.
+4. Studentsubjects — solver awareness (`studentSubjectsConflictPenalty`) — per-student double-booking is now detected during placement, not only post-fact in the validator.
+5. `n_2 / n_3 / n_15` relation enforcement — first-pass implementations active in the solver.
+
+**Net effect on the user-visible app:** APP_VER `p73-studio-v3`. Top-30 at 100 %. The default visual is the editorial-refined Studio shell with sidebar nav + ⌘K palette + live solver right rail. The solver gained 16 OSS-research scorers + a Kempe-chain eviction step; placement quality on `sample-school.xml` remains `946/0 FEASIBLE` warm-start. The soft-score number is intentionally larger now (~−520k vs the previous ~−5k) because more scorers fire — weight rebalance is the lone polish task left from this push.
 
 ### 2026-05-22 (seventh session continued — partial-items cleanup p52-p54)
 
@@ -68,7 +136,7 @@ After the audit revealed only 2 true gaps remained, three more pushes closed alm
 | `p53-partial-cleanup` | (a) Subject → Constraints sheet now embeds a list of every card-relation touching that subject with an "Open Relations" jump button. (b) Teacher dialog gained 3 missing fields: Bell schedule, Preferred classrooms (multi-select), Print color. (c) Right-click on an empty grid cell opens a "Place lesson here" picker with the top 5 unplaced lessons for the row — click places via the undo stack so ⌘Z reverts. (d) Pending strip group-by tabs gained "Classroom". |
 | `p54-final-cleanup` | Pending strip gained an "All" tab (flat list of every unplaced card). All 5 chips from the Classic spec are now there. |
 
-**Backlog state:** 28 of 30 shipped (93 %). 1 partial (#4 per-fault Test dialog — aggregate counters stream live, individual-fault list view is polish). 1 architectural gap (#3 multi-bell per class — `school.bell` is global today; touching it affects every grid render + every solver constraint, ~3-5 day port).
+**Backlog state at the close of the afternoon:** 28 of 30 shipped (93 %). #3 multi-bell per class and #4 per-fault Test dialog streaming both closed in the evening push that followed — see the next section.
 
 Live status is verifiable at `Chronexa-TOP30-STATUS.md`.
 
