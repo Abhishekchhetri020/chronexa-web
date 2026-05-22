@@ -38,6 +38,49 @@
     (window._chrxNotify || function () {})("Color by: " + axis, "info");
   }
 
+  // Custom saved views (audit §11.2). Snapshot perspective + zoom + density
+  // + color-by + colorBy under a user-given name; restore via the menu.
+  // Persisted in localStorage so they survive reload.
+  const SAVED_KEY = "chronexa.savedViews";
+  function loadSaved() {
+    try { return JSON.parse(localStorage.getItem(SAVED_KEY) || "[]") || []; }
+    catch { return []; }
+  }
+  function persistSaved(list) {
+    try { localStorage.setItem(SAVED_KEY, JSON.stringify(list)); } catch {}
+  }
+  function captureView() {
+    return {
+      perspective: APP.ribbon.getPerspective ? APP.ribbon.getPerspective() : "class",
+      zoom:        APP.ribbon.getZoom        ? APP.ribbon.getZoom()        : 100,
+      density:     document.documentElement.getAttribute("data-density") || "comfortable",
+      colorBy:     APP.editor.colorBy || "subject",
+    };
+  }
+  function applyView(v) {
+    if (!v) return;
+    if (v.perspective && APP.ribbon.setPerspective) APP.ribbon.setPerspective(v.perspective);
+    if (v.zoom        && APP.ribbon.setZoom)        APP.ribbon.setZoom(v.zoom);
+    if (v.density) {
+      document.documentElement.setAttribute("data-density", v.density);
+      try { localStorage.setItem("chronexa.density", v.density); } catch {}
+    }
+    if (v.colorBy) setColorBy(v.colorBy);
+  }
+  function saveCurrentView() {
+    const name = (window.prompt("Name this view:") || "").trim();
+    if (!name) return;
+    const list = loadSaved().filter(v => v.name !== name);
+    list.push(Object.assign({ name }, captureView()));
+    persistSaved(list);
+    (window._chrxNotify || function () {})("Saved view '" + name + "'", "info");
+  }
+  function deleteSavedView(name) {
+    const list = loadSaved().filter(v => v.name !== name);
+    persistSaved(list);
+    (window._chrxNotify || function () {})("Deleted view '" + name + "'", "info");
+  }
+
   APP.ribbon.registerMenu({
     key: "view", label: "View",
     build() {
@@ -67,6 +110,19 @@
         { icon: tick(APP.editor.colorBy==="teacher"), label: "Teacher",  run: () => setColorBy("teacher") },
         { icon: tick(APP.editor.colorBy==="class"),   label: "Class",    run: () => setColorBy("class") },
         { icon: tick(APP.editor.colorBy==="room"),    label: "Room",     run: () => setColorBy("room") },
+        { sep: true },
+        { section: "Saved views" },
+        { icon: "💾", label: "Save current view…", run: saveCurrentView },
+        ...loadSaved().map(v => ({
+          icon: "▶", label: v.name, run: () => applyView(v),
+        })),
+        ...(loadSaved().length ? [{ icon: "🗑", label: "Delete a saved view…",
+          run: () => {
+            const list = loadSaved();
+            const name = (window.prompt("Delete which view?\n\n" +
+              list.map(v => "• " + v.name).join("\n")) || "").trim();
+            if (name) deleteSavedView(name);
+          } }] : []),
         { sep: true },
         { section: "Theme" },
         { icon: tick(th==="light"), label: "Light", run: () => setTheme("light") },

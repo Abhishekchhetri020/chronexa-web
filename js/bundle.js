@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-22T03:23:55Z
+/* Chronexa bundle — generated 2026-05-22T03:25:32Z
  *      144 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -15724,6 +15724,49 @@ window.StartScreen = (function () {
     (window._chrxNotify || function () {})("Color by: " + axis, "info");
   }
 
+  // Custom saved views (audit §11.2). Snapshot perspective + zoom + density
+  // + color-by + colorBy under a user-given name; restore via the menu.
+  // Persisted in localStorage so they survive reload.
+  const SAVED_KEY = "chronexa.savedViews";
+  function loadSaved() {
+    try { return JSON.parse(localStorage.getItem(SAVED_KEY) || "[]") || []; }
+    catch { return []; }
+  }
+  function persistSaved(list) {
+    try { localStorage.setItem(SAVED_KEY, JSON.stringify(list)); } catch {}
+  }
+  function captureView() {
+    return {
+      perspective: APP.ribbon.getPerspective ? APP.ribbon.getPerspective() : "class",
+      zoom:        APP.ribbon.getZoom        ? APP.ribbon.getZoom()        : 100,
+      density:     document.documentElement.getAttribute("data-density") || "comfortable",
+      colorBy:     APP.editor.colorBy || "subject",
+    };
+  }
+  function applyView(v) {
+    if (!v) return;
+    if (v.perspective && APP.ribbon.setPerspective) APP.ribbon.setPerspective(v.perspective);
+    if (v.zoom        && APP.ribbon.setZoom)        APP.ribbon.setZoom(v.zoom);
+    if (v.density) {
+      document.documentElement.setAttribute("data-density", v.density);
+      try { localStorage.setItem("chronexa.density", v.density); } catch {}
+    }
+    if (v.colorBy) setColorBy(v.colorBy);
+  }
+  function saveCurrentView() {
+    const name = (window.prompt("Name this view:") || "").trim();
+    if (!name) return;
+    const list = loadSaved().filter(v => v.name !== name);
+    list.push(Object.assign({ name }, captureView()));
+    persistSaved(list);
+    (window._chrxNotify || function () {})("Saved view '" + name + "'", "info");
+  }
+  function deleteSavedView(name) {
+    const list = loadSaved().filter(v => v.name !== name);
+    persistSaved(list);
+    (window._chrxNotify || function () {})("Deleted view '" + name + "'", "info");
+  }
+
   APP.ribbon.registerMenu({
     key: "view", label: "View",
     build() {
@@ -15753,6 +15796,19 @@ window.StartScreen = (function () {
         { icon: tick(APP.editor.colorBy==="teacher"), label: "Teacher",  run: () => setColorBy("teacher") },
         { icon: tick(APP.editor.colorBy==="class"),   label: "Class",    run: () => setColorBy("class") },
         { icon: tick(APP.editor.colorBy==="room"),    label: "Room",     run: () => setColorBy("room") },
+        { sep: true },
+        { section: "Saved views" },
+        { icon: "💾", label: "Save current view…", run: saveCurrentView },
+        ...loadSaved().map(v => ({
+          icon: "▶", label: v.name, run: () => applyView(v),
+        })),
+        ...(loadSaved().length ? [{ icon: "🗑", label: "Delete a saved view…",
+          run: () => {
+            const list = loadSaved();
+            const name = (window.prompt("Delete which view?\n\n" +
+              list.map(v => "• " + v.name).join("\n")) || "").trim();
+            if (name) deleteSavedView(name);
+          } }] : []),
         { sep: true },
         { section: "Theme" },
         { icon: tick(th==="light"), label: "Light", run: () => setTheme("light") },
@@ -15924,6 +15980,56 @@ window.StartScreen = (function () {
     notify("AI assist: " + (next ? "on" : "off"));
   }
 
+  // Unlock every lesson currently pinned via fixedDay/fixedPeriod.
+  // Counterpart to lockAllPlacedCells — recovers from an over-locked
+  // schedule so the next Generate run can move cards again. Audit §6.11
+  // (bulk Lock/Unlock).
+  function unlockAllPlacedCells() {
+    const s = APP.school;
+    if (!s || !Array.isArray(s.lessons)) {
+      notify("Open a timetable first.", "error"); return;
+    }
+    let unlocked = 0;
+    for (const l of s.lessons) {
+      if (l.fixedDay != null || l.fixedPeriod != null) {
+        delete l.fixedDay;
+        delete l.fixedPeriod;
+        unlocked++;
+      }
+    }
+    if (APP.audit && APP.audit.append) APP.audit.append({ entity: "lessons", op: "unlock-all-placed", unlocked });
+    notify("Unlocked " + unlocked + " lesson placement" + (unlocked === 1 ? "" : "s") + ".");
+    window.dispatchEvent(new CustomEvent("app:school-loaded", { detail: { source: "unlock-all" } }));
+  }
+
+  // Bulk Assign Classrooms — fill in every card that has no classroomId
+  // with the parent lesson's preferredRoomId (or first allowed room).
+  // Cheap room-assignment pass that mirrors Classic's "Assign classrooms"
+  // bulk action (audit §6.10) without needing a separate solver run.
+  function assignClassroomsBulk() {
+    const s = APP.school;
+    if (!s || !Array.isArray(s.cards)) {
+      notify("Open a timetable first.", "error"); return;
+    }
+    const lessonById = (s._idx && s._idx.lessonById) ||
+      Object.fromEntries((s.lessons || []).map(l => [l.id, l]));
+    let assigned = 0;
+    for (const c of s.cards) {
+      if (c.classroomId) continue;
+      const baseId = String(c.lessonId).replace(/#\d+$/, "");
+      const lesson = lessonById[baseId] || lessonById[c.lessonId];
+      if (!lesson) continue;
+      const room = lesson.preferredRoomId ||
+        (Array.isArray(lesson.allowedRoomIds) && lesson.allowedRoomIds[0]) ||
+        (Array.isArray(lesson.classroomIdsExpanded) && lesson.classroomIdsExpanded[0]) ||
+        null;
+      if (room) { c.classroomId = room; assigned++; }
+    }
+    if (APP.audit && APP.audit.append) APP.audit.append({ entity: "cards", op: "assign-classrooms-bulk", assigned });
+    notify("Assigned classrooms to " + assigned + " card" + (assigned === 1 ? "" : "s") + ".");
+    window.dispatchEvent(new CustomEvent("app:school-loaded", { detail: { source: "assign-classrooms" } }));
+  }
+
   // Mark every lesson that has at least one placed card as fixed to that
   // (day, period). Future Generate runs will refuse to move them. Useful
   // after a hand-tuned schedule the user wants to keep.
@@ -15964,6 +16070,8 @@ window.StartScreen = (function () {
         { icon: "🧠", label: "Auto-fill empty cells",      disabled: !has(), run: () => fire("app:ai-auto-fill") },
         { icon: "🧹", label: "Cleanup last card move",     disabled: !has(), run: () => fire("app:ai-cleanup") },
         { icon: "🔒", label: "Lock all placed cells",      run: lockAllPlacedCells },
+        { icon: "🔓", label: "Unlock all placed cells",    disabled: !has(), run: unlockAllPlacedCells },
+        { icon: "🏛", label: "Assign default classrooms…", disabled: !has(), run: assignClassroomsBulk },
         { sep: true },
         { icon: "✨", label: "Suggest placements (beta)",  disabled: !has(), run: () => fire("app:ai-suggest") },
       ];
@@ -15972,6 +16080,8 @@ window.StartScreen = (function () {
 
   APP.ai = APP.ai || {};
   APP.ai.lockAllPlacedCells = lockAllPlacedCells;
+  APP.ai.unlockAllPlacedCells = unlockAllPlacedCells;
+  APP.ai.assignClassroomsBulk = assignClassroomsBulk;
 })();
 
 /* ─── FILE: js/ui/io/import_timetable_xml.js ─── */

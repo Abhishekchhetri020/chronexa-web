@@ -13,6 +13,56 @@
     notify("AI assist: " + (next ? "on" : "off"));
   }
 
+  // Unlock every lesson currently pinned via fixedDay/fixedPeriod.
+  // Counterpart to lockAllPlacedCells — recovers from an over-locked
+  // schedule so the next Generate run can move cards again. Audit §6.11
+  // (bulk Lock/Unlock).
+  function unlockAllPlacedCells() {
+    const s = APP.school;
+    if (!s || !Array.isArray(s.lessons)) {
+      notify("Open a timetable first.", "error"); return;
+    }
+    let unlocked = 0;
+    for (const l of s.lessons) {
+      if (l.fixedDay != null || l.fixedPeriod != null) {
+        delete l.fixedDay;
+        delete l.fixedPeriod;
+        unlocked++;
+      }
+    }
+    if (APP.audit && APP.audit.append) APP.audit.append({ entity: "lessons", op: "unlock-all-placed", unlocked });
+    notify("Unlocked " + unlocked + " lesson placement" + (unlocked === 1 ? "" : "s") + ".");
+    window.dispatchEvent(new CustomEvent("app:school-loaded", { detail: { source: "unlock-all" } }));
+  }
+
+  // Bulk Assign Classrooms — fill in every card that has no classroomId
+  // with the parent lesson's preferredRoomId (or first allowed room).
+  // Cheap room-assignment pass that mirrors Classic's "Assign classrooms"
+  // bulk action (audit §6.10) without needing a separate solver run.
+  function assignClassroomsBulk() {
+    const s = APP.school;
+    if (!s || !Array.isArray(s.cards)) {
+      notify("Open a timetable first.", "error"); return;
+    }
+    const lessonById = (s._idx && s._idx.lessonById) ||
+      Object.fromEntries((s.lessons || []).map(l => [l.id, l]));
+    let assigned = 0;
+    for (const c of s.cards) {
+      if (c.classroomId) continue;
+      const baseId = String(c.lessonId).replace(/#\d+$/, "");
+      const lesson = lessonById[baseId] || lessonById[c.lessonId];
+      if (!lesson) continue;
+      const room = lesson.preferredRoomId ||
+        (Array.isArray(lesson.allowedRoomIds) && lesson.allowedRoomIds[0]) ||
+        (Array.isArray(lesson.classroomIdsExpanded) && lesson.classroomIdsExpanded[0]) ||
+        null;
+      if (room) { c.classroomId = room; assigned++; }
+    }
+    if (APP.audit && APP.audit.append) APP.audit.append({ entity: "cards", op: "assign-classrooms-bulk", assigned });
+    notify("Assigned classrooms to " + assigned + " card" + (assigned === 1 ? "" : "s") + ".");
+    window.dispatchEvent(new CustomEvent("app:school-loaded", { detail: { source: "assign-classrooms" } }));
+  }
+
   // Mark every lesson that has at least one placed card as fixed to that
   // (day, period). Future Generate runs will refuse to move them. Useful
   // after a hand-tuned schedule the user wants to keep.
@@ -53,6 +103,8 @@
         { icon: "🧠", label: "Auto-fill empty cells",      disabled: !has(), run: () => fire("app:ai-auto-fill") },
         { icon: "🧹", label: "Cleanup last card move",     disabled: !has(), run: () => fire("app:ai-cleanup") },
         { icon: "🔒", label: "Lock all placed cells",      run: lockAllPlacedCells },
+        { icon: "🔓", label: "Unlock all placed cells",    disabled: !has(), run: unlockAllPlacedCells },
+        { icon: "🏛", label: "Assign default classrooms…", disabled: !has(), run: assignClassroomsBulk },
         { sep: true },
         { icon: "✨", label: "Suggest placements (beta)",  disabled: !has(), run: () => fire("app:ai-suggest") },
       ];
@@ -61,4 +113,6 @@
 
   APP.ai = APP.ai || {};
   APP.ai.lockAllPlacedCells = lockAllPlacedCells;
+  APP.ai.unlockAllPlacedCells = unlockAllPlacedCells;
+  APP.ai.assignClassroomsBulk = assignClassroomsBulk;
 })();
