@@ -60,10 +60,10 @@
   }
 
   for (const n of [1, 2, 3]) {
-    window.APP.printTemplates.register({
-      id: "custom_" + n,
-      title: "Custom " + n,
-      category: "custom",
+    // templates_registry.register API is (id, def) — the earlier single-arg
+    // call silently failed the type check and dropped all 3 Custom slots.
+    window.APP.printTemplates.register("custom_" + n, {
+      name: "Custom " + n,
       render: makeCustom(n),
     });
   }

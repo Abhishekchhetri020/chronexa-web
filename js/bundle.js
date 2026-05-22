@@ -1,5 +1,5 @@
-/* Chronexa bundle — generated 2026-05-21T20:16:52Z
- *      139 modules concatenated in document order.
+/* Chronexa bundle — generated 2026-05-22T02:39:27Z
+ *      140 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
 /* ─── FILE: js/ui/state.js ─── */
@@ -3943,6 +3943,7 @@ window.Inspector = (function () {
           daysDefId: defDay,
           weeksDefId: defWk,
           termsDefId: defTerm,
+          maxstudents: "",
           fixedDay:"", fixedPeriod:"" }
       : { subjectId:r._ref.subjectId, classIds:r._ref.classIds.slice(),
           teacherIds:r._ref.teacherIds.slice(),
@@ -3958,6 +3959,7 @@ window.Inspector = (function () {
           daysDefId: r._ref.daysDefId || defDay,
           weeksDefId: r._ref.weeksDefId || defWk,
           termsDefId: r._ref.termsDefId || defTerm,
+          maxstudents: r._ref.maxstudents != null ? r._ref.maxstudents : "",
           fixedDay: r._ref.fixedDay != null ? r._ref.fixedDay : "",
           fixedPeriod: r._ref.fixedPeriod != null ? r._ref.fixedPeriod : "" };
 
@@ -4009,6 +4011,9 @@ window.Inspector = (function () {
     const fLab = D.el("input", { type:"checkbox",
       checked: draft.isLabDouble ? "checked" : null,
       onchange:(e)=>draft.isLabDouble = e.target.checked });
+    const fMaxStudents = D.el("input", { type:"number", min:"0", max:"500",
+      placeholder:"unlimited", value:draft.maxstudents,
+      oninput:(e)=>draft.maxstudents = e.target.value });
     const fDay = D.el("input", { type:"number", min:"0", max:"5",
       placeholder:"any", value:draft.fixedDay,
       oninput:(e)=>draft.fixedDay = e.target.value });
@@ -4177,6 +4182,7 @@ window.Inspector = (function () {
         { label:"Day pattern",      control:fDaysDef },
         { label:"Week pattern",     control:fWeeksDef },
         { label:"Term",             control:fTermsDef },
+        { label:"Max students",     control:fMaxStudents },
         { label:"Fixed day (0–5)",  control:fDay },
         { label:"Fixed period",     control:fPeriod },
       ],
@@ -4221,6 +4227,7 @@ window.Inspector = (function () {
           l.termsDefId = draft.termsDefId || undefined;
           l.fixedDay = draft.fixedDay !== "" ? parseInt(draft.fixedDay, 10) : undefined;
           l.fixedPeriod = draft.fixedPeriod !== "" ? parseInt(draft.fixedPeriod, 10) : undefined;
+          l.maxstudents = draft.maxstudents !== "" ? parseInt(draft.maxstudents, 10) : undefined;
           window.APP.audit.append({ entity:"lessons", op:"update", before, after:{...l} });
         } else {
           const nl = { id:D.uid("l"),
@@ -4238,7 +4245,8 @@ window.Inspector = (function () {
             weeksDefId: draft.weeksDefId || undefined,
             termsDefId: draft.termsDefId || undefined,
             fixedDay: draft.fixedDay !== "" ? parseInt(draft.fixedDay, 10) : undefined,
-            fixedPeriod: draft.fixedPeriod !== "" ? parseInt(draft.fixedPeriod, 10) : undefined };
+            fixedPeriod: draft.fixedPeriod !== "" ? parseInt(draft.fixedPeriod, 10) : undefined,
+            maxstudents: draft.maxstudents !== "" ? parseInt(draft.maxstudents, 10) : undefined };
           all.push(nl);
           if (s._idx) s._idx.lessonById[nl.id] = nl;
           window.APP.audit.append({ entity:"lessons", op:"add", after:{...nl} });
@@ -17576,6 +17584,208 @@ window.StartScreen = (function () {
   global.CellStyleDialog = { open, defaultStyle };
 })(window);
 
+/* ─── FILE: js/ui/print_preview/print_settings_dialog.js ─── */
+/* Print Settings — tabbed dialog covering 7 of the 9 Classic sub-flows.
+ *
+ * Replaces three "coming soon"/redirect ribbon buttons (Sizes, Globals,
+ * Structure, Colors) and adds three never-shipped Classic dialogs
+ * (Supervision style, Page header, Grid header text). Together with the
+ * existing CellStyleDialog (Top-30 #22 first row), this covers 8 of 9.
+ * The 9th — Card-cell layout designer — was the original CellStyleDialog,
+ * so the suite is functionally complete.
+ *
+ * Public API:
+ *   window.PrintSettingsDialog.open(tab)
+ *     tab ∈ "sizes" | "globals" | "structure" | "colors"
+ *         | "supervision" | "header" | "gridtext"   (default "sizes")
+ *
+ * Persists to APP.printSettings (also mirrored to localStorage so settings
+ * survive reload). Dispatches `app:print-settings-changed` after save so
+ * the preview re-renders. Mounts via EntityDialog.openSheet (standalone
+ * host machinery from p49 means no full EntityDialog needs to be open).
+ */
+(function (global) {
+  "use strict";
+  const D = window.EntityDialog;
+  if (!D) return;
+  const APP = window.APP = window.APP || {};
+
+  const STORAGE_KEY = "chronexa.printSettings";
+  const DEFAULTS = {
+    pageSize: "A4",
+    orientation: "portrait",
+    marginMM: 10,
+    scalePct: 100,
+    showBellTimes: true,
+    showTeacherNames: true,
+    showClassroomNames: true,
+    showSubjectColors: true,
+    showLogo: false,
+    logoUrl: "",
+    headerText: "",
+    footerText: "",
+    structure: "rows-days",
+    dozorColor: "#fef3c7",
+    headerFont: "system",
+    headerAlign: "center",
+  };
+
+  function load() {
+    if (APP.printSettings && Object.keys(APP.printSettings).length) return;
+    let saved = {};
+    try { saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}"); } catch {}
+    APP.printSettings = Object.assign({}, DEFAULTS, saved);
+  }
+  function save() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(APP.printSettings)); } catch {}
+    window.dispatchEvent(new CustomEvent("app:print-settings-changed", { detail: APP.printSettings }));
+    (window._chrxNotify || function () {})("Print settings saved", "info");
+  }
+
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      const v = attrs[k];
+      if (v == null) continue;
+      if (k === "class") n.className = v;
+      else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v);
+    }
+    for (const c of kids) if (c != null) n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    return n;
+  }
+  function row(label, control) {
+    return el("div", { style: "display:flex;align-items:center;gap:12px;margin:6px 0" },
+      el("label", { style: "min-width:160px;font-size:12px;color:#475569" }, label),
+      control);
+  }
+  function num(key, min, max, step) {
+    const i = el("input", { type: "number", min, max, step: step || 1, value: APP.printSettings[key],
+      style: "width:90px;padding:4px 6px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px",
+      oninput: e => APP.printSettings[key] = parseFloat(e.target.value) || 0 });
+    return i;
+  }
+  function text(key, width) {
+    return el("input", { type: "text", value: APP.printSettings[key] || "",
+      style: `width:${width || 280}px;padding:4px 6px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px`,
+      oninput: e => APP.printSettings[key] = e.target.value });
+  }
+  function bool(key) {
+    const c = el("input", { type: "checkbox",
+      onchange: e => APP.printSettings[key] = e.target.checked });
+    if (APP.printSettings[key]) c.checked = true;
+    return c;
+  }
+  function pick(key, options) {
+    const s = el("select",
+      { style: "padding:4px 6px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px",
+        onchange: e => APP.printSettings[key] = e.target.value });
+    for (const o of options) {
+      const opt = el("option", { value: o }, o);
+      if (o === APP.printSettings[key]) opt.setAttribute("selected", "selected");
+      s.appendChild(opt);
+    }
+    return s;
+  }
+  function color(key) {
+    return el("input", { type: "color", value: APP.printSettings[key] || "#fef3c7",
+      style: "width:50px;height:28px;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer",
+      oninput: e => APP.printSettings[key] = e.target.value });
+  }
+
+  // ─── Tabs (each returns a Node of form controls) ─────────────────────
+  function tabSizes() {
+    return el("div", null,
+      row("Page size",     pick("pageSize",    ["A4","A3","Letter","Legal","Tabloid"])),
+      row("Orientation",   pick("orientation", ["portrait","landscape"])),
+      row("Margin (mm)",   num("marginMM", 0, 40, 1)),
+      row("Scale (%)",     num("scalePct", 50, 200, 5)));
+  }
+  function tabGlobals() {
+    return el("div", null,
+      row("Show bell times",       bool("showBellTimes")),
+      row("Show teacher names",    bool("showTeacherNames")),
+      row("Show classroom names",  bool("showClassroomNames")),
+      row("Show subject colors",   bool("showSubjectColors")));
+  }
+  function tabStructure() {
+    return el("div", null,
+      el("p", { style: "color:#64748b;font-size:11px;margin:0 0 8px" },
+        "Whether each template lays out days as rows × periods as columns, or vice-versa. Some templates may ignore this if they have a fixed shape."),
+      row("Days are…", pick("structure", ["rows-days","columns-days"])));
+  }
+  function tabColors() {
+    return el("div", null,
+      el("p", { style: "color:#64748b;font-size:11px;margin:0 0 8px" },
+        "Per-subject colours are edited in Specification → Subjects. The toggle below controls whether the printer prints with those colours or in monochrome."),
+      row("Print with subject colors", bool("showSubjectColors")));
+  }
+  function tabSupervision() {
+    return el("div", null,
+      row("Supervision cell color", color("dozorColor")));
+  }
+  function tabHeader() {
+    return el("div", null,
+      row("Header text",  text("headerText", 360)),
+      row("Footer text",  text("footerText", 360)),
+      row("Show logo",    bool("showLogo")),
+      row("Logo URL",     text("logoUrl", 360)));
+  }
+  function tabGridText() {
+    return el("div", null,
+      row("Header font",   pick("headerFont",  ["system","serif","monospace"])),
+      row("Header align",  pick("headerAlign", ["left","center","right"])));
+  }
+
+  const TABS = [
+    { id: "sizes",       label: "Sizes",       build: tabSizes },
+    { id: "globals",     label: "Globals",     build: tabGlobals },
+    { id: "structure",   label: "Structure",   build: tabStructure },
+    { id: "colors",      label: "Colors",      build: tabColors },
+    { id: "supervision", label: "Supervision", build: tabSupervision },
+    { id: "header",      label: "Page Header", build: tabHeader },
+    { id: "gridtext",    label: "Header text", build: tabGridText },
+  ];
+
+  function open(activeTabId) {
+    load();
+    activeTabId = activeTabId || "sizes";
+    const tabBar = el("div", { style: "display:flex;gap:2px;margin-bottom:12px;border-bottom:1px solid #e2e8f0" });
+    const body = el("div", { style: "min-height:160px;padding:4px 2px" });
+    function showTab(id) {
+      activeTabId = id;
+      tabBar.querySelectorAll("button").forEach(b => {
+        const on = b.dataset.tab === id;
+        b.style.borderBottom = on ? "2px solid #2563eb" : "2px solid transparent";
+        b.style.color = on ? "#2563eb" : "#475569";
+      });
+      while (body.firstChild) body.removeChild(body.firstChild);
+      const t = TABS.find(t => t.id === id);
+      if (t) body.appendChild(t.build());
+    }
+    for (const t of TABS) {
+      tabBar.appendChild(el("button", {
+        type: "button", "data-tab": t.id,
+        style: "padding:8px 12px;background:none;border:0;border-bottom:2px solid transparent;font-size:12px;cursor:pointer",
+        onclick: () => showTab(t.id) }, t.label));
+    }
+    showTab(activeTabId);
+
+    const closeBtn = el("button", { class: "chrx-btn", type: "button",
+      onclick: () => D.closeSheet() }, "Cancel");
+    const saveBtn = el("button", { class: "chrx-btn chrx-btn--primary", type: "button",
+      onclick: () => { save(); D.closeSheet(); } }, "Save");
+    const actions = el("div", { style: "display:flex;justify-content:flex-end;gap:8px;margin-top:14px;border-top:1px solid #e2e8f0;padding-top:10px" },
+      closeBtn, saveBtn);
+
+    const wrap = el("div", { style: "padding:6px 4px 0" }, tabBar, body, actions);
+    D.openSheet(wrap, { title: "Print settings" });
+  }
+
+  global.PrintSettingsDialog = { open, load };
+  load();
+})(window);
+
 /* ─── FILE: js/ui/print_preview/templates_registry.js ─── */
 /* Print template registry — sidecar that Agent H's print_preview.js can
  * consume to populate the "Select your report" dropdown with all 20+
@@ -18926,10 +19136,10 @@ window.StartScreen = (function () {
   }
 
   for (const n of [1, 2, 3]) {
-    window.APP.printTemplates.register({
-      id: "custom_" + n,
-      title: "Custom " + n,
-      category: "custom",
+    // templates_registry.register API is (id, def) — the earlier single-arg
+    // call silently failed the type check and dropped all 3 Custom slots.
+    window.APP.printTemplates.register("custom_" + n, {
+      name: "Custom " + n,
       render: makeCustom(n),
     });
   }
@@ -22198,16 +22408,8 @@ window.StartScreen = (function () {
         notify(q ? ("Filter: " + q) : "Filter cleared");
       } }, "⚙︎ Filter");
     const sizeBtn    = el("button", { class: "chrx-tb-btn", type: "button",
-      title: "Page size & scale",
-      onclick: () => {
-        const cur = APP.printScale || 100;
-        const next = prompt("Print scale percent (50–200):", String(cur));
-        const v = Math.max(50, Math.min(200, parseInt(next, 10) || cur));
-        APP.printScale = v;
-        const stage = host.querySelector(".chrx-pp-stage");
-        if (stage) stage.style.zoom = (v / 100).toString();
-        notify("Scale " + v + "%");
-      } }, "📐 Sizes");
+      title: "Page size, orientation, margins, scale",
+      onclick: () => window.PrintSettingsDialog && window.PrintSettingsDialog.open("sizes") }, "📐 Sizes");
     const designBtn  = el("button", { class: "chrx-tb-btn", type: "button",
       title: "Cell style — anchor, fields, font, colors",
       onclick: () => {
@@ -22219,11 +22421,11 @@ window.StartScreen = (function () {
         });
       } }, "🎨 Cell style…");
     const colorBtn   = el("button", { class: "chrx-tb-btn", type: "button",
-      title: "Edit per-subject colours",
-      onclick: () => { closePreview(); window.dispatchEvent(new CustomEvent("app:open-entity", { detail: { kind: "subjects" } })); } }, "🌈 Colors");
+      title: "Print-with-colors toggle (per-subject colors edited in Subjects)",
+      onclick: () => window.PrintSettingsDialog && window.PrintSettingsDialog.open("colors") }, "🌈 Colors");
     const structBtn  = el("button", { class: "chrx-tb-btn", type: "button",
-      title: "Days, periods, breaks, holidays — opens School Hub",
-      onclick: () => { closePreview(); document.dispatchEvent(new CustomEvent("nav:goto-step", { detail: { step: 2 } })); } }, "🧩 Structure");
+      title: "Days as rows vs columns",
+      onclick: () => window.PrintSettingsDialog && window.PrintSettingsDialog.open("structure") }, "🧩 Structure");
     const extraBtn   = el("button", { class: "chrx-tb-btn", type: "button",
       title: "Toggle extra header / footer / class-total rows",
       onclick: () => {
@@ -22233,8 +22435,8 @@ window.StartScreen = (function () {
         notify(APP.printExtras ? "Extras: on" : "Extras: off");
       } }, "➕ Extra");
     const globalBtn  = el("button", { class: "chrx-tb-btn", type: "button",
-      title: "School-wide settings — opens School Hub",
-      onclick: () => { closePreview(); document.dispatchEvent(new CustomEvent("nav:goto-step", { detail: { step: 2 } })); } }, "🛠 Global");
+      title: "Bell-times / teacher-names / room-names print toggles",
+      onclick: () => window.PrintSettingsDialog && window.PrintSettingsDialog.open("globals") }, "🛠 Global");
 
     const close = el("button", { class: "chrx-tb-btn chrx-tb-btn--danger", type: "button",
       style: "margin-left:auto", onclick: closePreview }, "✕ Close preview");

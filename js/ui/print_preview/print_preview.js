@@ -78,16 +78,8 @@
         notify(q ? ("Filter: " + q) : "Filter cleared");
       } }, "⚙︎ Filter");
     const sizeBtn    = el("button", { class: "chrx-tb-btn", type: "button",
-      title: "Page size & scale",
-      onclick: () => {
-        const cur = APP.printScale || 100;
-        const next = prompt("Print scale percent (50–200):", String(cur));
-        const v = Math.max(50, Math.min(200, parseInt(next, 10) || cur));
-        APP.printScale = v;
-        const stage = host.querySelector(".chrx-pp-stage");
-        if (stage) stage.style.zoom = (v / 100).toString();
-        notify("Scale " + v + "%");
-      } }, "📐 Sizes");
+      title: "Page size, orientation, margins, scale",
+      onclick: () => window.PrintSettingsDialog && window.PrintSettingsDialog.open("sizes") }, "📐 Sizes");
     const designBtn  = el("button", { class: "chrx-tb-btn", type: "button",
       title: "Cell style — anchor, fields, font, colors",
       onclick: () => {
@@ -99,11 +91,11 @@
         });
       } }, "🎨 Cell style…");
     const colorBtn   = el("button", { class: "chrx-tb-btn", type: "button",
-      title: "Edit per-subject colours",
-      onclick: () => { closePreview(); window.dispatchEvent(new CustomEvent("app:open-entity", { detail: { kind: "subjects" } })); } }, "🌈 Colors");
+      title: "Print-with-colors toggle (per-subject colors edited in Subjects)",
+      onclick: () => window.PrintSettingsDialog && window.PrintSettingsDialog.open("colors") }, "🌈 Colors");
     const structBtn  = el("button", { class: "chrx-tb-btn", type: "button",
-      title: "Days, periods, breaks, holidays — opens School Hub",
-      onclick: () => { closePreview(); document.dispatchEvent(new CustomEvent("nav:goto-step", { detail: { step: 2 } })); } }, "🧩 Structure");
+      title: "Days as rows vs columns",
+      onclick: () => window.PrintSettingsDialog && window.PrintSettingsDialog.open("structure") }, "🧩 Structure");
     const extraBtn   = el("button", { class: "chrx-tb-btn", type: "button",
       title: "Toggle extra header / footer / class-total rows",
       onclick: () => {
@@ -113,8 +105,8 @@
         notify(APP.printExtras ? "Extras: on" : "Extras: off");
       } }, "➕ Extra");
     const globalBtn  = el("button", { class: "chrx-tb-btn", type: "button",
-      title: "School-wide settings — opens School Hub",
-      onclick: () => { closePreview(); document.dispatchEvent(new CustomEvent("nav:goto-step", { detail: { step: 2 } })); } }, "🛠 Global");
+      title: "Bell-times / teacher-names / room-names print toggles",
+      onclick: () => window.PrintSettingsDialog && window.PrintSettingsDialog.open("globals") }, "🛠 Global");
 
     const close = el("button", { class: "chrx-tb-btn chrx-tb-btn--danger", type: "button",
       style: "margin-left:auto", onclick: closePreview }, "✕ Close preview");

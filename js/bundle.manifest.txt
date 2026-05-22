@@ -91,6 +91,7 @@ js/ui/io/export_excel_class_register.js
 js/ui/io/export_excel_nyc.js
 js/ui/io/export_ics.js
 js/ui/print_preview/cell_style_dialog.js
+js/ui/print_preview/print_settings_dialog.js
 js/ui/print_preview/templates_registry.js
 js/ui/print_preview/templates/_helpers.js
 js/ui/print_preview/templates/timetable_for_student.js

@@ -156,6 +156,7 @@
           daysDefId: defDay,
           weeksDefId: defWk,
           termsDefId: defTerm,
+          maxstudents: "",
           fixedDay:"", fixedPeriod:"" }
       : { subjectId:r._ref.subjectId, classIds:r._ref.classIds.slice(),
           teacherIds:r._ref.teacherIds.slice(),
@@ -171,6 +172,7 @@
           daysDefId: r._ref.daysDefId || defDay,
           weeksDefId: r._ref.weeksDefId || defWk,
           termsDefId: r._ref.termsDefId || defTerm,
+          maxstudents: r._ref.maxstudents != null ? r._ref.maxstudents : "",
           fixedDay: r._ref.fixedDay != null ? r._ref.fixedDay : "",
           fixedPeriod: r._ref.fixedPeriod != null ? r._ref.fixedPeriod : "" };
 
@@ -222,6 +224,9 @@
     const fLab = D.el("input", { type:"checkbox",
       checked: draft.isLabDouble ? "checked" : null,
       onchange:(e)=>draft.isLabDouble = e.target.checked });
+    const fMaxStudents = D.el("input", { type:"number", min:"0", max:"500",
+      placeholder:"unlimited", value:draft.maxstudents,
+      oninput:(e)=>draft.maxstudents = e.target.value });
     const fDay = D.el("input", { type:"number", min:"0", max:"5",
       placeholder:"any", value:draft.fixedDay,
       oninput:(e)=>draft.fixedDay = e.target.value });
@@ -390,6 +395,7 @@
         { label:"Day pattern",      control:fDaysDef },
         { label:"Week pattern",     control:fWeeksDef },
         { label:"Term",             control:fTermsDef },
+        { label:"Max students",     control:fMaxStudents },
         { label:"Fixed day (0–5)",  control:fDay },
         { label:"Fixed period",     control:fPeriod },
       ],
@@ -434,6 +440,7 @@
           l.termsDefId = draft.termsDefId || undefined;
           l.fixedDay = draft.fixedDay !== "" ? parseInt(draft.fixedDay, 10) : undefined;
           l.fixedPeriod = draft.fixedPeriod !== "" ? parseInt(draft.fixedPeriod, 10) : undefined;
+          l.maxstudents = draft.maxstudents !== "" ? parseInt(draft.maxstudents, 10) : undefined;
           window.APP.audit.append({ entity:"lessons", op:"update", before, after:{...l} });
         } else {
           const nl = { id:D.uid("l"),
@@ -451,7 +458,8 @@
             weeksDefId: draft.weeksDefId || undefined,
             termsDefId: draft.termsDefId || undefined,
             fixedDay: draft.fixedDay !== "" ? parseInt(draft.fixedDay, 10) : undefined,
-            fixedPeriod: draft.fixedPeriod !== "" ? parseInt(draft.fixedPeriod, 10) : undefined };
+            fixedPeriod: draft.fixedPeriod !== "" ? parseInt(draft.fixedPeriod, 10) : undefined,
+            maxstudents: draft.maxstudents !== "" ? parseInt(draft.maxstudents, 10) : undefined };
           all.push(nl);
           if (s._idx) s._idx.lessonById[nl.id] = nl;
           window.APP.audit.append({ entity:"lessons", op:"add", after:{...nl} });
