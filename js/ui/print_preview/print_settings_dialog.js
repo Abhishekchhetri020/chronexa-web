@@ -122,10 +122,46 @@
       row("Show subject colors",   bool("showSubjectColors")));
   }
   function tabStructure() {
-    return el("div", null,
+    const wrap = el("div", null,
       el("p", { style: "color:#64748b;font-size:11px;margin:0 0 8px" },
         "Whether each template lays out days as rows × periods as columns, or vice-versa. Some templates may ignore this if they have a fixed shape."),
-      row("Days are…", pick("structure", ["rows-days","columns-days"])));
+      row("Days are… (default)", pick("structure", ["rows-days","columns-days"])));
+
+    // Per-template overrides (audit §7.4). Lists every registered template
+    // and lets the user override the global structure per-template. Stored
+    // on APP.printTemplateStructure[id] = "rows-days" | "columns-days" |
+    // "inherit" (inherit = use the global default above).
+    APP.printTemplateStructure = APP.printTemplateStructure || {};
+    try {
+      const saved = JSON.parse(localStorage.getItem("chronexa.printTemplateStructure") || "{}");
+      Object.assign(APP.printTemplateStructure, saved);
+    } catch {}
+
+    const head = el("h3", { style: "margin:14px 0 6px;font-size:11px;text-transform:uppercase;color:#334155;letter-spacing:.04em" }, "Per-template overrides");
+    wrap.appendChild(head);
+
+    const list = (APP.printTemplates && APP.printTemplates.list && APP.printTemplates.list()) || [];
+    for (const t of list) {
+      const cur = APP.printTemplateStructure[t.id] || "inherit";
+      const sel = el("select", { style: "padding:3px 6px;border:1px solid #cbd5e1;border-radius:4px;font-size:11px" });
+      ["inherit", "rows-days", "columns-days"].forEach(v => {
+        const opt = el("option", { value: v }, v);
+        if (v === cur) opt.setAttribute("selected", "selected");
+        sel.appendChild(opt);
+      });
+      sel.addEventListener("change", e => {
+        const v = e.target.value;
+        if (v === "inherit") delete APP.printTemplateStructure[t.id];
+        else APP.printTemplateStructure[t.id] = v;
+        try { localStorage.setItem("chronexa.printTemplateStructure", JSON.stringify(APP.printTemplateStructure)); } catch {}
+      });
+      const row2 = el("div", { style: "display:flex;align-items:center;gap:12px;margin:3px 0;font-size:12px" });
+      const lab = el("label", { style: "flex:1;color:#475569" }, t.name || t.id);
+      row2.appendChild(lab);
+      row2.appendChild(sel);
+      wrap.appendChild(row2);
+    }
+    return wrap;
   }
   function tabColors() {
     return el("div", null,

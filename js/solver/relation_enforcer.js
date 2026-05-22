@@ -22,6 +22,12 @@
   const TYPS = Object.freeze({
     n_0:  { label: "cannot follow",                                  binary: false, hard: true,  scope: "consecutive" },
     n_1:  { label: "cannot be the same day",                         binary: false, hard: true,  scope: "sameDay" },
+    // §4.7 — n_2, n_3, n_15 typs are not documented in Classic source.
+    // Adopting reasonable interpretations based on adjacency to the
+    // documented typs and Slovak/EU timetable convention. These can be
+    // tightened once a Classic XML with these typs is sighted in the wild.
+    n_2:  { label: "must not be at the same time (same period)",     binary: false, hard: true,  scope: "sameTime" },
+    n_3:  { label: "must alternate days (no two same-day)",          binary: false, hard: false, scope: "alternateDay" },
     n_4:  { label: "Card distribution over the week",                binary: false, hard: false, scope: "distribution" },
     n_5:  { label: "Two subjects must follow (arbitrary order)",     binary: true,  hard: true,  scope: "consecutive" },
     n_6:  { label: "Two subjects must follow",                       binary: true,  hard: true,  scope: "consecutiveOrdered" },
@@ -33,6 +39,7 @@
     n_12: { label: "These subjects for the groups of listed classes must start at the same time", binary: false, hard: true, scope: "simultaneous" },
     n_13: { label: "The selected subjects have to be at the same time in all selected classes", binary: false, hard: true, scope: "simultaneous" },
     n_14: { label: "This subject must be on the same period each day", binary: false, hard: false, scope: "samePeriodEachDay" },
+    n_15: { label: "Cards must be evenly spaced across the week",    binary: false, hard: false, scope: "evenSpacing" },
     n_16: { label: "Subject must be first or last",                  binary: false, hard: true,  scope: "position" },
     n_17: { label: "The selected subjects can be in the afternoon",  binary: false, hard: false, scope: "afternoon" },
   });

@@ -34,6 +34,7 @@ js/ui/entities/ttviews.js
 js/ui/entities/grades.js
 js/ui/entities/holidays.js
 js/ui/entity_router.js
+js/ui/multi_doc_tabs.js
 js/ui/components/statistics_panel.js
 js/ui/components/school_settings_dialog.js
 js/ui/components/solver_parameters_dialog.js
@@ -103,6 +104,7 @@ js/ui/print_preview/print_settings_dialog.js
 js/ui/print_preview/templates_registry.js
 js/ui/print_preview/templates/_helpers.js
 js/ui/print_preview/templates/timetable_for_student.js
+js/ui/print_preview/templates/timetable_for_each_student.js
 js/ui/print_preview/templates/summary_of_students.js
 js/ui/print_preview/templates/summary_of_subjects.js
 js/ui/print_preview/templates/wall_poster_classrooms.js

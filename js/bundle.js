@@ -1,5 +1,5 @@
-/* Chronexa bundle — generated 2026-05-22T03:43:33Z
- *      148 modules concatenated in document order.
+/* Chronexa bundle — generated 2026-05-22T03:48:34Z
+ *      150 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
 /* ─── FILE: js/ui/state.js ─── */
@@ -7395,6 +7395,159 @@ window.Inspector = (function () {
   window.EntityRouter = { handle, ROUTE };
 })();
 
+/* ─── FILE: js/ui/multi_doc_tabs.js ─── */
+/* Multi-document tab bar — audit §8.5.
+ *
+ * Classic keeps multiple open timetables in tab.apps[]. Chronexa loaded
+ * one at a time; this module adds a tab bar that lets the user park
+ * several schools side-by-side in localStorage and switch between them
+ * with a click. Each tab carries a deep-cloned snapshot of APP.school
+ * (its serialised form keyed under `chronexa.tab.<tabId>`).
+ *
+ * Caveats vs the full Classic model:
+ *   - No live two-way sync between tabs (Chronexa is single-user; no
+ *     pollChangeEvents wire). Switching tabs swaps the in-memory school.
+ *   - Tab snapshots stay in localStorage (~5 MB cap). Large schools should
+ *     still use Files → Save As… for permanent storage.
+ *   - The undo stack is per-session, not per-tab.
+ *
+ * Public API:
+ *   window.MultiDocTabs.mount(rootEl?)   — inject the tab bar (idempotent)
+ *   window.MultiDocTabs.openCurrent(name?) — save current school as a tab
+ *   window.MultiDocTabs.list()           — array of { id, name, updatedAt }
+ *   window.MultiDocTabs.switchTo(id)     — load that tab as APP.school
+ *   window.MultiDocTabs.close(id)        — remove from storage
+ */
+(function (global) {
+  "use strict";
+  const APP = global.APP = global.APP || {};
+  const STORAGE_INDEX = "chronexa.tabs.index";
+  const STORAGE_PREFIX = "chronexa.tab.";
+
+  let barEl = null;
+  let activeId = null;
+
+  function uid() { return "tab_" + Math.random().toString(36).slice(2, 9); }
+
+  function loadIndex() {
+    try { return JSON.parse(localStorage.getItem(STORAGE_INDEX) || "[]") || []; }
+    catch { return []; }
+  }
+  function persistIndex(idx) {
+    try { localStorage.setItem(STORAGE_INDEX, JSON.stringify(idx)); } catch {}
+  }
+  function loadTab(id) {
+    try { return JSON.parse(localStorage.getItem(STORAGE_PREFIX + id) || "null"); }
+    catch { return null; }
+  }
+  function persistTab(id, school) {
+    try { localStorage.setItem(STORAGE_PREFIX + id, JSON.stringify(school)); }
+    catch (e) {
+      (global._chrxNotify || console.log)("Tab save failed: " + e.message, "error");
+    }
+  }
+
+  function openCurrent(name) {
+    if (!APP.school) return null;
+    const id = uid();
+    const idx = loadIndex();
+    const label = name || APP.school.schoolName || ("Tab " + (idx.length + 1));
+    idx.push({ id, name: label, updatedAt: Date.now() });
+    persistIndex(idx);
+    persistTab(id, APP.school);
+    activeId = id;
+    render();
+    return id;
+  }
+
+  function switchTo(id) {
+    // Save the currently-active tab back before swapping.
+    if (activeId && APP.school) persistTab(activeId, APP.school);
+    const school = loadTab(id);
+    if (!school) { (global._chrxNotify || console.log)("Tab missing or corrupt", "error"); return; }
+    APP.school = school;
+    activeId = id;
+    global.dispatchEvent(new CustomEvent("app:school-loaded",
+      { detail: { school, source: "multi-doc-tab" } }));
+    render();
+  }
+
+  function close(id) {
+    const idx = loadIndex().filter(t => t.id !== id);
+    persistIndex(idx);
+    try { localStorage.removeItem(STORAGE_PREFIX + id); } catch {}
+    if (activeId === id) activeId = idx[0] && idx[0].id;
+    if (activeId) switchTo(activeId);
+    else render();
+  }
+
+  function list() { return loadIndex(); }
+
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      const v = attrs[k];
+      if (v == null) continue;
+      if (k === "class") n.className = v;
+      else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v);
+    }
+    for (const c of kids) if (c != null) n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    return n;
+  }
+
+  function render() {
+    if (!barEl) return;
+    while (barEl.firstChild) barEl.removeChild(barEl.firstChild);
+    const idx = loadIndex();
+    for (const t of idx) {
+      const isActive = t.id === activeId;
+      const tab = el("button", {
+        type: "button", "data-tab-id": t.id,
+        style: "padding:4px 10px;font-size:11px;border:1px solid #cbd5e1;border-radius:6px;background:" + (isActive ? "#0f172a" : "#fff") + ";color:" + (isActive ? "#fff" : "#0f172a") + ";cursor:pointer;display:flex;align-items:center;gap:6px",
+        onclick: () => switchTo(t.id),
+      });
+      tab.appendChild(document.createTextNode(t.name));
+      const x = document.createElement("span");
+      x.textContent = "×";
+      x.style.cssText = "font-size:14px;line-height:1;cursor:pointer;opacity:.7";
+      x.onclick = (e) => { e.stopPropagation(); close(t.id); };
+      tab.appendChild(x);
+      barEl.appendChild(tab);
+    }
+    const newBtn = el("button", {
+      type: "button",
+      style: "padding:4px 10px;font-size:11px;border:1px dashed #cbd5e1;border-radius:6px;background:none;cursor:pointer;color:#475569",
+      onclick: () => {
+        const name = (window.prompt("New tab name:", "Untitled " + (idx.length + 1)) || "").trim();
+        if (!name) return;
+        if (!APP.school) APP.school = { schoolName: name, classes: [], teachers: [], subjects: [], classrooms: [], lessons: [], cards: [], bells: [], bell: { periods: [] } };
+        openCurrent(name);
+      },
+    }, "+ New tab");
+    barEl.appendChild(newBtn);
+  }
+
+  function mount(root) {
+    if (barEl) return barEl;
+    barEl = el("div", { id: "chrx-tab-bar",
+      style: "display:flex;gap:6px;align-items:center;padding:4px 8px;background:#f8fafc;border-bottom:1px solid #e2e8f0;flex-wrap:wrap;font-family:-apple-system,BlinkMacSystemFont,sans-serif" });
+    const target = root || document.getElementById("chrx-app") || document.body;
+    if (target.firstChild) target.insertBefore(barEl, target.firstChild);
+    else target.appendChild(barEl);
+    render();
+    return barEl;
+  }
+
+  global.MultiDocTabs = { mount, openCurrent, switchTo, close, list };
+
+  // Auto-mount on first school-loaded so users see the bar without manual hookup.
+  global.addEventListener("app:school-loaded", () => {
+    if (!barEl) mount();
+    render();
+  });
+})(window);
+
 /* ─── FILE: js/ui/components/statistics_panel.js ─── */
 /* Statistics panel — full teacher/class/room load breakdown.
  *
@@ -9407,6 +9560,12 @@ ${body}
   const TYPS = Object.freeze({
     n_0:  { label: "cannot follow",                                  binary: false, hard: true,  scope: "consecutive" },
     n_1:  { label: "cannot be the same day",                         binary: false, hard: true,  scope: "sameDay" },
+    // §4.7 — n_2, n_3, n_15 typs are not documented in Classic source.
+    // Adopting reasonable interpretations based on adjacency to the
+    // documented typs and Slovak/EU timetable convention. These can be
+    // tightened once a Classic XML with these typs is sighted in the wild.
+    n_2:  { label: "must not be at the same time (same period)",     binary: false, hard: true,  scope: "sameTime" },
+    n_3:  { label: "must alternate days (no two same-day)",          binary: false, hard: false, scope: "alternateDay" },
     n_4:  { label: "Card distribution over the week",                binary: false, hard: false, scope: "distribution" },
     n_5:  { label: "Two subjects must follow (arbitrary order)",     binary: true,  hard: true,  scope: "consecutive" },
     n_6:  { label: "Two subjects must follow",                       binary: true,  hard: true,  scope: "consecutiveOrdered" },
@@ -9418,6 +9577,7 @@ ${body}
     n_12: { label: "These subjects for the groups of listed classes must start at the same time", binary: false, hard: true, scope: "simultaneous" },
     n_13: { label: "The selected subjects have to be at the same time in all selected classes", binary: false, hard: true, scope: "simultaneous" },
     n_14: { label: "This subject must be on the same period each day", binary: false, hard: false, scope: "samePeriodEachDay" },
+    n_15: { label: "Cards must be evenly spaced across the week",    binary: false, hard: false, scope: "evenSpacing" },
     n_16: { label: "Subject must be first or last",                  binary: false, hard: true,  scope: "position" },
     n_17: { label: "The selected subjects can be in the afternoon",  binary: false, hard: false, scope: "afternoon" },
   });
@@ -18961,10 +19121,46 @@ window.StartScreen = (function () {
       row("Show subject colors",   bool("showSubjectColors")));
   }
   function tabStructure() {
-    return el("div", null,
+    const wrap = el("div", null,
       el("p", { style: "color:#64748b;font-size:11px;margin:0 0 8px" },
         "Whether each template lays out days as rows × periods as columns, or vice-versa. Some templates may ignore this if they have a fixed shape."),
-      row("Days are…", pick("structure", ["rows-days","columns-days"])));
+      row("Days are… (default)", pick("structure", ["rows-days","columns-days"])));
+
+    // Per-template overrides (audit §7.4). Lists every registered template
+    // and lets the user override the global structure per-template. Stored
+    // on APP.printTemplateStructure[id] = "rows-days" | "columns-days" |
+    // "inherit" (inherit = use the global default above).
+    APP.printTemplateStructure = APP.printTemplateStructure || {};
+    try {
+      const saved = JSON.parse(localStorage.getItem("chronexa.printTemplateStructure") || "{}");
+      Object.assign(APP.printTemplateStructure, saved);
+    } catch {}
+
+    const head = el("h3", { style: "margin:14px 0 6px;font-size:11px;text-transform:uppercase;color:#334155;letter-spacing:.04em" }, "Per-template overrides");
+    wrap.appendChild(head);
+
+    const list = (APP.printTemplates && APP.printTemplates.list && APP.printTemplates.list()) || [];
+    for (const t of list) {
+      const cur = APP.printTemplateStructure[t.id] || "inherit";
+      const sel = el("select", { style: "padding:3px 6px;border:1px solid #cbd5e1;border-radius:4px;font-size:11px" });
+      ["inherit", "rows-days", "columns-days"].forEach(v => {
+        const opt = el("option", { value: v }, v);
+        if (v === cur) opt.setAttribute("selected", "selected");
+        sel.appendChild(opt);
+      });
+      sel.addEventListener("change", e => {
+        const v = e.target.value;
+        if (v === "inherit") delete APP.printTemplateStructure[t.id];
+        else APP.printTemplateStructure[t.id] = v;
+        try { localStorage.setItem("chronexa.printTemplateStructure", JSON.stringify(APP.printTemplateStructure)); } catch {}
+      });
+      const row2 = el("div", { style: "display:flex;align-items:center;gap:12px;margin:3px 0;font-size:12px" });
+      const lab = el("label", { style: "flex:1;color:#475569" }, t.name || t.id);
+      row2.appendChild(lab);
+      row2.appendChild(sel);
+      wrap.appendChild(row2);
+    }
+    return wrap;
   }
   function tabColors() {
     return el("div", null,
@@ -19245,6 +19441,123 @@ window.StartScreen = (function () {
   }
 
   window.APP.printTemplates.register("timetable_for_student", {
+    name: "Timetable for each student",
+    render,
+  });
+})();
+
+/* ─── FILE: js/ui/print_preview/templates/timetable_for_each_student.js ─── */
+/* Per-student timetable — one A4 portrait per enrolled student.
+ *
+ * Audit §15.3. Combines class assignment (cards-by-class), elective
+ * enrollment (school.studentSubjects), and student records (school.students)
+ * to render a personalised timetable: every class lesson the student is in,
+ * plus their chosen electives, with conflicts highlighted in red.
+ *
+ * Schools without students[] populated: the template emits a single
+ * "No students enrolled" stub page so the dropdown entry doesn't break.
+ */
+(function () {
+  "use strict";
+  const U = window.APP && window.APP.printTemplateUtils;
+  if (!U || !window.APP.printTemplates) return;
+  const { el, page, header, footer, emptyPage, DAYS } = U;
+
+  function studentCards(school, student) {
+    const cardsByClass = school._idx?.cardsByClass || {};
+    const out = [];
+    if (student.classId) {
+      const list = cardsByClass[student.classId] || [];
+      for (const c of list) out.push({ ...c, source: "class" });
+    }
+    // Electives — match student's subject enrollments in school.studentSubjects.
+    const enrollments = (school.studentSubjects || []).filter(e => e.studentId === student.id);
+    if (enrollments.length) {
+      const subjectIds = new Set(enrollments.map(e => e.subjectId));
+      // Find cards whose lesson's subjectId matches an enrollment and whose
+      // class set overlaps with the student's class (typical elective grouping).
+      const lessonById = school._idx?.lessonById ||
+        Object.fromEntries((school.lessons || []).map(l => [l.id, l]));
+      for (const c of (school.cards || [])) {
+        const lesson = lessonById[c.lessonId];
+        if (!lesson || !subjectIds.has(lesson.subjectId)) continue;
+        // Avoid double-counting cards already in the student's class list.
+        if (student.classId && (lesson.classIds || []).includes(student.classId)
+            && out.some(o => o.day === c.day && o.period === c.period
+                && o.lessonId === c.lessonId)) continue;
+        out.push({ ...c,
+          subjectAbbr: school._idx?.subjectById?.[lesson.subjectId]?.abbr,
+          subject:     school._idx?.subjectById?.[lesson.subjectId]?.name,
+          source: "elective" });
+      }
+    }
+    return out;
+  }
+
+  function render(school) {
+    if (!school || !Array.isArray(school.students) || !school.students.length) {
+      return [emptyPage("No students enrolled — add via Specification → Students…")];
+    }
+    const periods = (school.bell && school.bell.periods) || [];
+    const subjMap = school._idx?.subjectById || {};
+    const pages = [];
+    const sortedStudents = school.students.slice().sort((a, b) => {
+      const an = ((a.lastName || "") + (a.firstName || "")).toLowerCase();
+      const bn = ((b.lastName || "") + (b.firstName || "")).toLowerCase();
+      return an.localeCompare(bn);
+    });
+
+    for (const st of sortedStudents) {
+      const fullName = ((st.firstName || "") + " " + (st.lastName || "")).trim() || "(unnamed)";
+      const cls = school._idx?.classById?.[st.classId];
+      const p = page(false);
+      p.appendChild(header(fullName,
+        (cls ? cls.name : "(no class)") + " · " + (school.schoolName || "")));
+
+      const cards = studentCards(school, st);
+      // Bucket by day/period
+      const grid = {};
+      for (const c of cards) {
+        const k = c.day + "_" + c.period;
+        if (!grid[k]) grid[k] = [];
+        grid[k].push(c);
+      }
+
+      const tbl = el("table", { style: U.tableCSS() });
+      const head = el("tr");
+      head.appendChild(el("th", { style: U.thCSS() }, ""));
+      periods.forEach(per => head.appendChild(el("th", { style: U.thCSS() }, "P" + per.index)));
+      tbl.appendChild(el("thead", null, head));
+      const body = el("tbody");
+      for (let d = 0; d < DAYS.length; d++) {
+        const tr = el("tr");
+        tr.appendChild(el("th", { style: U.thCSS() }, DAYS[d]));
+        for (const per of periods) {
+          const list = grid[d + "_" + per.index] || [];
+          if (!list.length) {
+            tr.appendChild(el("td", { style: U.tdCSS() + ";color:#bbb;text-align:center" }, "—"));
+          } else if (list.length === 1) {
+            const c = list[0];
+            const lbl = c.subjectAbbr || (subjMap[c.lessonId]?.abbr) || c.subject || "?";
+            tr.appendChild(el("td", { style: U.tdCSS() + (c.source === "elective" ? ";color:#1d4ed8" : "") }, lbl));
+          } else {
+            const txt = list.map(c => c.subjectAbbr || c.subject || "?").join(" / ");
+            tr.appendChild(el("td",
+              { style: U.tdCSS() + ";background:#fee2e2;color:#7f1d1d", title: "Conflict — " + txt },
+              "⚠ " + txt));
+          }
+        }
+        body.appendChild(tr);
+      }
+      tbl.appendChild(body);
+      p.appendChild(tbl);
+      p.appendChild(footer());
+      pages.push(p);
+    }
+    return pages;
+  }
+
+  window.APP.printTemplates.register("timetable_for_each_student", {
     name: "Timetable for each student",
     render,
   });

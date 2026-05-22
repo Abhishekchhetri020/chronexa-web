@@ -588,3 +588,133 @@ export function checkPlacement(school, lessonId, day, period, roomId) {
 
   return result;
 }
+
+// Audit §12.2 — supervision-criteria validator. Checks current
+// classroomsupervisions[] against school.settings.supervisionCriteria and
+// returns a violation list. Surfaces in the verification panel so the
+// admin sees which supervisions break their own rules. Solver doesn't
+// yet attempt to optimise against these — first-pass enforcement is
+// "tell the user what's broken", second pass (future) is "have the
+// solver prefer assignments that don't violate".
+export function validateSupervisionCriteria(school) {
+  const out = [];
+  if (!school) return out;
+  const crit = (school.settings && school.settings.supervisionCriteria) || {};
+  const sups = Array.isArray(school.classroomsupervisions) ? school.classroomsupervisions : [];
+  if (!sups.length) return out;
+  const idx = school._idx || {};
+  const tBy = idx.teacherById || Object.fromEntries((school.teachers || []).map(t => [t.id, t]));
+  const periods = (school.bell && school.bell.periods) || [];
+  const lastPeriod = periods.length ? periods[periods.length - 1].index : -1;
+  const firstPeriod = periods.length ? periods[0].index : -1;
+  const byTeacherDay = {};
+  const byTeacherWeek = {};
+  for (const s of sups) {
+    if (!s.teacherid) continue;
+    const tk = s.teacherid + "_" + (s.day != null ? s.day : "?");
+    byTeacherDay[tk] = (byTeacherDay[tk] || 0) + 1;
+    byTeacherWeek[s.teacherid] = (byTeacherWeek[s.teacherid] || 0) + 1;
+    const teacher = tBy[s.teacherid];
+    const tName = (teacher && (teacher.abbr || teacher.name)) || s.teacherid;
+    const desc = (msg) => ({ ruleId: "supervision_criteria",
+      severity: "soft", supervisionId: s.id,
+      description: tName + " supervision " + msg });
+    if (crit.avoidLastPeriod && lastPeriod >= 0 && s.period === lastPeriod) {
+      out.push(desc("on last period (avoidLastPeriod=on)"));
+    }
+    if (crit.avoidFirstPeriod && firstPeriod >= 0 && s.period === firstPeriod) {
+      out.push(desc("on first period (avoidFirstPeriod=on)"));
+    }
+    if (teacher && teacher.timeOff && crit.noSupervisionOnTimeOff) {
+      const key = s.day + "_" + s.period;
+      const mark = teacher.timeOff[key];
+      if (mark === "unavailable") out.push(desc("on teacher's time-off slot"));
+    }
+  }
+  if (crit.maxPerTeacherPerDay > 0) {
+    for (const k of Object.keys(byTeacherDay)) {
+      if (byTeacherDay[k] > crit.maxPerTeacherPerDay) {
+        const [tid, d] = k.split("_");
+        const teacher = tBy[tid];
+        const tName = (teacher && (teacher.abbr || teacher.name)) || tid;
+        out.push({ ruleId: "supervision_criteria",
+          severity: "hard",
+          description: tName + " has " + byTeacherDay[k] + " supervisions on day " + d
+            + " (max " + crit.maxPerTeacherPerDay + ")" });
+      }
+    }
+  }
+  if (crit.maxPerTeacherPerWeek > 0) {
+    for (const tid of Object.keys(byTeacherWeek)) {
+      if (byTeacherWeek[tid] > crit.maxPerTeacherPerWeek) {
+        const teacher = tBy[tid];
+        const tName = (teacher && (teacher.abbr || teacher.name)) || tid;
+        out.push({ ruleId: "supervision_criteria",
+          severity: "hard",
+          description: tName + " has " + byTeacherWeek[tid] + " supervisions / week (max "
+            + crit.maxPerTeacherPerWeek + ")" });
+      }
+    }
+  }
+  return out;
+}
+
+// Audit §15.2 — student-elective conflict detector. Walks
+// school.studentSubjects, computes the per-student card-set (class
+// lessons + electives), and flags any (student, day, period) where
+// the student would be in two cards at once. Pure read function;
+// returns an array of { ruleId, severity, description, studentId,
+// day, period }. Verification UI can render these alongside the
+// solver-level violations.
+export function studentScheduleConflicts(school) {
+  const out = [];
+  if (!school || !Array.isArray(school.students) || !school.students.length) return out;
+  const cardsByClass = (school._idx && school._idx.cardsByClass) || {};
+  const lessonById = (school._idx && school._idx.lessonById) ||
+    Object.fromEntries((school.lessons || []).map(l => [l.id, l]));
+  const subjectById = (school._idx && school._idx.subjectById) || {};
+  const enrollByStudent = {};
+  for (const e of (school.studentSubjects || [])) {
+    if (!enrollByStudent[e.studentId]) enrollByStudent[e.studentId] = [];
+    enrollByStudent[e.studentId].push(e);
+  }
+  for (const st of school.students) {
+    const buckets = {}; // "d_p" → [card]
+    const note = (c) => {
+      const k = c.day + "_" + c.period;
+      (buckets[k] = buckets[k] || []).push(c);
+    };
+    if (st.classId) {
+      for (const c of (cardsByClass[st.classId] || [])) note(c);
+    }
+    for (const e of (enrollByStudent[st.id] || [])) {
+      // Find electives that match this enrollment but aren't already in class
+      for (const c of (school.cards || [])) {
+        const lesson = lessonById[c.lessonId];
+        if (!lesson || lesson.subjectId !== e.subjectId) continue;
+        if (st.classId && (lesson.classIds || []).includes(st.classId)) continue;
+        note(c);
+      }
+    }
+    for (const key of Object.keys(buckets)) {
+      const arr = buckets[key];
+      if (arr.length < 2) continue;
+      const [dStr, pStr] = key.split("_");
+      const labels = arr.map(c => {
+        const l = lessonById[c.lessonId];
+        const s = l && subjectById[l.subjectId];
+        return (s && (s.abbr || s.name)) || (l && l.subjectId) || c.lessonId;
+      }).join(" + ");
+      const fullName = ((st.firstName || "") + " " + (st.lastName || "")).trim() || st.id;
+      out.push({
+        ruleId: "student_schedule_conflict",
+        severity: "hard",
+        studentId: st.id,
+        day: parseInt(dStr, 10),
+        period: parseInt(pStr, 10),
+        description: `${fullName} double-booked at D${dStr} P${pStr}: ${labels}`,
+      });
+    }
+  }
+  return out;
+}
