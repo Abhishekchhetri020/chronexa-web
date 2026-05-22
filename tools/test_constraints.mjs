@@ -19,8 +19,11 @@ const require_   = createRequire(import.meta.url);
 let JSDOM;
 try { ({ JSDOM } = require_("jsdom")); }
 catch {
-  console.error("Install jsdom first:  npm install jsdom");
-  process.exit(1);
+  try { ({ JSDOM } = require_("/private/tmp/chronexa_smoke/node_modules/jsdom")); }
+  catch {
+    console.error("Install jsdom first:  npm install jsdom");
+    process.exit(1);
+  }
 }
 
 const xmlPath = path.resolve(process.argv[2] || path.join(repoRoot, "sample-school.xml"));
@@ -36,11 +39,17 @@ globalThis.document = dom.window.document;
 globalThis.DOMParser = dom.window.DOMParser;
 globalThis.performance = { now: () => Date.now() };
 
-const { parseText } = await import(path.join("file://", repoRoot, "js/xml/parse_timetable_xml.js"));
+// parse_timetable_xml.js is a classic IIFE — load via vm into the global
+// context, then call window.parseTimetableXml.parseText().
+const { default: vm } = await import("node:vm");
+const parserSrc = fs.readFileSync(path.join(repoRoot, "js/xml/parse_timetable_xml.js"), "utf8");
+vm.runInThisContext(parserSrc, { filename: "parse_timetable_xml.js" });
+const { parseText } = globalThis.window.parseTimetableXml;
+
 const { checkPlacement, FAIL, FAIL_NAME } =
   await import(path.join("file://", repoRoot, "js/solver/constraints.js"));
 
-const school = parseText(xml);
+const school = parseText(xml, "sample-school.xml");
 // Build the _idx the constraint module expects.
 school._idx = {
   teacherById:  Object.fromEntries((school.teachers   || []).map(t => [t.id, t])),
