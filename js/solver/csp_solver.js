@@ -355,23 +355,30 @@ function buildModel(school) {
   // window so the schedule naturally leaves the lunch break free. "d"
   // (the dialog's default token) → no lunch window enforced.
   const classLunchMask = new Uint32Array(classIds.length);
+  // Teaching-window mask per class — audit §3.5 (m_nMaxVyucOd/m_nMaxVyucDo).
+  // Bit p set iff period p is INSIDE the allowed teaching window. The
+  // soft scorer below penalises class teaching OUTSIDE this window.
+  // "*" / null = no window restriction.
+  const classTeachingMask = new Uint32Array(classIds.length);
+  function parseWindow(lo, hi) {
+    if (lo == null || hi == null || lo === "*" || hi === "*") return 0;
+    const from = (parseInt(lo, 10) | 0) - 1;
+    const to   = (parseInt(hi, 10) | 0) - 1;
+    if (Number.isNaN(from) || Number.isNaN(to)) return 0;
+    let m = 0;
+    const a = Math.max(0, Math.min(from, to));
+    const b = Math.min(periodsPerDay - 1, Math.max(from, to));
+    for (let p = a; p <= b; p++) m = (m | (1 << p)) >>> 0;
+    return m;
+  }
   for (let c = 0; c < (school.classes || []).length; c++) {
     const cc = school.classes[c];
     classMaxPerDay[c]     = gFallback(cc.maxPerDay,             "classMaxPerDay");
     classMaxConsec[c]     = gFallback(cc.maxConsecutivePeriods, "classMaxConsecutive");
     classMaxGapsPerDay[c] = gFallback(cc.maxGapsPerDay,         "classMaxGapsPerDay");
     const cons = (school.classes[c] && school.classes[c].constraints) || {};
-    const lf = cons.lunch_periodfrom;
-    const lt = cons.lunch_periodto;
-    if (lf != null && lt != null && lf !== "d" && lt !== "d") {
-      const from = (parseInt(lf, 10) | 0) - 1; // dialog is 1-based; mask uses 0-based.
-      const to   = (parseInt(lt, 10) | 0) - 1;
-      let m = 0;
-      const lo = Math.max(0, Math.min(from, to));
-      const hi = Math.min(periodsPerDay - 1, Math.max(from, to));
-      for (let p = lo; p <= hi; p++) m = (m | (1 << p)) >>> 0;
-      classLunchMask[c] = m;
-    }
+    classLunchMask[c]    = parseWindow(cons.lunch_periodfrom, cons.lunch_periodto);
+    classTeachingMask[c] = parseWindow(cons.m_nMaxVyucOd,     cons.m_nMaxVyucDo);
   }
 
 
@@ -751,6 +758,7 @@ function buildModel(school) {
     classMaxPerDay, classMaxConsec,
     classValidPeriodMask,
     classLunchMask,
+    classTeachingMask,
     subjectDailyLimit,
     classSubjectTarget,
     classTeacherPosMask,
@@ -1371,6 +1379,7 @@ function softScore(model, state) {
   s += teacherConditionalPlacementPenalty(model, state) * w[11];
   s += classTeacherPosPenalty(model, state) * w[12];
   s += classLunchWindowPenalty(model, state) * (w[1] || 1);
+  s += classTeachingWindowPenalty(model, state) * (w[1] || 1);
   return s;
 }
 
@@ -1391,6 +1400,30 @@ function classLunchWindowPenalty(model, state) {
     for (let k = 0; k < cCount; k++) {
       const c = model.lessonClassFlat[cStart + k];
       if ((lunch[c] & bit) !== 0) penalty += 1;
+    }
+  }
+  return penalty;
+}
+
+// Audit §3.5 — m_nMaxVyucOd / m_nMaxVyucDo (max teaching window). Soft-
+// penalise placements OUTSIDE the configured window so the schedule
+// concentrates teaching in the allowed range. Classes without a window
+// set (mask === 0) are skipped — no restriction.
+function classTeachingWindowPenalty(model, state) {
+  const teach = model.classTeachingMask;
+  if (!teach) return 0;
+  let penalty = 0;
+  for (let i = 0; i < model.lessonCount; i++) {
+    if (!state.lessonAssigned[i]) continue;
+    const slot = state.lessonAssignedSlot[i];
+    const p = model.slotPeriod[slot];
+    const bit = (1 << p) >>> 0;
+    const cStart = model.lessonClassStart[i];
+    const cCount = model.lessonClassCount[i];
+    for (let k = 0; k < cCount; k++) {
+      const c = model.lessonClassFlat[cStart + k];
+      const mask = teach[c];
+      if (mask !== 0 && (mask & bit) === 0) penalty += 1;
     }
   }
   return penalty;
@@ -2993,6 +3026,23 @@ export function solve(school, options = {}) {
     }
   }
 
+  // Audit §6.2 — Generator final result enriched with chyby[] (Slovak for
+  // "errors"). Group violations by ruleId so the UI can render
+  // "12 × teacher_conflict · 4 × class_max_per_day" instead of a flat list
+  // that the user has to bucket manually. Each chyba entry carries
+  // { code, count, examples[] } where examples are up to 3 description
+  // strings for the user to drill into.
+  const chybyMap = Object.create(null);
+  for (const v of violations) {
+    const code = (v && v.ruleId) || "unknown";
+    if (!chybyMap[code]) chybyMap[code] = { code, count: 0, examples: [] };
+    chybyMap[code].count++;
+    if (chybyMap[code].examples.length < 3 && v && v.description) {
+      chybyMap[code].examples.push(v.description);
+    }
+  }
+  const chyby = Object.values(chybyMap).sort((a, b) => b.count - a.count);
+
   return {
     status,
     assignment,
@@ -3004,6 +3054,7 @@ export function solve(school, options = {}) {
       durationMs: Math.round(performance.now() - t0),
     },
     violations,
+    chyby,
   };
 }
 
