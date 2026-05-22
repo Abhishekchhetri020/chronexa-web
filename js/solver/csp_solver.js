@@ -349,11 +349,29 @@ function buildModel(school) {
   const classMaxPerDay     = new Int32Array(classIds.length).fill(-1);
   const classMaxConsec     = new Int32Array(classIds.length).fill(-1);
   const classMaxGapsPerDay = new Int32Array(classIds.length).fill(-1);
+  // Lunch-window bitmask per class — audit §3.8. Bit p set iff period p
+  // (0-based) is INSIDE the configured [lunch_periodfrom, lunch_periodto]
+  // range. The soft scorer below penalises class teaching during this
+  // window so the schedule naturally leaves the lunch break free. "d"
+  // (the dialog's default token) → no lunch window enforced.
+  const classLunchMask = new Uint32Array(classIds.length);
   for (let c = 0; c < (school.classes || []).length; c++) {
     const cc = school.classes[c];
     classMaxPerDay[c]     = gFallback(cc.maxPerDay,             "classMaxPerDay");
     classMaxConsec[c]     = gFallback(cc.maxConsecutivePeriods, "classMaxConsecutive");
     classMaxGapsPerDay[c] = gFallback(cc.maxGapsPerDay,         "classMaxGapsPerDay");
+    const cons = (school.classes[c] && school.classes[c].constraints) || {};
+    const lf = cons.lunch_periodfrom;
+    const lt = cons.lunch_periodto;
+    if (lf != null && lt != null && lf !== "d" && lt !== "d") {
+      const from = (parseInt(lf, 10) | 0) - 1; // dialog is 1-based; mask uses 0-based.
+      const to   = (parseInt(lt, 10) | 0) - 1;
+      let m = 0;
+      const lo = Math.max(0, Math.min(from, to));
+      const hi = Math.min(periodsPerDay - 1, Math.max(from, to));
+      for (let p = lo; p <= hi; p++) m = (m | (1 << p)) >>> 0;
+      classLunchMask[c] = m;
+    }
   }
 
 
@@ -732,6 +750,7 @@ function buildModel(school) {
     teacherAvailabilityMask, teacherConditionalMask, teacherMaxPerDay, teacherMaxConsec,
     classMaxPerDay, classMaxConsec,
     classValidPeriodMask,
+    classLunchMask,
     subjectDailyLimit,
     classSubjectTarget,
     classTeacherPosMask,
@@ -1351,7 +1370,30 @@ function softScore(model, state) {
   s += siblingSubjectDeficitPenalty(model, state) * w[10];
   s += teacherConditionalPlacementPenalty(model, state) * w[11];
   s += classTeacherPosPenalty(model, state) * w[12];
+  s += classLunchWindowPenalty(model, state) * (w[1] || 1);
   return s;
+}
+
+// Audit §3.8 — lunch_periodfrom/to. Soft-penalise placements that fall
+// inside the class's lunch window so the schedule prefers leaving those
+// periods free for lunch. Reuses the class-gap soft weight (w[1]).
+function classLunchWindowPenalty(model, state) {
+  const lunch = model.classLunchMask;
+  if (!lunch) return 0;
+  let penalty = 0;
+  for (let i = 0; i < model.lessonCount; i++) {
+    if (!state.lessonAssigned[i]) continue;
+    const slot = state.lessonAssignedSlot[i];
+    const p = model.slotPeriod[slot];
+    const bit = (1 << p) >>> 0;
+    const cStart = model.lessonClassStart[i];
+    const cCount = model.lessonClassCount[i];
+    for (let k = 0; k < cCount; k++) {
+      const c = model.lessonClassFlat[cStart + k];
+      if ((lunch[c] & bit) !== 0) penalty += 1;
+    }
+  }
+  return penalty;
 }
 
 // Top 30 #5 — classTeacherPos. For each (class, slot) where the mask is

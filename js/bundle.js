@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-22T03:25:32Z
+/* Chronexa bundle — generated 2026-05-22T03:28:37Z
  *      144 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -20068,8 +20068,13 @@ window.StartScreen = (function () {
   }
 
   function mapRowToRelation(row) {
-    // Classic row → Chronexa relation
-    return {
+    // Classic row → Chronexa relation. Audit §4.8 — there are 84 `a_*`
+    // codes in Classic's full schema; we only decode 15 `n_*` typs and
+    // a handful of named fields here. To keep round-trip fidelity for
+    // the undecoded ones (so importing a HAR and re-exporting doesn't
+    // silently drop them), spread the raw row first and then override
+    // the named fields with normalised values.
+    return Object.assign({}, row, {
       id: row.id || ("har_" + Math.random().toString(36).slice(2, 8)),
       typ: row.typ || "",
       importance: row.importance || "normal",
@@ -20086,7 +20091,7 @@ window.StartScreen = (function () {
       param2: row.param2,
       filter: row.filter || "",
       filter2: row.filter2 || "",
-    };
+    });
   }
 
   async function importHAR(file) {
