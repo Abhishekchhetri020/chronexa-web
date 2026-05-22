@@ -64,6 +64,45 @@ Filter to **single-session, concrete, no-spec-needed** items first. From the 4 t
 External-spec items still parked:
 - Mashov, iSAMS export formats — need a real sample. NYC Excel shipped as a "(draft)" layout in p48; same playbook applies once samples arrive.
 
+## Extended audit (beyond Top-30 — `Chronexa-MISSING-FEATURES-2026-05-19.md`)
+
+The 1,311-line audit has 17 sections covering ~150 features. Top-30 is the curated subset; this is the wider-audit progress.
+
+### Shipped in the 2026-05-22 gap-plug session (p57 → p60)
+
+| § | Item | Where |
+|---|---|---|
+| §5.3 | Heatmap on pickup — every empty slot lights up green/amber/red on pickup, not just the slot under the cursor | `card_in_hand.js#paintAllSlots` |
+| §5.6 | Right-click on day-header / period-header — small actions menu | `header_context.js` |
+| §5.7 | Double-click on a placed card → opens Lessons dialog focused on it | `card_double_click.js` |
+| §11.4 | Pending strip resize — drag the top edge (CSS `resize:vertical`) | `editor.css` |
+| §11.2 | Custom saved views — View menu → Saved views → Save current view… | `view_menu.js` |
+| §6.10 | Bulk Assign default classrooms — AI menu | `ai_menu.js#assignClassroomsBulk` |
+| §6.11 | Bulk Unlock all placed cells — AI menu | `ai_menu.js#unlockAllPlacedCells` |
+| §3.8 | `lunch_periodfrom/to` solver enforcement — soft penalty for class teaching during lunch window | `csp_solver.js#classLunchWindowPenalty` |
+| §4.2 | Relations importance levels (6 options) — already shipped | `relations.js#IMPORTANCE_LEVELS` |
+| §4.6 | Relations disabled checkbox + note — already shipped | `relations.js` |
+| §4.8 | `a_*` round-trip preservation in HAR import (spread raw row before normalising) | `import_cardrelationships_har.js` |
+| §6.9 | Solver Parameters dialog — Timetable → Solver parameters… (7 knobs incl. time limit · conditions · seed · 6 soft-weight sliders) | `solver_parameters_dialog.js` |
+| §20 | XML round-trip per-attribute diff tool — `node tools/xml_roundtrip_diff.mjs` | `tools/xml_roundtrip_diff.mjs` |
+
+### Still remaining (architectural / multi-day, outside this session's scope)
+
+| § | Item | Why deferred |
+|---|---|---|
+| §3.4 | `m_nManualnyBlok` Education-block mode | Solver-side enforcement — needs slot-coloring solver state |
+| §3.5–3.7 | Class block-window + behaviour-toggle fields | Solver hooks not added (dialog persists them; solver ignores) |
+| §4.3–4.5 | Relations `positions/positions2` bitstrings + `filter/filter2` row-filters | Not surfaced in UI |
+| §4.7 | `n_2`, `n_3`, `n_15` typs | Semantics undecoded |
+| §7.4 | Modify-structure dialog per print template | 4-panel editor — separate build |
+| §8.5 | Multiple-document tabs (`tt_docs.apps`) | Major refactor of single-school assumption |
+| §12.2 | `m_DozoryKriteria` supervision criteria | 14-field solver wiring |
+| §15.1–15.4 | Students / studentsubjects / grades CRUD | Each is its own ~1-day entity dialog |
+| §6.13 | Solver constraint matrix expansion — wire the rest of the partial constraints | Per-constraint solver work |
+| §6.2 | Generator final result `chyby[]` — list of error codes | Solver event payload enhancement |
+
+These add up to roughly 2-3 weeks of focused work. None blocks the daily user-facing workflow.
+
 ## How this file gets updated
 
 When a backlog item ships, change its row here as part of the same commit. When the goal text disagrees with this file, this file wins.
