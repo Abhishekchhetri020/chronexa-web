@@ -1,0 +1,636 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Chronexa Studio v3 — design preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,400;9..144,500;9..144,600;9..144,700;9..144,800&family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+:root{
+  --paper:        #f6f1e6;
+  --paper-2:      #efe9da;
+  --ink:          #1a1714;
+  --ink-2:        #4a4339;
+  --ink-3:        #837a6d;
+  --line:         #d8cfbb;
+  --line-soft:    #e5dfce;
+  --teal:         #0d4f54;
+  --teal-2:       #084146;
+  --teal-soft:    rgba(13,79,84,.08);
+  --gold:         #b08a3e;
+  --rust:         #9c4322;
+  --moss:         #5b6e3d;
+  --sky:          #4c6e91;
+  --shadow-1:     0 1px 0 rgba(26,23,20,.04), 0 1px 2px rgba(26,23,20,.06);
+  --shadow-2:     0 1px 0 rgba(26,23,20,.04), 0 2px 4px rgba(26,23,20,.06), 0 8px 16px rgba(26,23,20,.06);
+  --shadow-3:     0 1px 0 rgba(26,23,20,.04), 0 4px 8px rgba(26,23,20,.06), 0 12px 24px rgba(26,23,20,.08), 0 24px 48px rgba(26,23,20,.06);
+  --serif:        "Fraunces", "Iowan Old Style", "Apple Garamond", Georgia, serif;
+  --sans:         "Inter Tight", -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono:         "JetBrains Mono", ui-monospace, Menlo, monospace;
+  --r-sm: 6px; --r-md: 10px; --r-lg: 14px; --r-xl: 22px;
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%;background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:13.5px;letter-spacing:-.005em;-webkit-font-smoothing:antialiased}
+
+/* Paper grain — very subtle SVG noise overlay */
+body::before{
+  content:""; position:fixed; inset:0; pointer-events:none; opacity:.4; z-index:0;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.4' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.06 0 0 0 0 0.05 0 0 0 0 0.04 0 0 0 .04 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  mix-blend-mode:multiply;
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+   Layout: 3-column shell
+   [sidebar 240px] [main flex] [right rail 320px]
+   ────────────────────────────────────────────────────────────────────── */
+
+.shell{
+  position:relative; z-index:1; display:grid;
+  grid-template-columns:240px 1fr 320px;
+  grid-template-rows:56px 1fr 36px;
+  grid-template-areas:
+    "logo  topbar topbar"
+    "side  main   rail"
+    "side  status status";
+  height:100vh; max-height:100vh;
+}
+
+/* ─── Wordmark cell ───────────────────────────────────────────────── */
+
+.wordmark{
+  grid-area:logo;
+  display:flex; align-items:center; gap:12px;
+  padding:0 22px;
+  border-right:1px solid var(--line);
+  border-bottom:1px solid var(--line);
+  background:linear-gradient(180deg,var(--paper) 0%,var(--paper-2) 100%);
+}
+.wordmark__stamp{
+  width:32px; height:32px; flex:0 0 32px;
+  border:1.5px solid var(--ink);
+  border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  font-family:var(--serif); font-style:italic; font-weight:700; font-size:14px;
+  color:var(--ink); background:transparent;
+  position:relative;
+  transform:rotate(-6deg);
+}
+.wordmark__stamp::after{
+  content:""; position:absolute; inset:3px; border:.5px dashed var(--ink); border-radius:50%; opacity:.4;
+}
+.wordmark__word{
+  font-family:var(--serif); font-weight:600; font-style:normal;
+  font-size:22px; letter-spacing:-.02em;
+  font-variation-settings:"SOFT" 50, "WONK" 0;
+}
+
+/* ─── Sidebar nav ─────────────────────────────────────────────────── */
+
+.sidebar{
+  grid-area:side;
+  border-right:1px solid var(--line);
+  padding:18px 14px;
+  background:linear-gradient(180deg,var(--paper) 0%,var(--paper-2) 100%);
+  overflow:auto;
+}
+.side-section{
+  font-family:var(--sans); font-size:10px;
+  text-transform:uppercase; letter-spacing:.14em; color:var(--ink-3);
+  font-weight:600; padding:14px 10px 6px;
+}
+.side-link{
+  display:flex; align-items:center; gap:10px;
+  padding:7px 10px; border-radius:var(--r-md);
+  font-size:13px; color:var(--ink-2); font-weight:500;
+  cursor:pointer; transition:background 90ms ease-out, color 90ms;
+  text-decoration:none;
+}
+.side-link__icon{
+  width:18px; height:18px; flex:0 0 18px;
+  display:flex; align-items:center; justify-content:center;
+  font-family:var(--serif); font-size:14px; font-weight:600; font-style:italic;
+  color:var(--ink-3);
+}
+.side-link__count{
+  margin-left:auto; font-family:var(--mono); font-size:11px;
+  color:var(--ink-3); font-weight:500;
+}
+.side-link:hover{background:rgba(13,79,84,.04); color:var(--ink)}
+.side-link.is-active{
+  background:var(--teal-soft); color:var(--teal);
+  font-weight:600;
+}
+.side-link.is-active .side-link__icon,
+.side-link.is-active .side-link__count{color:var(--teal)}
+
+/* ─── Top bar ─────────────────────────────────────────────────────── */
+
+.topbar{
+  grid-area:topbar;
+  display:flex; align-items:center; gap:18px;
+  padding:0 22px;
+  border-bottom:1px solid var(--line);
+  background:rgba(246,241,230,.78);
+  backdrop-filter:blur(20px) saturate(180%);
+  -webkit-backdrop-filter:blur(20px) saturate(180%);
+}
+.crumbs{
+  font-family:var(--serif); font-size:18px; font-weight:500;
+  letter-spacing:-.015em; color:var(--ink);
+  display:flex; align-items:baseline; gap:8px;
+}
+.crumbs__sep{color:var(--ink-3); font-weight:400; font-style:italic; padding:0 3px}
+.crumbs__current{font-style:italic; color:var(--ink-2)}
+
+.topbar__spacer{flex:1}
+
+.kbd-search{
+  display:flex; align-items:center; gap:10px;
+  padding:6px 12px 6px 12px;
+  border:1px solid var(--line); border-radius:999px;
+  background:var(--paper); color:var(--ink-3);
+  font-size:12.5px; cursor:pointer;
+  transition:border-color 140ms, color 140ms;
+  min-width:280px;
+}
+.kbd-search:hover{border-color:var(--ink-3); color:var(--ink-2)}
+.kbd-search__icon{font-family:var(--serif); font-style:italic; font-weight:600; color:var(--ink-3)}
+.kbd-search__kbd{
+  margin-left:auto;
+  font-family:var(--mono); font-size:10.5px; font-weight:500;
+  color:var(--ink-3);
+  background:var(--paper-2); padding:1px 6px; border-radius:4px;
+  border:1px solid var(--line);
+}
+
+.action-row{display:flex; gap:8px}
+.btn{
+  font-family:var(--sans); font-size:12.5px; font-weight:500;
+  padding:7px 14px; border-radius:var(--r-md);
+  border:1px solid var(--line); background:var(--paper); color:var(--ink);
+  cursor:pointer; transition:background 140ms, transform 60ms;
+  letter-spacing:-.005em;
+}
+.btn:hover{background:var(--paper-2)}
+.btn:active{transform:translateY(1px)}
+.btn--primary{
+  background:var(--teal); border-color:var(--teal); color:var(--paper);
+  font-weight:600;
+  box-shadow:0 1px 0 rgba(13,79,84,.3), 0 2px 8px rgba(13,79,84,.18);
+}
+.btn--primary:hover{background:var(--teal-2); border-color:var(--teal-2)}
+
+/* ─── Main / hero grid ────────────────────────────────────────────── */
+
+.main{
+  grid-area:main;
+  padding:24px 28px;
+  overflow:auto;
+  position:relative;
+}
+.section-head{
+  display:flex; align-items:baseline; gap:14px; margin-bottom:14px;
+}
+.section-head h2{
+  font-family:var(--serif); font-weight:600; font-size:24px; letter-spacing:-.02em;
+  margin:0; font-variation-settings:"SOFT" 30;
+}
+.section-head .eyebrow{
+  font-family:var(--sans); font-size:10.5px; font-weight:600;
+  text-transform:uppercase; letter-spacing:.14em; color:var(--ink-3);
+}
+.section-head .meta{
+  margin-left:auto; font-family:var(--mono); font-size:11.5px; color:var(--ink-3); font-weight:500;
+}
+
+/* Editor grid */
+.grid-wrap{
+  background:var(--paper); border:1px solid var(--line);
+  border-radius:var(--r-lg);
+  box-shadow:var(--shadow-2);
+  overflow:hidden;
+}
+.grid-head{
+  display:grid; grid-template-columns:120px repeat(7,1fr);
+  border-bottom:1px solid var(--line); background:var(--paper-2);
+}
+.grid-head__cell{
+  padding:10px 8px; font-family:var(--sans); font-size:10.5px; font-weight:600;
+  text-transform:uppercase; letter-spacing:.12em; color:var(--ink-3);
+  text-align:center; border-right:1px solid var(--line-soft);
+}
+.grid-head__cell:first-child{text-align:left}
+.grid-head__cell:last-child{border-right:0}
+.grid-head__cell .period-num{font-family:var(--mono); font-size:11px; color:var(--ink-2); margin-right:4px}
+
+.grid-row{
+  display:grid; grid-template-columns:120px repeat(7,1fr);
+  border-bottom:1px solid var(--line-soft);
+  min-height:64px;
+}
+.grid-row:last-child{border-bottom:0}
+.grid-rowlabel{
+  padding:10px 12px;
+  font-family:var(--serif); font-weight:600; font-size:15px;
+  color:var(--ink); letter-spacing:-.01em;
+  border-right:1px solid var(--line);
+  display:flex; flex-direction:column; justify-content:center;
+  background:var(--paper);
+}
+.grid-rowlabel small{
+  font-family:var(--sans); font-size:10.5px; font-weight:500;
+  color:var(--ink-3); letter-spacing:.05em; text-transform:uppercase;
+}
+.grid-cell{
+  padding:6px;
+  border-right:1px solid var(--line-soft);
+  position:relative;
+}
+.grid-cell:last-child{border-right:0}
+.grid-cell.empty{
+  background:repeating-linear-gradient(45deg, transparent 0 6px, rgba(26,23,20,.025) 6px 7px);
+}
+
+/* Card — print-card aesthetic */
+.card{
+  position:absolute; inset:4px;
+  background:var(--paper); border:1px solid currentColor;
+  border-radius:var(--r-sm);
+  padding:6px 8px;
+  display:flex; flex-direction:column; gap:1px;
+  box-shadow:0 1px 0 currentColor, 0 2px 6px rgba(26,23,20,.08);
+  cursor:grab; user-select:none;
+  transition:transform 120ms ease-out, box-shadow 140ms;
+  font-family:var(--sans); letter-spacing:-.005em;
+}
+.card:hover{
+  transform:translateY(-1px);
+  box-shadow:0 2px 0 currentColor, 0 6px 14px rgba(26,23,20,.14);
+  z-index:2;
+}
+.card__subj{
+  font-family:var(--serif); font-weight:700; font-size:13px;
+  letter-spacing:-.01em; line-height:1.1;
+  color:currentColor;
+}
+.card__teacher{
+  font-size:10.5px; font-weight:500; color:var(--ink-2); line-height:1.2;
+}
+.card__room{
+  font-family:var(--mono); font-size:9.5px; font-weight:500; color:var(--ink-3);
+  letter-spacing:.04em; text-transform:uppercase;
+}
+
+/* Subject colors — muted ink-toned, NOT vivid */
+.card.s-math   {color:#1f3a5c}
+.card.s-eng    {color:#7a2e1c}
+.card.s-sci    {color:#2f5a3b}
+.card.s-hin    {color:#7a4a14}
+.card.s-soc    {color:#5c4a1a}
+.card.s-mus    {color:#5a2a55}
+.card.s-art    {color:#7a2c4a}
+.card.s-pe     {color:#2c5c5a}
+.card.s-it     {color:#2c4a5c}
+
+/* ─── Right rail ──────────────────────────────────────────────────── */
+
+.rail{
+  grid-area:rail;
+  border-left:1px solid var(--line);
+  padding:20px 18px;
+  overflow:auto;
+  background:linear-gradient(180deg,var(--paper) 0%,var(--paper-2) 100%);
+}
+.rail-section{margin-bottom:24px}
+.rail-section__head{
+  font-family:var(--sans); font-size:10.5px; font-weight:600;
+  text-transform:uppercase; letter-spacing:.14em; color:var(--ink-3);
+  margin-bottom:10px;
+}
+.solver-card{
+  background:var(--paper); border:1px solid var(--line);
+  border-radius:var(--r-lg);
+  padding:16px;
+  box-shadow:var(--shadow-1);
+}
+.solver-stat{
+  display:flex; justify-content:space-between; align-items:baseline;
+  padding:8px 0;
+  border-bottom:1px solid var(--line-soft);
+}
+.solver-stat:last-child{border-bottom:0}
+.solver-stat__label{font-size:11.5px; color:var(--ink-3); font-weight:500}
+.solver-stat__value{
+  font-family:var(--mono); font-size:15px; font-weight:600; color:var(--ink);
+  letter-spacing:-.01em;
+}
+.solver-stat__value.is-good{color:var(--moss)}
+.solver-stat__value.is-warn{color:var(--gold)}
+
+.solver-progress{
+  margin-top:14px; height:6px; background:var(--paper-2);
+  border-radius:999px; overflow:hidden;
+  border:1px solid var(--line-soft);
+}
+.solver-progress__fill{
+  height:100%; background:linear-gradient(90deg,var(--teal),var(--moss));
+  width:96%;
+  animation:shimmer 3s ease-in-out infinite;
+}
+@keyframes shimmer{0%,100%{opacity:.85}50%{opacity:1}}
+
+.faults-list{list-style:none; margin:14px 0 0; padding:0; display:flex; flex-direction:column; gap:6px}
+.fault-item{
+  font-size:11.5px; color:var(--ink-2); padding:4px 8px;
+  background:rgba(176,138,62,.08); border-left:2px solid var(--gold);
+  border-radius:0 var(--r-sm) var(--r-sm) 0;
+  font-family:var(--sans); line-height:1.3;
+  animation:slidein 200ms ease-out;
+}
+@keyframes slidein{from{opacity:0;transform:translateX(-4px)}to{opacity:1;transform:none}}
+.fault-item__subj{font-family:var(--serif); font-weight:600; font-style:italic; color:var(--ink)}
+
+.quick-actions{display:flex; flex-direction:column; gap:6px}
+.quick-action{
+  display:flex; align-items:center; gap:10px;
+  padding:8px 10px;
+  background:var(--paper); border:1px solid var(--line);
+  border-radius:var(--r-md);
+  font-size:12px; color:var(--ink); font-weight:500;
+  cursor:pointer; transition:background 140ms, border-color 140ms;
+  text-align:left;
+}
+.quick-action:hover{background:var(--paper-2); border-color:var(--ink-3)}
+.quick-action__icon{
+  font-family:var(--serif); font-style:italic; font-weight:600; color:var(--teal);
+  width:18px; text-align:center;
+}
+.quick-action__hint{
+  margin-left:auto; font-family:var(--mono); font-size:10px; color:var(--ink-3);
+}
+
+/* ─── Status bar ──────────────────────────────────────────────────── */
+
+.status{
+  grid-area:status;
+  display:flex; align-items:center; gap:18px;
+  padding:0 22px;
+  border-top:1px solid var(--line);
+  background:var(--paper-2);
+  font-family:var(--mono); font-size:10.5px; color:var(--ink-3); font-weight:500;
+}
+.status__dot{
+  width:6px; height:6px; border-radius:50%;
+  background:var(--moss);
+  box-shadow:0 0 0 3px rgba(91,110,61,.18);
+  animation:pulse 2s ease-in-out infinite;
+}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 3px rgba(91,110,61,.18)}50%{box-shadow:0 0 0 5px rgba(91,110,61,.10)}}
+.status__divider{color:var(--line); padding:0 6px}
+.status__right{margin-left:auto; display:flex; gap:14px; align-items:center}
+
+/* Decorative wordmark in main */
+.main-flourish{
+  position:absolute; top:20px; right:28px;
+  font-family:var(--serif); font-style:italic; font-weight:500;
+  font-size:11px; color:var(--ink-3); letter-spacing:.04em;
+  text-align:right; line-height:1.4;
+  pointer-events:none;
+}
+.main-flourish::after{
+  content:""; display:block; margin-top:4px;
+  width:60px; height:1px; background:var(--ink-3); margin-left:auto;
+  opacity:.4;
+}
+
+/* Halo decoration on active card */
+.card.is-active{
+  box-shadow:0 0 0 2px var(--teal), 0 0 0 4px var(--teal-soft), 0 6px 14px rgba(13,79,84,.18);
+}
+</style>
+</head>
+<body>
+
+<div class="shell">
+
+  <!-- ───────── Wordmark ───────── -->
+  <header class="wordmark">
+    <div class="wordmark__stamp">C</div>
+    <div class="wordmark__word">Chronexa</div>
+  </header>
+
+  <!-- ───────── Top bar ───────── -->
+  <header class="topbar">
+    <div class="crumbs">
+      <span>GD Goenka Darbhanga</span>
+      <span class="crumbs__sep">/</span>
+      <span class="crumbs__current">Editor — Classes</span>
+    </div>
+    <div class="topbar__spacer"></div>
+    <div class="kbd-search">
+      <span class="kbd-search__icon">Q</span>
+      <span>Search anything…</span>
+      <span class="kbd-search__kbd">⌘K</span>
+    </div>
+    <div class="action-row">
+      <button class="btn">Test</button>
+      <button class="btn btn--primary">Generate</button>
+    </div>
+  </header>
+
+  <!-- ───────── Sidebar ───────── -->
+  <aside class="sidebar">
+    <div class="side-section">Workspace</div>
+    <a class="side-link is-active"><span class="side-link__icon">G</span>Editor<span class="side-link__count">951</span></a>
+    <a class="side-link"><span class="side-link__icon">R</span>Reports</a>
+    <a class="side-link"><span class="side-link__icon">S</span>Substitution</a>
+
+    <div class="side-section">Entities</div>
+    <a class="side-link"><span class="side-link__icon">s</span>Subjects<span class="side-link__count">44</span></a>
+    <a class="side-link"><span class="side-link__icon">t</span>Teachers<span class="side-link__count">66</span></a>
+    <a class="side-link"><span class="side-link__icon">c</span>Classes<span class="side-link__count">23</span></a>
+    <a class="side-link"><span class="side-link__icon">r</span>Rooms<span class="side-link__count">9</span></a>
+    <a class="side-link"><span class="side-link__icon">l</span>Lessons<span class="side-link__count">381</span></a>
+
+    <div class="side-section">Structure</div>
+    <a class="side-link"><span class="side-link__icon">b</span>Bells</a>
+    <a class="side-link"><span class="side-link__icon">w</span>Weeks</a>
+    <a class="side-link"><span class="side-link__icon">b</span>Buildings</a>
+    <a class="side-link"><span class="side-link__icon">⁂</span>Relations<span class="side-link__count">12</span></a>
+
+    <div class="side-section">Files</div>
+    <a class="side-link"><span class="side-link__icon">↗</span>Import</a>
+    <a class="side-link"><span class="side-link__icon">↘</span>Export</a>
+    <a class="side-link"><span class="side-link__icon">⊕</span>Snapshots</a>
+  </aside>
+
+  <!-- ───────── Main ───────── -->
+  <main class="main">
+    <div class="main-flourish">
+      Term II · 2025–26<br>
+      Wef. 12 May 2026
+    </div>
+
+    <div class="section-head">
+      <span class="eyebrow">Class</span>
+      <h2><em>VIII-A</em> &mdash; weekly</h2>
+      <span class="meta">42 of 42 cards · 0 conflicts · soft −4,950</span>
+    </div>
+
+    <div class="grid-wrap">
+      <div class="grid-head">
+        <div class="grid-head__cell">Day</div>
+        <div class="grid-head__cell"><span class="period-num">1</span>08:00</div>
+        <div class="grid-head__cell"><span class="period-num">2</span>08:45</div>
+        <div class="grid-head__cell"><span class="period-num">3</span>09:30</div>
+        <div class="grid-head__cell"><span class="period-num">4</span>10:30</div>
+        <div class="grid-head__cell"><span class="period-num">5</span>11:15</div>
+        <div class="grid-head__cell"><span class="period-num">6</span>12:00</div>
+        <div class="grid-head__cell"><span class="period-num">7</span>12:45</div>
+      </div>
+
+      <!-- Monday -->
+      <div class="grid-row">
+        <div class="grid-rowlabel">Mon<small>5 placed</small></div>
+        <div class="grid-cell"><div class="card s-math"><div class="card__subj">Math</div><div class="card__teacher">Mr. Sharma</div><div class="card__room">Rm 204</div></div></div>
+        <div class="grid-cell"><div class="card s-eng is-active"><div class="card__subj">English</div><div class="card__teacher">Ms. Pinto</div><div class="card__room">Rm 204</div></div></div>
+        <div class="grid-cell"><div class="card s-sci"><div class="card__subj">Science</div><div class="card__teacher">Dr. Reddy</div><div class="card__room">Lab 1</div></div></div>
+        <div class="grid-cell empty"></div>
+        <div class="grid-cell"><div class="card s-hin"><div class="card__subj">हिन्दी</div><div class="card__teacher">Ms. Gupta</div><div class="card__room">Rm 204</div></div></div>
+        <div class="grid-cell"><div class="card s-soc"><div class="card__subj">SST</div><div class="card__teacher">Mr. Khan</div><div class="card__room">Rm 204</div></div></div>
+        <div class="grid-cell"><div class="card s-pe"><div class="card__subj">PE</div><div class="card__teacher">Mr. Singh</div><div class="card__room">Field</div></div></div>
+      </div>
+
+      <!-- Tuesday -->
+      <div class="grid-row">
+        <div class="grid-rowlabel">Tue<small>6 placed</small></div>
+        <div class="grid-cell"><div class="card s-eng"><div class="card__subj">English</div><div class="card__teacher">Ms. Pinto</div><div class="card__room">Rm 204</div></div></div>
+        <div class="grid-cell"><div class="card s-math"><div class="card__subj">Math</div><div class="card__teacher">Mr. Sharma</div><div class="card__room">Rm 204</div></div></div>
+        <div class="grid-cell"><div class="card s-it"><div class="card__subj">IT</div><div class="card__teacher">Mr. Joshi</div><div class="card__room">Lab 2</div></div></div>
+        <div class="grid-cell"><div class="card s-it"><div class="card__subj">IT</div><div class="card__teacher">Mr. Joshi</div><div class="card__room">Lab 2</div></div></div>
+        <div class="grid-cell"><div class="card s-sci"><div class="card__subj">Science</div><div class="card__teacher">Dr. Reddy</div><div class="card__room">Lab 1</div></div></div>
+        <div class="grid-cell"><div class="card s-hin"><div class="card__subj">हिन्दी</div><div class="card__teacher">Ms. Gupta</div><div class="card__room">Rm 204</div></div></div>
+        <div class="grid-cell"><div class="card s-art"><div class="card__subj">Art</div><div class="card__teacher">Ms. Ravi</div><div class="card__room">Art</div></div></div>
+      </div>
+
+      <!-- Wednesday -->
+      <div class="grid-row">
+        <div class="grid-rowlabel">Wed<small>6 placed</small></div>
+        <div class="grid-cell"><div class="card s-math"><div class="card__subj">Math</div><div class="card__teacher">Mr. Sharma</div><div class="card__room">Rm 204</div></div></div>
+        <div class="grid-cell"><div class="card s-soc"><div class="card__subj">SST</div><div class="card__teacher">Mr. Khan</div><div class="card__room">Rm 204</div></div></div>
+        <div class="grid-cell"><div class="card s-eng"><div class="card__subj">English</div><div class="card__teacher">Ms. Pinto</div><div class="card__room">Rm 204</div></div></div>
+        <div class="grid-cell"><div class="card s-sci"><div class="card__subj">Science</div><div class="card__teacher">Dr. Reddy</div><div class="card__room">Lab 1</div></div></div>
+        <div class="grid-cell"><div class="card s-mus"><div class="card__subj">Music</div><div class="card__teacher">Mr. Banerjee</div><div class="card__room">MR</div></div></div>
+        <div class="grid-cell"><div class="card s-hin"><div class="card__subj">हिन्दी</div><div class="card__teacher">Ms. Gupta</div><div class="card__room">Rm 204</div></div></div>
+        <div class="grid-cell"><div class="card s-pe"><div class="card__subj">PE</div><div class="card__teacher">Mr. Singh</div><div class="card__room">Field</div></div></div>
+      </div>
+
+      <!-- Thursday -->
+      <div class="grid-row">
+        <div class="grid-rowlabel">Thu<small>6 placed</small></div>
+        <div class="grid-cell"><div class="card s-eng"><div class="card__subj">English</div><div class="card__teacher">Ms. Pinto</div><div class="card__room">Rm 204</div></div></div>
+        <div class="grid-cell"><div class="card s-sci"><div class="card__subj">Science</div><div class="card__teacher">Dr. Reddy</div><div class="card__room">Lab 1</div></div></div>
+        <div class="grid-cell"><div class="card s-math"><div class="card__subj">Math</div><div class="card__teacher">Mr. Sharma</div><div class="card__room">Rm 204</div></div></div>
+        <div class="grid-cell"><div class="card s-hin"><div class="card__subj">हिन्दी</div><div class="card__teacher">Ms. Gupta</div><div class="card__room">Rm 204</div></div></div>
+        <div class="grid-cell"><div class="card s-soc"><div class="card__subj">SST</div><div class="card__teacher">Mr. Khan</div><div class="card__room">Rm 204</div></div></div>
+        <div class="grid-cell"><div class="card s-art"><div class="card__subj">Art</div><div class="card__teacher">Ms. Ravi</div><div class="card__room">Art</div></div></div>
+        <div class="grid-cell"><div class="card s-it"><div class="card__subj">IT</div><div class="card__teacher">Mr. Joshi</div><div class="card__room">Lab 2</div></div></div>
+      </div>
+
+      <!-- Friday -->
+      <div class="grid-row">
+        <div class="grid-rowlabel">Fri<small>5 placed</small></div>
+        <div class="grid-cell"><div class="card s-math"><div class="card__subj">Math</div><div class="card__teacher">Mr. Sharma</div><div class="card__room">Rm 204</div></div></div>
+        <div class="grid-cell"><div class="card s-hin"><div class="card__subj">हिन्दी</div><div class="card__teacher">Ms. Gupta</div><div class="card__room">Rm 204</div></div></div>
+        <div class="grid-cell"><div class="card s-eng"><div class="card__subj">English</div><div class="card__teacher">Ms. Pinto</div><div class="card__room">Rm 204</div></div></div>
+        <div class="grid-cell"><div class="card s-sci"><div class="card__subj">Science</div><div class="card__teacher">Dr. Reddy</div><div class="card__room">Lab 1</div></div></div>
+        <div class="grid-cell empty"></div>
+        <div class="grid-cell"><div class="card s-mus"><div class="card__subj">Music</div><div class="card__teacher">Mr. Banerjee</div><div class="card__room">MR</div></div></div>
+        <div class="grid-cell"><div class="card s-soc"><div class="card__subj">SST</div><div class="card__teacher">Mr. Khan</div><div class="card__room">Rm 204</div></div></div>
+      </div>
+
+      <!-- Saturday -->
+      <div class="grid-row">
+        <div class="grid-rowlabel">Sat<small>4 placed</small></div>
+        <div class="grid-cell"><div class="card s-eng"><div class="card__subj">English</div><div class="card__teacher">Ms. Pinto</div><div class="card__room">Rm 204</div></div></div>
+        <div class="grid-cell"><div class="card s-math"><div class="card__subj">Math</div><div class="card__teacher">Mr. Sharma</div><div class="card__room">Rm 204</div></div></div>
+        <div class="grid-cell empty"></div>
+        <div class="grid-cell"><div class="card s-sci"><div class="card__subj">Science</div><div class="card__teacher">Dr. Reddy</div><div class="card__room">Lab 1</div></div></div>
+        <div class="grid-cell empty"></div>
+        <div class="grid-cell empty"></div>
+        <div class="grid-cell"><div class="card s-hin"><div class="card__subj">हिन्दी</div><div class="card__teacher">Ms. Gupta</div><div class="card__room">Rm 204</div></div></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ───────── Right rail ───────── -->
+  <aside class="rail">
+    <div class="rail-section">
+      <div class="rail-section__head">Solver</div>
+      <div class="solver-card">
+        <div class="solver-stat">
+          <span class="solver-stat__label">Status</span>
+          <span class="solver-stat__value is-good">FEASIBLE</span>
+        </div>
+        <div class="solver-stat">
+          <span class="solver-stat__label">Placed</span>
+          <span class="solver-stat__value">946<span style="color:var(--ink-3); font-size:12px; font-weight:500">/946</span></span>
+        </div>
+        <div class="solver-stat">
+          <span class="solver-stat__label">Conflicts</span>
+          <span class="solver-stat__value is-good">0</span>
+        </div>
+        <div class="solver-stat">
+          <span class="solver-stat__label">Soft score</span>
+          <span class="solver-stat__value">−4,950</span>
+        </div>
+        <div class="solver-stat">
+          <span class="solver-stat__label">Wall time</span>
+          <span class="solver-stat__value">0.94<span style="color:var(--ink-3); font-size:12px">s</span></span>
+        </div>
+        <div class="solver-progress"><div class="solver-progress__fill"></div></div>
+      </div>
+    </div>
+
+    <div class="rail-section">
+      <div class="rail-section__head">Currently stuck</div>
+      <ul class="faults-list">
+        <li class="fault-item"><span class="fault-item__subj">URDU IX-B</span> · no Friday slot</li>
+        <li class="fault-item"><span class="fault-item__subj">SANSKRIT VIII-C</span> · partner conflict</li>
+        <li class="fault-item"><span class="fault-item__subj">Music X-A</span> · MR busy P5</li>
+      </ul>
+    </div>
+
+    <div class="rail-section">
+      <div class="rail-section__head">Quick actions</div>
+      <div class="quick-actions">
+        <button class="quick-action"><span class="quick-action__icon">⁂</span>Improve schedule<span class="quick-action__hint">⌘I</span></button>
+        <button class="quick-action"><span class="quick-action__icon">↻</span>Verify all<span class="quick-action__hint">⌘V</span></button>
+        <button class="quick-action"><span class="quick-action__icon">⊕</span>Snapshot<span class="quick-action__hint">⌘S</span></button>
+        <button class="quick-action"><span class="quick-action__icon">↘</span>Export XML<span class="quick-action__hint">⌘E</span></button>
+        <button class="quick-action"><span class="quick-action__icon">℞</span>Print preview<span class="quick-action__hint">⌘P</span></button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ───────── Status bar ───────── -->
+  <footer class="status">
+    <span class="status__dot"></span>
+    <span>Saved · 14:32</span>
+    <span class="status__divider">·</span>
+    <span>v 20260522·p72</span>
+    <span class="status__divider">·</span>
+    <span>WASM canPlace · 2.4M ops/s</span>
+    <div class="status__right">
+      <span>Studio</span>
+      <span class="status__divider">·</span>
+      <span>Abhishek</span>
+    </div>
+  </footer>
+
+</div>
+
+</body></html>
