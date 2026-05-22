@@ -360,6 +360,16 @@ function buildModel(school) {
   // soft scorer below penalises class teaching OUTSIDE this window.
   // "*" / null = no window restriction.
   const classTeachingMask = new Uint32Array(classIds.length);
+  // Block-window mask per class — audit §3.7 (m_nMinBlokOd/m_nMinBlokDo).
+  // Bit p set iff p is INSIDE the configured "must-have-a-block" window.
+  // Soft scorer rewards classes that have at least one teaching period
+  // INSIDE this window (i.e. the class has a continuous block somewhere
+  // in the required range). Empty/* = no constraint.
+  const classBlockMask = new Uint32Array(classIds.length);
+  // Per-class behavioural toggles — audit §3.6.
+  const classDruheHodiny  = new Uint8Array(classIds.length); // m_bDruheHodiny
+  const classKoncitNaraz  = new Uint8Array(classIds.length); // m_bKoncitNaraz
+  const classManualnyBlok = new Int8Array(classIds.length);  // m_nManualnyBlok 0/1/2
   function parseWindow(lo, hi) {
     if (lo == null || hi == null || lo === "*" || hi === "*") return 0;
     const from = (parseInt(lo, 10) | 0) - 1;
@@ -379,6 +389,10 @@ function buildModel(school) {
     const cons = (school.classes[c] && school.classes[c].constraints) || {};
     classLunchMask[c]    = parseWindow(cons.lunch_periodfrom, cons.lunch_periodto);
     classTeachingMask[c] = parseWindow(cons.m_nMaxVyucOd,     cons.m_nMaxVyucDo);
+    classBlockMask[c]    = parseWindow(cons.m_nMinBlokOd,     cons.m_nMinBlokDo);
+    classDruheHodiny[c]  = cons.m_bDruheHodiny ? 1 : 0;
+    classKoncitNaraz[c]  = cons.m_bKoncitNaraz ? 1 : 0;
+    classManualnyBlok[c] = parseInt(cons.m_nManualnyBlok, 10) || 0;
   }
 
 
@@ -759,6 +773,10 @@ function buildModel(school) {
     classValidPeriodMask,
     classLunchMask,
     classTeachingMask,
+    classBlockMask,
+    classDruheHodiny,
+    classKoncitNaraz,
+    classManualnyBlok,
     subjectDailyLimit,
     classSubjectTarget,
     classTeacherPosMask,
@@ -1380,7 +1398,77 @@ function softScore(model, state) {
   s += classTeacherPosPenalty(model, state) * w[12];
   s += classLunchWindowPenalty(model, state) * (w[1] || 1);
   s += classTeachingWindowPenalty(model, state) * (w[1] || 1);
+  s += classBlockPreferencePenalty(model, state) * (w[1] || 1);
   return s;
+}
+
+// Audit §3.6 + §3.7 — combined class-block preferences scorer covering
+// m_nMinBlokOd/Do (block window), m_bDruheHodiny (prefer second hours),
+// m_bKoncitNaraz (end together), m_nManualnyBlok (manual block mode).
+// Interpretations:
+//   block window (§3.7): if mask !== 0, require the class to have at
+//     least one teaching slot inside the window per day — small penalty
+//     per day without a block in window.
+//   second hours (§3.6): when true, penalise class periods at p===0
+//     (period 1) — prefer starting at period 2+.
+//   end together (§3.6): when true, count distinct last-period values
+//     per day across classes — penalty grows with variance.
+//   manual block (§3.4): mode 2 = strict — escalate block-window penalty;
+//     mode 1 = preferred; mode 0 = off.
+function classBlockPreferencePenalty(model, state) {
+  const block  = model.classBlockMask;
+  const druhe  = model.classDruheHodiny;
+  const koncit = model.classKoncitNaraz;
+  const manual = model.classManualnyBlok;
+  if (!block && !druhe && !koncit && !manual) return 0;
+  let penalty = 0;
+  const days = model.days;
+  const ppd  = model.periodsPerDay;
+
+  // Track per-class-per-day occupancy bitmask
+  const lessons = model.lessonCount;
+  const occByCD = new Uint32Array((model.classCount || 0) * days);
+  for (let i = 0; i < lessons; i++) {
+    if (!state.lessonAssigned[i]) continue;
+    const slot = state.lessonAssignedSlot[i];
+    const d = model.slotDay[slot];
+    const p = model.slotPeriod[slot];
+    const cStart = model.lessonClassStart[i];
+    const cCount = model.lessonClassCount[i];
+    for (let k = 0; k < cCount; k++) {
+      const c = model.lessonClassFlat[cStart + k];
+      occByCD[c * days + d] |= (1 << p) >>> 0;
+      if (druhe && druhe[c] && p === 0) penalty += 1;
+    }
+  }
+
+  if (block || manual) {
+    for (let c = 0; c < model.classCount; c++) {
+      const w = block ? block[c] : 0;
+      if (!w) continue;
+      const escalate = manual && manual[c] === 2 ? 4 : (manual && manual[c] === 1 ? 2 : 1);
+      for (let d = 0; d < days; d++) {
+        if ((occByCD[c * days + d] & w) === 0) penalty += escalate;
+      }
+    }
+  }
+  if (koncit) {
+    for (let c = 0; c < model.classCount; c++) {
+      if (!koncit[c]) continue;
+      const lasts = new Set();
+      for (let d = 0; d < days; d++) {
+        const m = occByCD[c * days + d];
+        if (!m) continue;
+        let last = -1;
+        for (let p = ppd - 1; p >= 0; p--) {
+          if ((m & ((1 << p) >>> 0)) !== 0) { last = p; break; }
+        }
+        if (last >= 0) lasts.add(last);
+      }
+      if (lasts.size > 1) penalty += (lasts.size - 1) * 2;
+    }
+  }
+  return penalty;
 }
 
 // Audit §3.8 — lunch_periodfrom/to. Soft-penalise placements that fall
