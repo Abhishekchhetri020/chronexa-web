@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-22T05:22:16Z
+/* Chronexa bundle — generated 2026-05-22T05:27:32Z
  *      151 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -3403,6 +3403,15 @@ window.Inspector = (function () {
     // teacherBuildingChangesPenalty has structured data). The free-text
     // `building` above is kept for backward-compatibility with older
     // schools that haven't migrated.
+    // Tier-B FET — allowedTags. Comma-separated. Lessons whose tags
+    // don't overlap with the room's allowedTags get a soft mismatch
+    // penalty. Lets schools say "this is the Lab Room — LAB-tagged
+    // lessons preferred here."
+    const _allowedTags0 = Array.isArray(r && r._ref.allowedTags) ? r._ref.allowedTags.join(", ") : "";
+    draft.allowedTags = _allowedTags0;
+    const fAllowedTags = D.el("input", { type:"text", value:draft.allowedTags,
+      placeholder:"e.g. LAB, MUSIC",
+      oninput:(e)=>draft.allowedTags = e.target.value });
     const fBuildingId = D.el("select", null, D.el("option", { value:"" }, "(no building)"));
     ((window.APP.school?.buildings) || []).forEach(b => {
       const opt = D.el("option", { value:b.id }, b.name || b.short || b.id);
@@ -3442,6 +3451,8 @@ window.Inspector = (function () {
         rm.abbr = draft.short.trim() || undefined;
         rm.building = draft.building.trim() || undefined;
         rm.buildingId = draft.buildingId || undefined;
+        rm.allowedTags = (draft.allowedTags || "").split(/[,\s]+/).map(s => s.trim()).filter(Boolean);
+        if (!rm.allowedTags.length) rm.allowedTags = undefined;
         rm.capacity = draft.capacity ? parseInt(draft.capacity, 10) : undefined;
         rm.color = draft.color || undefined;
         rm.needsSupervision = !!draft.needsSupervision;
@@ -3454,6 +3465,8 @@ window.Inspector = (function () {
           abbr:draft.short.trim() || undefined,
           building:draft.building.trim() || undefined,
           buildingId: draft.buildingId || undefined,
+          allowedTags: (draft.allowedTags || "").split(/[,\s]+/).map(s => s.trim()).filter(Boolean).length
+            ? (draft.allowedTags || "").split(/[,\s]+/).map(s => s.trim()).filter(Boolean) : undefined,
           capacity:draft.capacity ? parseInt(draft.capacity, 10) : undefined,
           color:draft.color || undefined,
           needsSupervision: !!draft.needsSupervision,
@@ -3476,6 +3489,7 @@ window.Inspector = (function () {
         { label:"Short", control:fShort },
         { label:"Building (text)", control:fBuilding },
         { label:"Building (entity)", control:fBuildingId },
+        { label:"Allowed tags",      control:fAllowedTags },
         { label:"Capacity", control:fCap },
         { label:"Color", control:fColor },
         { label:"Needs supervision", control:fSup },
@@ -7895,6 +7909,8 @@ window.Inspector = (function () {
       printShowBellTimes:  s.printShowBellTimes !== false,
       printShowTeacherNames: s.printShowTeacherNames !== false,
       printShowClassroomNames: s.printShowClassroomNames !== false,
+      mode: s.mode || "",
+      afternoonStartsAt: s.afternoonStartsAt || "",
     };
 
     function field(label, control) {
@@ -7943,6 +7959,10 @@ window.Inspector = (function () {
         field("Max cards per slot",    num(draft.maxCardsPerCell, 1, 10, 1, v => draft.maxCardsPerCell = v)),
         field("Building transfer periods (min between blocks)", num(draft.transferTimePeriods, 0, 5, 1, v => draft.transferTimePeriods = v)),
         field("Class in one building per day", bool(draft.classInOneBuildingPerDay, v => draft.classInOneBuildingPerDay = v)),
+
+        field("Section: School mode (FET port)"),
+        field("Mode",  select(draft.mode, ["", "morning-afternoon", "block-planning"], v => draft.mode = v)),
+        field("Afternoon starts at period", num(draft.afternoonStartsAt, 1, 12, 1, v => draft.afternoonStartsAt = v)),
 
         field("Section: Print defaults"),
         field("Show bell times",       bool(draft.printShowBellTimes, v => draft.printShowBellTimes = v)),
@@ -8012,6 +8032,11 @@ window.Inspector = (function () {
     minRestingPeriods: 0,
     minGapsBetweenBuildingChanges: 0,
     maxBuildingChangesPerDay: -1,
+    // Tier-C — alternative acceptance rules.
+    useGreatDeluge: false,
+    gdRiseRate: 0.005,
+    useTabu: false,
+    tabuTenure: 20,
   };
 
   function load() {
@@ -8140,6 +8165,19 @@ window.Inspector = (function () {
       "Periods between consecutive building changes for a teacher"));
     body.appendChild(row("Max building changes per day", num("maxBuildingChangesPerDay", -1, 10, 1),
       "-1 = unlimited"));
+
+    const cHead = document.createElement("h3");
+    cHead.style.cssText = "margin:14px 0 6px;font-size:12px;text-transform:uppercase;color:#334155;letter-spacing:.04em";
+    cHead.textContent = "Tier-C — Alternative acceptance rules";
+    body.appendChild(cHead);
+    body.appendChild(row("Enable Great Deluge", bool("useGreatDeluge"),
+      "Single rising water-level threshold"));
+    body.appendChild(row("Great Deluge rise rate", num("gdRiseRate", 0.0001, 0.1, 0.001),
+      "Smaller = more tolerance"));
+    body.appendChild(row("Enable Tabu list", bool("useTabu"),
+      "Forbids re-applying recent evict patterns"));
+    body.appendChild(row("Tabu tenure", num("tabuTenure", 5, 100, 1),
+      "Window length"));
 
     const closeBtn = document.createElement("button");
     closeBtn.className = "chrx-btn"; closeBtn.type = "button";

@@ -37,6 +37,8 @@
       printShowBellTimes:  s.printShowBellTimes !== false,
       printShowTeacherNames: s.printShowTeacherNames !== false,
       printShowClassroomNames: s.printShowClassroomNames !== false,
+      mode: s.mode || "",
+      afternoonStartsAt: s.afternoonStartsAt || "",
     };
 
     function field(label, control) {
@@ -85,6 +87,10 @@
         field("Max cards per slot",    num(draft.maxCardsPerCell, 1, 10, 1, v => draft.maxCardsPerCell = v)),
         field("Building transfer periods (min between blocks)", num(draft.transferTimePeriods, 0, 5, 1, v => draft.transferTimePeriods = v)),
         field("Class in one building per day", bool(draft.classInOneBuildingPerDay, v => draft.classInOneBuildingPerDay = v)),
+
+        field("Section: School mode (FET port)"),
+        field("Mode",  select(draft.mode, ["", "morning-afternoon", "block-planning"], v => draft.mode = v)),
+        field("Afternoon starts at period", num(draft.afternoonStartsAt, 1, 12, 1, v => draft.afternoonStartsAt = v)),
 
         field("Section: Print defaults"),
         field("Show bell times",       bool(draft.printShowBellTimes, v => draft.printShowBellTimes = v)),

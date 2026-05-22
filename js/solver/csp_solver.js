@@ -423,6 +423,33 @@ function buildModel(school) {
   // FET-port — "Min resting hours for a teacher" (measured in periods).
   const minRestingPeriods =
     ((school.settings && school.settings.minRestingPeriods) | 0) || 0;
+  // Tier-B FET — per-classroom allowedTags list. Lessons whose tags
+  // don't overlap with the assigned room's allowedTags get a soft penalty.
+  const classroomAllowedTags = new Array(roomIds.length);
+  for (let r = 0; r < roomIds.length; r++) {
+    const rm = school.classrooms[r];
+    classroomAllowedTags[r] = Array.isArray(rm && rm.allowedTags) ? rm.allowedTags.slice() : [];
+  }
+  // Tier-B FET — school mode ("morning-afternoon" or "block-planning")
+  // and the afternoon cutoff period.
+  const schoolMode = (school.settings && school.settings.mode) || "";
+  const afternoonStartsAt = (school.settings && school.settings.afternoonStartsAt != null)
+    ? (school.settings.afternoonStartsAt | 0)
+    : Math.ceil(periodsPerDay / 2);
+  // Tier-B FET — per-teacher "working in hourly interval max days per
+  // week". Each entry: { fromPeriod, toPeriod, maxDays }.
+  const teacherIntervalMaxDays = new Array(teacherIds.length);
+  for (let t = 0; t < teacherIds.length; t++) {
+    const tch = school.teachers[t];
+    teacherIntervalMaxDays[t] = (tch && tch.intervalMaxDays
+      && tch.intervalMaxDays.fromPeriod != null
+      && tch.intervalMaxDays.toPeriod != null
+      && tch.intervalMaxDays.maxDays != null)
+      ? { fromPeriod: tch.intervalMaxDays.fromPeriod | 0,
+          toPeriod: tch.intervalMaxDays.toPeriod | 0,
+          maxDays: tch.intervalMaxDays.maxDays | 0 }
+      : null;
+  }
 
   // FET-port — lesson activity tags + per-tag daily caps. Each lesson
   // can carry lesson.tags = ["PE", "LAB", ...]; the school carries
@@ -830,6 +857,9 @@ function buildModel(school) {
     minGapsBetweenBuildingChanges,
     minRestingPeriods,
     lessonTags, tagDailyCaps,
+    classroomAllowedTags,
+    schoolMode, afternoonStartsAt,
+    teacherIntervalMaxDays,
     subjectDailyLimit,
     classSubjectTarget,
     classTeacherPosMask,
@@ -1455,7 +1485,112 @@ function softScore(model, state) {
   s += teacherBuildingChangesPenalty(model, state) * (w[3] || 1);
   s += lessonTagDailyCapPenalty(model, state) * (w[2] || 1);
   s += teacherMinRestingHoursPenalty(model, state) * (w[0] || 1);
+  s += subjectTagRoomMismatchPenalty(model, state) * (w[3] || 1);
+  s += modeAfternoonHeavyPenalty(model, state) * (w[1] || 1);
+  s += modeBlockPairingPenalty(model, state) * (w[1] || 1);
+  s += teacherIntervalMaxDaysPenalty(model, state) * (w[0] || 1);
   return s;
+}
+
+// Tier-B FET port — Subject + tag → preferred room. When a lesson has
+// tags and the assigned classroom's allowedTags don't overlap, soft
+// penalty. Lets a school say "LAB-tagged lessons should be in Lab Rooms".
+function subjectTagRoomMismatchPenalty(model, state) {
+  const allowed = model.classroomAllowedTags;
+  const tags = model.lessonTags;
+  if (!allowed || !tags) return 0;
+  let penalty = 0;
+  for (let i = 0; i < model.lessonCount; i++) {
+    if (!state.lessonAssigned[i]) continue;
+    const t = tags[i];
+    if (!t || !t.length) continue;
+    const r = state.lessonAssignedRoom[i];
+    if (r < 0) continue;
+    const ra = allowed[r];
+    if (!ra || !ra.length) continue;
+    const hit = t.some(tag => ra.includes(tag));
+    if (!hit) penalty += 1;
+  }
+  return penalty;
+}
+
+// Tier-B FET "Mornings-Afternoons" mode — soft-penalty for heavy
+// subjects (tagged HEAVY) placed in the afternoon block. Afternoon =
+// period index >= model.afternoonStartsAt (configurable; default
+// periodsPerDay/2 round up). Only active when school.settings.mode ===
+// "morning-afternoon".
+function modeAfternoonHeavyPenalty(model, state) {
+  if (model.schoolMode !== "morning-afternoon") return 0;
+  const tags = model.lessonTags;
+  if (!tags) return 0;
+  const cutoff = model.afternoonStartsAt | 0;
+  let penalty = 0;
+  for (let i = 0; i < model.lessonCount; i++) {
+    if (!state.lessonAssigned[i]) continue;
+    const t = tags[i];
+    if (!t || !t.includes("HEAVY")) continue;
+    const slot = state.lessonAssignedSlot[i];
+    if (model.slotPeriod[slot] >= cutoff) penalty += 2;
+  }
+  return penalty;
+}
+
+// Tier-B FET "Block planning" mode — soft penalty when a lesson's
+// period is odd (mid-block) for classes whose periods should come in
+// pairs (periods 1+2, 3+4, …). Only active when school.settings.mode
+// === "block-planning". Lab-double lessons already span 2 periods so
+// they get rewarded by being aligned to even-odd starts.
+function modeBlockPairingPenalty(model, state) {
+  if (model.schoolMode !== "block-planning") return 0;
+  let penalty = 0;
+  for (let i = 0; i < model.lessonCount; i++) {
+    if (!state.lessonAssigned[i]) continue;
+    const slot = state.lessonAssignedSlot[i];
+    const p = model.slotPeriod[slot];
+    // Reward even-period starts (p % 2 === 0); penalty otherwise.
+    if (model.lessonLabDouble[i] === 1) {
+      if (p % 2 !== 0) penalty += 2;
+    } else {
+      if (p % 2 !== 0) penalty += 0.5;
+    }
+  }
+  return penalty | 0;
+}
+
+// Tier-B FET — Working in hourly interval max days per week. Each
+// teacher carries teacher.intervalMaxDays = { fromPeriod, toPeriod,
+// maxDays }. Soft penalty per day the teacher has any teaching slot
+// inside [fromPeriod, toPeriod] beyond maxDays.
+function teacherIntervalMaxDaysPenalty(model, state) {
+  const intervals = model.teacherIntervalMaxDays;
+  if (!intervals) return 0;
+  const tc = model.teacherCount, days = model.days, ppd = model.periodsPerDay;
+  // Track per-teacher-per-day: did this teacher work inside the interval?
+  const worked = new Uint8Array(tc * days);
+  for (let i = 0; i < model.lessonCount; i++) {
+    if (!state.lessonAssigned[i]) continue;
+    const slot = state.lessonAssignedSlot[i];
+    const d = model.slotDay[slot], p = model.slotPeriod[slot];
+    const tStart = model.lessonTeacherStart[i];
+    const tCount = model.lessonTeacherCount[i];
+    for (let k = 0; k < tCount; k++) {
+      const t = model.lessonTeacherFlat[tStart + k];
+      const iv = intervals[t];
+      if (!iv) continue;
+      if (p >= iv.fromPeriod && p <= iv.toPeriod) worked[t * days + d] = 1;
+    }
+  }
+  let penalty = 0;
+  for (let t = 0; t < tc; t++) {
+    const iv = intervals[t];
+    if (!iv) continue;
+    let count = 0;
+    for (let d = 0; d < days; d++) {
+      if (worked[t * days + d]) count++;
+    }
+    if (count > iv.maxDays) penalty += (count - iv.maxDays) * 3;
+  }
+  return penalty;
 }
 
 // FET port — "Min resting hours for a teacher". Penalises teachers
@@ -2616,6 +2751,26 @@ function largeNeighborhoodSearch(model, state, deadlineMs, ctx) {
   const lahcLen = Math.max(20, Math.min(500, (ctx && ctx.lahcLen) || 100));
   const lahcHist = useLAHC ? new Float64Array(lahcLen).fill(bestSoft) : null;
   let lahcIdx = 0;
+  // Tier-C — Great Deluge (single water-level threshold). Accept if
+  // candidate score >= waterLevel. Water level decays slowly toward
+  // bestSoft as the search progresses (we're MAXIMIZING the soft score,
+  // so "water level rises" in the maximisation sense).
+  const useGreatDeluge = !!(ctx && ctx.useGreatDeluge);
+  const gdRiseRate = Math.max(0.0001, Math.min(0.1, (ctx && ctx.gdRiseRate) || 0.005));
+  let waterLevel = useGreatDeluge ? (bestSoft * 1.5) : 0;
+  // Tier-C — Tabu list. Track last K destroy "fingerprints" (which
+  // lessons got evicted) and refuse to re-apply them for tabuTenure
+  // iterations. Light implementation: hash of evicted lesson IDs.
+  const useTabu = !!(ctx && ctx.useTabu);
+  const tabuTenure = Math.max(5, Math.min(100, (ctx && ctx.tabuTenure) || 20));
+  const tabuList = useTabu ? [] : null;
+  function tabuHash() {
+    let h = 0;
+    for (let i = 0; i < model.lessonCount; i++) {
+      if (!state.lessonAssigned[i]) h = (h * 31 + i) | 0;
+    }
+    return h >>> 0;
+  }
 
   while (performance.now() < deadlineMs) {
     iterations += 1;
@@ -2671,6 +2826,21 @@ function largeNeighborhoodSearch(model, state, deadlineMs, ctx) {
     if (useLAHC) {
       lahcHist[lahcIdx] = newSoft;
       lahcIdx = (lahcIdx + 1) % lahcLen;
+    }
+    // Great Deluge acceptance: accept if candidate score >= waterLevel.
+    if (!accept && useGreatDeluge && newCount >= bestCount && newSoft >= waterLevel) {
+      accept = true;
+    }
+    if (useGreatDeluge) {
+      // Move waterLevel toward bestSoft (so the search becomes stricter).
+      waterLevel = waterLevel - (waterLevel - bestSoft) * gdRiseRate;
+    }
+    // Tabu check — if the destroy fingerprint was used recently, force reject.
+    if (useTabu) {
+      const h = tabuHash();
+      if (tabuList.includes(h)) { accept = false; }
+      tabuList.push(h);
+      if (tabuList.length > tabuTenure) tabuList.shift();
     }
 
     if (improved) {
@@ -2936,6 +3106,14 @@ export function solve(school, options = {}) {
   // lessonFixedSlot >= 0. Callers can also pass these flags individually.
   if (options.mode === "improve") {
     options = { ...options, warmStart: true, useLNS: true };
+  }
+  // Tier-A wiring — merge school.settings.solverParams into options so
+  // the user's Parameters dialog choices (LAHC, Great Deluge, Tabu, etc.)
+  // actually reach the solver. Explicit options still win.
+  const sp = (school && school.settings && school.settings.solverParams) || null;
+  if (sp) {
+    const merged = { ...sp, ...options };
+    options = merged;
   }
   // WASM hot-path warm-up — fire-and-forget load of the AssemblyScript
   // canPlace module. When the Promise resolves, globalThis.__chronexaWasmExports
@@ -3253,6 +3431,11 @@ export function solve(school, options = {}) {
         // the LNS accept rule. Single tunable: lahcLen window size.
         useLAHC: !!options.useLAHC,
         lahcLen: options.lahcLen,
+        // Tier-C — Great Deluge + Tabu list opt-ins.
+        useGreatDeluge: !!options.useGreatDeluge,
+        gdRiseRate: options.gdRiseRate,
+        useTabu: !!options.useTabu,
+        tabuTenure: options.tabuTenure,
       };
       const lnsGained = largeNeighborhoodSearch(model, globalBest.state, totalDeadlineMs, lnsCtx);
       if (lnsGained !== 0) {

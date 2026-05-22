@@ -56,6 +56,15 @@
     // teacherBuildingChangesPenalty has structured data). The free-text
     // `building` above is kept for backward-compatibility with older
     // schools that haven't migrated.
+    // Tier-B FET — allowedTags. Comma-separated. Lessons whose tags
+    // don't overlap with the room's allowedTags get a soft mismatch
+    // penalty. Lets schools say "this is the Lab Room — LAB-tagged
+    // lessons preferred here."
+    const _allowedTags0 = Array.isArray(r && r._ref.allowedTags) ? r._ref.allowedTags.join(", ") : "";
+    draft.allowedTags = _allowedTags0;
+    const fAllowedTags = D.el("input", { type:"text", value:draft.allowedTags,
+      placeholder:"e.g. LAB, MUSIC",
+      oninput:(e)=>draft.allowedTags = e.target.value });
     const fBuildingId = D.el("select", null, D.el("option", { value:"" }, "(no building)"));
     ((window.APP.school?.buildings) || []).forEach(b => {
       const opt = D.el("option", { value:b.id }, b.name || b.short || b.id);
@@ -95,6 +104,8 @@
         rm.abbr = draft.short.trim() || undefined;
         rm.building = draft.building.trim() || undefined;
         rm.buildingId = draft.buildingId || undefined;
+        rm.allowedTags = (draft.allowedTags || "").split(/[,\s]+/).map(s => s.trim()).filter(Boolean);
+        if (!rm.allowedTags.length) rm.allowedTags = undefined;
         rm.capacity = draft.capacity ? parseInt(draft.capacity, 10) : undefined;
         rm.color = draft.color || undefined;
         rm.needsSupervision = !!draft.needsSupervision;
@@ -107,6 +118,8 @@
           abbr:draft.short.trim() || undefined,
           building:draft.building.trim() || undefined,
           buildingId: draft.buildingId || undefined,
+          allowedTags: (draft.allowedTags || "").split(/[,\s]+/).map(s => s.trim()).filter(Boolean).length
+            ? (draft.allowedTags || "").split(/[,\s]+/).map(s => s.trim()).filter(Boolean) : undefined,
           capacity:draft.capacity ? parseInt(draft.capacity, 10) : undefined,
           color:draft.color || undefined,
           needsSupervision: !!draft.needsSupervision,
@@ -129,6 +142,7 @@
         { label:"Short", control:fShort },
         { label:"Building (text)", control:fBuilding },
         { label:"Building (entity)", control:fBuildingId },
+        { label:"Allowed tags",      control:fAllowedTags },
         { label:"Capacity", control:fCap },
         { label:"Color", control:fColor },
         { label:"Needs supervision", control:fSup },

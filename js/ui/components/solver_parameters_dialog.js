@@ -38,6 +38,11 @@
     minRestingPeriods: 0,
     minGapsBetweenBuildingChanges: 0,
     maxBuildingChangesPerDay: -1,
+    // Tier-C — alternative acceptance rules.
+    useGreatDeluge: false,
+    gdRiseRate: 0.005,
+    useTabu: false,
+    tabuTenure: 20,
   };
 
   function load() {
@@ -166,6 +171,19 @@
       "Periods between consecutive building changes for a teacher"));
     body.appendChild(row("Max building changes per day", num("maxBuildingChangesPerDay", -1, 10, 1),
       "-1 = unlimited"));
+
+    const cHead = document.createElement("h3");
+    cHead.style.cssText = "margin:14px 0 6px;font-size:12px;text-transform:uppercase;color:#334155;letter-spacing:.04em";
+    cHead.textContent = "Tier-C — Alternative acceptance rules";
+    body.appendChild(cHead);
+    body.appendChild(row("Enable Great Deluge", bool("useGreatDeluge"),
+      "Single rising water-level threshold"));
+    body.appendChild(row("Great Deluge rise rate", num("gdRiseRate", 0.0001, 0.1, 0.001),
+      "Smaller = more tolerance"));
+    body.appendChild(row("Enable Tabu list", bool("useTabu"),
+      "Forbids re-applying recent evict patterns"));
+    body.appendChild(row("Tabu tenure", num("tabuTenure", 5, 100, 1),
+      "Window length"));
 
     const closeBtn = document.createElement("button");
     closeBtn.className = "chrx-btn"; closeBtn.type = "button";
