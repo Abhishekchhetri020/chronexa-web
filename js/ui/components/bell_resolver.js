@@ -1,0 +1,62 @@
+/* Bell resolver — per-class bell schedule lookup (Top-30 #3).
+ *
+ * Multi-bell timetables let a school run primary and secondary on different
+ * period times within the same project. `school.bells` is an array of named
+ * bell schedules; classes opt in via `class.bellId`. Anything without a
+ * bellId falls back to the school-default `school.bell` so legacy schools
+ * keep working without migration.
+ *
+ * Exposed as window.BellResolver for non-module callers (UI, templates)
+ * AND as ES exports for the solver / worker (csp_solver imports relative).
+ *
+ *   const bell = BellResolver.forClass(school, classId)
+ *   const periodCount = BellResolver.periodCountFor(school, classId)
+ *   const isValid = BellResolver.isValidPeriod(school, classId, periodIndex)
+ *
+ * Resolver picks the FIRST per-class bell when a card serves multiple
+ * classes. That matches the conservative rule used elsewhere ("first class
+ * wins" in cardsByClass index).
+ */
+(function (global) {
+  "use strict";
+
+  function defaultBell(school) {
+    if (!school) return null;
+    if (school.bell && Array.isArray(school.bell.periods)) return school.bell;
+    if (Array.isArray(school.bells) && school.bells.length) return school.bells[0];
+    return null;
+  }
+
+  function forClass(school, classId) {
+    if (!school) return null;
+    const fallback = defaultBell(school);
+    if (!classId) return fallback;
+    const bells = Array.isArray(school.bells) ? school.bells : [];
+    if (!bells.length) return fallback;
+    const cls = school._idx && school._idx.classById
+      ? school._idx.classById[classId]
+      : (school.classes || []).find(c => c.id === classId);
+    if (!cls || !cls.bellId) return fallback;
+    return bells.find(b => b.id === cls.bellId) || fallback;
+  }
+
+  function forLesson(school, lesson) {
+    if (!lesson) return defaultBell(school);
+    const first = (lesson.classIds || [])[0];
+    return forClass(school, first);
+  }
+
+  function periodCountFor(school, classId) {
+    const b = forClass(school, classId);
+    return (b && Array.isArray(b.periods)) ? b.periods.length : 0;
+  }
+
+  function isValidPeriod(school, classId, periodIndex) {
+    const b = forClass(school, classId);
+    if (!b || !Array.isArray(b.periods)) return true;
+    return b.periods.some(p => (p.index | 0) === (periodIndex | 0));
+  }
+
+  const api = { defaultBell, forClass, forLesson, periodCountFor, isValidPeriod };
+  global.BellResolver = api;
+})(typeof window !== "undefined" ? window : globalThis);

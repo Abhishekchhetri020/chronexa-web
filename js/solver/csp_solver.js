@@ -91,6 +91,41 @@ function buildModel(school) {
   const roomIds = school.classrooms.map(r => r.id);
   const subjectIds = school.subjects.map(s => s.id);
 
+  // Per-class bell schedule mask (Top-30 #3). Bit p set iff period index
+  // p is a teaching period in the class's bell. Default = school.bell.
+  // Classes with bellId pointing at school.bells[] get their bell's
+  // period set; classes without a bellId inherit the school default.
+  // canPlace() reads classValidPeriodMask[c] and rejects placements
+  // outside it (e.g. primary class can't be placed in period 8 if its
+  // bell only has 6 periods).
+  const _bellsList = Array.isArray(school.bells) ? school.bells : [];
+  const _defaultBellPeriods = (school.bell && Array.isArray(school.bell.periods))
+    ? school.bell.periods
+    : (_bellsList[0] && _bellsList[0].periods) || [];
+  function _maskFromPeriods(periods) {
+    let m = 0;
+    if (!Array.isArray(periods)) return m;
+    for (const p of periods) {
+      // Period.index is 1-based in the data model; canPlace uses 0-based p.
+      const pi = ((p.index | 0) - 1);
+      if (pi >= 0 && pi < periodsPerDay) m = (m | (1 << pi)) >>> 0;
+    }
+    return m;
+  }
+  const _defaultMask = _maskFromPeriods(_defaultBellPeriods);
+  const classValidPeriodMask = new Uint32Array(classIds.length);
+  for (let i = 0; i < classIds.length; i++) {
+    const cls = school.classes[i];
+    let mask = _defaultMask;
+    if (cls && cls.bellId) {
+      const bell = _bellsList.find(b => b.id === cls.bellId);
+      if (bell) mask = _maskFromPeriods(bell.periods);
+    }
+    // Empty mask would block everything; fall back to default to avoid
+    // false-positive infeasibility from misconfigured per-class bell.
+    classValidPeriodMask[i] = mask || _defaultMask || ((1 << periodsPerDay) - 1) >>> 0;
+  }
+
   const teacherIdx = new Map(teacherIds.map((id, i) => [id, i]));
   const classIdx = new Map(classIds.map((id, i) => [id, i]));
   const roomIdx = new Map(roomIds.map((id, i) => [id, i]));
@@ -696,6 +731,7 @@ function buildModel(school) {
     candidateSlot: candidateSlotArr, candidateRoom: candidateRoomArr,
     teacherAvailabilityMask, teacherConditionalMask, teacherMaxPerDay, teacherMaxConsec,
     classMaxPerDay, classMaxConsec,
+    classValidPeriodMask,
     subjectDailyLimit,
     classSubjectTarget,
     classTeacherPosMask,
@@ -871,6 +907,15 @@ function canPlace(model, state, lessonIdx, slot, roomIdx) {
   for (let k = 0; k < classCount; k++) {
     const c = model.lessonClassFlat[classStart + k];
     const cd = c * model.days + d;
+    // Per-class bell schedule (Top-30 #3). Reject placements at periods
+    // outside this class's bell — e.g. a primary class whose bell only
+    // defines 6 periods can't take a card at period 8. Mask is built in
+    // buildModel; classes without a per-class bellId inherit the school
+    // default so legacy data keeps working.
+    if (model.classValidPeriodMask &&
+        (model.classValidPeriodMask[c] & bit) === 0) {
+      return FAIL.CLASS_BELL_PERIOD_INVALID;
+    }
     // Group-aware conflict: two lessons sharing a class at the same (day,
     // period) conflict only if their group bitmasks intersect.
     const gMask = model.lessonClassGroupMask[classStart + k];

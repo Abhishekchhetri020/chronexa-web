@@ -49,6 +49,7 @@ export const FAIL = Object.freeze({
   RELATION_MUST_FOLLOW: 26,
   RELATION_SIMULTANEOUS: 27,
   RELATION_BREAK_BETWEEN: 28,
+  CLASS_BELL_PERIOD_INVALID: 29,
 });
 
 /** Numeric ID → name string. */
@@ -82,6 +83,7 @@ export const FAIL_NAME = Object.freeze({
   26: "relation_must_follow",
   27: "relation_simultaneous",
   28: "relation_break_between",
+  29: "class_bell_period_invalid",
 });
 
 /** Catalog rows (UI uses these for the violations list). */
@@ -442,6 +444,25 @@ export function checkPlacement(school, lessonId, day, period, roomId) {
   const periodObj = periods.find(p => p.index === period);
   if (periodObj && periodObj.isTeaching === false) {
     result.soft.push(`P${period} is a non-teaching slot (${periodObj.label || "break"})`);
+  }
+
+  // 2b. Per-class bell schedule (Top-30 #3). If any class on this lesson has
+  // a bellId whose periods don't include this period, flag as hard — mirrors
+  // csp_solver.canPlace's FAIL.CLASS_BELL_PERIOD_INVALID so the verification
+  // halo + auto-fix pass both surface the violation.
+  const bells = Array.isArray(school.bells) ? school.bells : [];
+  if (bells.length) {
+    for (const cid of (lesson.classIds || [])) {
+      const cls = idx.classById[cid];
+      if (!cls || !cls.bellId) continue;
+      const bell = bells.find(b => b.id === cls.bellId);
+      if (!bell || !Array.isArray(bell.periods)) continue;
+      const inBell = bell.periods.some(p => (p.index | 0) === (period | 0));
+      if (!inBell) {
+        const clsName = cls.name || cid;
+        result.hard.push(`${clsName} bell schedule (${bell.name || "bell"}) has no period ${period}`);
+      }
+    }
   }
 
   // Build a per-slot view from S.cards, excluding this exact placement (so

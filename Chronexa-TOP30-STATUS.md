@@ -16,7 +16,7 @@ The May-19 audit produced a "Top-30 backlog" that has been pasted into every sub
 |---|---|---|---|
 | 1 | Improve-mode UI hookup | ✅ | `js/ui/solver_ui/prelaunch_dialog.js` — 3rd ⚡ mode button (commit `e3c89d2`) |
 | 2 | DayPattern (`daysdefs`) entity | ✅ | `js/ui/entities/days.js` — full CRUD, `EntityDays.open()`; menu wire in `entity_router.js` line 15 |
-| 3 | Multi-bell per class | ⛔ | True gap. Architectural change — `school.bell` currently global. ~3-5 day port. |
+| 3 | Multi-bell per class | ✅ | New `BellResolver` helper at `js/ui/components/bell_resolver.js` looks up `class.bellId` → `school.bells[]` with fallback to `school.bell`. Class dialog gained a "Bell schedule" select. Solver `canPlace` enforces `classValidPeriodMask[c]` (new `FAIL.CLASS_BELL_PERIOD_INVALID`). `Placement.classify` + `SolverConstraints.checkPlacement` both flag drop-attempts at periods outside the class's bell. Grid empty slots outside the class's bell render hatched + non-interactive. Backward-compatible: classes without `bellId` inherit `school.bell` (p56). |
 | 4 | Per-fault Test dialog live streaming | ✅ | `csp_solver.js#maybeEmitProgress` now scans `state.lessonAssigned[]` every ~500ms tick and emits up to 5 currently-stuck lesson labels in the progress payload's `latestViolations` array. Window rotates by `progressEmitCount` so different stuck lessons show across ticks. `progress_modal.js` renders them in a new "Currently stuck" pane below the heatmap with severity-coloured icons + slide-in animation. Aggregate counters still stream alongside (p55). |
 | 5 | `classTeacherPos` 6×9 matrix solver scorer | ✅ | `csp_solver.js` `classTeacherPosPenalty` soft scorer (sixth-session sprint) |
 | 6 | Per-card `classroomidss` variation | ✅ | Solver reads `_lessonRoomIds` not just `preferredRoomId[0]` (sixth-session) |
@@ -47,9 +47,9 @@ The May-19 audit produced a "Top-30 backlog" that has been pasted into every sub
 
 ## Score
 
-- ✅ Shipped: **29 of 30** (97 %)
+- ✅ Shipped: **30 of 30** (100 %)
 - 🟡 Partial: **0**
-- ⛔ True gap: **1 of 30** — #3 multi-bell per class (~3-5 days, architectural — `school.bell` currently global; touching this affects every grid render + every solver constraint)
+- ⛔ True gap: **0**
 
 ## What to actually pick next
 

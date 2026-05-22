@@ -45,6 +45,20 @@
       flag(1, `${periodObj.label || "P" + period} is non-teaching`);
     }
 
+    // 2b. Per-class bell check (Top-30 #3). If any class on this lesson has a
+    // bellId whose periods don't include this period, the placement is hard-
+    // invalid — matches csp_solver.canPlace's FAIL.CLASS_BELL_PERIOD_INVALID.
+    if (window.BellResolver) {
+      for (const cid of (lesson.classIds || [])) {
+        const bell = window.BellResolver.forClass(S, cid);
+        if (bell && Array.isArray(bell.periods) &&
+            !bell.periods.some(p => (p.index | 0) === (period | 0))) {
+          const cls = idx.classById[cid];
+          flag(2, `${cls ? cls.name : cid} bell has no period ${period}`);
+        }
+      }
+    }
+
     // Build a per-(day,period) occupancy view from S.cards. Cheap enough at
     // editor sizes (≤ ~2000 cards); avoids the cost of maintaining a live
     // index that lessons/edit dialogs would have to keep in sync.

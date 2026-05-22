@@ -153,15 +153,29 @@ window.Editor = (function () {
   function rowHtml(S, row, periods, mobileDay, cardLookup) {
     const rowBucket = cardLookup[row.key] || null;
     const slots = [];
+    // Per-class bell period set (Top-30 #3). When the row is a class with
+    // its own bellId, mark slots outside its bell as `out-of-bell` so the
+    // grid greys them out and drag-drop refuses to land there. Other
+    // perspectives (teacher/room/subject) span the school default.
+    const persp = (window.APP && window.APP.editor && window.APP.editor.perspective) || "class";
+    let bellPeriodSet = null;
+    if (persp === "class" && window.BellResolver) {
+      const bell = window.BellResolver.forClass(S, row.key);
+      if (bell && Array.isArray(bell.periods)) {
+        bellPeriodSet = new Set(bell.periods.map(p => p.index | 0));
+      }
+    }
     for (let d = 0; d < NUM_DAYS; d++) {
       for (const p of periods) {
         const card = rowBucket ? rowBucket[d + "_" + p.index] : null;
         const hide = d !== mobileDay ? " mobile-hidden" : "";
+        const outOfBell = bellPeriodSet && !bellPeriodSet.has(p.index | 0);
         if (card) {
           slots.push(cardHtml(S, card, d, p.index, row.key, hide));
         } else {
+          const oob = outOfBell ? " out-of-bell" : "";
           slots.push(
-            `<div class="chrx-slot empty${hide}" data-day="${d}" data-period="${p.index}" data-row="${esc(row.key)}"></div>`
+            `<div class="chrx-slot empty${hide}${oob}" data-day="${d}" data-period="${p.index}" data-row="${esc(row.key)}"${outOfBell ? ' aria-hidden="true"' : ''}></div>`
           );
         }
       }

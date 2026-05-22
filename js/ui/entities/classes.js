@@ -43,10 +43,11 @@
   function openEdit(r) {
     const isNew = !r;
     const draft = isNew
-      ? { name:"", short:"", color:"", teacherId:"", classroomIds:[], bell:"" }
+      ? { name:"", short:"", color:"", teacherId:"", classroomIds:[], bellId:"", bell:"" }
       : { name:r.name, short:r.short, color:r.color,
           teacherId: r._ref.teacherId || r._ref._teacherId || "",
           classroomIds: (r._ref.classroomIds || r._ref._classroomIds || []).slice(),
+          bellId: r._ref.bellId || "",
           bell: r._ref.bell || "" };
 
     const fName = D.el("input", { type:"text", value:draft.name, required:"required",
@@ -55,8 +56,16 @@
       oninput:(e)=>draft.short = e.target.value });
     const fTeacher = makeSelect(window.APP.school?.teachers, draft.teacherId,
       t => t.name + (t.abbr ? ` (${t.abbr})` : ""), v => draft.teacherId = v);
-    const fBell = D.el("input", { type:"text", value:draft.bell, placeholder:"default",
-      oninput:(e)=>draft.bell = e.target.value });
+    // Per-class bell schedule (Top-30 #3). Empty = use school default.
+    const fBell = D.el("select", null,
+      D.el("option", { value: "" }, "(school default)"));
+    ((window.APP.school?.bells) || []).forEach(b => {
+      const opt = D.el("option", { value: b.id },
+        b.name + (b.periods ? ` (${b.periods.length} periods)` : ""));
+      if (b.id === draft.bellId) opt.selected = true;
+      fBell.appendChild(opt);
+    });
+    fBell.addEventListener("change", e => draft.bellId = e.target.value);
     const fColor = D.buildSwatchPicker(draft.color, v => draft.color = v);
 
     const fRooms = D.el("select", { multiple:"multiple", size:"4" });
@@ -80,6 +89,7 @@
         c.color = draft.color || undefined;
         c.teacherId = draft.teacherId || undefined;
         c.classroomIds = draft.classroomIds.slice();
+        c.bellId = draft.bellId || undefined;
         c.bell = draft.bell || undefined;
         window.APP.audit.append({ entity:"classes", op:"update", before, after:{...c} });
       } else {
@@ -87,6 +97,7 @@
           abbr:draft.short.trim() || undefined, color:draft.color || undefined,
           teacherId:draft.teacherId || undefined,
           classroomIds:draft.classroomIds.slice(),
+          bellId: draft.bellId || undefined,
           bell:draft.bell || undefined };
         if (all.some(x => x.name === nc.name)) { fName.focus(); return false; }
         all.push(nc);
@@ -104,7 +115,7 @@
         { label:"Short", control:fShort },
         { label:"Class teacher", control:fTeacher },
         { label:"Home classrooms", control:fRooms },
-        { label:"Bell", control:fBell },
+        { label:"Bell schedule", control:fBell },
         { label:"Color", control:fColor },
       ],
       onSave: save,

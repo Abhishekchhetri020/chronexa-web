@@ -22,6 +22,11 @@
 .chrx-slot[data-period="8"]{border-right:2px solid var(--chrx-line)}
 .chrx-slot.empty{transition:outline-color var(--chrx-duration-fast) var(--chrx-ease),background var(--chrx-duration-fast) var(--chrx-ease)}
 body.chrx-card-in-hand .chrx-slot.empty{outline:2px dashed var(--chrx-green);outline-offset:-3px;background:var(--chrx-green-bg);cursor:copy}
+/* Per-class bell — slots outside this class's bell schedule (Top-30 #3).
+   Visually struck-through so the user sees the class isn't taught at this
+   period; the underlying classify() also rejects drops here. */
+.chrx-slot.empty.out-of-bell{background:repeating-linear-gradient(45deg,rgba(148,163,184,.18) 0 4px,transparent 4px 8px);cursor:not-allowed;pointer-events:none}
+body.chrx-card-in-hand .chrx-slot.empty.out-of-bell{outline:1px solid var(--chrx-line-soft);background:repeating-linear-gradient(45deg,rgba(148,163,184,.25) 0 4px,transparent 4px 8px);cursor:not-allowed}
 .chrx-vkarta{--hue:var(--chrx-card-hue,210);position:absolute;inset:1px;border-radius:var(--chrx-radius-xs);background:hsl(var(--hue) 70% 48%);color:#fff;padding:1px 3px;display:flex;flex-direction:column;font-size:var(--chrx-font-cell-m);line-height:1.05;cursor:grab;user-select:none;overflow:hidden;box-shadow:0 1px 0 hsl(var(--hue) 50% 35%/.5),inset 0 0 0 1px hsl(var(--hue) 60% 55%/.5);transition:transform var(--chrx-duration-fast) var(--chrx-ease),box-shadow var(--chrx-duration-fast) var(--chrx-ease)}
 .chrx-vkarta:hover{transform:translateY(-1px);box-shadow:0 2px 4px rgba(0,0,0,.18),inset 0 0 0 1px hsl(var(--hue) 65% 60%/.7);z-index:2}
 .chrx-vkarta:active{cursor:grabbing}

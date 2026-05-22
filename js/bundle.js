@@ -1,5 +1,5 @@
-/* Chronexa bundle — generated 2026-05-22T03:00:07Z
- *      141 modules concatenated in document order.
+/* Chronexa bundle — generated 2026-05-22T03:09:47Z
+ *      142 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
 /* ─── FILE: js/ui/state.js ─── */
@@ -1714,6 +1714,70 @@ window.Inspector = (function () {
   };
 })(window);
 
+/* ─── FILE: js/ui/components/bell_resolver.js ─── */
+/* Bell resolver — per-class bell schedule lookup (Top-30 #3).
+ *
+ * Multi-bell timetables let a school run primary and secondary on different
+ * period times within the same project. `school.bells` is an array of named
+ * bell schedules; classes opt in via `class.bellId`. Anything without a
+ * bellId falls back to the school-default `school.bell` so legacy schools
+ * keep working without migration.
+ *
+ * Exposed as window.BellResolver for non-module callers (UI, templates)
+ * AND as ES exports for the solver / worker (csp_solver imports relative).
+ *
+ *   const bell = BellResolver.forClass(school, classId)
+ *   const periodCount = BellResolver.periodCountFor(school, classId)
+ *   const isValid = BellResolver.isValidPeriod(school, classId, periodIndex)
+ *
+ * Resolver picks the FIRST per-class bell when a card serves multiple
+ * classes. That matches the conservative rule used elsewhere ("first class
+ * wins" in cardsByClass index).
+ */
+(function (global) {
+  "use strict";
+
+  function defaultBell(school) {
+    if (!school) return null;
+    if (school.bell && Array.isArray(school.bell.periods)) return school.bell;
+    if (Array.isArray(school.bells) && school.bells.length) return school.bells[0];
+    return null;
+  }
+
+  function forClass(school, classId) {
+    if (!school) return null;
+    const fallback = defaultBell(school);
+    if (!classId) return fallback;
+    const bells = Array.isArray(school.bells) ? school.bells : [];
+    if (!bells.length) return fallback;
+    const cls = school._idx && school._idx.classById
+      ? school._idx.classById[classId]
+      : (school.classes || []).find(c => c.id === classId);
+    if (!cls || !cls.bellId) return fallback;
+    return bells.find(b => b.id === cls.bellId) || fallback;
+  }
+
+  function forLesson(school, lesson) {
+    if (!lesson) return defaultBell(school);
+    const first = (lesson.classIds || [])[0];
+    return forClass(school, first);
+  }
+
+  function periodCountFor(school, classId) {
+    const b = forClass(school, classId);
+    return (b && Array.isArray(b.periods)) ? b.periods.length : 0;
+  }
+
+  function isValidPeriod(school, classId, periodIndex) {
+    const b = forClass(school, classId);
+    if (!b || !Array.isArray(b.periods)) return true;
+    return b.periods.some(p => (p.index | 0) === (periodIndex | 0));
+  }
+
+  const api = { defaultBell, forClass, forLesson, periodCountFor, isValidPeriod };
+  global.BellResolver = api;
+})(typeof window !== "undefined" ? window : globalThis);
+
 /* ─── FILE: js/ui/components/time_off_matrix.js ─── */
 /* TimeOff matrix sub-dialog (shared across subjects/classes/classrooms/teachers).
  * window.TimeOffMatrix.open(entity, kind, onSave)
@@ -2946,10 +3010,11 @@ window.Inspector = (function () {
   function openEdit(r) {
     const isNew = !r;
     const draft = isNew
-      ? { name:"", short:"", color:"", teacherId:"", classroomIds:[], bell:"" }
+      ? { name:"", short:"", color:"", teacherId:"", classroomIds:[], bellId:"", bell:"" }
       : { name:r.name, short:r.short, color:r.color,
           teacherId: r._ref.teacherId || r._ref._teacherId || "",
           classroomIds: (r._ref.classroomIds || r._ref._classroomIds || []).slice(),
+          bellId: r._ref.bellId || "",
           bell: r._ref.bell || "" };
 
     const fName = D.el("input", { type:"text", value:draft.name, required:"required",
@@ -2958,8 +3023,16 @@ window.Inspector = (function () {
       oninput:(e)=>draft.short = e.target.value });
     const fTeacher = makeSelect(window.APP.school?.teachers, draft.teacherId,
       t => t.name + (t.abbr ? ` (${t.abbr})` : ""), v => draft.teacherId = v);
-    const fBell = D.el("input", { type:"text", value:draft.bell, placeholder:"default",
-      oninput:(e)=>draft.bell = e.target.value });
+    // Per-class bell schedule (Top-30 #3). Empty = use school default.
+    const fBell = D.el("select", null,
+      D.el("option", { value: "" }, "(school default)"));
+    ((window.APP.school?.bells) || []).forEach(b => {
+      const opt = D.el("option", { value: b.id },
+        b.name + (b.periods ? ` (${b.periods.length} periods)` : ""));
+      if (b.id === draft.bellId) opt.selected = true;
+      fBell.appendChild(opt);
+    });
+    fBell.addEventListener("change", e => draft.bellId = e.target.value);
     const fColor = D.buildSwatchPicker(draft.color, v => draft.color = v);
 
     const fRooms = D.el("select", { multiple:"multiple", size:"4" });
@@ -2983,6 +3056,7 @@ window.Inspector = (function () {
         c.color = draft.color || undefined;
         c.teacherId = draft.teacherId || undefined;
         c.classroomIds = draft.classroomIds.slice();
+        c.bellId = draft.bellId || undefined;
         c.bell = draft.bell || undefined;
         window.APP.audit.append({ entity:"classes", op:"update", before, after:{...c} });
       } else {
@@ -2990,6 +3064,7 @@ window.Inspector = (function () {
           abbr:draft.short.trim() || undefined, color:draft.color || undefined,
           teacherId:draft.teacherId || undefined,
           classroomIds:draft.classroomIds.slice(),
+          bellId: draft.bellId || undefined,
           bell:draft.bell || undefined };
         if (all.some(x => x.name === nc.name)) { fName.focus(); return false; }
         all.push(nc);
@@ -3007,7 +3082,7 @@ window.Inspector = (function () {
         { label:"Short", control:fShort },
         { label:"Class teacher", control:fTeacher },
         { label:"Home classrooms", control:fRooms },
-        { label:"Bell", control:fBell },
+        { label:"Bell schedule", control:fBell },
         { label:"Color", control:fColor },
       ],
       onSave: save,
@@ -11689,15 +11764,29 @@ window.Editor = (function () {
   function rowHtml(S, row, periods, mobileDay, cardLookup) {
     const rowBucket = cardLookup[row.key] || null;
     const slots = [];
+    // Per-class bell period set (Top-30 #3). When the row is a class with
+    // its own bellId, mark slots outside its bell as `out-of-bell` so the
+    // grid greys them out and drag-drop refuses to land there. Other
+    // perspectives (teacher/room/subject) span the school default.
+    const persp = (window.APP && window.APP.editor && window.APP.editor.perspective) || "class";
+    let bellPeriodSet = null;
+    if (persp === "class" && window.BellResolver) {
+      const bell = window.BellResolver.forClass(S, row.key);
+      if (bell && Array.isArray(bell.periods)) {
+        bellPeriodSet = new Set(bell.periods.map(p => p.index | 0));
+      }
+    }
     for (let d = 0; d < NUM_DAYS; d++) {
       for (const p of periods) {
         const card = rowBucket ? rowBucket[d + "_" + p.index] : null;
         const hide = d !== mobileDay ? " mobile-hidden" : "";
+        const outOfBell = bellPeriodSet && !bellPeriodSet.has(p.index | 0);
         if (card) {
           slots.push(cardHtml(S, card, d, p.index, row.key, hide));
         } else {
+          const oob = outOfBell ? " out-of-bell" : "";
           slots.push(
-            `<div class="chrx-slot empty${hide}" data-day="${d}" data-period="${p.index}" data-row="${esc(row.key)}"></div>`
+            `<div class="chrx-slot empty${hide}${oob}" data-day="${d}" data-period="${p.index}" data-row="${esc(row.key)}"${outOfBell ? ' aria-hidden="true"' : ''}></div>`
           );
         }
       }
@@ -12312,6 +12401,20 @@ window.PendingStrip = (function () {
     const periodObj = (S.bell.periods || []).find(p => p.index === period);
     if (periodObj && periodObj.isTeaching === false) {
       flag(1, `${periodObj.label || "P" + period} is non-teaching`);
+    }
+
+    // 2b. Per-class bell check (Top-30 #3). If any class on this lesson has a
+    // bellId whose periods don't include this period, the placement is hard-
+    // invalid — matches csp_solver.canPlace's FAIL.CLASS_BELL_PERIOD_INVALID.
+    if (window.BellResolver) {
+      for (const cid of (lesson.classIds || [])) {
+        const bell = window.BellResolver.forClass(S, cid);
+        if (bell && Array.isArray(bell.periods) &&
+            !bell.periods.some(p => (p.index | 0) === (period | 0))) {
+          const cls = idx.classById[cid];
+          flag(2, `${cls ? cls.name : cid} bell has no period ${period}`);
+        }
+      }
     }
 
     // Build a per-(day,period) occupancy view from S.cards. Cheap enough at
