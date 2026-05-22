@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-22T07:36:16Z
+/* Chronexa bundle — generated 2026-05-22T07:43:33Z
  *      152 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -7726,6 +7726,10 @@ window.Inspector = (function () {
       el("button", { class: "chrx-btn", onclick: () => fire("app:test") }, "Test"),
       el("button", { class: "chrx-btn chrx-btn--primary", onclick: () => fire("app:generate") }, "Generate"));
 
+    const fsBtn = el("button", { class: "chrx-shell-toggle", "data-toggle": "fs",
+      title: "Fullscreen editor  F (Esc to exit)", "aria-label": "Toggle fullscreen editor",
+      onclick: () => togglePanel("fs") }, "⛶");
+
     const railBtn = el("button", { class: "chrx-shell-toggle", "data-toggle": "rail",
       title: "Toggle right rail  ]", "aria-label": "Toggle right rail",
       onclick: () => togglePanel("rail") }, "]");
@@ -7736,6 +7740,7 @@ window.Inspector = (function () {
       el("div", { class: "chrx-topbar__spacer" }),
       search,
       actions,
+      fsBtn,
       railBtn);
   }
 
@@ -7885,9 +7890,17 @@ window.Inspector = (function () {
     } else if ((e.key === "[" || e.key === "]") && !e.metaKey && !e.ctrlKey && !e.altKey && !isTypingTarget(e.target)) {
       e.preventDefault();
       togglePanel(e.key === "[" ? "side" : "rail");
+    } else if ((e.key === "f" || e.key === "F") && !e.metaKey && !e.ctrlKey && !e.altKey && !isTypingTarget(e.target)) {
+      e.preventDefault();
+      togglePanel("fs");
     } else if (e.key === "Escape") {
       const p = document.getElementById("chrx-palette");
-      if (p && p.classList.contains("is-open")) closePalette();
+      if (p && p.classList.contains("is-open")) {
+        closePalette();
+      } else {
+        const sh = document.getElementById("chrx-shell");
+        if (sh?.classList.contains("is-fullscreen")) togglePanel("fs");
+      }
     } else if (e.key === "Enter") {
       const p = document.getElementById("chrx-palette");
       if (p && p.classList.contains("is-open")) {
@@ -7917,6 +7930,7 @@ window.Inspector = (function () {
       const s = JSON.parse(raw);
       if (s && s.sideHidden) shellEl.classList.add("is-side-hidden");
       if (s && s.railHidden) shellEl.classList.add("is-rail-hidden");
+      if (s && s.fullscreen) shellEl.classList.add("is-fullscreen");
     } catch (e) {}
   }
   function persistPanels(shellEl) {
@@ -7924,13 +7938,22 @@ window.Inspector = (function () {
       localStorage.setItem(PANEL_STATE_KEY, JSON.stringify({
         sideHidden: shellEl.classList.contains("is-side-hidden"),
         railHidden: shellEl.classList.contains("is-rail-hidden"),
+        fullscreen: shellEl.classList.contains("is-fullscreen"),
       }));
     } catch (e) {}
   }
   function togglePanel(which) {
     const shellEl = document.getElementById("chrx-shell");
     if (!shellEl) return;
-    shellEl.classList.toggle(which === "side" ? "is-side-hidden" : "is-rail-hidden");
+    if (which === "fs") {
+      // Fullscreen editor: compound toggle — sets/clears side + rail + chrome
+      const enabling = !shellEl.classList.contains("is-fullscreen");
+      shellEl.classList.toggle("is-fullscreen", enabling);
+      shellEl.classList.toggle("is-side-hidden", enabling);
+      shellEl.classList.toggle("is-rail-hidden", enabling);
+    } else {
+      shellEl.classList.toggle(which === "side" ? "is-side-hidden" : "is-rail-hidden");
+    }
     persistPanels(shellEl);
   }
 

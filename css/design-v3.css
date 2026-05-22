@@ -145,8 +145,25 @@ body::before{
 /* When the panel that this button toggles is hidden, paint the button "active"
    (filled ink) so the user knows what state they're in. */
 .chrx-shell.is-side-hidden .chrx-shell-toggle[data-toggle="side"],
-.chrx-shell.is-rail-hidden .chrx-shell-toggle[data-toggle="rail"]{
+.chrx-shell.is-rail-hidden .chrx-shell-toggle[data-toggle="rail"],
+.chrx-shell.is-fullscreen .chrx-shell-toggle[data-toggle="fs"]{
   background:var(--ink); color:var(--paper); border-color:var(--ink);
+}
+
+/* Fullscreen editor — hides every non-essential surface so the grid takes
+   the whole viewport. Topbar stays so user can exit (Esc / F / ⛶ button)
+   and can still hit Test / Generate / search. */
+.chrx-shell.is-fullscreen{grid-template-rows:56px 1fr 0}
+.chrx-shell.is-fullscreen .chrx-status{display:none}
+/* Legacy step-tab strip (1. Start / Editor (drag-drop) / School Info / …) */
+.chrx-shell.is-fullscreen .chrx-main > nav:has(button.step-btn){display:none}
+/* Step-6's heading row ("🪄 Timetable Editor" + 4 toolbar buttons) — keep
+   the buttons reachable via the ⌘K palette instead. */
+.chrx-shell.is-fullscreen #step-6 > div:first-child{display:none}
+/* Override the legacy max-w-7xl cap so the editor + pending strip fill the
+   full viewport horizontally. Only inside chrx-main, only in fullscreen. */
+.chrx-shell.is-fullscreen .chrx-main > main{
+  max-width:none !important; padding-top:8px !important; padding-bottom:8px !important;
 }
 
 /* Wordmark cell */
