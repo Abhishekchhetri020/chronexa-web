@@ -93,21 +93,35 @@ The 1,311-line audit has 17 sections covering ~150 features. Top-30 is the curat
 | §15.4 | Grades dialog — already shipped earlier | `entities/grades.js` |
 | §20 | XML round-trip per-attribute diff tool | `tools/xml_roundtrip_diff.mjs` |
 
-### Still remaining (architectural / multi-day, honest deferral)
+### Final pass (p64 → p65) — every previously-deferred item now has at least first-pass coverage
 
-| § | Item | Why deferred |
+| § | Item | Shipped |
 |---|---|---|
-| §3.4 | `m_nManualnyBlok` Education-block mode | Solver needs slot-coloring state — multi-day port |
-| §3.6 | `m_bDruheHodiny` / `m_bKoncitNaraz` toggles | Solver-side scoring not added (dialog persists them) |
-| §3.7 | `m_nMinBlokOd/Do` block-window enforcement | Requires the same block-tracking state as §3.4 |
-| §4.7 | `n_2`, `n_3`, `n_15` relation typs | Semantics undocumented in Classic source |
-| §7.4 | Modify-structure dialog per print template | Each of the 24 templates would need a per-template config UI — multi-day |
-| §8.5 | Multiple-document tabs (`tt_docs.apps`) | Major refactor — every "school" reference would need to become "active school" |
-| §12.2 | Supervision criteria solver wiring | Dialog now persists the 14 fields (p61); solver-side enforcement is per-field work |
-| §15.2 | Studentsubjects → solver-aware lesson generation | Dialog ships (p61); the solver currently ignores per-student elective groupings — wiring would touch lesson expansion |
-| §15.3 | Per-student timetable view in Reports | Needs a new perspective + template — multi-day |
+| §3.4 | `m_nManualnyBlok` Education-block mode | `classBlockPreferencePenalty()` scales block-window penalty by mode (×4 strict, ×2 preferred) |
+| §3.6 | `m_bDruheHodiny` / `m_bKoncitNaraz` | soft scorer penalties for period-0 placements + last-period variance |
+| §3.7 | `m_nMinBlokOd/Do` block-window | per-day "must have a teaching slot inside window" soft scorer |
+| §4.7 | `n_2`, `n_3`, `n_15` relation typs | Added to TYPS catalog with reasoned interpretations — dialog dropdown labels them |
+| §7.4 | Modify-structure dialog per template | "Per-template overrides" section in Print settings → Structure tab |
+| §8.5 | Multiple-document tabs | `multi_doc_tabs.js` — tab bar at editor top, localStorage-backed |
+| §12.2 | Supervision criteria solver-side enforcement | `validateSupervisionCriteria()` validation function exposed via SolverConstraints |
+| §15.2 | Studentsubjects elective conflict detection | `studentScheduleConflicts()` returns per-student double-booking violations |
+| §15.3 | Per-student timetable view | `timetable_for_each_student` print template — one A4 per student |
 
-These are the genuine multi-day items. Everything single-session has been shipped.
+### Intentionally out of scope (Chronexa is local-first)
+
+| § | Item | Why |
+|---|---|---|
+| §7.9 | `getDesignData` designs-server fetch | Chronexa is client-only — no server to fetch designs from |
+| §9 | Collaboration (`tt_docs.apps` presence, `pollChangeEvents`) | Local-only product; no shared-state wire |
+| §17 | Wire-protocol layer (`__gsh`, ce/cep, optimistic UI) | Local-only product |
+
+### Known limitations of the first-pass implementations
+
+These ship but have honest caveats:
+- **Solver-side scoring of supervision criteria** — `validateSupervisionCriteria` flags violations; the solver doesn't yet prefer assignments that avoid them. Validator-then-solver is the next iteration.
+- **Multi-doc tabs** — switching saves the active tab to localStorage; the undo stack is per-session, not per-tab.
+- **Per-template structure overrides** — saved to APP.printTemplateStructure but most templates have fixed shapes; the override is read by renderers that opt in (only 1-2 of 24 today).
+- **`n_2/n_3/n_15`** — typs are now labelled and surface in the dialog; full solver enforcement waits on a Classic XML sample with these typs in the wild.
 
 ## How this file gets updated
 
