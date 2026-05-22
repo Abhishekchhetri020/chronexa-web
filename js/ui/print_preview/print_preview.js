@@ -54,7 +54,13 @@
     const indicator = el("span", { class: "chrx-pp-indicator", style: "min-width:80px;text-align:center;font-variant-numeric:tabular-nums" }, "Page 1 / 1");
 
     const sel = el("select", { class: "chrx-tb-btn", "aria-label": "Report template",
-      onchange: (e) => render(e.target.value) });
+      onchange: (e) => {
+        // Reset any per-report customisations when switching reports
+        if (APP.activePrintReport && APP.activePrintReport._presetId !== e.target.value) {
+          APP.activePrintReport = null;
+        }
+        render(e.target.value);
+      } });
     // Pull the full template list from the registry if it loaded; fall back
     // to the legacy 5-template hardcoded list otherwise.
     const reg = APP.printTemplates;
@@ -94,8 +100,31 @@
       title: "Print-with-colors toggle (per-subject colors edited in Subjects)",
       onclick: () => window.PrintSettingsDialog && window.PrintSettingsDialog.open("colors") }, "🌈 Colors");
     const structBtn  = el("button", { class: "chrx-tb-btn", type: "button",
-      title: "Days as rows vs columns",
-      onclick: () => window.PrintSettingsDialog && window.PrintSettingsDialog.open("structure") }, "🧩 Structure");
+      title: "Modify structure — choose what's in pages / rows / columns / cells",
+      onclick: () => {
+        // Open the new Modify-Structure dialog if pivot engine is loaded
+        const ModDlg = window.APP && window.APP.ModifyStructureDialog;
+        const Schema = window.APP && window.APP.PrintReportSchema;
+        const Presets = window.APP && window.APP.PrintPresets;
+        if (ModDlg && Schema && Presets) {
+          // Lazily create activePrintReport from the current preset
+          if (!APP.activePrintReport || APP.activePrintReport._presetId !== currentTemplate) {
+            const preset = Presets.get(currentTemplate);
+            if (preset) {
+              const r = Schema.create({ context: preset.context });
+              Schema.applyPreset(r, preset);
+              r._presetId = preset.id;
+              APP.activePrintReport = r;
+            }
+          }
+          if (APP.activePrintReport) {
+            ModDlg.open(APP.activePrintReport, () => render(currentTemplate));
+            return;
+          }
+        }
+        // Fallback to legacy structure tab
+        window.PrintSettingsDialog && window.PrintSettingsDialog.open("structure");
+      } }, "🏗 Modify structure");
     const extraBtn   = el("button", { class: "chrx-tb-btn", type: "button",
       title: "Toggle extra header / footer / class-total rows",
       onclick: () => {
@@ -192,28 +221,33 @@
     const s = APP.school;
     const periods = s.bell?.periods || [];
 
-    if (template === "class")        pages = perEntityPages(s, "class",   periods, s.classes,    s._idx?.cardsByClass);
-    else if (template === "teacher") pages = perEntityPages(s, "teacher", periods, s.teachers,   s._idx?.cardsByTeacher);
-    else if (template === "room")    pages = perEntityPages(s, "room",    periods, s.classrooms, s._idx?.cardsByRoom);
-    else if (template === "summary") pages = [summaryPage(s, periods)];
-    else if (template === "poster")  pages = [posterPage(s, periods)];
-    else {
-      // Registry-delegated render. Modules return Array<Node> (one node per
-      // A4 page). If render throws or returns non-array, show a fallback page.
-      const reg = APP.printTemplates;
-      const def = reg ? reg.get(template) : null;
-      if (def && typeof def.render === "function") {
-        try {
-          const out = def.render(s);
-          if (Array.isArray(out))      pages = out.filter(Boolean);
-          else if (out instanceof Node) pages = [out];
-        } catch (err) {
-          console.error("[print_preview] template", template, "threw:", err);
-          pages = [el("div", { class: "chrx-preview-page" },
-            el("h2", null, "Template error"),
-            el("pre", { style: "white-space:pre-wrap;color:#900;font-size:11px" }, String(err && err.message || err)))];
-        }
+    // Registry-first dispatch: pivot-engine presets register with the same
+    // IDs as the legacy 5 builtins (class/teacher/room/summary/poster) and
+    // win. `builtin:true` registry entries are placeholders without a real
+    // render fn, so we only honour registry when a non-builtin render exists.
+    const reg = APP.printTemplates;
+    const def = reg ? reg.get(template) : null;
+    if (def && !def.builtin && typeof def.render === "function") {
+      try {
+        const out = def.render(s);
+        if (Array.isArray(out))      pages = out.filter(Boolean);
+        else if (out instanceof Node) pages = [out];
+      } catch (err) {
+        console.error("[print_preview] template", template, "threw:", err);
+        pages = [el("div", { class: "chrx-preview-page" },
+          el("h2", null, "Template error"),
+          el("pre", { style: "white-space:pre-wrap;color:#900;font-size:11px" }, String(err && err.message || err)))];
       }
+    }
+
+    // Fallback to legacy hardcoded renderers for the 5 builtins when no
+    // pivot preset has claimed the same ID (e.g., during transition).
+    if (!pages.length) {
+      if (template === "class")        pages = perEntityPages(s, "class",   periods, s.classes,    s._idx?.cardsByClass);
+      else if (template === "teacher") pages = perEntityPages(s, "teacher", periods, s.teachers,   s._idx?.cardsByTeacher);
+      else if (template === "room")    pages = perEntityPages(s, "room",    periods, s.classrooms, s._idx?.cardsByRoom);
+      else if (template === "summary") pages = [summaryPage(s, periods)];
+      else if (template === "poster")  pages = [posterPage(s, periods)];
     }
 
     if (!pages.length) pages = [el("div", { class: "chrx-preview-page" }, el("h2", null, "No data"))];

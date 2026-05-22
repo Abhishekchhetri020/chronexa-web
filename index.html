@@ -222,7 +222,7 @@
 
 <!-- ─────────────────────── SCRIPTS ─────────────────────── -->
 <!-- Bump APP_VER on every deploy so the browser refetches the JS bundle -->
-<script>window.APP_VER = "20260522-p77-editorial-tabs";</script>
+<script>window.APP_VER = "20260522-p78-pivot-print-engine";</script>
 <!-- Backend URL — leave empty to force "Run on this computer". Override at deploy time. -->
 <script>window.CHRONEXA_BACKEND_URL = window.CHRONEXA_BACKEND_URL || "";</script>
 <!-- Bundle mode (default): single HTTP request for all 133 modules.
@@ -368,6 +368,14 @@
     // Registry + helpers must load BEFORE template modules and print_preview.
     ["ui","print_preview/templates_registry"],
     ["ui","print_preview/templates/_helpers"],
+    // Phase 0 / Phase 1 — pivot print engine (loaded before legacy
+    // templates so engine + cell renderer are ready by the time any
+    // template tries to use them). Presets register LAST (below) so
+    // they overwrite legacy template registrations.
+    ["ui","print_preview/print_report_schema"],
+    ["ui","print_preview/pivot_cell_renderer"],
+    ["ui","print_preview/pivot_engine"],
+    ["ui","print_preview/modify_structure_dialog"],
     // 11 existing template modules (registered via APP.printTemplates.register).
     ["ui","print_preview/templates/timetable_for_student"],
     ["ui","print_preview/templates/timetable_for_each_student"],
@@ -389,6 +397,10 @@
     // P5: final 4 templates → full 24 Classic parity
     ["ui","print_preview/templates/list_of_classes"],
     ["ui","print_preview/templates/custom_slots"],
+    // Pivot presets — auto-register AFTER legacy templates so the pivot
+    // engine wins the same IDs (class / teacher / classroom / subject
+    // / summary_classes / poster_classes / lesson_grid / custom_1-3).
+    ["ui","print_preview/print_presets"],
     ["ui","io/compare_files"],
     ["ui","io/import_cardrelationships_har"],
     ["ui","io/snapshots"],

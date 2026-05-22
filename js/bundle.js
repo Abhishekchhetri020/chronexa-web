@@ -1,5 +1,5 @@
-/* Chronexa bundle — generated 2026-05-22T08:11:15Z
- *      152 modules concatenated in document order.
+/* Chronexa bundle — generated 2026-05-22T12:14:54Z
+ *      157 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
 /* ─── FILE: js/ui/state.js ─── */
@@ -20139,6 +20139,1090 @@ window.StartScreen = (function () {
   };
 })();
 
+/* ─── FILE: js/ui/print_preview/print_report_schema.js ─── */
+/* PrintReport schema — Phase 0 of the print-system rewrite.
+ *
+ * Defines the JSON shape that drives the pivot print engine. Every print
+ * dialog (Modify-Structure, per-card style, filter, extras, sizes/widths,
+ * design, colors) edits a piece of this same document.
+ *
+ * Architecture map: see /Users/abhishekchhetri/Developer/chronexa_web/Chronexa-PRINT-MAP.md
+ *
+ * Usage:
+ *   const r = APP.PrintReportSchema.create();          // blank report
+ *   APP.PrintReportSchema.applyPreset(r, "class");     // load a preset
+ *   APP.PrintReportSchema.DIMENSIONS                   // 9 dims
+ *   APP.PrintReportSchema.ELEMENT_KEYS                 // 7 element keys
+ */
+(function () {
+  "use strict";
+  const APP = (window.APP = window.APP || {});
+
+  const DIMENSIONS = ["day","period","week","term","class","teacher","subject","classroom","student"];
+  const DIM_LABEL = {
+    "day": "Day", "period": "Period", "week": "Week", "term": "Term",
+    "class": "Class", "teacher": "Teacher", "subject": "Subject",
+    "classroom": "Classroom", "student": "Student",
+  };
+  const ELEMENT_KEYS = ["subject","teacher","class","group","classroom","count","bellTimes"];
+  const CELL_KINDS = [
+    { id: "draw-lessons",            label: "Draw lessons" },
+    { id: "count-placed",            label: "Print count of placed cards" },
+    { id: "count-lessons",           label: "Print count of lessons" },
+    { id: "teacher-list-with-count", label: "Teacher list + count" },
+  ];
+  const ANCHORS = [
+    "top-left","top-center","top-right",
+    "middle-left","middle-center","middle-right",
+    "bottom-left","bottom-center","bottom-right",
+  ];
+
+  // Context-aware default visibility per report type (H2 — confirmed in
+  // screenshots 5, 30, 32, 34: whatever's in the page title is hidden).
+  // reportContext is derived from the first page-axis dim of the report.
+  const DEFAULT_VISIBILITY = {
+    // Class report: page title = class → hide Class
+    "class":     { subject:true,  teacher:true,  class:false, group:false, classroom:true,  count:false, bellTimes:false },
+    // Teacher report: page title = teacher → hide Teacher
+    "teacher":   { subject:true,  teacher:false, class:true,  group:false, classroom:false, count:false, bellTimes:false },
+    // Classroom report: page title = classroom → hide Classroom
+    "classroom": { subject:false, teacher:true,  class:true,  group:true,  classroom:false, count:false, bellTimes:false },
+    // Subject report: page title = subject → hide Subject
+    "subject":   { subject:false, teacher:true,  class:true,  group:false, classroom:false, count:false, bellTimes:false },
+    // Summary / no specific entity: show subject + teacher + class
+    "summary":   { subject:true,  teacher:true,  class:true,  group:false, classroom:false, count:false, bellTimes:false },
+    // Wall poster: subject + teacher (compact)
+    "poster":    { subject:true,  teacher:true,  class:false, group:false, classroom:false, count:false, bellTimes:false },
+    // Day report: subject + teacher + class
+    "day":       { subject:true,  teacher:true,  class:true,  group:false, classroom:false, count:false, bellTimes:false },
+  };
+
+  // Default size % per element (matches aSc values from screenshots 5, 30, 32, 34).
+  const DEFAULT_SIZE = {
+    subject: 19, teacher: 14, class: 24, group: 10,
+    classroom: 10, count: 20, bellTimes: 6,
+  };
+  // Default anchor per element + context (Class report has Subject top-center, Teacher report has Subject top-left).
+  const DEFAULT_ANCHOR = {
+    "class":     { subject:"top-center",  teacher:"bottom-left",  class:"middle-center", group:"middle-center", classroom:"top-right",  count:"middle-center", bellTimes:"middle-center" },
+    "teacher":   { subject:"top-left",    teacher:"middle-center", class:"bottom-center", group:"middle-center", classroom:"top-right",  count:"middle-center", bellTimes:"middle-center" },
+    "classroom": { subject:"middle-center", teacher:"top-left",   class:"bottom-center", group:"middle-center", classroom:"middle-center", count:"middle-center", bellTimes:"middle-center" },
+    "subject":   { subject:"middle-center", teacher:"top-left",   class:"bottom-left",   group:"middle-center", classroom:"middle-center", count:"middle-center", bellTimes:"middle-center" },
+    "summary":   { subject:"top-center",  teacher:"bottom-center", class:"middle-center", group:"middle-center", classroom:"middle-center", count:"middle-center", bellTimes:"middle-center" },
+    "poster":    { subject:"top-center",  teacher:"bottom-center", class:"middle-center", group:"middle-center", classroom:"middle-center", count:"middle-center", bellTimes:"middle-center" },
+    "day":       { subject:"top-center",  teacher:"bottom-center", class:"middle-center", group:"middle-center", classroom:"middle-center", count:"middle-center", bellTimes:"middle-center" },
+  };
+
+  function makeElementStyle(elementKey, ctx) {
+    const visible = (DEFAULT_VISIBILITY[ctx] || DEFAULT_VISIBILITY.summary)[elementKey];
+    const anchor  = (DEFAULT_ANCHOR[ctx]     || DEFAULT_ANCHOR.summary    )[elementKey];
+    return {
+      key: elementKey,
+      enabled: !!visible,
+      anchor: anchor || "middle-center",
+      size: DEFAULT_SIZE[elementKey] || 14,
+      font: "system-ui",
+      bold: elementKey === "class" || elementKey === "subject",
+      italic: false,
+      underline: false,
+      textFormat: "abbreviation",
+      conditional: {
+        printGroupInsteadOfClass: false,
+        doNotPrintIfEntireClass: elementKey === "group",
+        doNotPrintIfHomeClassroom: elementKey === "classroom",
+      },
+      labelOverride: null,  // per-card text override; null = use entity name
+    };
+  }
+
+  /** Create a blank PrintReport with default values. */
+  function create(opts) {
+    opts = opts || {};
+    const ctx = opts.context || "summary";
+    return {
+      id: opts.id || "report_" + Date.now(),
+      name: opts.name || "Untitled report",
+      context: ctx,
+      version: 1,
+
+      // Pivot axes — each is up to 3-level nested; "-" = unused
+      pages: opts.pages || ["-", "-", "-"],
+      rows:  opts.rows  || ["day", "-", "-"],
+      cols:  opts.cols  || ["period", "-", "-"],
+      cells: opts.cells || "draw-lessons",
+
+      // Fit + visibility toggles
+      fitWidth:       opts.fitWidth        != null ? opts.fitWidth        : true,
+      fitHeight:      opts.fitHeight       != null ? opts.fitHeight       : true,
+      hideEmptyCols:  opts.hideEmptyCols   != null ? opts.hideEmptyCols   : false,
+      hideEmptyRows:  opts.hideEmptyRows   != null ? opts.hideEmptyRows   : false,
+
+      // 7 per-element card styles
+      elementStyles: ELEMENT_KEYS.map(k => makeElementStyle(k, ctx)),
+
+      // Filters (Phase 3 — empty array = include all)
+      filters: { classes:[], teachers:[], rooms:[], subjects:[], periods:[], days:[] },
+
+      // Extras axis (Phase 4)
+      extraCols: opts.extraCols || [],
+      extraRows: opts.extraRows || [],
+
+      // Page setup (Phase 5)
+      pageSetup: {
+        orientation: "landscape",
+        pagesPerSheet: "normal",   // normal | 4to1 | specify
+        copies: 1,
+        addClassroomTimetable: false,
+      },
+
+      // Design (Phase 5)
+      design: {
+        logoEnabled: true,
+        logoDataUrl: null,
+        headerText: "",            // school name; filled at render time
+        footerText: "",
+      },
+
+      // Colors (Phase 5)
+      colors: {
+        cardOn: false,
+        cardKey: "subject",         // subject | teacher | class | group | classroom | building
+        cardColor1: null,
+        cardColor2: null,
+        rowHeaderOn: false,
+        rowBg1: null, rowBg2: null, rowFont: null,
+        colHeaderOn: false,
+        colBg1: null, colBg2: null, colFont: null,
+      },
+
+      // Header (Periods) sub-config (Phase 8)
+      periodHeader: {
+        anchor: "top-center",
+        size: 40,
+        font: "system-ui",
+        bold: true,
+        italic: false,
+        underline: false,
+        showTimeIntervals: true,
+        timeAnchor: "bottom-center",
+        timeSize: 17,
+        timeFont: "system-ui",
+        timeTwoLines: false,
+      },
+    };
+  }
+
+  function clone(report) {
+    return JSON.parse(JSON.stringify(report));
+  }
+
+  /** Apply a preset's axis config onto an existing report (preserves user
+   *  overrides on per-element styles, filters, etc). */
+  function applyPreset(report, preset) {
+    if (!preset) return report;
+    report.name = preset.name || report.name;
+    report.context = preset.context || report.context;
+    report.pages = (preset.pages || []).slice(0, 3);
+    while (report.pages.length < 3) report.pages.push("-");
+    report.rows = (preset.rows || []).slice(0, 3);
+    while (report.rows.length < 3) report.rows.push("-");
+    report.cols = (preset.cols || []).slice(0, 3);
+    while (report.cols.length < 3) report.cols.push("-");
+    report.cells = preset.cells || "draw-lessons";
+    if (preset.fitWidth != null) report.fitWidth = preset.fitWidth;
+    if (preset.fitHeight != null) report.fitHeight = preset.fitHeight;
+    if (preset.hideEmptyCols != null) report.hideEmptyCols = preset.hideEmptyCols;
+    if (preset.hideEmptyRows != null) report.hideEmptyRows = preset.hideEmptyRows;
+    if (preset.extraCols) report.extraCols = preset.extraCols.slice();
+    if (preset.extraRows) report.extraRows = preset.extraRows.slice();
+    // Re-derive element-style defaults for the new context
+    report.elementStyles = ELEMENT_KEYS.map(k => makeElementStyle(k, report.context));
+    return report;
+  }
+
+  /** Resolve the active dimensions of an axis (drop "-" placeholders). */
+  function activeDims(axis) {
+    return (axis || []).filter(d => d && d !== "-");
+  }
+
+  APP.PrintReportSchema = {
+    DIMENSIONS, DIM_LABEL, ELEMENT_KEYS, CELL_KINDS, ANCHORS,
+    DEFAULT_VISIBILITY, DEFAULT_SIZE, DEFAULT_ANCHOR,
+    create, clone, applyPreset, activeDims, makeElementStyle,
+  };
+})();
+
+/* ─── FILE: js/ui/print_preview/pivot_cell_renderer.js ─── */
+/* Per-cell renderer for the pivot engine.
+ *
+ * Given:
+ *   cards    — array of card objects (can be empty, one, or many)
+ *   report   — the active PrintReport (carries elementStyles[])
+ *   school   — the school document (for entity name/abbr lookups)
+ *
+ * Returns a DOM node sized to fill the parent cell. Handles multi-card-
+ * per-cell rendering by joining element strings with commas (H1).
+ * Multi-class activity cards render the Class element with slashes (H6).
+ *
+ * Phase 1 scope: honour enabled / size / anchor / bold / italic / underline
+ * per element. Defer Set-for-more, font-family override per element,
+ * text-shrink-to-fit (Phase 7), and conditional toggles (Phase 2 polish).
+ */
+(function () {
+  "use strict";
+  const APP = (window.APP = window.APP || {});
+
+  const ANCHOR_TO_FLEX = {
+    "top-left":      { justify: "flex-start", align: "flex-start", text: "left" },
+    "top-center":    { justify: "flex-start", align: "center",      text: "center" },
+    "top-right":     { justify: "flex-start", align: "flex-end",   text: "right" },
+    "middle-left":   { justify: "center",     align: "flex-start", text: "left" },
+    "middle-center": { justify: "center",     align: "center",     text: "center" },
+    "middle-right":  { justify: "center",     align: "flex-end",   text: "right" },
+    "bottom-left":   { justify: "flex-end",   align: "flex-start", text: "left" },
+    "bottom-center": { justify: "flex-end",   align: "center",     text: "center" },
+    "bottom-right":  { justify: "flex-end",   align: "flex-end",   text: "right" },
+  };
+
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      const v = attrs[k]; if (v == null) continue;
+      if (k === "class") n.className = v;
+      else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v);
+    }
+    for (const c of kids) if (c != null && c !== false) {
+      n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    }
+    return n;
+  }
+
+  function elementStyleFor(report, key) {
+    const styles = report?.elementStyles || [];
+    return styles.find(s => s.key === key) || { enabled: false };
+  }
+
+  function entityName(school, kind, id, fmt) {
+    const list = {
+      subject: school.subjects, teacher: school.teachers,
+      class: school.classes, classroom: school.classrooms,
+      group: school.groups, student: school.students,
+    }[kind] || [];
+    const ent = list.find(e => e.id === id);
+    if (!ent) return id || "";
+    if (fmt === "full") return ent.name || ent.id;
+    return ent.abbreviation || ent.shortName || ent.name || ent.id;
+  }
+
+  function entityColor(school, kind, id) {
+    const list = {
+      subject: school.subjects, teacher: school.teachers,
+      class: school.classes, classroom: school.classrooms,
+    }[kind] || [];
+    const ent = list.find(e => e.id === id);
+    return ent?.color || null;
+  }
+
+  /** Multi-card label join: comma for most elements, slash for Class element
+   *  when one card spans multiple classes (the H6 multi-class case). */
+  function joinElementLabels(cards, key, school, style) {
+    const fmt = style.textFormat || "abbreviation";
+    if (key === "subject") {
+      const seen = new Set();
+      const out = [];
+      for (const c of cards) {
+        if (!c.subjectId || seen.has(c.subjectId)) continue;
+        seen.add(c.subjectId);
+        out.push(entityName(school, "subject", c.subjectId, fmt));
+      }
+      return out.join(", ");
+    }
+    if (key === "teacher") {
+      const seen = new Set();
+      const out = [];
+      for (const c of cards) {
+        for (const tid of (c.teacherIds || [])) {
+          if (seen.has(tid)) continue;
+          seen.add(tid);
+          out.push(entityName(school, "teacher", tid, fmt));
+        }
+      }
+      return out.join(", ");
+    }
+    if (key === "class") {
+      // Per-card class lists join with slashes (multi-class activity),
+      // then card-to-card joins with commas (multi-card-per-cell).
+      const parts = [];
+      for (const c of cards) {
+        const ids = c.classIds || [];
+        if (ids.length === 0) continue;
+        const slashed = ids.map(id => entityName(school, "class", id, fmt)).join("/");
+        parts.push(slashed);
+      }
+      // Dedupe by string
+      return Array.from(new Set(parts)).join(", ");
+    }
+    if (key === "classroom") {
+      const seen = new Set();
+      const out = [];
+      for (const c of cards) {
+        const rid = c.roomId || (c.roomIds && c.roomIds[0]);
+        if (!rid || seen.has(rid)) continue;
+        seen.add(rid);
+        const r = entityName(school, "classroom", rid, fmt);
+        if (style.conditional?.doNotPrintIfHomeClassroom) {
+          // Skip if this is the home classroom of any class on the card
+          const classRooms = (c.classIds || []).map(cid => {
+            const cls = (school.classes || []).find(cc => cc.id === cid);
+            return cls?.homeRoomId;
+          });
+          if (classRooms.includes(rid)) continue;
+        }
+        out.push(r);
+      }
+      return out.join(", ");
+    }
+    if (key === "group") {
+      const seen = new Set();
+      const out = [];
+      for (const c of cards) {
+        for (const gid of (c.groupIds || [])) {
+          if (seen.has(gid)) continue;
+          seen.add(gid);
+          // "Do not print if entire class" — skip group label when the
+          // group represents the whole class
+          if (style.conditional?.doNotPrintIfEntireClass) {
+            const g = (school.groups || []).find(gg => gg.id === gid);
+            if (g?.entireClass) continue;
+          }
+          out.push(entityName(school, "group", gid, fmt));
+        }
+      }
+      return out.join(", ");
+    }
+    if (key === "count") {
+      return String(cards.length);
+    }
+    if (key === "bellTimes") {
+      const seen = new Set();
+      const out = [];
+      for (const c of cards) {
+        const key = c.day + "_" + c.period;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const t = lookupBellTime(school, c.period);
+        if (t) out.push(t);
+      }
+      return out.join(", ");
+    }
+    return "";
+  }
+
+  function lookupBellTime(school, period) {
+    const bell = school?.bell || school?.bells?.[0];
+    if (!bell || !bell.periods) return "";
+    const p = bell.periods[period - 1];
+    if (!p) return "";
+    return (p.start || "") + (p.end ? "–" + p.end : "");
+  }
+
+  function renderElement(text, style) {
+    if (!text || !style.enabled) return null;
+    const fontStyle = [];
+    if (style.bold)      fontStyle.push("font-weight:700");
+    if (style.italic)    fontStyle.push("font-style:italic");
+    if (style.underline) fontStyle.push("text-decoration:underline");
+    if (style.font && style.font !== "system-ui") fontStyle.push("font-family:'" + style.font + "', system-ui");
+    const sizePx = Math.max(7, Math.round((style.size || 14) * 0.6));
+    return el("div", {
+      style: "font-size:" + sizePx + "px;line-height:1.15;" + fontStyle.join(";"),
+    }, text);
+  }
+
+  function getCardBgColor(cards, report, school) {
+    if (!report.colors?.cardOn) return null;
+    const key = report.colors.cardKey || "subject";
+    if (cards.length === 0) return null;
+    const card = cards[0];
+    let id = null;
+    if (key === "subject")   id = card.subjectId;
+    else if (key === "teacher")   id = (card.teacherIds || [])[0];
+    else if (key === "class")     id = (card.classIds || [])[0];
+    else if (key === "classroom") id = card.roomId || (card.roomIds || [])[0];
+    if (!id) return null;
+    return entityColor(school, key, id);
+  }
+
+  function renderCell(cards, report, school) {
+    cards = cards || [];
+    const cell = el("div", {
+      class: "chrx-pivot-cell",
+      style: "width:100%;height:100%;min-height:48px;position:relative",
+    });
+    if (cards.length === 0) return cell;
+
+    const bg = getCardBgColor(cards, report, school);
+    if (bg) cell.style.background = bg;
+
+    // The 7 elements are placed at 9 different anchors; render them stacked
+    // inside the cell. For Phase 1 we do a simple "render all anchored"
+    // approach — each element becomes its own absolutely-positioned chunk
+    // within the cell.
+    const ELEMENT_KEYS = ["subject","teacher","class","group","classroom","count","bellTimes"];
+
+    for (const key of ELEMENT_KEYS) {
+      const style = elementStyleFor(report, key);
+      if (!style.enabled) continue;
+      const text = joinElementLabels(cards, key, school, style);
+      if (!text) continue;
+      const anchor = ANCHOR_TO_FLEX[style.anchor || "middle-center"] || ANCHOR_TO_FLEX["middle-center"];
+      const wrap = el("div", {
+        style: "position:absolute;inset:0;display:flex;flex-direction:column;justify-content:" + anchor.justify +
+          ";align-items:" + anchor.align +
+          ";text-align:" + anchor.text +
+          ";padding:2px 4px;pointer-events:none",
+      });
+      const elNode = renderElement(text, style);
+      if (elNode) wrap.appendChild(elNode);
+      cell.appendChild(wrap);
+    }
+
+    return cell;
+  }
+
+  APP.PrintCellRenderer = { renderCell, joinElementLabels };
+})();
+
+/* ─── FILE: js/ui/print_preview/pivot_engine.js ─── */
+/* Pivot engine — Phase 1 of the print-system rewrite.
+ *
+ * Pure function: renderReport(report, school, periods) returns Array<HTMLElement>,
+ * one A4 page per element. The existing print_preview.js mounts these into
+ * the preview docShell and prints via window.print().
+ *
+ * Architecture:
+ *   1. Determine which entities each axis dim resolves to (e.g., "class"
+ *      → all 23 classes, "day" → 6 days, "period" → 8 periods).
+ *   2. Loop the Page axis to produce N pages.
+ *   3. Per page, build Row × Col grid by looping the Rows axis × Cols axis.
+ *   4. Per (row, col) intersection, look up which cards belong there using
+ *      the page's bound dimensions as additional filters.
+ *   5. Call PrintCellRenderer.renderCell(cards, report, school) for the cell.
+ *
+ * Multi-card-per-cell: H1 from PRINT-MAP. When multiple cards fall in one
+ * intersection (e.g., Summary report where columns are Day × Period), the
+ * cell renderer joins each element-string with commas.
+ */
+(function () {
+  "use strict";
+  const APP = (window.APP = window.APP || {});
+
+  const PERIODS_DEFAULT = 8;
+  const DAYS_DEFAULT = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+  const DAYS_SHORT = ["Mon","Tue","Wed","Thu","Fri","Sat"];
+
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      const v = attrs[k]; if (v == null) continue;
+      if (k === "class") n.className = v;
+      else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v);
+    }
+    for (const c of kids) if (c != null && c !== false) {
+      n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    }
+    return n;
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  // Dimension resolution
+  // ────────────────────────────────────────────────────────────────────
+
+  /** Return the entity list for a dim, e.g. all classes / all days. */
+  function entitiesFor(dim, school, periods) {
+    periods = periods || PERIODS_DEFAULT;
+    switch (dim) {
+      case "day":
+        return DAYS_DEFAULT.map((name, i) => ({ id: i, name, abbr: DAYS_SHORT[i], _dim: "day" }));
+      case "period":
+        return Array.from({length: periods}, (_, i) => ({
+          id: i+1, name: ordinal(i+1), abbr: ordinal(i+1), _dim: "period",
+        }));
+      case "week":
+        return [{ id: "w1", name: "Week 1", abbr: "W1", _dim: "week" }];
+      case "term":
+        return [{ id: "t1", name: "Term 1", abbr: "T1", _dim: "term" }];
+      case "class":
+        return (school.classes || []).map(c => ({
+          id: c.id, name: c.name || c.id, abbr: c.abbreviation || c.shortName || c.name || c.id, _dim: "class",
+        }));
+      case "teacher":
+        return (school.teachers || []).map(t => ({
+          id: t.id, name: pickName(t), abbr: t.abbreviation || t.shortName || pickName(t), _dim: "teacher", _color: t.color,
+        }));
+      case "subject":
+        return (school.subjects || []).map(s => ({
+          id: s.id, name: s.name || s.id, abbr: s.abbreviation || s.shortName || s.name || s.id, _dim: "subject", _color: s.color,
+        }));
+      case "classroom":
+        return (school.classrooms || []).map(r => ({
+          id: r.id, name: r.name || r.id, abbr: r.abbreviation || r.shortName || r.name || r.id, _dim: "classroom",
+        }));
+      case "student":
+        return (school.students || []).map(s => ({
+          id: s.id, name: s.name || s.id, abbr: s.abbreviation || s.shortName || s.name || s.id, _dim: "student",
+        }));
+      default:
+        return [];
+    }
+  }
+
+  function ordinal(n) {
+    const suff = ["th","st","nd","rd"];
+    const v = n % 100;
+    return n + (suff[(v-20)%10] || suff[v] || suff[0]);
+  }
+
+  function pickName(t) {
+    if (t.name) return t.name;
+    const parts = [];
+    if (t.firstName) parts.push(t.firstName);
+    if (t.lastName)  parts.push(t.lastName);
+    return parts.join(" ") || t.id;
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  // Card matching
+  // ────────────────────────────────────────────────────────────────────
+
+  /** True if card matches an axis-dim's specific entity. */
+  function cardMatches(card, dim, entity) {
+    if (!card || !entity) return false;
+    switch (dim) {
+      case "day":       return card.day === entity.id;
+      case "period":    return card.period === entity.id;
+      case "class":     return Array.isArray(card.classIds) && card.classIds.includes(entity.id);
+      case "teacher":   return Array.isArray(card.teacherIds) && card.teacherIds.includes(entity.id);
+      case "subject":   return card.subjectId === entity.id;
+      case "classroom": return (card.roomId === entity.id) || (Array.isArray(card.roomIds) && card.roomIds.includes(entity.id));
+      case "student":   return Array.isArray(card.studentIds) && card.studentIds.includes(entity.id);
+      case "week":      return true;
+      case "term":      return true;
+      default:          return false;
+    }
+  }
+
+  /** Filter cards matching ALL bindings in `bindings` (Map of dim→entity). */
+  function cardsMatching(cards, bindings) {
+    return cards.filter(card => {
+      for (const [dim, entity] of bindings.entries()) {
+        if (!cardMatches(card, dim, entity)) return false;
+      }
+      return true;
+    });
+  }
+
+  /** Apply report.filters to a list of entities for a dim. */
+  function applyFilters(dim, entities, filters) {
+    if (!filters) return entities;
+    const key = {
+      "class":"classes", "teacher":"teachers", "classroom":"rooms",
+      "subject":"subjects", "period":"periods", "day":"days",
+    }[dim];
+    if (!key) return entities;
+    const allow = filters[key];
+    if (!allow || allow.length === 0) return entities;
+    return entities.filter(e => allow.includes(e.id));
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  // Page composition
+  // ────────────────────────────────────────────────────────────────────
+
+  /** Cross product of active dims on an axis → list of bindings. */
+  function axisCombinations(dims, school, periods, filters) {
+    const Schema = APP.PrintReportSchema;
+    const active = Schema.activeDims(dims);
+    if (active.length === 0) return [new Map()];
+    let combos = [new Map()];
+    for (const dim of active) {
+      const ents = applyFilters(dim, entitiesFor(dim, school, periods), filters);
+      const next = [];
+      for (const combo of combos) {
+        for (const ent of ents) {
+          const m = new Map(combo);
+          m.set(dim, ent);
+          next.push(m);
+        }
+      }
+      combos = next;
+    }
+    return combos;
+  }
+
+  function renderPage(report, school, periods, pageBindings, pageIndex, totalPages) {
+    const allCards = school.cards || [];
+    const pageCards = cardsMatching(allCards, pageBindings);
+
+    let pageTitle = report.name || "";
+    if (pageBindings.size > 0) {
+      const titleParts = [];
+      for (const [, ent] of pageBindings.entries()) titleParts.push(ent.name || ent.abbr);
+      pageTitle = titleParts.join(" · ");
+    }
+
+    const rowCombos = axisCombinations(report.rows, school, periods, report.filters);
+    const colCombos = axisCombinations(report.cols, school, periods, report.filters);
+
+    let visibleRows = rowCombos;
+    let visibleCols = colCombos;
+    if (report.hideEmptyCols) {
+      visibleCols = colCombos.filter(cc => {
+        const combined = new Map([...pageBindings, ...cc]);
+        return cardsMatching(pageCards, combined).length > 0;
+      });
+    }
+    if (report.hideEmptyRows) {
+      visibleRows = rowCombos.filter(rc => {
+        const combined = new Map([...pageBindings, ...rc]);
+        return cardsMatching(pageCards, combined).length > 0;
+      });
+    }
+
+    const page = el("div", {
+      class: "chrx-print-page chrx-pivot-page",
+      style: "background:#fff;color:#111;width:100%;height:100%;padding:18mm 14mm;box-sizing:border-box;display:flex;flex-direction:column;gap:8px;font-family:system-ui",
+    });
+
+    const schoolName = (school.schoolName || school.name || "");
+    if (schoolName || report.design?.headerText) {
+      page.appendChild(el("div", {
+        style: "text-align:center;font-weight:600;font-size:14px;letter-spacing:.005em",
+      }, report.design?.headerText || schoolName));
+    }
+    if (pageTitle) {
+      page.appendChild(el("div", {
+        style: "text-align:center;font-weight:700;font-size:18px;font-family:'Fraunces',serif;font-style:italic;letter-spacing:-.01em",
+      }, pageTitle));
+    }
+    if (totalPages > 1) {
+      page.appendChild(el("div", {
+        style: "text-align:right;font-size:10px;color:#666;font-family:'JetBrains Mono',ui-monospace,monospace",
+      }, "Page " + (pageIndex+1) + " of " + totalPages));
+    }
+
+    const tableWrap = el("div", { style: "flex:1;overflow:hidden;display:flex;gap:6px" });
+    const table = el("table", {
+      class: "chrx-pivot-grid",
+      style: "border-collapse:collapse;width:100%;height:100%;table-layout:fixed;font-size:11px",
+    });
+
+    const thead = el("thead");
+    const headerRow = el("tr");
+    headerRow.appendChild(el("th", {
+      style: "border:1px solid #999;padding:4px;background:#fafafa;width:80px",
+    }, ""));
+    for (const cc of visibleCols) {
+      const labels = [];
+      for (const [, ent] of cc.entries()) labels.push(ent.abbr || ent.name);
+      headerRow.appendChild(el("th", {
+        style: "border:1px solid #999;padding:4px 2px;background:#fafafa;font-weight:700;font-size:11px;text-align:center;font-family:system-ui",
+      }, labels.join(" · ")));
+    }
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    const tbody = el("tbody");
+    for (const rc of visibleRows) {
+      const tr = el("tr");
+      const rowLabels = [];
+      for (const [, ent] of rc.entries()) rowLabels.push(ent.name || ent.abbr);
+      tr.appendChild(el("td", {
+        style: "border:1px solid #999;padding:6px 8px;background:#fafafa;font-weight:600;text-align:center;font-family:'Fraunces',serif;font-size:14px",
+      }, rowLabels.join(" · ")));
+      for (const cc of visibleCols) {
+        const combined = new Map([...pageBindings, ...rc, ...cc]);
+        const cellCards = cardsMatching(pageCards, combined);
+        const cellNode = el("td", {
+          style: "border:1px solid #ccc;padding:0;vertical-align:top;height:48px",
+        });
+        if (APP.PrintCellRenderer && typeof APP.PrintCellRenderer.renderCell === "function") {
+          cellNode.appendChild(APP.PrintCellRenderer.renderCell(cellCards, report, school));
+        } else if (cellCards.length > 0) {
+          const subj = cellCards[0]?.subjectId;
+          const text = (school.subjects || []).find(s => s.id === subj)?.abbreviation || subj || "?";
+          cellNode.appendChild(el("div", { style: "padding:4px;font-size:11px;text-align:center" }, text));
+        }
+        tr.appendChild(cellNode);
+      }
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    tableWrap.appendChild(table);
+
+    if (report.extraCols && report.extraCols.length > 0) {
+      const extraPanel = el("table", {
+        class: "chrx-pivot-extras",
+        style: "border-collapse:collapse;width:" + (report.extraCols.length * 100) + "px;table-layout:fixed;font-size:11px",
+      });
+      const extHead = el("thead");
+      const extHeadRow = el("tr");
+      for (const ec of report.extraCols) {
+        extHeadRow.appendChild(el("th", {
+          style: "border:1px solid #999;padding:4px;background:#fafafa;font-weight:700",
+        }, ec.header || ec.type));
+      }
+      extHead.appendChild(extHeadRow);
+      extraPanel.appendChild(extHead);
+      const extBody = el("tbody");
+      const subjectsInPage = {};
+      for (const card of pageCards) {
+        const sid = card.subjectId;
+        subjectsInPage[sid] = (subjectsInPage[sid] || 0) + 1;
+      }
+      const subjList = Object.keys(subjectsInPage).map(sid => {
+        const subj = (school.subjects || []).find(s => s.id === sid);
+        return { name: subj?.name || sid, count: subjectsInPage[sid] };
+      }).sort((a,b) => b.count - a.count);
+      const totalLessons = subjList.reduce((s,x) => s+x.count, 0);
+      const cellPattern = report.extraCols.map(ec => ec.type);
+      for (const sub of subjList) {
+        const tr = el("tr");
+        for (let i = 0; i < cellPattern.length; i++) {
+          const type = cellPattern[i];
+          let text = "";
+          if (type === "subjects-count") text = sub.name;
+          else if (type === "sum-of-lessons") text = String(sub.count);
+          else if (type === "empty") text = "";
+          else text = sub.name;
+          tr.appendChild(el("td", { style: "border:1px solid #ccc;padding:3px 6px;font-size:11px" }, text));
+        }
+        extBody.appendChild(tr);
+      }
+      const totalTr = el("tr");
+      for (let i = 0; i < cellPattern.length; i++) {
+        const type = cellPattern[i];
+        let text = "";
+        if (type === "subjects-count") text = "Lessons/week";
+        else if (type === "sum-of-lessons") text = String(totalLessons);
+        totalTr.appendChild(el("td", {
+          style: "border:1px solid #999;padding:3px 6px;font-weight:600;background:#fafafa;font-size:11px",
+        }, text));
+      }
+      extBody.appendChild(totalTr);
+      extraPanel.appendChild(extBody);
+      tableWrap.appendChild(extraPanel);
+    }
+
+    page.appendChild(tableWrap);
+
+    page.appendChild(el("div", {
+      style: "display:flex;justify-content:space-between;font-size:10px;color:#666;font-family:'JetBrains Mono',ui-monospace,monospace;border-top:1px solid #eee;padding-top:6px",
+    },
+      el("span", null, "W.E.F " + new Date().toLocaleDateString("en-GB")),
+      el("span", null, "Chronexa Web · " + (window.APP_VER || "dev"))));
+
+    return page;
+  }
+
+  /** Join card.lessonId → lesson fields so the renderer can read
+   *  classIds / teacherIds / subjectId / roomId / groupIds directly off
+   *  each card. Chronexa stores these on the lesson, not the card. */
+  function joinCardsWithLessons(school) {
+    const lessons = school.lessons || [];
+    const lessonById = new Map(lessons.map(l => [l.id, l]));
+    return (school.cards || []).map(card => {
+      const l = lessonById.get(card.lessonId);
+      if (!l) return card;
+      return {
+        ...card,
+        classIds:   l.classIds   || [],
+        teacherIds: l.teacherIds || [],
+        subjectId:  l.subjectId,
+        groupIds:   l.groupIds   || [],
+        roomId:     l.preferredRoomId || (Array.isArray(l.roomIds) && l.roomIds[0]) || null,
+        roomIds:    l.roomIds || [],
+        studentIds: l.studentIds || [],
+      };
+    });
+  }
+
+  function renderReport(report, school, periods) {
+    if (!report || !school) return [];
+    // Materialise a `joinedSchool` whose cards carry the lesson fields
+    // the pivot needs. This is the only place we modify the school view —
+    // every downstream function reads `joinedCards` instead of school.cards.
+    const joinedCards = joinCardsWithLessons(school);
+    const joinedSchool = Object.assign({}, school, { cards: joinedCards });
+    const pageCombos = axisCombinations(report.pages, joinedSchool, periods || PERIODS_DEFAULT, report.filters);
+    const out = [];
+    pageCombos.forEach((bindings, idx) => {
+      out.push(renderPage(report, joinedSchool, periods || PERIODS_DEFAULT, bindings, idx, pageCombos.length));
+    });
+    return out;
+  }
+
+  function renderPreset(presetId, school, periods) {
+    const Schema = APP.PrintReportSchema;
+    const Presets = APP.PrintPresets;
+    if (!Schema || !Presets) {
+      console.warn("[pivot_engine] schema or presets not loaded");
+      return [];
+    }
+    const preset = Presets.get(presetId);
+    if (!preset) {
+      console.warn("[pivot_engine] preset not found:", presetId);
+      return [];
+    }
+    const report = Schema.create({ context: preset.context });
+    Schema.applyPreset(report, preset);
+    return renderReport(report, school, periods);
+  }
+
+  APP.PrintPivot = { renderReport, renderPreset, axisCombinations, entitiesFor };
+})();
+
+/* ─── FILE: js/ui/print_preview/modify_structure_dialog.js ─── */
+/* Modify-Structure / Print report properties dialog.
+ *
+ * Exact reproduction of aSc's pivot-configuration modal (screenshots 19-28).
+ * Edits the active PrintReport's pages/rows/cols/cells/fit/hide-empty config.
+ *
+ * Usage:
+ *   APP.ModifyStructureDialog.open(report, onSave)
+ *
+ *   - `report` is the current PrintReport (will be mutated on Save)
+ *   - `onSave(updatedReport)` is called after the user clicks OK
+ */
+(function () {
+  "use strict";
+  const APP = (window.APP = window.APP || {});
+
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      const v = attrs[k]; if (v == null) continue;
+      if (k === "class") n.className = v;
+      else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v);
+    }
+    for (const c of kids) if (c != null && c !== false) {
+      n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    }
+    return n;
+  }
+
+  function dimDropdown(currentValue, onChange) {
+    const Schema = APP.PrintReportSchema;
+    const sel = el("select", {
+      style: "width:100%;padding:6px 8px;border:1px solid var(--chrx-line,#d8cfbb);background:#fff;border-radius:6px;font-size:13px;color:var(--chrx-fg,#1a1714);font-family:system-ui;cursor:pointer",
+      onchange: (e) => onChange(e.target.value),
+    });
+    // "-" placeholder first
+    const dashOpt = el("option", { value: "-" }, "-");
+    if (currentValue === "-" || !currentValue) dashOpt.selected = true;
+    sel.appendChild(dashOpt);
+    for (const dim of Schema.DIMENSIONS) {
+      const opt = el("option", { value: dim }, Schema.DIM_LABEL[dim]);
+      if (currentValue === dim) opt.selected = true;
+      sel.appendChild(opt);
+    }
+    return sel;
+  }
+
+  function cellsDropdown(currentValue, onChange) {
+    const Schema = APP.PrintReportSchema;
+    const sel = el("select", {
+      style: "width:100%;padding:6px 8px;border:1px solid var(--chrx-line,#d8cfbb);background:#fff;border-radius:6px;font-size:13px;color:var(--chrx-fg,#1a1714);font-family:system-ui;cursor:pointer",
+      onchange: (e) => onChange(e.target.value),
+    });
+    for (const k of Schema.CELL_KINDS) {
+      const opt = el("option", { value: k.id }, k.label);
+      if (currentValue === k.id) opt.selected = true;
+      sel.appendChild(opt);
+    }
+    return sel;
+  }
+
+  function axisSection(title, dimsArr, onDimChange) {
+    const wrap = el("div", {
+      style: "border:1px solid var(--chrx-line,#d8cfbb);background:var(--chrx-bg-tile,#efe9da);padding:14px 16px;border-radius:8px;display:flex;flex-direction:column;gap:8px",
+    });
+    wrap.appendChild(el("div", {
+      style: "font-family:'Fraunces',serif;font-style:italic;font-weight:500;font-size:14px;color:var(--chrx-fg,#1a1714)",
+    }, title));
+    for (let i = 0; i < 3; i++) {
+      wrap.appendChild(dimDropdown(dimsArr[i] || "-", (v) => onDimChange(i, v)));
+    }
+    return wrap;
+  }
+
+  function open(report, onSave) {
+    if (!report) return;
+    const Schema = APP.PrintReportSchema;
+    // Work on a deep clone so Cancel really discards changes
+    const draft = Schema.clone(report);
+    while (draft.pages.length < 3) draft.pages.push("-");
+    while (draft.rows.length  < 3) draft.rows.push("-");
+    while (draft.cols.length  < 3) draft.cols.push("-");
+
+    const scrim = el("div", {
+      class: "chrx-modify-structure-scrim",
+      style: "position:fixed;inset:0;background:rgba(26,23,20,.42);backdrop-filter:blur(8px);z-index:9100;display:flex;align-items:flex-start;justify-content:center;padding-top:8vh",
+      onclick: (e) => { if (e.target === scrim) close(); },
+    });
+
+    const dialog = el("div", {
+      style: "background:var(--chrx-bg-sheet,#f6f1e6);width:min(880px,94vw);max-height:84vh;overflow:auto;border-radius:14px;box-shadow:0 30px 80px rgba(0,0,0,.25);font-family:system-ui;color:var(--chrx-fg,#1a1714)",
+    });
+    scrim.appendChild(dialog);
+
+    function close() { scrim.remove(); document.removeEventListener("keydown", onKey, true); }
+    function onKey(e) { if (e.key === "Escape") { e.preventDefault(); close(); } }
+    document.addEventListener("keydown", onKey, true);
+
+    // ── Header
+    const header = el("div", {
+      style: "background:#2f3940;color:#fff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;border-radius:14px 14px 0 0",
+    });
+    header.appendChild(el("div", { style: "font-weight:600;font-size:14px;letter-spacing:.04em;text-transform:uppercase" }, "Reports"));
+    header.appendChild(el("button", {
+      type: "button",
+      style: "background:transparent;border:0;color:#fff;font-size:22px;cursor:pointer;padding:0 6px",
+      onclick: close,
+      "aria-label": "Close",
+    }, "×"));
+    dialog.appendChild(header);
+
+    // ── Title + help text
+    const titleSection = el("div", { style: "padding:18px 24px 8px;border-bottom:1px solid var(--chrx-line,#d8cfbb)" });
+    titleSection.appendChild(el("h2", {
+      style: "margin:0;font-family:'Fraunces',serif;font-style:italic;font-weight:500;font-size:24px;letter-spacing:-.01em",
+    }, "Print report properties"));
+    titleSection.appendChild(el("p", {
+      style: "margin:8px 0 0;color:var(--chrx-fg-secondary,#4a4339);font-size:13px;line-height:1.5",
+    }, "This dialog lets you modify the structure of the report — what is printed in rows, columns, and what is on separate pages. " +
+       "If you don't find what you need in this list, customise one of the Custom 1/2/3 reports."));
+    dialog.appendChild(titleSection);
+
+    // ── Body
+    const body = el("div", { style: "padding:18px 24px 8px;display:flex;flex-direction:column;gap:14px" });
+
+    // Print one page for (pages axis — wide row at top)
+    body.appendChild(axisSection("Print one page for", draft.pages, (i, v) => {
+      draft.pages[i] = v;
+    }));
+
+    // Columns + Rows (side by side on wider viewports)
+    const colRow = el("div", {
+      style: "display:grid;grid-template-columns:1fr 1fr;gap:14px",
+    });
+    // Columns block (with hideEmpty/fitWidth toggles)
+    const colsWrap = el("div", {
+      style: "border:1px solid var(--chrx-line,#d8cfbb);background:var(--chrx-bg-tile,#efe9da);padding:14px 16px;border-radius:8px;display:flex;flex-direction:column;gap:8px",
+    });
+    colsWrap.appendChild(el("div", {
+      style: "font-family:'Fraunces',serif;font-style:italic;font-weight:500;font-size:14px",
+    }, "Columns"));
+    for (let i = 0; i < 3; i++) {
+      colsWrap.appendChild(dimDropdown(draft.cols[i] || "-", (v) => { draft.cols[i] = v; }));
+    }
+    colsWrap.appendChild(checkboxRow("Fit width to one page", draft.fitWidth, (v) => { draft.fitWidth = v; }));
+    colsWrap.appendChild(checkboxRow("Hide empty columns",     draft.hideEmptyCols, (v) => { draft.hideEmptyCols = v; }));
+    colRow.appendChild(colsWrap);
+
+    // Rows block
+    const rowsWrap = el("div", {
+      style: "border:1px solid var(--chrx-line,#d8cfbb);background:var(--chrx-bg-tile,#efe9da);padding:14px 16px;border-radius:8px;display:flex;flex-direction:column;gap:8px",
+    });
+    rowsWrap.appendChild(el("div", {
+      style: "font-family:'Fraunces',serif;font-style:italic;font-weight:500;font-size:14px",
+    }, "Rows"));
+    for (let i = 0; i < 3; i++) {
+      rowsWrap.appendChild(dimDropdown(draft.rows[i] || "-", (v) => { draft.rows[i] = v; }));
+    }
+    rowsWrap.appendChild(checkboxRow("Fit height to one page", draft.fitHeight, (v) => { draft.fitHeight = v; }));
+    rowsWrap.appendChild(checkboxRow("Hide empty rows",        draft.hideEmptyRows, (v) => { draft.hideEmptyRows = v; }));
+    colRow.appendChild(rowsWrap);
+    body.appendChild(colRow);
+
+    // Cells dropdown
+    const cellsBlock = el("div", {
+      style: "border:1px solid var(--chrx-line,#d8cfbb);background:var(--chrx-bg-tile,#efe9da);padding:14px 16px;border-radius:8px;display:flex;flex-direction:column;gap:8px",
+    });
+    cellsBlock.appendChild(el("div", {
+      style: "font-family:'Fraunces',serif;font-style:italic;font-weight:500;font-size:14px",
+    }, "Cells"));
+    cellsBlock.appendChild(cellsDropdown(draft.cells, (v) => { draft.cells = v; }));
+    body.appendChild(cellsBlock);
+
+    dialog.appendChild(body);
+
+    // ── Footer
+    const footer = el("div", {
+      style: "padding:14px 24px 18px;display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--chrx-line,#d8cfbb);background:var(--chrx-bg,#f6f1e6);border-radius:0 0 14px 14px",
+    });
+    footer.appendChild(el("button", {
+      type: "button",
+      style: "padding:8px 14px;border:1px solid var(--chrx-line,#d8cfbb);background:#fff;border-radius:8px;font-size:13px;cursor:pointer;color:var(--chrx-fg,#1a1714)",
+      onclick: () => {
+        // Save as default — Phase 1 stub. Persist to localStorage.
+        try {
+          localStorage.setItem("chrxPrintDefaults_" + draft.context, JSON.stringify(draft));
+          notify("Defaults saved for " + draft.context + " reports");
+        } catch (e) { console.warn("defaults save failed", e); }
+      },
+    }, "Set default print styles"));
+    const rightBtns = el("div", { style: "display:flex;gap:8px" });
+    rightBtns.appendChild(el("button", {
+      type: "button",
+      style: "padding:8px 14px;border:1px solid var(--chrx-line,#d8cfbb);background:#fff;border-radius:8px;font-size:13px;cursor:pointer;color:var(--chrx-fg,#1a1714)",
+      onclick: close,
+    }, "Cancel"));
+    rightBtns.appendChild(el("button", {
+      type: "button",
+      style: "padding:8px 18px;border:0;background:#0d4f54;color:#fff;border-radius:8px;font-size:13px;cursor:pointer;font-weight:600",
+      onclick: () => {
+        // Commit draft → report
+        Object.assign(report, draft);
+        close();
+        if (typeof onSave === "function") onSave(report);
+      },
+    }, "OK"));
+    footer.appendChild(rightBtns);
+    dialog.appendChild(footer);
+
+    document.body.appendChild(scrim);
+  }
+
+  function checkboxRow(label, checked, onChange) {
+    const id = "chrx-ms-cb-" + Math.random().toString(36).slice(2, 8);
+    const wrap = el("label", {
+      style: "display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;color:var(--chrx-fg,#1a1714);padding-top:4px",
+      for: id,
+    });
+    const cb = el("input", {
+      type: "checkbox",
+      id,
+      style: "accent-color:#0d4f54;width:16px;height:16px;cursor:pointer",
+      onchange: (e) => onChange(e.target.checked),
+    });
+    if (checked) cb.checked = true;
+    wrap.appendChild(cb);
+    wrap.appendChild(el("span", null, label));
+    return wrap;
+  }
+
+  function notify(msg) {
+    const fn = window._chrxNotify || console.log;
+    try { fn(msg); } catch (e) {}
+  }
+
+  APP.ModifyStructureDialog = { open };
+})();
+
 /* ─── FILE: js/ui/print_preview/templates/timetable_for_student.js ─── */
 /* Timetable for each student (section) — one A4 portrait page per section.
  *
@@ -21487,6 +22571,265 @@ window.StartScreen = (function () {
       name: "Custom " + n,
       render: makeCustom(n),
     });
+  }
+})();
+
+/* ─── FILE: js/ui/print_preview/print_presets.js ─── */
+/* Print presets — 20+ named report configurations that load into the
+ * pivot engine. Each preset is a partial PrintReport.
+ *
+ * IDs are aligned with legacy template-file IDs so that pivot-preset
+ * registrations overwrite legacy registrations in the dropdown. The
+ * dispatch in print_preview.js prefers registry-registered renders
+ * (non-builtin) so the pivot engine wins.
+ */
+(function () {
+  "use strict";
+  const APP = (window.APP = window.APP || {});
+
+  const PRESETS = [
+    // ── Built-in 5 (override legacy hardcoded renderers) ─────────────────
+    {
+      id: "class",
+      name: "Timetable for each class",
+      context: "class",
+      pages: ["class"], rows: ["day"], cols: ["period"],
+      cells: "draw-lessons", fitWidth: true, fitHeight: true,
+    },
+    {
+      id: "teacher",
+      name: "Timetable for each teacher",
+      context: "teacher",
+      pages: ["teacher"], rows: ["day"], cols: ["period"],
+      cells: "draw-lessons", fitWidth: true, fitHeight: true,
+    },
+    {
+      id: "room",
+      name: "Timetable for each classroom",
+      context: "classroom",
+      pages: ["classroom"], rows: ["day"], cols: ["period"],
+      cells: "draw-lessons", fitWidth: true, fitHeight: true,
+    },
+    {
+      id: "summary",
+      name: "Summary timetable of classes",
+      context: "summary",
+      pages: [], rows: ["class"], cols: ["day","period"],
+      cells: "draw-lessons", fitWidth: true, fitHeight: true,
+    },
+    {
+      id: "poster",
+      name: "Wall poster of classes",
+      context: "poster",
+      pages: ["day"], rows: ["class"], cols: ["period"],
+      cells: "draw-lessons", fitWidth: true, fitHeight: true,
+    },
+
+    // ── Per-entity timetables WITH side table ────────────────────────────
+    {
+      id: "classwise_with_table",
+      name: "TimeTable for each class — with table",
+      context: "class",
+      pages: ["class"], rows: ["day"], cols: ["period"],
+      cells: "draw-lessons", fitWidth: true, fitHeight: true,
+      extraCols: [
+        { type: "subjects-count", header: "Subjects", width: 18 },
+        { type: "sum-of-lessons", header: "Count",    width: 7 },
+      ],
+    },
+    {
+      id: "teacherwise_with_table",
+      name: "TimeTable for each teacher — with table",
+      context: "teacher",
+      pages: ["teacher"], rows: ["day"], cols: ["period"],
+      cells: "draw-lessons", fitWidth: true, fitHeight: true,
+      extraCols: [
+        { type: "subjects-count", header: "Subjects", width: 18 },
+        { type: "sum-of-lessons", header: "Count",    width: 7 },
+      ],
+    },
+    {
+      id: "teacherwise_extra",
+      name: "TimeTable for each teacher — with extra",
+      context: "teacher",
+      pages: ["teacher"], rows: ["day"], cols: ["period"],
+      cells: "draw-lessons", fitWidth: true, fitHeight: true,
+      extraCols: [
+        { type: "subjects-count", header: "Subjects", width: 16 },
+        { type: "sum-of-lessons", header: "Total",    width: 7 },
+      ],
+    },
+
+    // ── Per-subject timetable ────────────────────────────────────────────
+    {
+      id: "timetable_for_each_subject",
+      name: "Timetable for each subject",
+      context: "subject",
+      pages: ["subject"], rows: ["day"], cols: ["period"],
+      cells: "draw-lessons", fitWidth: true, fitHeight: true,
+    },
+
+    // ── Per-student timetable ────────────────────────────────────────────
+    {
+      id: "timetable_for_student",
+      name: "Timetable for each student",
+      context: "summary",
+      pages: ["student"], rows: ["day"], cols: ["period"],
+      cells: "draw-lessons", fitWidth: true, fitHeight: true,
+    },
+    {
+      id: "timetable_for_each_student",
+      name: "Timetable for each student (compact)",
+      context: "summary",
+      pages: ["student"], rows: ["day"], cols: ["period"],
+      cells: "draw-lessons", fitWidth: true, fitHeight: true,
+    },
+
+    // ── Summary timetables (single-page overview) ────────────────────────
+    {
+      id: "summary_of_teachers",
+      name: "Summary timetable of teachers",
+      context: "summary",
+      pages: [], rows: ["teacher"], cols: ["day","period"],
+      cells: "draw-lessons", fitWidth: true, fitHeight: true,
+    },
+    {
+      id: "summary_of_classrooms",
+      name: "Summary timetable of classrooms",
+      context: "summary",
+      pages: [], rows: ["classroom"], cols: ["day","period"],
+      cells: "draw-lessons", fitWidth: true, fitHeight: true,
+    },
+    {
+      id: "summary_of_subjects",
+      name: "Summary timetable of subjects",
+      context: "summary",
+      pages: [], rows: ["subject"], cols: ["day","period"],
+      cells: "draw-lessons", fitWidth: true, fitHeight: true,
+    },
+    {
+      id: "summary_of_students",
+      name: "Summary timetable of students",
+      context: "summary",
+      pages: [], rows: ["student"], cols: ["day","period"],
+      cells: "draw-lessons", fitWidth: true, fitHeight: true,
+    },
+
+    // ── Wall posters (one day per page, all entities stacked) ────────────
+    {
+      id: "wall_poster_teachers",
+      name: "Wall poster of teachers",
+      context: "poster",
+      pages: ["day"], rows: ["teacher"], cols: ["period"],
+      cells: "draw-lessons", fitWidth: true, fitHeight: true,
+    },
+    {
+      id: "wall_poster_classrooms",
+      name: "Wall poster of classrooms",
+      context: "poster",
+      pages: ["day"], rows: ["classroom"], cols: ["period"],
+      cells: "draw-lessons", fitWidth: true, fitHeight: true,
+    },
+
+    // ── Lesson grid: Class × Subject matrix ──────────────────────────────
+    {
+      id: "lesson_grid",
+      name: "Lesson grid",
+      context: "summary",
+      pages: [], rows: ["class"], cols: ["subject"],
+      cells: "teacher-list-with-count", fitWidth: true, fitHeight: true,
+    },
+
+    // ── Lists (no grid; just enumerate) ──────────────────────────────────
+    {
+      id: "list_of_teachers",
+      name: "List of teachers",
+      context: "summary",
+      pages: [], rows: ["teacher"], cols: ["subject"],
+      cells: "count-lessons", fitWidth: true, fitHeight: true,
+    },
+    {
+      id: "list_of_classes",
+      name: "List of classes",
+      context: "summary",
+      pages: [], rows: ["class"], cols: ["subject"],
+      cells: "count-lessons", fitWidth: true, fitHeight: true,
+    },
+
+    // ── Daily attendance / contract overview ─────────────────────────────
+    {
+      id: "daily_attendance",
+      name: "Daily attendance",
+      context: "summary",
+      pages: ["day"], rows: ["class"], cols: ["period"],
+      cells: "draw-lessons", fitWidth: true, fitHeight: true,
+    },
+    {
+      id: "contract_overview",
+      name: "Contract overview",
+      context: "summary",
+      pages: [], rows: ["teacher"], cols: ["subject"],
+      cells: "count-lessons", fitWidth: true, fitHeight: true,
+    },
+
+    // ── Custom 1/2/3 — user-editable starting points ─────────────────────
+    {
+      id: "custom_1",
+      name: "Custom 1",
+      context: "class",
+      pages: ["class"], rows: ["day"], cols: ["period"],
+      cells: "draw-lessons", fitWidth: true, fitHeight: true,
+    },
+    {
+      id: "custom_2",
+      name: "Custom 2",
+      context: "teacher",
+      pages: ["teacher"], rows: ["day"], cols: ["period"],
+      cells: "draw-lessons", fitWidth: true, fitHeight: true,
+    },
+    {
+      id: "custom_3",
+      name: "Custom 3",
+      context: "summary",
+      pages: [], rows: ["class"], cols: ["day","period"],
+      cells: "draw-lessons", fitWidth: true, fitHeight: true,
+    },
+  ];
+
+  function list() { return PRESETS.slice(); }
+
+  function get(id) {
+    return PRESETS.find(p => p.id === id) || null;
+  }
+
+  function registerAll() {
+    if (!APP.printTemplates || typeof APP.printTemplates.register !== "function") return;
+    if (!APP.PrintPivot || typeof APP.PrintPivot.renderPreset !== "function") {
+      return;
+    }
+    for (const preset of PRESETS) {
+      APP.printTemplates.register(preset.id, {
+        name: preset.name,
+        render: (school, periods) => {
+          // If an active PrintReport exists for this preset (because the
+          // user opened Modify-Structure and saved), render from it. Else
+          // fall back to the static preset.
+          const active = APP.activePrintReport;
+          if (active && active._presetId === preset.id) {
+            return APP.PrintPivot.renderReport(active, school, periods);
+          }
+          return APP.PrintPivot.renderPreset(preset.id, school, periods);
+        },
+        builtin: false,
+      });
+    }
+  }
+
+  APP.PrintPresets = { list, get, registerAll };
+
+  registerAll();
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", registerAll, { once: true });
   }
 })();
 
@@ -24734,7 +26077,13 @@ window.StartScreen = (function () {
     const indicator = el("span", { class: "chrx-pp-indicator", style: "min-width:80px;text-align:center;font-variant-numeric:tabular-nums" }, "Page 1 / 1");
 
     const sel = el("select", { class: "chrx-tb-btn", "aria-label": "Report template",
-      onchange: (e) => render(e.target.value) });
+      onchange: (e) => {
+        // Reset any per-report customisations when switching reports
+        if (APP.activePrintReport && APP.activePrintReport._presetId !== e.target.value) {
+          APP.activePrintReport = null;
+        }
+        render(e.target.value);
+      } });
     // Pull the full template list from the registry if it loaded; fall back
     // to the legacy 5-template hardcoded list otherwise.
     const reg = APP.printTemplates;
@@ -24774,8 +26123,31 @@ window.StartScreen = (function () {
       title: "Print-with-colors toggle (per-subject colors edited in Subjects)",
       onclick: () => window.PrintSettingsDialog && window.PrintSettingsDialog.open("colors") }, "🌈 Colors");
     const structBtn  = el("button", { class: "chrx-tb-btn", type: "button",
-      title: "Days as rows vs columns",
-      onclick: () => window.PrintSettingsDialog && window.PrintSettingsDialog.open("structure") }, "🧩 Structure");
+      title: "Modify structure — choose what's in pages / rows / columns / cells",
+      onclick: () => {
+        // Open the new Modify-Structure dialog if pivot engine is loaded
+        const ModDlg = window.APP && window.APP.ModifyStructureDialog;
+        const Schema = window.APP && window.APP.PrintReportSchema;
+        const Presets = window.APP && window.APP.PrintPresets;
+        if (ModDlg && Schema && Presets) {
+          // Lazily create activePrintReport from the current preset
+          if (!APP.activePrintReport || APP.activePrintReport._presetId !== currentTemplate) {
+            const preset = Presets.get(currentTemplate);
+            if (preset) {
+              const r = Schema.create({ context: preset.context });
+              Schema.applyPreset(r, preset);
+              r._presetId = preset.id;
+              APP.activePrintReport = r;
+            }
+          }
+          if (APP.activePrintReport) {
+            ModDlg.open(APP.activePrintReport, () => render(currentTemplate));
+            return;
+          }
+        }
+        // Fallback to legacy structure tab
+        window.PrintSettingsDialog && window.PrintSettingsDialog.open("structure");
+      } }, "🏗 Modify structure");
     const extraBtn   = el("button", { class: "chrx-tb-btn", type: "button",
       title: "Toggle extra header / footer / class-total rows",
       onclick: () => {
@@ -24872,28 +26244,33 @@ window.StartScreen = (function () {
     const s = APP.school;
     const periods = s.bell?.periods || [];
 
-    if (template === "class")        pages = perEntityPages(s, "class",   periods, s.classes,    s._idx?.cardsByClass);
-    else if (template === "teacher") pages = perEntityPages(s, "teacher", periods, s.teachers,   s._idx?.cardsByTeacher);
-    else if (template === "room")    pages = perEntityPages(s, "room",    periods, s.classrooms, s._idx?.cardsByRoom);
-    else if (template === "summary") pages = [summaryPage(s, periods)];
-    else if (template === "poster")  pages = [posterPage(s, periods)];
-    else {
-      // Registry-delegated render. Modules return Array<Node> (one node per
-      // A4 page). If render throws or returns non-array, show a fallback page.
-      const reg = APP.printTemplates;
-      const def = reg ? reg.get(template) : null;
-      if (def && typeof def.render === "function") {
-        try {
-          const out = def.render(s);
-          if (Array.isArray(out))      pages = out.filter(Boolean);
-          else if (out instanceof Node) pages = [out];
-        } catch (err) {
-          console.error("[print_preview] template", template, "threw:", err);
-          pages = [el("div", { class: "chrx-preview-page" },
-            el("h2", null, "Template error"),
-            el("pre", { style: "white-space:pre-wrap;color:#900;font-size:11px" }, String(err && err.message || err)))];
-        }
+    // Registry-first dispatch: pivot-engine presets register with the same
+    // IDs as the legacy 5 builtins (class/teacher/room/summary/poster) and
+    // win. `builtin:true` registry entries are placeholders without a real
+    // render fn, so we only honour registry when a non-builtin render exists.
+    const reg = APP.printTemplates;
+    const def = reg ? reg.get(template) : null;
+    if (def && !def.builtin && typeof def.render === "function") {
+      try {
+        const out = def.render(s);
+        if (Array.isArray(out))      pages = out.filter(Boolean);
+        else if (out instanceof Node) pages = [out];
+      } catch (err) {
+        console.error("[print_preview] template", template, "threw:", err);
+        pages = [el("div", { class: "chrx-preview-page" },
+          el("h2", null, "Template error"),
+          el("pre", { style: "white-space:pre-wrap;color:#900;font-size:11px" }, String(err && err.message || err)))];
       }
+    }
+
+    // Fallback to legacy hardcoded renderers for the 5 builtins when no
+    // pivot preset has claimed the same ID (e.g., during transition).
+    if (!pages.length) {
+      if (template === "class")        pages = perEntityPages(s, "class",   periods, s.classes,    s._idx?.cardsByClass);
+      else if (template === "teacher") pages = perEntityPages(s, "teacher", periods, s.teachers,   s._idx?.cardsByTeacher);
+      else if (template === "room")    pages = perEntityPages(s, "room",    periods, s.classrooms, s._idx?.cardsByRoom);
+      else if (template === "summary") pages = [summaryPage(s, periods)];
+      else if (template === "poster")  pages = [posterPage(s, periods)];
     }
 
     if (!pages.length) pages = [el("div", { class: "chrx-preview-page" }, el("h2", null, "No data"))];
