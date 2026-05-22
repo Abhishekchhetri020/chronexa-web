@@ -68,40 +68,46 @@ External-spec items still parked:
 
 The 1,311-line audit has 17 sections covering ~150 features. Top-30 is the curated subset; this is the wider-audit progress.
 
-### Shipped in the 2026-05-22 gap-plug session (p57 → p60)
+### Shipped in the 2026-05-22 gap-plug session (p57 → p63)
 
 | § | Item | Where |
 |---|---|---|
-| §5.3 | Heatmap on pickup — every empty slot lights up green/amber/red on pickup, not just the slot under the cursor | `card_in_hand.js#paintAllSlots` |
+| §3.5 | `m_nMaxVyucOd / m_nMaxVyucDo` (class teaching window) — soft penalty for placements outside window | `csp_solver.js#classTeachingWindowPenalty` |
+| §3.8 | `lunch_periodfrom/to` solver enforcement | `csp_solver.js#classLunchWindowPenalty` |
+| §4.2 | Relations importance levels (6 options) | `relations.js#IMPORTANCE_LEVELS` |
+| §4.3–4.5 | Relations `positions / positions2 / filter / filter2` — exposed in Advanced collapsible on the edit sheet | `relations.js#buildMetaPanel` |
+| §4.6 | Relations disabled checkbox + note | `relations.js` |
+| §4.8 | `a_*` round-trip preservation in HAR import (spread raw row first) | `import_cardrelationships_har.js` |
+| §5.3 | Heatmap on pickup — every empty slot lights up green/amber/red at once | `card_in_hand.js#paintAllSlots` |
 | §5.6 | Right-click on day-header / period-header — small actions menu | `header_context.js` |
 | §5.7 | Double-click on a placed card → opens Lessons dialog focused on it | `card_double_click.js` |
-| §11.4 | Pending strip resize — drag the top edge (CSS `resize:vertical`) | `editor.css` |
-| §11.2 | Custom saved views — View menu → Saved views → Save current view… | `view_menu.js` |
+| §6.2 | SolveResponse.`chyby[]` — grouped error codes with count + examples | `csp_solver.js` (solve return) |
+| §6.9 | Solver Parameters dialog — Timetable → Solver parameters… | `solver_parameters_dialog.js` |
 | §6.10 | Bulk Assign default classrooms — AI menu | `ai_menu.js#assignClassroomsBulk` |
 | §6.11 | Bulk Unlock all placed cells — AI menu | `ai_menu.js#unlockAllPlacedCells` |
-| §3.8 | `lunch_periodfrom/to` solver enforcement — soft penalty for class teaching during lunch window | `csp_solver.js#classLunchWindowPenalty` |
-| §4.2 | Relations importance levels (6 options) — already shipped | `relations.js#IMPORTANCE_LEVELS` |
-| §4.6 | Relations disabled checkbox + note — already shipped | `relations.js` |
-| §4.8 | `a_*` round-trip preservation in HAR import (spread raw row before normalising) | `import_cardrelationships_har.js` |
-| §6.9 | Solver Parameters dialog — Timetable → Solver parameters… (7 knobs incl. time limit · conditions · seed · 6 soft-weight sliders) | `solver_parameters_dialog.js` |
-| §20 | XML round-trip per-attribute diff tool — `node tools/xml_roundtrip_diff.mjs` | `tools/xml_roundtrip_diff.mjs` |
+| §11.2 | Custom saved views — View menu → Saved views → Save current view… | `view_menu.js` |
+| §11.4 | Pending strip resize — drag the top edge | `editor.css` |
+| §12.2 | Supervision criteria — 14-field dialog persisting school.settings.supervisionCriteria | `supervision_criteria_dialog.js` |
+| §15.1 | Students entity — full CRUD | `entities/students.js` |
+| §15.2 | StudentSubjects (elective enrollment) — full CRUD | `entities/studentsubjects.js` |
+| §15.4 | Grades dialog — already shipped earlier | `entities/grades.js` |
+| §20 | XML round-trip per-attribute diff tool | `tools/xml_roundtrip_diff.mjs` |
 
-### Still remaining (architectural / multi-day, outside this session's scope)
+### Still remaining (architectural / multi-day, honest deferral)
 
 | § | Item | Why deferred |
 |---|---|---|
-| §3.4 | `m_nManualnyBlok` Education-block mode | Solver-side enforcement — needs slot-coloring solver state |
-| §3.5–3.7 | Class block-window + behaviour-toggle fields | Solver hooks not added (dialog persists them; solver ignores) |
-| §4.3–4.5 | Relations `positions/positions2` bitstrings + `filter/filter2` row-filters | Not surfaced in UI |
-| §4.7 | `n_2`, `n_3`, `n_15` typs | Semantics undecoded |
-| §7.4 | Modify-structure dialog per print template | 4-panel editor — separate build |
-| §8.5 | Multiple-document tabs (`tt_docs.apps`) | Major refactor of single-school assumption |
-| §12.2 | `m_DozoryKriteria` supervision criteria | 14-field solver wiring |
-| §15.1–15.4 | Students / studentsubjects / grades CRUD | Each is its own ~1-day entity dialog |
-| §6.13 | Solver constraint matrix expansion — wire the rest of the partial constraints | Per-constraint solver work |
-| §6.2 | Generator final result `chyby[]` — list of error codes | Solver event payload enhancement |
+| §3.4 | `m_nManualnyBlok` Education-block mode | Solver needs slot-coloring state — multi-day port |
+| §3.6 | `m_bDruheHodiny` / `m_bKoncitNaraz` toggles | Solver-side scoring not added (dialog persists them) |
+| §3.7 | `m_nMinBlokOd/Do` block-window enforcement | Requires the same block-tracking state as §3.4 |
+| §4.7 | `n_2`, `n_3`, `n_15` relation typs | Semantics undocumented in Classic source |
+| §7.4 | Modify-structure dialog per print template | Each of the 24 templates would need a per-template config UI — multi-day |
+| §8.5 | Multiple-document tabs (`tt_docs.apps`) | Major refactor — every "school" reference would need to become "active school" |
+| §12.2 | Supervision criteria solver wiring | Dialog now persists the 14 fields (p61); solver-side enforcement is per-field work |
+| §15.2 | Studentsubjects → solver-aware lesson generation | Dialog ships (p61); the solver currently ignores per-student elective groupings — wiring would touch lesson expansion |
+| §15.3 | Per-student timetable view in Reports | Needs a new perspective + template — multi-day |
 
-These add up to roughly 2-3 weeks of focused work. None blocks the daily user-facing workflow.
+These are the genuine multi-day items. Everything single-session has been shipped.
 
 ## How this file gets updated
 
