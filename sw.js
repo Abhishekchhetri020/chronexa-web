@@ -14,7 +14,7 @@
  */
 
 const CACHE_PREFIX = "chronexa-";
-const APP_VER = "20260523-p91-start-card-click-fix";
+const APP_VER = "20260523-p92-generate-honors-mode";
 const CACHE_NAME = CACHE_PREFIX + APP_VER;
 
 // Minimal app shell. Critical JS (bundle + solver worker + dynamic-

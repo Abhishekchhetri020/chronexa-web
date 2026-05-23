@@ -222,7 +222,7 @@
 
 <!-- ─────────────────────── SCRIPTS ─────────────────────── -->
 <!-- Bump APP_VER on every deploy so the browser refetches the JS bundle -->
-<script>window.APP_VER = "20260523-p91-start-card-click-fix";</script>
+<script>window.APP_VER = "20260523-p92-generate-honors-mode";</script>
 <!-- Backend URL — leave empty to force "Run on this computer". Override at deploy time. -->
 <script>window.CHRONEXA_BACKEND_URL = window.CHRONEXA_BACKEND_URL || "";</script>
 <!-- Bundle mode (default): single HTTP request for all 133 modules.
@@ -485,15 +485,22 @@
           school: window.APP.school,
           onConfirm: function (cfg) {
             if (cfg.mode === "test") return window.SolverUI._runTest(window.APP.school);
-            var hasExistingCards = !!(window.APP.school.cards && window.APP.school.cards.length > 0);
+            // Honor the prelaunch dialog's mode:
+            //   "generate" = solve from scratch (warmStart OFF). Without this
+            //                the solver was warm-starting from existing cards
+            //                whenever any were present, replaying them in
+            //                ~200 ms and returning FEASIBLE without doing a
+            //                real search — the "fake generation" symptom.
+            //   "improve"  = warmStart + LNS (set by prelaunch_dialog.js:220).
+            var isImprove = cfg.mode === "improve";
             var source = window.SolverUI.run({
               school: window.APP.school,
               options: {
                 timeLimitSec: cfg.timeLimitSec,
                 verbose: false,
-                // Warm-start the search from the imported cards if present.
-                // The XML proves feasibility; starting fresh deadlocks at ~92%.
-                warmStart: hasExistingCards,
+                mode: cfg.mode,
+                warmStart: !!cfg.warmStart || isImprove,
+                useLNS:    !!cfg.useLNS    || isImprove,
               },
               algorithm: cfg.algorithm,
               onFallback: function (why) {
