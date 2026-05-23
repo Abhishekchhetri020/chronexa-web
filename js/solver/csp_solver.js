@@ -2759,10 +2759,19 @@ function tryPlaceViaRepair(model, state, lessonIdx, chainDepth, evictedThisChain
         state.assignedLessonCount -= 1;
       }
     }
-    // Restore original positions.
+    // Restore original positions. canPlace re-check is required: during
+    // recursion (line 2597) the chain may have placed OTHER lessons at
+    // these original slots, and applyPlacement without a guard would
+    // commit a conflicting overlay. Before this guard the post-solve
+    // scrubber dropped ~30 placements per real-school cold solve — the
+    // source of the "1198/1240 stuck around 97%" symptom on
+    // asctt2012 (4).xml. If a slot is no longer free, leave the lesson
+    // unplaced; backtrack will retry via its normal candidate list.
     for (let k = 0; k < evicted.length; k++) {
       const e = evicted[k];
-      applyPlacement(model, state, e.idx, e.slot, e.room, null);
+      if (canPlace(model, state, e.idx, e.slot, e.room) === null) {
+        applyPlacement(model, state, e.idx, e.slot, e.room, null);
+      }
       evictedThisChain.delete(e.idx);
     }
   }
