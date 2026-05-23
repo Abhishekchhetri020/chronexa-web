@@ -24,6 +24,12 @@ window.StartScreen = (function () {
     card.setAttribute("role", "button");
     card.setAttribute("aria-label", "Open XML or HAR file");
 
+    card.addEventListener("click", (e) => {
+      if (e.target === input) return;
+      e.preventDefault();
+      input.click();
+    });
+
     card.addEventListener("keydown", (e) => {
       if (e.key !== "Enter" && e.key !== " ") return;
       e.preventDefault();

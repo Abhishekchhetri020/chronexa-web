@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-23T14:29:18Z
+/* Chronexa bundle — generated 2026-05-23T14:34:04Z
  *      161 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -15363,6 +15363,12 @@ window.StartScreen = (function () {
     card.dataset.startWired = "1";
     card.setAttribute("role", "button");
     card.setAttribute("aria-label", "Open XML or HAR file");
+
+    card.addEventListener("click", (e) => {
+      if (e.target === input) return;
+      e.preventDefault();
+      input.click();
+    });
 
     card.addEventListener("keydown", (e) => {
       if (e.key !== "Enter" && e.key !== " ") return;
