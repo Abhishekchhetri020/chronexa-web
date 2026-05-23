@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-22T18:15:41Z
+/* Chronexa bundle — generated 2026-05-23T14:10:29Z
  *      161 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -4448,6 +4448,10 @@ window.Inspector = (function () {
           window.APP.audit.append({ entity:"lessons", op:"add", after:{...nl} });
         }
         D.closeSheet(); D.refresh(rows());
+        // Notify editor / autosave / index consumers that a lesson
+        // changed — they listen for `entity:changed` (activator.js:170)
+        // and stay stale otherwise.
+        window.dispatchEvent(new CustomEvent("entity:changed", { detail: { entity: "lessons" } }));
       },
     });
   }
@@ -4469,6 +4473,7 @@ window.Inspector = (function () {
             const removed = all.splice(i, 1)[0];
             window.APP.audit.append({ entity:"lessons", op:"remove", before:{...removed} });
             D.refresh(rows());
+            window.dispatchEvent(new CustomEvent("entity:changed", { detail: { entity: "lessons" } }));
           }
           return;
         }
@@ -4481,6 +4486,7 @@ window.Inspector = (function () {
           if (window.APP.school._idx) window.APP.school._idx.lessonById[dup.id] = dup;
           window.APP.audit.append({ entity:"lessons", op:"copy", after:{...dup} });
           D.refresh(rows());
+          window.dispatchEvent(new CustomEvent("entity:changed", { detail: { entity: "lessons" } }));
         }
       },
     });
@@ -7819,8 +7825,14 @@ window.Inspector = (function () {
   }
 
   function focusEditor() {
-    const stepBtn = document.querySelector('.step-btn[data-step="2"]');
-    if (stepBtn) stepBtn.click();
+    // Step 2 is School Info; the editor lives on step 3 (Class Grid). The
+    // sidebar "Editor" entry was opening School Info because of this.
+    // Try step 3 first; fall back to step 2 if a layout variant doesn't
+    // expose step 3 yet (school-loaded gates the higher steps).
+    const editorBtn = document.querySelector('.step-btn[data-step="3"]:not([disabled])')
+      || document.querySelector('.step-btn[data-step="3"]')
+      || document.querySelector('.step-btn[data-step="2"]');
+    if (editorBtn) editorBtn.click();
   }
 
   // ───────── Command palette (⌘K) ─────────
@@ -10174,11 +10186,15 @@ window.Inspector = (function () {
       const lesson = lessonById[c.lessonId];
       if (!lesson) continue;
       if (!(lesson.classIds || []).includes(classRow.id)) continue;
-      if (c.day >= 6 || c.period >= periods.length) continue;
+      // card.period is 1-based (per DATA_SHAPES + parse_timetable_xml.js);
+      // grid columns are 0-based. Without this -1 the first period rendered
+      // as the second column and the last period was silently dropped.
+      const pIdx = (c.period | 0) - 1;
+      if (c.day >= 6 || pIdx < 0 || pIdx >= periods.length) continue;
       const subj = subjectById[lesson.subjectId] || {};
       const teachers = (lesson.teacherIds || []).map(t => teacherById[t]?.short || teacherById[t]?.name || "—").join(", ");
       const room = c.classroomId ? (roomById[c.classroomId]?.short || roomById[c.classroomId]?.name || "") : "";
-      grid[c.day][c.period] = { subject: subj.short || subj.name || "?", color: subj.color || "#94a3b8", teachers, room };
+      grid[c.day][pIdx] = { subject: subj.short || subj.name || "?", color: subj.color || "#94a3b8", teachers, room };
     }
 
     let html = `<h2>${esc(classRow.name || classRow.short)}</h2><table class="tt">`;
@@ -10254,6 +10270,7 @@ ${body}
   window.addEventListener("app:export-html", exportHTML);
   APP.io = APP.io || {};
   APP.io.exportHTML = exportHTML;
+  APP.io.buildHtmlExport = buildHTML;
 })();
 
 /* ─── FILE: js/solver/relation_enforcer.js ─── */
@@ -12204,9 +12221,15 @@ ${body}
   }
 
   function runTest(school, onClose) {
+    // "Test timetable" should validate the EXISTING placement, not run a
+    // fresh solve from scratch. Warm-starting replays every placed card
+    // through canPlace so existing violations surface; without it, the
+    // solver hands back a brand-new schedule and the user can't tell
+    // whether THEIR timetable is sound.
+    const hasExistingCards = !!(school.cards && school.cards.length > 0);
     const source = global.SolverUI.run({
       school,
-      options: { timeLimitSec: 5, verbose: true },
+      options: { timeLimitSec: 5, verbose: true, warmStart: hasExistingCards },
       algorithm: "browser",          // test always runs locally — quick + private
     });
     global.SolverUI.Progress.open({
@@ -13145,9 +13168,7 @@ window.Editor = (function () {
     if (window.ConstraintExplainer && typeof window.ConstraintExplainer.attachTooltip === "function") {
       window.ConstraintExplainer.attachTooltip(rootEl);
     }
-  }
-
-  function buildCardLookup(S, perspective) {
+    function buildCardLookup(S, perspective) {
     const lookup = Object.create(null);
     for (const c of (S.cards || [])) {
       const lesson = S._idx.lessonById[c.lessonId];
@@ -13156,8 +13177,8 @@ window.Editor = (function () {
       const keysForCard = rowKeysForCard(lesson, perspective, c);
       for (const rowKey of keysForCard) {
         if (!lookup[rowKey]) lookup[rowKey] = Object.create(null);
-        // Multiple cards may collide on same slot post-edit; we just show first.
-        if (!lookup[rowKey][key]) lookup[rowKey][key] = c;
+        if (!lookup[rowKey][key]) lookup[rowKey][key] = [];
+        lookup[rowKey][key].push(c);
       }
     }
     return lookup;
@@ -13253,7 +13274,7 @@ window.Editor = (function () {
       `);
     }
     return `
-      <div class="chrx-row chrx-row-head">
+      <div class="chrx-row" data-row="head">
         <div class="chrx-rowlabel chrx-h">Row</div>
         ${dayBlocks.join("")}
       </div>
@@ -13263,10 +13284,6 @@ window.Editor = (function () {
   function rowHtml(S, row, periods, mobileDay, cardLookup) {
     const rowBucket = cardLookup[row.key] || null;
     const slots = [];
-    // Per-class bell period set (Top-30 #3). When the row is a class with
-    // its own bellId, mark slots outside its bell as `out-of-bell` so the
-    // grid greys them out and drag-drop refuses to land there. Other
-    // perspectives (teacher/room/subject) span the school default.
     const persp = (window.APP && window.APP.editor && window.APP.editor.perspective) || "class";
     let bellPeriodSet = null;
     if (persp === "class" && window.BellResolver) {
@@ -13277,11 +13294,16 @@ window.Editor = (function () {
     }
     for (let d = 0; d < NUM_DAYS; d++) {
       for (const p of periods) {
-        const card = rowBucket ? rowBucket[d + "_" + p.index] : null;
+        const cards = rowBucket ? rowBucket[d + "_" + p.index] : null;
         const hide = d !== mobileDay ? " mobile-hidden" : "";
         const outOfBell = bellPeriodSet && !bellPeriodSet.has(p.index | 0);
-        if (card) {
-          slots.push(cardHtml(S, card, d, p.index, row.key, hide));
+        if (cards && cards.length > 0) {
+          const oob = outOfBell ? " out-of-bell" : "";
+          const cardListHtml = cards.map(c => vkartaHtml(S, c, d, p.index, row.key)).join("");
+          const splitClass = cards.length > 1 ? " chrx-slot--split" : "";
+          slots.push(
+            `<div class="chrx-slot${hide}${oob}${splitClass}" data-day="${d}" data-period="${p.index}" data-row="${esc(row.key)}">${cardListHtml}</div>`
+          );
         } else {
           const oob = outOfBell ? " out-of-bell" : "";
           slots.push(
@@ -13301,7 +13323,7 @@ window.Editor = (function () {
     `;
   }
 
-  function cardHtml(S, card, day, period, rowKey, mobileHidden) {
+  function vkartaHtml(S, card, day, period, rowKey) {
     const lesson = S._idx.lessonById[card.lessonId];
     const subject = lesson ? S._idx.subjectById[lesson.subjectId] : null;
     const subjShort = subject ? (subject.abbr || subject.name) : "?";
@@ -13336,32 +13358,63 @@ window.Editor = (function () {
     const densityClass = compact ? " chrx-vkarta--compact" : "";
 
     return `
-      <div class="chrx-slot${mobileHidden}" data-day="${day}" data-period="${period}" data-row="${esc(rowKey)}">
-        <div class="chrx-vkarta${locked}${densityClass}"
-             data-card-id="${cardId}"
-             data-lesson-id="${esc(card.lessonId)}"
-             data-day="${day}"
-             data-period="${period}"
-             style="--chrx-card-hue:${hue}"
-             title="${esc(subjShort + (teacherShort ? ' · ' + teacherShort : '') + (roomShort ? ' · ' + roomShort : ''))}">
-          <div class="chrx-vk-line1">${esc(subjShort)}</div>
-          ${compact ? "" : `<div class="chrx-vk-line2">${esc(line2)}</div>`}
-          ${compact ? "" : `<div class="chrx-vk-line3">${esc(line3)}</div>`}
-        </div>
+      <div class="chrx-vkarta${locked}${densityClass}"
+           data-card-id="${cardId}"
+           data-lesson-id="${esc(card.lessonId)}"
+           data-day="${day}"
+           data-period="${period}"
+           style="--chrx-card-hue:${hue}"
+           title="${esc(subjShort + (teacherShort ? ' · ' + teacherShort : '') + (roomShort ? ' · ' + roomShort : ''))}">
+        <div class="chrx-vk-line1">${esc(subjShort)}</div>
+        ${compact ? "" : `<div class="chrx-vk-line2">${esc(line2)}</div>`}
+        ${compact ? "" : `<div class="chrx-vk-line3">${esc(line3)}</div>`}
       </div>
     `;
   }
 
   function wire(rootEl) {
-    // mousedown delegation
-    rootEl.addEventListener("mousedown", onMouseDown);
-    // Day tabs (mobile)
-    rootEl.querySelectorAll(".chrx-day-tab").forEach(btn => {
-      btn.addEventListener("click", () => {
-        window.APP.day = parseInt(btn.dataset.day, 10) || 0;
-        render(rootEl);
-      });
-    });
+    // mousedown delegation is wire-once: rootEl is the same node across
+    // re-renders (only innerHTML is replaced — child listeners die, but
+    // listeners on rootEl itself accumulate). Before this guard, every
+    // pick/place re-render attached another mousedown handler, so a
+    // normal edit session leaked hundreds of listeners until the tab froze.
+    if (!rootEl._chrxWired) {
+      rootEl.addEventListener("mousedown", onMouseDown);
+      // Day-tab click delegation off rootEl too — survives innerHTML
+      // replace without needing a re-bind every render.
+      rootEl.addEventListener("click", onRootClick);
+      rootEl.addEventListener("mouseover", onMouseOver);
+      rootEl.addEventListener("mouseout", onMouseOut);
+      rootEl._chrxWired = true;
+    }
+  }
+
+  function onMouseOver(ev) {
+    const label = ev.target.closest(".chrx-rowlabel");
+    if (!label) return;
+    const row = label.closest(".chrx-row");
+    if (!row) return;
+    const entityId = row.dataset.row;
+    if (!entityId || entityId === "head") return;
+    const perspective = window.APP.editor.perspective || "class";
+    if (window.FocusMode && typeof window.FocusMode.enter === "function") {
+      window.FocusMode.enter(perspective, entityId, true);
+    }
+  }
+
+  function onMouseOut(ev) {
+    const label = ev.target.closest(".chrx-rowlabel");
+    if (!label) return;
+    if (window.FocusMode && typeof window.FocusMode.exit === "function") {
+      window.FocusMode.exit();
+    }
+  }
+
+  function onRootClick(ev) {
+    const tab = ev.target.closest(".chrx-day-tab");
+    if (!tab) return;
+    window.APP.day = parseInt(tab.dataset.day, 10) || 0;
+    render(tab.closest(".chrx-editor"));
   }
 
   function onMouseDown(ev) {
@@ -13374,6 +13427,17 @@ window.Editor = (function () {
       const lessonId = vk.dataset.lessonId;
       const day = parseInt(vk.dataset.day, 10);
       const period = parseInt(vk.dataset.period, 10);
+      // If a card is already in hand, restore it to its origin slot before
+      // picking up the new one — matches aSc CLASSIC. Before this guard the
+      // second pickup silently overwrote cardInHand and the first card was
+      // permanently lost (already removed from S.cards by its own pickup).
+      const held = window.APP.editor.cardInHand;
+      if (held) {
+        placeCardOnSchool(held.lessonId, held.originDay, held.originPeriod);
+        window.APP.editor.cardInHand = null;
+        dispatch("editor:restore", { cardId: held.cardId, lessonId: held.lessonId,
+          day: held.originDay, period: held.originPeriod, reason: "second-pickup" });
+      }
       // Remove from data + DOM
       removeCardFromSchool(lessonId, day, period);
       const slot = vk.closest(".chrx-slot");
@@ -13387,6 +13451,12 @@ window.Editor = (function () {
       window.APP.editor.cardInHand = { cardId, lessonId, originDay: day, originPeriod: period };
       syncCardInHandClass();
       dispatch("editor:pickup", { cardId, lessonId, day, period });
+      // If we restored a held card above, re-render so the restored slot
+      // visibly reflects its newly-replaced occupant.
+      if (held) {
+        const host = vk.closest(".chrx-editor");
+        if (host) render(host);
+      }
       return;
     }
     // Empty-slot place (only when we have something in hand)
@@ -13397,6 +13467,18 @@ window.Editor = (function () {
       const period = parseInt(slot.dataset.period, 10);
       const rowKey = slot.dataset.row;
       const inHand = window.APP.editor.cardInHand;
+      // Run the same hard-constraint check the card_in_hand drag path
+      // uses (Placement.classify) BEFORE mutating school.cards. Without
+      // this guard, click-to-place silently committed cards that broke
+      // teacher/class/room conflicts — and the drag-path validation at
+      // card_in_hand.js:139 was effectively dead code for clicks.
+      const v = (window.Placement && window.Placement.classify)
+        ? window.Placement.classify(inHand.lessonId, day, period)
+        : { validity: "green", reasons: [] };
+      if (v.validity === "red") {
+        if (window._chrxNotify) window._chrxNotify("Can't place here: " + (v.reasons || []).join(" · "), "error");
+        return;
+      }
       // Mutate school cards + re-render the row to keep visual state honest
       placeCardOnSchool(inHand.lessonId, day, period);
       window.APP.editor.cardInHand = null;
@@ -13763,6 +13845,11 @@ window.PendingStrip = (function () {
   }
 
   function wire(rootEl) {
+    // Search + tab handlers are bound to elements created by innerHTML, so
+    // they die with each re-render — no leak. But the rootEl-level
+    // mousedown + the document-level editor:place subscription survive
+    // every render and accumulated one listener per render. Gate them
+    // wire-once via `_chrxWired`.
     rootEl.querySelector(".chrx-pending-search")?.addEventListener("input", (e) => {
       _state.filter = e.target.value.toLowerCase();
       render(rootEl);
@@ -13773,6 +13860,7 @@ window.PendingStrip = (function () {
         render(rootEl);
       });
     });
+    if (rootEl._chrxPendingWired) return;
     rootEl.addEventListener("mousedown", (ev) => {
       const vk = ev.target.closest(".chrx-vk-pending");
       if (!vk) return;
@@ -13785,6 +13873,7 @@ window.PendingStrip = (function () {
       document.dispatchEvent(new CustomEvent("editor:pickup", { detail: { cardId, lessonId, fromPending: true } }));
     });
     document.addEventListener("editor:place", () => render(rootEl));
+    rootEl._chrxPendingWired = true;
   }
 
   function countPlaced(S) {
@@ -14116,11 +14205,95 @@ window.PendingStrip = (function () {
     }
   }
 
+  let dragTooltipEl = null;
+
+  function ensureDragTooltip() {
+    if (dragTooltipEl && document.body.contains(dragTooltipEl)) return;
+    dragTooltipEl = document.createElement("div");
+    dragTooltipEl.className = "chrx-drag-tooltip";
+    dragTooltipEl.style.cssText = [
+      "position:fixed",
+      "z-index:10002",
+      "pointer-events:none",
+      "max-width:280px",
+      "min-width:180px",
+      "background:rgba(26, 23, 20, 0.88)",
+      "backdrop-filter:blur(16px) saturate(180%)",
+      "-webkit-backdrop-filter:blur(16px) saturate(180%)",
+      "color:#f6f1e6",
+      "border:1px solid rgba(255, 255, 255, 0.12)",
+      "border-radius:10px",
+      "box-shadow:0 8px 32px rgba(26, 23, 20, 0.35)",
+      "font-family:Inter Tight, -apple-system, sans-serif",
+      "font-size:11.5px",
+      "line-height:1.4",
+      "padding:10px 12px",
+      "opacity:0",
+      "transition:opacity var(--chrx-duration-fast, 140ms) var(--chrx-ease, cubic-bezier(.2,.7,.2,1))",
+      "display:none"
+    ].join(";");
+    document.body.appendChild(dragTooltipEl);
+  }
+
+  function showDragTooltip(reasons, validity, x, y) {
+    ensureDragTooltip();
+    if (!reasons || !reasons.length) {
+      hideDragTooltip();
+      return;
+    }
+    const color = validity === "red" ? "#ff453a" : "#ff9f0a";
+    const title = validity === "red" ? "Hard conflict" : "Soft warning";
+    
+    const bullets = reasons.map(r => `
+      <li style="margin:0;padding:2px 0 2px 14px;position:relative;text-align:left;">
+        <span style="position:absolute;left:0;top:6px;width:5px;height:5px;border-radius:50%;background:${color};"></span>
+        ${esc(r)}
+      </li>
+    `).join("");
+
+    dragTooltipEl.innerHTML = `
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.3px;color:${color}">
+        <span>⚠️ ${title}</span>
+      </div>
+      <ul style="list-style:none;margin:0;padding:0">${bullets}</ul>
+    `;
+    
+    dragTooltipEl.style.display = "block";
+    positionDragTooltip(x, y);
+    // Force reflow for fade-in transition
+    dragTooltipEl.offsetHeight;
+    dragTooltipEl.style.opacity = "1";
+  }
+
+  function positionDragTooltip(x, y) {
+    if (!dragTooltipEl) return;
+    const margin = 14;
+    const w = dragTooltipEl.offsetWidth || 240;
+    const h = dragTooltipEl.offsetHeight || 80;
+    let nx = x + margin;
+    let ny = y + margin;
+    if (nx + w + 8 > window.innerWidth) nx = Math.max(8, x - w - margin);
+    if (ny + h + 8 > window.innerHeight) ny = Math.max(8, y - h - margin);
+    dragTooltipEl.style.left = nx + "px";
+    dragTooltipEl.style.top  = ny + "px";
+  }
+
+  function hideDragTooltip() {
+    if (dragTooltipEl) {
+      dragTooltipEl.style.opacity = "0";
+      dragTooltipEl.style.display = "none";
+    }
+  }
+
   function onMove(e) {
     if (!ghost) return;
     px = e.clientX; py = e.clientY;
+    if (dragTooltipEl && dragTooltipEl.style.display !== "none") {
+      positionDragTooltip(e.clientX, e.clientY);
+    }
     if (!rafId) rafId = requestAnimationFrame(flush);
   }
+  
   function flush() {
     rafId = 0;
     if (!ghost) return;
@@ -14128,6 +14301,7 @@ window.PendingStrip = (function () {
     const now = performance.now();
     if (now - lastValidate >= VALIDATE_MS) { lastValidate = now; paint(px, py); }
   }
+  
   function apply() { ghost.style.transform = `translate(${px - dx}px, ${py - dy}px)`; }
 
   function slotAt(x, y) {
@@ -14136,16 +14310,26 @@ window.PendingStrip = (function () {
     ghost.style.visibility = "";
     return el && el.closest ? el.closest(".chrx-slot.empty") : null;
   }
+  
   function paint(x, y) {
     const slot = slotAt(x, y);
     if (slot === lastSlot) return;
-    if (lastSlot) { lastSlot.removeAttribute("data-validity"); lastSlot.removeAttribute("title"); }
+    if (lastSlot) { 
+      lastSlot.removeAttribute("data-validity"); 
+      lastSlot.removeAttribute("title"); 
+      hideDragTooltip();
+    }
     lastSlot = slot || null;
     if (!slot) return;
     const d = parseInt(slot.dataset.day, 10), p = parseInt(slot.dataset.period, 10);
     const v = window.Placement ? window.Placement.classify(inHand.lessonId, d, p) : { validity: "green", reasons: [] };
     slot.setAttribute("data-validity", v.validity);
-    if (v.reasons && v.reasons.length) slot.title = v.reasons.join(" · ");
+    if (v.reasons && v.reasons.length) {
+      slot.title = v.reasons.join(" · ");
+      showDragTooltip(v.reasons, v.validity, x, y);
+    } else {
+      hideDragTooltip();
+    }
   }
 
   function onUp(e) {
@@ -14283,6 +14467,11 @@ window.PendingStrip = (function () {
     document.removeEventListener("keydown", onKey, true);
     if (lastSlot) { lastSlot.removeAttribute("data-validity"); lastSlot.removeAttribute("title"); }
     lastSlot = null;
+    hideDragTooltip();
+    if (dragTooltipEl && dragTooltipEl.parentNode) {
+      dragTooltipEl.parentNode.removeChild(dragTooltipEl);
+      dragTooltipEl = null;
+    }
     // Clear the at-pickup heatmap painted by paintAllSlots().
     document.querySelectorAll(".chrx-editor .chrx-slot.empty[data-validity]").forEach(
       s => s.removeAttribute("data-validity"));
@@ -17114,7 +17303,7 @@ window.StartScreen = (function () {
         ]},
         { icon: "⇄",  label: "Compare", disabled: !has(), sub: [
           { icon: "🕘", label: "Compare with last saved",    run: () => fire("app:compare-last") },
-          { icon: "📂", label: "Compare with another file…", run: () => fire("app:compare-file") },
+          { icon: "📂", label: "Compare with another file…", run: () => fire("app:compare-with-file") },
         ]},
         { sep: true },
         { icon: "🖨", label: "Print preview…", disabled: !has(), run: () => fire("app:print-preview") },
@@ -17730,14 +17919,89 @@ window.StartScreen = (function () {
     return lines.join("\n");
   }
 
-  function exportFromTemplate(school) {
-    const src = school._meta.sourceText;
-    const re  = /<cards\b[^>]*>[\s\S]*?<\/cards>|<cards\b[^>]*\/>/;
-    if (!re.test(src)) {
-      // No cards section to replace — append before </timetable>
-      return src.replace(/<\/timetable>\s*$/, renderCardsBlock(school) + "\n</timetable>\n");
+  // Per-entity block renderers — used both by exportSynthesized AND by
+  // exportFromTemplate, so edits to teachers / classes / subjects /
+  // classrooms / lessons survive XML round-trip. Before this, only the
+  // <cards> block was replaced and entity edits in memory were silently
+  // dropped on export.
+  function renderSubjectsBlock(school) {
+    const lines = [];
+    lines.push('  <subjects options="canadd,export:silent" columns="id,name,short,partner_id">');
+    for (const s of (school.subjects || []))
+      lines.push(`    <subject id="${xmlEscape(s.id)}" name="${xmlEscape(s.name)}" short="${xmlEscape(s.abbr || s.short || s.name)}" partner_id=""/>`);
+    lines.push("  </subjects>");
+    return lines.join("\n");
+  }
+  function renderTeachersBlock(school) {
+    const lines = [];
+    lines.push('  <teachers options="canadd,export:silent" columns="id,name,short,gender,color,email,mobile,partner_id,firstname,lastname">');
+    for (const t of (school.teachers || [])) {
+      const color = t.color || "";
+      const email = t.email || "";
+      const mobile = t.mobile || "";
+      lines.push(`    <teacher id="${xmlEscape(t.id)}" name="${xmlEscape(t.name || "")}" short="${xmlEscape(t.abbr || t.short || t.name || "")}" gender="" color="${xmlEscape(color)}" email="${xmlEscape(email)}" mobile="${xmlEscape(mobile)}" partner_id="" firstname="" lastname=""/>`);
     }
-    return src.replace(re, renderCardsBlock(school));
+    lines.push("  </teachers>");
+    return lines.join("\n");
+  }
+  function renderClassroomsBlock(school) {
+    const lines = [];
+    lines.push('  <classrooms options="canadd,export:silent" columns="id,name,short,capacity,buildingid,partner_id">');
+    for (const r of (school.classrooms || []))
+      lines.push(`    <classroom id="${xmlEscape(r.id)}" name="${xmlEscape(r.name || "")}" short="${xmlEscape(r.short || r.name || "")}" capacity="${r.capacity || "*"}" buildingid="" partner_id=""/>`);
+    lines.push("  </classrooms>");
+    return lines.join("\n");
+  }
+  function renderClassesBlock(school) {
+    const lines = [];
+    lines.push('  <classes options="canadd,export:silent" columns="id,name,short,classroomids,teacherid,grade,partner_id">');
+    for (const c of (school.classes || [])) {
+      const teacherId = c._teacherId || c.teacherId || "";
+      const rooms = (c._classroomIds || []).join(",") || "";
+      lines.push(`    <class id="${xmlEscape(c.id)}" name="${xmlEscape(c.name || "")}" short="${xmlEscape(c.short || c.name || "")}" classroomids="${xmlEscape(rooms)}" teacherid="${xmlEscape(teacherId)}" grade="" partner_id=""/>`);
+    }
+    lines.push("  </classes>");
+    return lines.join("\n");
+  }
+  function renderLessonsBlock(school) {
+    const lines = [];
+    lines.push('  <lessons options="canadd,export:silent" columns="id,subjectid,classids,groupids,teacherids,classroomids,periodspercard,periodsperweek,daysdefid,weeksdefid,termsdefid,seminargroup,capacity,partner_id">');
+    for (const l of (school.lessons || [])) {
+      const cls = (l.classIds || []).join(",");
+      const tch = (l.teacherIds || []).join(",");
+      const grp = (l.groupIds || []).join(",");
+      const rooms = (l._lessonRoomIds && l._lessonRoomIds.length ? l._lessonRoomIds.join(",") : (l.preferredRoomId || ""));
+      const ppc = l.isLabDouble ? 2 : 1;
+      const daysDefId = l.daysDefId || "DAY_ANY";
+      const weeksDefId = l.weeksDefId || "WEEK_ALL";
+      const termsDefId = l.termsDefId || "TERM_YR";
+      lines.push(`    <lesson id="${xmlEscape(l.id)}" classids="${cls}" subjectid="${xmlEscape(l.subjectId || "")}" periodspercard="${ppc}" periodsperweek="${l.periodsPerWeek || 0}" teacherids="${tch}" classroomids="${xmlEscape(rooms)}" groupids="${xmlEscape(grp)}" seminargroup="" termsdefid="${xmlEscape(termsDefId)}" weeksdefid="${xmlEscape(weeksDefId)}" daysdefid="${xmlEscape(daysDefId)}" capacity="*" partner_id=""/>`);
+    }
+    lines.push("  </lessons>");
+    return lines.join("\n");
+  }
+
+  function replaceBlock(src, tag, fresh) {
+    const re = new RegExp(`<${tag}\\b[^>]*>[\\s\\S]*?</${tag}>|<${tag}\\b[^>]*/>`);
+    if (!re.test(src)) {
+      // No block to replace — insert before </timetable>.
+      return src.replace(/<\/timetable>\s*$/, fresh + "\n</timetable>\n");
+    }
+    return src.replace(re, fresh);
+  }
+
+  function exportFromTemplate(school) {
+    let src = school._meta.sourceText;
+    // Replace all entity blocks AND cards with the in-memory state so
+    // edits done after import survive the round-trip. Order doesn't
+    // matter — each regex is anchored on its own tag.
+    src = replaceBlock(src, "subjects",   renderSubjectsBlock(school));
+    src = replaceBlock(src, "teachers",   renderTeachersBlock(school));
+    src = replaceBlock(src, "classrooms", renderClassroomsBlock(school));
+    src = replaceBlock(src, "classes",    renderClassesBlock(school));
+    src = replaceBlock(src, "lessons",    renderLessonsBlock(school));
+    src = replaceBlock(src, "cards",      renderCardsBlock(school));
+    return src;
   }
 
   function exportSynthesized(school) {
@@ -20940,12 +21204,35 @@ window.StartScreen = (function () {
   function entitiesFor(dim, school, periods) {
     periods = periods || PERIODS_DEFAULT;
     switch (dim) {
-      case "day":
-        return DAYS_DEFAULT.map((name, i) => ({ id: i, name, abbr: DAYS_SHORT[i], _dim: "day" }));
-      case "period":
-        return Array.from({length: periods}, (_, i) => ({
+      case "day": {
+        // Honor school.daysPerWeek so 5-day schools don't get a phantom
+        // Saturday column (or row) on every print. Previously this hardcoded
+        // 6 days, masked only by `hideEmptyRows: true` presets — and printed
+        // an empty Saturday for any preset that didn't opt in.
+        const dpw = (school && (school.daysPerWeek | 0)) || DAYS_DEFAULT.length;
+        const n = Math.max(1, Math.min(DAYS_DEFAULT.length, dpw));
+        return DAYS_DEFAULT.slice(0, n).map((name, i) => ({
+          id: i, name, abbr: DAYS_SHORT[i], _dim: "day",
+        }));
+      }
+      case "period": {
+        // When the caller passes the actual bell array (school.bell.periods),
+        // honor each period's real index + label — schools with break
+        // periods interleaved (e.g. P1 P2 BREAK P3) used to silently
+        // mis-match because we generated sequential ids 1..N regardless.
+        if (Array.isArray(periods) && periods.length > 0 && typeof periods[0] === "object") {
+          return periods.map((p, i) => ({
+            id: (p && p.index != null) ? (p.index | 0) : (i + 1),
+            name: (p && p.label) ? p.label : ordinal(i + 1),
+            abbr: (p && p.label) ? p.label : ordinal(i + 1),
+            _dim: "period",
+          }));
+        }
+        const n = (typeof periods === "number" && periods > 0) ? periods : PERIODS_DEFAULT;
+        return Array.from({length: n}, (_, i) => ({
           id: i+1, name: ordinal(i+1), abbr: ordinal(i+1), _dim: "period",
         }));
+      }
       case "week":
         return [{ id: "w1", name: "Week 1", abbr: "W1", _dim: "week" }];
       case "term":
@@ -21281,13 +21568,18 @@ window.StartScreen = (function () {
     const lessonCards = (school.cards || []).map(card => {
       const l = lessonById.get(card.lessonId);
       if (!l) return card;
+      // Card-level classroomId is the authoritative per-placement room;
+      // the lesson's preferredRoomId is only a default for unrouted cards.
+      // Without preferring card.classroomId first, room print reports
+      // showed the lesson default for every card, hiding real overrides.
+      const cardRoom = card.classroomId || (Array.isArray(card.roomIds) && card.roomIds[0]) || null;
       return {
         ...card,
         classIds:   l.classIds   || [],
         teacherIds: l.teacherIds || [],
         subjectId:  l.subjectId,
         groupIds:   l.groupIds   || [],
-        roomId:     l.preferredRoomId || (Array.isArray(l.roomIds) && l.roomIds[0]) || null,
+        roomId:     cardRoom || l.preferredRoomId || (Array.isArray(l.roomIds) && l.roomIds[0]) || null,
         roomIds:    l.roomIds || [],
         studentIds: l.studentIds || [],
       };
@@ -27826,13 +28118,129 @@ window.StartScreen = (function () {
       title: "Bell-times / teacher-names / room-names print toggles",
       onclick: () => window.PrintSettingsDialog && window.PrintSettingsDialog.open("globals") }, "🛠 Global");
 
+    const tuningBtn = el("button", { class: "chrx-tb-btn", type: "button",
+      title: "Live aesthetics tuning drawer — card padding, font sizes, colors, and visibility",
+      onclick: toggleTuningDrawer }, "🎚 Tuning");
+
     const close = el("button", { class: "chrx-tb-btn chrx-tb-btn--danger", type: "button",
       style: "margin-left:auto", onclick: closePreview }, "✕ Close preview");
 
-    [prev, next, print, indicator, sel, filterBtn, structBtn, extraBtn, styleBtn, sizeBtn, designBtn, colorBtn, globalBtn, close]
+    [prev, next, print, indicator, sel, filterBtn, tuningBtn, structBtn, extraBtn, styleBtn, sizeBtn, designBtn, colorBtn, globalBtn, close]
       .forEach(c => bar.appendChild(c));
     bar._indicator = indicator;
     return bar;
+  }
+
+  function toggleTuningDrawer() {
+    const drawer = document.getElementById("chrx-preview-tuning");
+    if (!drawer) return;
+    const isHidden = drawer.style.display === "none";
+    drawer.style.display = isHidden ? "flex" : "none";
+  }
+
+  function buildTuningDrawer() {
+    const defaults = {
+      padding: 6,
+      fontSize: 9.5,
+      borderWidth: 1,
+      theme: "pastel",
+      showSubject: true,
+      showTeacher: true,
+      showClass: true,
+      showRoom: true
+    };
+    APP.printTuning = APP.printTuning || defaults;
+    const t = APP.printTuning;
+
+    const drawer = el("div", {
+      id: "chrx-preview-tuning",
+      class: "chrx-tuning-drawer",
+      style: "width:280px; min-width:280px; max-width:280px; background:var(--chrx-bg-panel); border-left:1px solid var(--chrx-line); display:none; flex-direction:column; padding:16px; overflow-y:auto; gap:16px; box-sizing:border-box;"
+    });
+
+    const title = el("h3", {
+      style: "font-family:var(--chrx-font-display); font-weight:700; font-size:15px; margin:0 0 4px; color:var(--ink);"
+    }, "Aesthetic Tuning");
+
+    drawer.appendChild(title);
+
+    function createSlider(label, key, min, max, step, unit = "") {
+      const group = el("div", { style: "display:flex; flex-direction:column; gap:4px;" });
+      const header = el("div", { style: "display:flex; justify-content:space-between; font-size:11.5px; color:var(--ink-2); font-weight:500;" });
+      const valueSpan = el("span", { style: "font-family:var(--chrx-font-mono); font-size:10.5px;" }, t[key] + unit);
+      
+      header.appendChild(el("span", null, label));
+      header.appendChild(valueSpan);
+      group.appendChild(header);
+
+      const slider = el("input", {
+        type: "range",
+        min: String(min),
+        max: String(max),
+        step: String(step),
+        value: String(t[key]),
+        style: "width:100%; cursor:pointer; accent-color:var(--teal); margin:0;",
+        oninput: (e) => {
+          t[key] = parseFloat(e.target.value);
+          valueSpan.textContent = e.target.value + unit;
+          render(currentTemplate);
+        }
+      });
+      group.appendChild(slider);
+      return group;
+    }
+
+    drawer.appendChild(createSlider("Cell Padding", "padding", 2, 16, 1, "px"));
+    drawer.appendChild(createSlider("Font Size", "fontSize", 8, 16, 0.5, "px"));
+    drawer.appendChild(createSlider("Border Width", "borderWidth", 0, 3, 1, "px"));
+
+    const themeGroup = el("div", { style: "display:flex; flex-direction:column; gap:4px;" });
+    themeGroup.appendChild(el("label", { style: "font-size:11.5px; color:var(--ink-2); font-weight:500;" }, "Card Theme"));
+    const themeSel = el("select", {
+      class: "chrx-tb-btn",
+      style: "width:100%; font-size:12px; padding:4px 6px;",
+      onchange: (e) => {
+        t.theme = e.target.value;
+        render(currentTemplate);
+      }
+    });
+    [
+      { value: "pastel", name: "Soft Pastel" },
+      { value: "mono", name: "Monochrome" },
+      { value: "neon", name: "Vibrant Neon" },
+      { value: "classic", name: "Classic XML" }
+    ].forEach(opt => {
+      themeSel.appendChild(el("option", { value: opt.value, selected: t.theme === opt.value ? "true" : null }, opt.name));
+    });
+    themeGroup.appendChild(themeSel);
+    drawer.appendChild(themeGroup);
+
+    const contentGroup = el("div", { style: "display:flex; flex-direction:column; gap:8px;" });
+    contentGroup.appendChild(el("label", { style: "font-size:11.5px; color:var(--ink-2); font-weight:500; margin-bottom:2px;" }, "Visible Elements"));
+    
+    function createCheckbox(label, key) {
+      const row = el("label", { style: "display:flex; align-items:center; gap:8px; font-size:12px; color:var(--ink-2); cursor:pointer; user-select:none;" });
+      const cb = el("input", {
+        type: "checkbox",
+        checked: t[key] ? "true" : null,
+        style: "cursor:pointer; accent-color:var(--teal); margin:0;",
+        onchange: (e) => {
+          t[key] = e.target.checked;
+          render(currentTemplate);
+        }
+      });
+      row.appendChild(cb);
+      row.appendChild(document.createTextNode(label));
+      return row;
+    }
+
+    contentGroup.appendChild(createCheckbox("Subject Code", "showSubject"));
+    contentGroup.appendChild(createCheckbox("Teacher Initials", "showTeacher"));
+    contentGroup.appendChild(createCheckbox("Class Name", "showClass"));
+    contentGroup.appendChild(createCheckbox("Room Name", "showRoom"));
+    drawer.appendChild(contentGroup);
+
+    return drawer;
   }
 
   function openPreview() {
@@ -27842,8 +28250,15 @@ window.StartScreen = (function () {
     shell.innerHTML = "";
     const bar = buildPreviewBar();
     shell.appendChild(bar);
-    docShell = el("div", { class: "chrx-preview-doc" });
-    shell.appendChild(docShell);
+    
+    const mainArea = el("div", { class: "chrx-preview-main-area", style: "display:flex; flex:1; overflow:hidden;" });
+    docShell = el("div", { class: "chrx-preview-doc", style: "flex:1; overflow:auto;" });
+    mainArea.appendChild(docShell);
+    
+    const tuningDrawer = buildTuningDrawer();
+    mainArea.appendChild(tuningDrawer);
+    
+    shell.appendChild(mainArea);
     overlay.classList.add("is-open");
 
     // Set ribbon mode (other agents may want to know)
@@ -27918,7 +28333,10 @@ window.StartScreen = (function () {
     const def = reg ? reg.get(template) : null;
     if (def && !def.builtin && typeof def.render === "function") {
       try {
-        const out = def.render(s);
+        // Pass `periods` so the pivot engine can honor the school's actual
+        // bell schedule. Without this, periods defaulted to 8 regardless,
+        // and break periods (gaps in the bell) silently mismatched cards.
+        const out = def.render(s, periods);
         if (Array.isArray(out))      pages = out.filter(Boolean);
         else if (out instanceof Node) pages = [out];
       } catch (err) {
@@ -27949,16 +28367,73 @@ window.StartScreen = (function () {
       el("div", { style: "font-size:9.5px;color:#555" }, subtitle || ""));
   }
 
+  function timeToMin(timeStr) {
+    if (!timeStr) return -1;
+    const m = String(timeStr).match(/^(\d{1,2}):(\d{2})$/);
+    if (!m) return -1;
+    return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+  }
+
+  function getBreakBetween(school, p1, p2) {
+    if (!school || !school.breaks || !p1 || !p2) return null;
+    const t1 = p1.endMin;
+    const t2 = p2.startMin;
+    if (t2 <= t1) return null;
+    for (const b of school.breaks) {
+      const bStart = timeToMin(b.starttime);
+      const bEnd = timeToMin(b.endtime);
+      if (bStart !== -1 && bEnd !== -1) {
+        if (bStart >= t1 - 5 && bEnd <= t2 + 5) {
+          return b;
+        }
+      }
+    }
+    return null;
+  }
+
   function gridTable(periods, daysIn, cellFn) {
-    const tbl = el("table");
-    const tr0 = el("tr"); tr0.appendChild(el("th", null, ""));
-    periods.forEach(p => tr0.appendChild(el("th", null, "P" + p.index + "  " + p.label)));
+    const s = APP.school;
+    const sortedPeriods = periods.slice().sort((a, b) => (a.startMin || 0) - (b.startMin || 0));
+    const tbl = el("table", { class: "chrx-print-table" });
+    const tr0 = el("tr");
+    tr0.appendChild(el("th", { class: "chrx-print-th-corner" }, ""));
+    
+    sortedPeriods.forEach((p, idx) => {
+      tr0.appendChild(el("th", { class: "chrx-print-th-period" }, "P" + p.index + " " + p.label));
+      if (idx < sortedPeriods.length - 1) {
+        const brk = getBreakBetween(s, p, sortedPeriods[idx + 1]);
+        if (brk) {
+          tr0.appendChild(el("th", { class: "chrx-print-th-break" }, ""));
+        }
+      }
+    });
     tbl.appendChild(el("thead", null, tr0));
+    
     const tb = el("tbody");
     daysIn.forEach((d, di) => {
       const tr = el("tr");
-      tr.appendChild(el("th", null, DAYS[di]));
-      periods.forEach(p => tr.appendChild(cellFn(di, p)));
+      tr.appendChild(el("th", { class: "chrx-print-th-day" }, DAYS[di]));
+      
+      sortedPeriods.forEach((p, idx) => {
+        tr.appendChild(cellFn(di, p));
+        if (idx < sortedPeriods.length - 1) {
+          const brk = getBreakBetween(s, p, sortedPeriods[idx + 1]);
+          if (brk) {
+            if (di === 0) {
+              const breakCell = el("td", {
+                class: "chrx-print-td-break",
+                rowspan: String(daysIn.length),
+                style: "vertical-align:middle; text-align:center; background:var(--paper-2); font-weight:600; text-transform:uppercase; color:var(--ink-3); font-size:10px; padding:4px;"
+              });
+              const textDiv = el("div", {
+                style: "writing-mode: vertical-lr; transform: rotate(180deg); margin: 0 auto; letter-spacing: 0.15em;"
+              }, brk.printtext || brk.name);
+              breakCell.appendChild(textDiv);
+              tr.appendChild(breakCell);
+            }
+          }
+        }
+      });
       tb.appendChild(tr);
     });
     tbl.appendChild(tb);
@@ -27966,33 +28441,77 @@ window.StartScreen = (function () {
   }
 
   function cellFromCard(card) {
-    if (!card) return el("td", { class: "pp-cell-empty" }, "—");
-    const style = (APP.printCellStyles || {})[currentTemplate];
-    if (!style) {
-      // Default rendering — preserves legacy look.
-      return el("td", null,
-        el("div", { class: "pp-cell-subj" }, card.subjectAbbr || card.subject || ""),
-        el("div", { class: "pp-cell-meta" }, (card.teachers || []).join(", ")),
-        el("div", { class: "pp-cell-meta" }, card.classroom || ""));
+    const tuning = APP.printTuning || {
+      padding: 6,
+      fontSize: 9.5,
+      borderWidth: 1,
+      theme: "pastel",
+      showSubject: true,
+      showTeacher: true,
+      showClass: true,
+      showRoom: true
+    };
+
+    if (!card) {
+      return el("td", {
+        class: "pp-cell-empty",
+        style: `padding:${tuning.padding}px; font-size:${tuning.fontSize}px; border-width:${tuning.borderWidth}px; border-style:solid; border-color:var(--line); color:var(--ink-3); text-align:center; vertical-align:middle;`
+      }, "—");
     }
-    // Styled rendering — apply anchor, card-types, font, colors.
-    const [v, h] = style.anchor.split("-");
-    const items = v === "top" ? "flex-start" : v === "bottom" ? "flex-end" : "center";
-    const just  = h === "left" ? "flex-start" : h === "right" ? "flex-end" : "center";
-    const ta    = h === "left" ? "left" : h === "right" ? "right" : "center";
+
+    const hue = card.subjectAbbr ? subjectHue({ abbr: card.subjectAbbr, name: card.subject }) : 210;
+    
+    let bg = "var(--paper)";
+    let fg = "var(--ink)";
+    let border = `1px solid var(--line)`;
+    
+    if (tuning.theme === "pastel") {
+      bg = `hsla(${hue}, 70%, 96%, 0.9)`;
+      fg = `hsl(${hue}, 75%, 22%)`;
+      border = `${tuning.borderWidth}px solid hsl(${hue}, 60%, 45%)`;
+    } else if (tuning.theme === "mono") {
+      bg = "#f3f4f6";
+      fg = "#1f2937";
+      border = `${tuning.borderWidth}px solid #d1d5db`;
+    } else if (tuning.theme === "neon") {
+      bg = `hsla(${hue}, 80%, 93%, 1)`;
+      fg = `hsl(${hue}, 90%, 18%)`;
+      border = `${tuning.borderWidth}px solid hsl(${hue}, 85%, 38%)`;
+    } else { // classic
+      bg = card.color || "var(--paper)";
+      fg = "var(--ink)";
+      border = `${tuning.borderWidth}px solid var(--line)`;
+    }
+
     const td = el("td", {
-      style: `background:${style.colors.bg};color:${style.colors.fg};` +
-        `font-family:${style.font.family};font-size:${style.font.size}px;vertical-align:top` });
+      style: `background:${bg}; color:${fg}; border:${border}; padding:${tuning.padding}px; font-size:${tuning.fontSize}px; vertical-align:middle;`
+    });
+
     const box = el("div", {
-      style: `display:flex;flex-direction:column;justify-content:${items};align-items:${just};text-align:${ta};height:100%;gap:1px` });
-    const ct = style.cardTypes || {};
-    if (ct.subject)   box.appendChild(el("div", { style:"font-weight:600" }, card.subjectAbbr || card.subject || ""));
-    if (ct.teacher)   box.appendChild(el("div", null, (card.teachers || []).join(", ")));
-    if (ct.class)     box.appendChild(el("div", null, (card.classes  || card.class || []).toString()));
-    if (ct.group)     box.appendChild(el("div", null, (card.groups   || card.group || []).toString()));
-    if (ct.classroom) box.appendChild(el("div", { style:"opacity:.75" }, card.classroom || ""));
-    if (ct.count)     box.appendChild(el("div", { style:"opacity:.6;font-size:0.9em" }, String(card.count || "")));
-    if (ct.bellTimes) box.appendChild(el("div", { style:"opacity:.6;font-size:0.9em" }, card.bellTimes || ""));
+      style: "display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; gap:2px; height:100%;"
+    });
+
+    if (tuning.showSubject) {
+      box.appendChild(el("div", { style: "font-weight:750; font-family:var(--chrx-font-display); line-height:1.15; font-size:1.15em;" }, card.subjectAbbr || card.subject || ""));
+    }
+    
+    const metaText = [];
+    if (tuning.showTeacher && card.teachers?.length) {
+      metaText.push(card.teachers.join(", "));
+    }
+    if (tuning.showRoom && card.classroom) {
+      metaText.push(card.classroom);
+    }
+    if (tuning.showClass && (card.classes?.length || card.class?.length)) {
+      metaText.push(card.classes || card.class);
+    }
+
+    if (metaText.length) {
+      box.appendChild(el("div", {
+        style: "font-size:0.88em; opacity:0.85; line-height:1.2; font-family:var(--chrx-font-sans);"
+      }, metaText.join(" · ")));
+    }
+
     td.appendChild(box);
     return td;
   }
@@ -29179,36 +29698,42 @@ window.StartScreen = (function () {
     if (STATE.relatedLessonIds) applyClasses();
   }
 
-  function enter(kind, entityId) {
+  function enter(kind, entityId, isHover) {
     if (!kind || !entityId) return;
     if (STATE.kind) exit();   // re-enter cleanly
     STATE.kind = kind;
     STATE.entityId = entityId;
     STATE.relatedLessonIds = computeRelatedLessons(kind, entityId);
-    STATE.banner = buildBanner(kind, entityId);
-    mountBanner(STATE.banner);
+    if (!isHover) {
+      STATE.banner = buildBanner(kind, entityId);
+      mountBanner(STATE.banner);
+      STATE.boundKey = onKey;
+      document.addEventListener("keydown", STATE.boundKey);
+    }
     applyClasses();
-    STATE.boundKey = onKey;
     STATE.boundReapply = onReapply;
-    document.addEventListener("keydown", STATE.boundKey);
     document.addEventListener("editor:place",  STATE.boundReapply);
     document.addEventListener("editor:pickup", STATE.boundReapply);
   }
 
   function exit() {
     if (!STATE.kind) return;
-    if (STATE.boundKey) document.removeEventListener("keydown", STATE.boundKey);
+    if (STATE.boundKey) {
+      document.removeEventListener("keydown", STATE.boundKey);
+      STATE.boundKey = null;
+    }
     if (STATE.boundReapply) {
       document.removeEventListener("editor:place",  STATE.boundReapply);
       document.removeEventListener("editor:pickup", STATE.boundReapply);
+      STATE.boundReapply = null;
     }
-    if (STATE.banner && STATE.banner.parentNode) STATE.banner.parentNode.removeChild(STATE.banner);
+    if (STATE.banner && STATE.banner.parentNode) {
+      STATE.banner.parentNode.removeChild(STATE.banner);
+    }
     STATE.kind = null;
     STATE.entityId = null;
     STATE.relatedLessonIds = null;
     STATE.banner = null;
-    STATE.boundKey = null;
-    STATE.boundReapply = null;
     applyClasses();   // strip remaining classes
   }
 

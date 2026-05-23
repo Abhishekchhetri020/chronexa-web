@@ -17,7 +17,10 @@ const CACHE_PREFIX = "chronexa-";
 const APP_VER = "20260522-p85-fix-generate-button";
 const CACHE_NAME = CACHE_PREFIX + APP_VER;
 
-// Minimal app shell — the rest is cached lazily on first fetch
+// Minimal app shell. Critical JS (bundle + solver worker + dynamic-
+// import targets) MUST be precached — otherwise the SW registers AFTER
+// first load but offline fails when those URLs come back with
+// query-string variants the cache hasn't seen yet.
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -32,6 +35,12 @@ const APP_SHELL = [
   "./css/entities.css",
   "./css/ribbon.css",
   "./css/solver_ui.css",
+  // Core JS — must be present offline.
+  "./js/bundle.js?v=" + APP_VER,
+  "./js/solver/worker.js?v=" + APP_VER,
+  "./js/solver/csp_solver.js?v=" + APP_VER,
+  "./js/solver/constraints.js?v=" + APP_VER,
+  "./js/xml/parse_timetable_xml.js?v=" + APP_VER,
 ];
 
 self.addEventListener("install", (evt) => {

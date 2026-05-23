@@ -48,14 +48,89 @@
     return lines.join("\n");
   }
 
-  function exportFromTemplate(school) {
-    const src = school._meta.sourceText;
-    const re  = /<cards\b[^>]*>[\s\S]*?<\/cards>|<cards\b[^>]*\/>/;
-    if (!re.test(src)) {
-      // No cards section to replace — append before </timetable>
-      return src.replace(/<\/timetable>\s*$/, renderCardsBlock(school) + "\n</timetable>\n");
+  // Per-entity block renderers — used both by exportSynthesized AND by
+  // exportFromTemplate, so edits to teachers / classes / subjects /
+  // classrooms / lessons survive XML round-trip. Before this, only the
+  // <cards> block was replaced and entity edits in memory were silently
+  // dropped on export.
+  function renderSubjectsBlock(school) {
+    const lines = [];
+    lines.push('  <subjects options="canadd,export:silent" columns="id,name,short,partner_id">');
+    for (const s of (school.subjects || []))
+      lines.push(`    <subject id="${xmlEscape(s.id)}" name="${xmlEscape(s.name)}" short="${xmlEscape(s.abbr || s.short || s.name)}" partner_id=""/>`);
+    lines.push("  </subjects>");
+    return lines.join("\n");
+  }
+  function renderTeachersBlock(school) {
+    const lines = [];
+    lines.push('  <teachers options="canadd,export:silent" columns="id,name,short,gender,color,email,mobile,partner_id,firstname,lastname">');
+    for (const t of (school.teachers || [])) {
+      const color = t.color || "";
+      const email = t.email || "";
+      const mobile = t.mobile || "";
+      lines.push(`    <teacher id="${xmlEscape(t.id)}" name="${xmlEscape(t.name || "")}" short="${xmlEscape(t.abbr || t.short || t.name || "")}" gender="" color="${xmlEscape(color)}" email="${xmlEscape(email)}" mobile="${xmlEscape(mobile)}" partner_id="" firstname="" lastname=""/>`);
     }
-    return src.replace(re, renderCardsBlock(school));
+    lines.push("  </teachers>");
+    return lines.join("\n");
+  }
+  function renderClassroomsBlock(school) {
+    const lines = [];
+    lines.push('  <classrooms options="canadd,export:silent" columns="id,name,short,capacity,buildingid,partner_id">');
+    for (const r of (school.classrooms || []))
+      lines.push(`    <classroom id="${xmlEscape(r.id)}" name="${xmlEscape(r.name || "")}" short="${xmlEscape(r.short || r.name || "")}" capacity="${r.capacity || "*"}" buildingid="" partner_id=""/>`);
+    lines.push("  </classrooms>");
+    return lines.join("\n");
+  }
+  function renderClassesBlock(school) {
+    const lines = [];
+    lines.push('  <classes options="canadd,export:silent" columns="id,name,short,classroomids,teacherid,grade,partner_id">');
+    for (const c of (school.classes || [])) {
+      const teacherId = c._teacherId || c.teacherId || "";
+      const rooms = (c._classroomIds || []).join(",") || "";
+      lines.push(`    <class id="${xmlEscape(c.id)}" name="${xmlEscape(c.name || "")}" short="${xmlEscape(c.short || c.name || "")}" classroomids="${xmlEscape(rooms)}" teacherid="${xmlEscape(teacherId)}" grade="" partner_id=""/>`);
+    }
+    lines.push("  </classes>");
+    return lines.join("\n");
+  }
+  function renderLessonsBlock(school) {
+    const lines = [];
+    lines.push('  <lessons options="canadd,export:silent" columns="id,subjectid,classids,groupids,teacherids,classroomids,periodspercard,periodsperweek,daysdefid,weeksdefid,termsdefid,seminargroup,capacity,partner_id">');
+    for (const l of (school.lessons || [])) {
+      const cls = (l.classIds || []).join(",");
+      const tch = (l.teacherIds || []).join(",");
+      const grp = (l.groupIds || []).join(",");
+      const rooms = (l._lessonRoomIds && l._lessonRoomIds.length ? l._lessonRoomIds.join(",") : (l.preferredRoomId || ""));
+      const ppc = l.isLabDouble ? 2 : 1;
+      const daysDefId = l.daysDefId || "DAY_ANY";
+      const weeksDefId = l.weeksDefId || "WEEK_ALL";
+      const termsDefId = l.termsDefId || "TERM_YR";
+      lines.push(`    <lesson id="${xmlEscape(l.id)}" classids="${cls}" subjectid="${xmlEscape(l.subjectId || "")}" periodspercard="${ppc}" periodsperweek="${l.periodsPerWeek || 0}" teacherids="${tch}" classroomids="${xmlEscape(rooms)}" groupids="${xmlEscape(grp)}" seminargroup="" termsdefid="${xmlEscape(termsDefId)}" weeksdefid="${xmlEscape(weeksDefId)}" daysdefid="${xmlEscape(daysDefId)}" capacity="*" partner_id=""/>`);
+    }
+    lines.push("  </lessons>");
+    return lines.join("\n");
+  }
+
+  function replaceBlock(src, tag, fresh) {
+    const re = new RegExp(`<${tag}\\b[^>]*>[\\s\\S]*?</${tag}>|<${tag}\\b[^>]*/>`);
+    if (!re.test(src)) {
+      // No block to replace — insert before </timetable>.
+      return src.replace(/<\/timetable>\s*$/, fresh + "\n</timetable>\n");
+    }
+    return src.replace(re, fresh);
+  }
+
+  function exportFromTemplate(school) {
+    let src = school._meta.sourceText;
+    // Replace all entity blocks AND cards with the in-memory state so
+    // edits done after import survive the round-trip. Order doesn't
+    // matter — each regex is anchored on its own tag.
+    src = replaceBlock(src, "subjects",   renderSubjectsBlock(school));
+    src = replaceBlock(src, "teachers",   renderTeachersBlock(school));
+    src = replaceBlock(src, "classrooms", renderClassroomsBlock(school));
+    src = replaceBlock(src, "classes",    renderClassesBlock(school));
+    src = replaceBlock(src, "lessons",    renderLessonsBlock(school));
+    src = replaceBlock(src, "cards",      renderCardsBlock(school));
+    return src;
   }
 
   function exportSynthesized(school) {

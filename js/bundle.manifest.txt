@@ -105,6 +105,14 @@ js/ui/print_preview/cell_style_dialog.js
 js/ui/print_preview/print_settings_dialog.js
 js/ui/print_preview/templates_registry.js
 js/ui/print_preview/templates/_helpers.js
+js/ui/print_preview/print_report_schema.js
+js/ui/print_preview/pivot_cell_renderer.js
+js/ui/print_preview/pivot_engine.js
+js/ui/print_preview/modify_structure_dialog.js
+js/ui/print_preview/filter_dialog.js
+js/ui/print_preview/extras_dialog.js
+js/ui/print_preview/sizes_design_colors_dialogs.js
+js/ui/print_preview/header_dialog.js
 js/ui/print_preview/templates/timetable_for_student.js
 js/ui/print_preview/templates/timetable_for_each_student.js
 js/ui/print_preview/templates/summary_of_students.js
@@ -123,6 +131,7 @@ js/ui/print_preview/templates/wall_poster_teachers.js
 js/ui/print_preview/templates/list_of_teachers.js
 js/ui/print_preview/templates/list_of_classes.js
 js/ui/print_preview/templates/custom_slots.js
+js/ui/print_preview/print_presets.js
 js/ui/io/compare_files.js
 js/ui/io/import_cardrelationships_har.js
 js/ui/io/snapshots.js

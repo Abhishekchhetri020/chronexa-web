@@ -484,6 +484,10 @@
           window.APP.audit.append({ entity:"lessons", op:"add", after:{...nl} });
         }
         D.closeSheet(); D.refresh(rows());
+        // Notify editor / autosave / index consumers that a lesson
+        // changed — they listen for `entity:changed` (activator.js:170)
+        // and stay stale otherwise.
+        window.dispatchEvent(new CustomEvent("entity:changed", { detail: { entity: "lessons" } }));
       },
     });
   }
@@ -505,6 +509,7 @@
             const removed = all.splice(i, 1)[0];
             window.APP.audit.append({ entity:"lessons", op:"remove", before:{...removed} });
             D.refresh(rows());
+            window.dispatchEvent(new CustomEvent("entity:changed", { detail: { entity: "lessons" } }));
           }
           return;
         }
@@ -517,6 +522,7 @@
           if (window.APP.school._idx) window.APP.school._idx.lessonById[dup.id] = dup;
           window.APP.audit.append({ entity:"lessons", op:"copy", after:{...dup} });
           D.refresh(rows());
+          window.dispatchEvent(new CustomEvent("entity:changed", { detail: { entity: "lessons" } }));
         }
       },
     });

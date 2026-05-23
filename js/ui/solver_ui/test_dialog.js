@@ -84,9 +84,15 @@
   }
 
   function runTest(school, onClose) {
+    // "Test timetable" should validate the EXISTING placement, not run a
+    // fresh solve from scratch. Warm-starting replays every placed card
+    // through canPlace so existing violations surface; without it, the
+    // solver hands back a brand-new schedule and the user can't tell
+    // whether THEIR timetable is sound.
+    const hasExistingCards = !!(school.cards && school.cards.length > 0);
     const source = global.SolverUI.run({
       school,
-      options: { timeLimitSec: 5, verbose: true },
+      options: { timeLimitSec: 5, verbose: true, warmStart: hasExistingCards },
       algorithm: "browser",          // test always runs locally — quick + private
     });
     global.SolverUI.Progress.open({

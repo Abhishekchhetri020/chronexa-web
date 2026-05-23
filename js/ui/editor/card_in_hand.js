@@ -99,11 +99,95 @@
     }
   }
 
+  let dragTooltipEl = null;
+
+  function ensureDragTooltip() {
+    if (dragTooltipEl && document.body.contains(dragTooltipEl)) return;
+    dragTooltipEl = document.createElement("div");
+    dragTooltipEl.className = "chrx-drag-tooltip";
+    dragTooltipEl.style.cssText = [
+      "position:fixed",
+      "z-index:10002",
+      "pointer-events:none",
+      "max-width:280px",
+      "min-width:180px",
+      "background:rgba(26, 23, 20, 0.88)",
+      "backdrop-filter:blur(16px) saturate(180%)",
+      "-webkit-backdrop-filter:blur(16px) saturate(180%)",
+      "color:#f6f1e6",
+      "border:1px solid rgba(255, 255, 255, 0.12)",
+      "border-radius:10px",
+      "box-shadow:0 8px 32px rgba(26, 23, 20, 0.35)",
+      "font-family:Inter Tight, -apple-system, sans-serif",
+      "font-size:11.5px",
+      "line-height:1.4",
+      "padding:10px 12px",
+      "opacity:0",
+      "transition:opacity var(--chrx-duration-fast, 140ms) var(--chrx-ease, cubic-bezier(.2,.7,.2,1))",
+      "display:none"
+    ].join(";");
+    document.body.appendChild(dragTooltipEl);
+  }
+
+  function showDragTooltip(reasons, validity, x, y) {
+    ensureDragTooltip();
+    if (!reasons || !reasons.length) {
+      hideDragTooltip();
+      return;
+    }
+    const color = validity === "red" ? "#ff453a" : "#ff9f0a";
+    const title = validity === "red" ? "Hard conflict" : "Soft warning";
+    
+    const bullets = reasons.map(r => `
+      <li style="margin:0;padding:2px 0 2px 14px;position:relative;text-align:left;">
+        <span style="position:absolute;left:0;top:6px;width:5px;height:5px;border-radius:50%;background:${color};"></span>
+        ${esc(r)}
+      </li>
+    `).join("");
+
+    dragTooltipEl.innerHTML = `
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.3px;color:${color}">
+        <span>⚠️ ${title}</span>
+      </div>
+      <ul style="list-style:none;margin:0;padding:0">${bullets}</ul>
+    `;
+    
+    dragTooltipEl.style.display = "block";
+    positionDragTooltip(x, y);
+    // Force reflow for fade-in transition
+    dragTooltipEl.offsetHeight;
+    dragTooltipEl.style.opacity = "1";
+  }
+
+  function positionDragTooltip(x, y) {
+    if (!dragTooltipEl) return;
+    const margin = 14;
+    const w = dragTooltipEl.offsetWidth || 240;
+    const h = dragTooltipEl.offsetHeight || 80;
+    let nx = x + margin;
+    let ny = y + margin;
+    if (nx + w + 8 > window.innerWidth) nx = Math.max(8, x - w - margin);
+    if (ny + h + 8 > window.innerHeight) ny = Math.max(8, y - h - margin);
+    dragTooltipEl.style.left = nx + "px";
+    dragTooltipEl.style.top  = ny + "px";
+  }
+
+  function hideDragTooltip() {
+    if (dragTooltipEl) {
+      dragTooltipEl.style.opacity = "0";
+      dragTooltipEl.style.display = "none";
+    }
+  }
+
   function onMove(e) {
     if (!ghost) return;
     px = e.clientX; py = e.clientY;
+    if (dragTooltipEl && dragTooltipEl.style.display !== "none") {
+      positionDragTooltip(e.clientX, e.clientY);
+    }
     if (!rafId) rafId = requestAnimationFrame(flush);
   }
+  
   function flush() {
     rafId = 0;
     if (!ghost) return;
@@ -111,6 +195,7 @@
     const now = performance.now();
     if (now - lastValidate >= VALIDATE_MS) { lastValidate = now; paint(px, py); }
   }
+  
   function apply() { ghost.style.transform = `translate(${px - dx}px, ${py - dy}px)`; }
 
   function slotAt(x, y) {
@@ -119,16 +204,26 @@
     ghost.style.visibility = "";
     return el && el.closest ? el.closest(".chrx-slot.empty") : null;
   }
+  
   function paint(x, y) {
     const slot = slotAt(x, y);
     if (slot === lastSlot) return;
-    if (lastSlot) { lastSlot.removeAttribute("data-validity"); lastSlot.removeAttribute("title"); }
+    if (lastSlot) { 
+      lastSlot.removeAttribute("data-validity"); 
+      lastSlot.removeAttribute("title"); 
+      hideDragTooltip();
+    }
     lastSlot = slot || null;
     if (!slot) return;
     const d = parseInt(slot.dataset.day, 10), p = parseInt(slot.dataset.period, 10);
     const v = window.Placement ? window.Placement.classify(inHand.lessonId, d, p) : { validity: "green", reasons: [] };
     slot.setAttribute("data-validity", v.validity);
-    if (v.reasons && v.reasons.length) slot.title = v.reasons.join(" · ");
+    if (v.reasons && v.reasons.length) {
+      slot.title = v.reasons.join(" · ");
+      showDragTooltip(v.reasons, v.validity, x, y);
+    } else {
+      hideDragTooltip();
+    }
   }
 
   function onUp(e) {
@@ -266,6 +361,11 @@
     document.removeEventListener("keydown", onKey, true);
     if (lastSlot) { lastSlot.removeAttribute("data-validity"); lastSlot.removeAttribute("title"); }
     lastSlot = null;
+    hideDragTooltip();
+    if (dragTooltipEl && dragTooltipEl.parentNode) {
+      dragTooltipEl.parentNode.removeChild(dragTooltipEl);
+      dragTooltipEl = null;
+    }
     // Clear the at-pickup heatmap painted by paintAllSlots().
     document.querySelectorAll(".chrx-editor .chrx-slot.empty[data-validity]").forEach(
       s => s.removeAttribute("data-validity"));

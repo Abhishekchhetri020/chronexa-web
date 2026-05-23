@@ -679,3 +679,125 @@ input:focus,select:focus,textarea:focus{
   border-radius:var(--chrx-radius-md) !important;
   box-shadow:var(--chrx-shadow-sm, 0 1px 2px rgba(26,23,20,.04)) !important;
 }
+
+/* Split slot layout for multiple cards */
+.chrx-slot--split {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 2px !important;
+  padding: 2px !important;
+  align-items: stretch !important;
+  justify-content: stretch !important;
+}
+.chrx-slot--split .chrx-vkarta {
+  position: relative !important;
+  inset: auto !important;
+  flex: 1 1 0% !important;
+  width: auto !important;
+  height: auto !important;
+  padding: 2px 4px !important;
+  box-shadow: 0 1px 0 hsl(var(--hue) 55% 38%/.3) !important;
+}
+.chrx-slot--split .chrx-vk-line1 {
+  font-size: 11px !important;
+  line-height: 1 !important;
+}
+.chrx-slot--split .chrx-vk-line2,
+.chrx-slot--split .chrx-vk-line3 {
+  font-size: 9px !important;
+  line-height: 1 !important;
+}
+
+/* Studio Spotlight Focus overrides */
+.chrx-vkarta.chrx-card--dimmed {
+  opacity: 0.18 !important;
+  pointer-events: none !important;
+  filter: saturate(0.15) !important;
+  box-shadow: none !important;
+  transition: opacity var(--chrx-duration-fast) var(--chrx-ease), filter var(--chrx-duration-fast) var(--chrx-ease) !important;
+}
+.chrx-vkarta.chrx-card--focus {
+  opacity: 1 !important;
+  outline: 2px solid var(--teal) !important;
+  outline-offset: 1px !important;
+  transform: scale(1.04) translateY(-1.5px) !important;
+  z-index: 12 !important;
+  box-shadow: 0 6px 16px rgba(13, 79, 84, 0.22), 0 2px 4px rgba(13, 79, 84, 0.12), inset 0 0 0 1px hsl(var(--hue) 65% 60%/.7) !important;
+  transition: transform var(--chrx-duration-fast) var(--chrx-ease), box-shadow var(--chrx-duration-fast) var(--chrx-ease) !important;
+}
+
+/* Print preview page warm-studio aesthetic overrides */
+.chrx-preview-doc {
+  background: var(--paper-2) !important;
+  padding: 32px 16px !important;
+}
+.chrx-preview-page {
+  background: #ffffff !important;
+  color: #1a1714 !important;
+  border-radius: 4px !important;
+  box-shadow: 0 10px 30px rgba(26, 23, 20, 0.08), 0 1px 4px rgba(26, 23, 20, 0.04) !important;
+  border: 1px solid var(--line-soft) !important;
+  font-family: var(--chrx-font-sans) !important;
+  padding: 16mm 14mm !important;
+  box-sizing: border-box !important;
+}
+.chrx-print-table {
+  border-collapse: collapse !important;
+  width: 100% !important;
+  margin: 12px 0 !important;
+}
+.chrx-print-table th, .chrx-print-table td {
+  border: 1px solid var(--line) !important;
+  padding: 6px 8px !important;
+  transition: padding 0.15s ease, font-size 0.15s ease, border-width 0.15s ease !important;
+}
+.chrx-print-th-corner, .chrx-print-th-day {
+  background: var(--paper-2) !important;
+  color: var(--ink-2) !important;
+  font-family: var(--chrx-font-display) !important;
+  font-weight: 600 !important;
+  font-size: 11px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.05em !important;
+}
+.chrx-print-th-period {
+  background: var(--paper-2) !important;
+  color: var(--ink-2) !important;
+  font-weight: 600 !important;
+  font-size: 10px !important;
+}
+.chrx-print-th-break {
+  background: var(--paper-3) !important;
+  width: 28px !important;
+  min-width: 28px !important;
+  max-width: 28px !important;
+  padding: 0 !important;
+}
+.chrx-print-td-break {
+  background: var(--paper-2) !important;
+  border: 1px solid var(--line) !important;
+  font-family: var(--chrx-font-sans) !important;
+  width: 28px !important;
+  min-width: 28px !important;
+  max-width: 28px !important;
+  padding: 4px 0 !important;
+}
+
+/* Aesthetic Tuning Drawer overrides */
+.chrx-tuning-drawer {
+  font-family: var(--chrx-font-sans) !important;
+}
+.chrx-tuning-drawer select, .chrx-tuning-drawer input[type="range"] {
+  border-radius: 6px !important;
+  border: 1px solid var(--line) !important;
+  background: var(--paper) !important;
+  color: var(--ink) !important;
+}
+@media print {
+  .chrx-tuning-drawer, #chrx-preview-tuning {
+    display: none !important;
+  }
+}
+
+
+

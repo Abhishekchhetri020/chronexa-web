@@ -207,13 +207,129 @@
       title: "Bell-times / teacher-names / room-names print toggles",
       onclick: () => window.PrintSettingsDialog && window.PrintSettingsDialog.open("globals") }, "🛠 Global");
 
+    const tuningBtn = el("button", { class: "chrx-tb-btn", type: "button",
+      title: "Live aesthetics tuning drawer — card padding, font sizes, colors, and visibility",
+      onclick: toggleTuningDrawer }, "🎚 Tuning");
+
     const close = el("button", { class: "chrx-tb-btn chrx-tb-btn--danger", type: "button",
       style: "margin-left:auto", onclick: closePreview }, "✕ Close preview");
 
-    [prev, next, print, indicator, sel, filterBtn, structBtn, extraBtn, styleBtn, sizeBtn, designBtn, colorBtn, globalBtn, close]
+    [prev, next, print, indicator, sel, filterBtn, tuningBtn, structBtn, extraBtn, styleBtn, sizeBtn, designBtn, colorBtn, globalBtn, close]
       .forEach(c => bar.appendChild(c));
     bar._indicator = indicator;
     return bar;
+  }
+
+  function toggleTuningDrawer() {
+    const drawer = document.getElementById("chrx-preview-tuning");
+    if (!drawer) return;
+    const isHidden = drawer.style.display === "none";
+    drawer.style.display = isHidden ? "flex" : "none";
+  }
+
+  function buildTuningDrawer() {
+    const defaults = {
+      padding: 6,
+      fontSize: 9.5,
+      borderWidth: 1,
+      theme: "pastel",
+      showSubject: true,
+      showTeacher: true,
+      showClass: true,
+      showRoom: true
+    };
+    APP.printTuning = APP.printTuning || defaults;
+    const t = APP.printTuning;
+
+    const drawer = el("div", {
+      id: "chrx-preview-tuning",
+      class: "chrx-tuning-drawer",
+      style: "width:280px; min-width:280px; max-width:280px; background:var(--chrx-bg-panel); border-left:1px solid var(--chrx-line); display:none; flex-direction:column; padding:16px; overflow-y:auto; gap:16px; box-sizing:border-box;"
+    });
+
+    const title = el("h3", {
+      style: "font-family:var(--chrx-font-display); font-weight:700; font-size:15px; margin:0 0 4px; color:var(--ink);"
+    }, "Aesthetic Tuning");
+
+    drawer.appendChild(title);
+
+    function createSlider(label, key, min, max, step, unit = "") {
+      const group = el("div", { style: "display:flex; flex-direction:column; gap:4px;" });
+      const header = el("div", { style: "display:flex; justify-content:space-between; font-size:11.5px; color:var(--ink-2); font-weight:500;" });
+      const valueSpan = el("span", { style: "font-family:var(--chrx-font-mono); font-size:10.5px;" }, t[key] + unit);
+      
+      header.appendChild(el("span", null, label));
+      header.appendChild(valueSpan);
+      group.appendChild(header);
+
+      const slider = el("input", {
+        type: "range",
+        min: String(min),
+        max: String(max),
+        step: String(step),
+        value: String(t[key]),
+        style: "width:100%; cursor:pointer; accent-color:var(--teal); margin:0;",
+        oninput: (e) => {
+          t[key] = parseFloat(e.target.value);
+          valueSpan.textContent = e.target.value + unit;
+          render(currentTemplate);
+        }
+      });
+      group.appendChild(slider);
+      return group;
+    }
+
+    drawer.appendChild(createSlider("Cell Padding", "padding", 2, 16, 1, "px"));
+    drawer.appendChild(createSlider("Font Size", "fontSize", 8, 16, 0.5, "px"));
+    drawer.appendChild(createSlider("Border Width", "borderWidth", 0, 3, 1, "px"));
+
+    const themeGroup = el("div", { style: "display:flex; flex-direction:column; gap:4px;" });
+    themeGroup.appendChild(el("label", { style: "font-size:11.5px; color:var(--ink-2); font-weight:500;" }, "Card Theme"));
+    const themeSel = el("select", {
+      class: "chrx-tb-btn",
+      style: "width:100%; font-size:12px; padding:4px 6px;",
+      onchange: (e) => {
+        t.theme = e.target.value;
+        render(currentTemplate);
+      }
+    });
+    [
+      { value: "pastel", name: "Soft Pastel" },
+      { value: "mono", name: "Monochrome" },
+      { value: "neon", name: "Vibrant Neon" },
+      { value: "classic", name: "Classic XML" }
+    ].forEach(opt => {
+      themeSel.appendChild(el("option", { value: opt.value, selected: t.theme === opt.value ? "true" : null }, opt.name));
+    });
+    themeGroup.appendChild(themeSel);
+    drawer.appendChild(themeGroup);
+
+    const contentGroup = el("div", { style: "display:flex; flex-direction:column; gap:8px;" });
+    contentGroup.appendChild(el("label", { style: "font-size:11.5px; color:var(--ink-2); font-weight:500; margin-bottom:2px;" }, "Visible Elements"));
+    
+    function createCheckbox(label, key) {
+      const row = el("label", { style: "display:flex; align-items:center; gap:8px; font-size:12px; color:var(--ink-2); cursor:pointer; user-select:none;" });
+      const cb = el("input", {
+        type: "checkbox",
+        checked: t[key] ? "true" : null,
+        style: "cursor:pointer; accent-color:var(--teal); margin:0;",
+        onchange: (e) => {
+          t[key] = e.target.checked;
+          render(currentTemplate);
+        }
+      });
+      row.appendChild(cb);
+      row.appendChild(document.createTextNode(label));
+      return row;
+    }
+
+    contentGroup.appendChild(createCheckbox("Subject Code", "showSubject"));
+    contentGroup.appendChild(createCheckbox("Teacher Initials", "showTeacher"));
+    contentGroup.appendChild(createCheckbox("Class Name", "showClass"));
+    contentGroup.appendChild(createCheckbox("Room Name", "showRoom"));
+    drawer.appendChild(contentGroup);
+
+    return drawer;
   }
 
   function openPreview() {
@@ -223,8 +339,15 @@
     shell.innerHTML = "";
     const bar = buildPreviewBar();
     shell.appendChild(bar);
-    docShell = el("div", { class: "chrx-preview-doc" });
-    shell.appendChild(docShell);
+    
+    const mainArea = el("div", { class: "chrx-preview-main-area", style: "display:flex; flex:1; overflow:hidden;" });
+    docShell = el("div", { class: "chrx-preview-doc", style: "flex:1; overflow:auto;" });
+    mainArea.appendChild(docShell);
+    
+    const tuningDrawer = buildTuningDrawer();
+    mainArea.appendChild(tuningDrawer);
+    
+    shell.appendChild(mainArea);
     overlay.classList.add("is-open");
 
     // Set ribbon mode (other agents may want to know)
@@ -299,7 +422,10 @@
     const def = reg ? reg.get(template) : null;
     if (def && !def.builtin && typeof def.render === "function") {
       try {
-        const out = def.render(s);
+        // Pass `periods` so the pivot engine can honor the school's actual
+        // bell schedule. Without this, periods defaulted to 8 regardless,
+        // and break periods (gaps in the bell) silently mismatched cards.
+        const out = def.render(s, periods);
         if (Array.isArray(out))      pages = out.filter(Boolean);
         else if (out instanceof Node) pages = [out];
       } catch (err) {
@@ -330,16 +456,73 @@
       el("div", { style: "font-size:9.5px;color:#555" }, subtitle || ""));
   }
 
+  function timeToMin(timeStr) {
+    if (!timeStr) return -1;
+    const m = String(timeStr).match(/^(\d{1,2}):(\d{2})$/);
+    if (!m) return -1;
+    return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+  }
+
+  function getBreakBetween(school, p1, p2) {
+    if (!school || !school.breaks || !p1 || !p2) return null;
+    const t1 = p1.endMin;
+    const t2 = p2.startMin;
+    if (t2 <= t1) return null;
+    for (const b of school.breaks) {
+      const bStart = timeToMin(b.starttime);
+      const bEnd = timeToMin(b.endtime);
+      if (bStart !== -1 && bEnd !== -1) {
+        if (bStart >= t1 - 5 && bEnd <= t2 + 5) {
+          return b;
+        }
+      }
+    }
+    return null;
+  }
+
   function gridTable(periods, daysIn, cellFn) {
-    const tbl = el("table");
-    const tr0 = el("tr"); tr0.appendChild(el("th", null, ""));
-    periods.forEach(p => tr0.appendChild(el("th", null, "P" + p.index + "  " + p.label)));
+    const s = APP.school;
+    const sortedPeriods = periods.slice().sort((a, b) => (a.startMin || 0) - (b.startMin || 0));
+    const tbl = el("table", { class: "chrx-print-table" });
+    const tr0 = el("tr");
+    tr0.appendChild(el("th", { class: "chrx-print-th-corner" }, ""));
+    
+    sortedPeriods.forEach((p, idx) => {
+      tr0.appendChild(el("th", { class: "chrx-print-th-period" }, "P" + p.index + " " + p.label));
+      if (idx < sortedPeriods.length - 1) {
+        const brk = getBreakBetween(s, p, sortedPeriods[idx + 1]);
+        if (brk) {
+          tr0.appendChild(el("th", { class: "chrx-print-th-break" }, ""));
+        }
+      }
+    });
     tbl.appendChild(el("thead", null, tr0));
+    
     const tb = el("tbody");
     daysIn.forEach((d, di) => {
       const tr = el("tr");
-      tr.appendChild(el("th", null, DAYS[di]));
-      periods.forEach(p => tr.appendChild(cellFn(di, p)));
+      tr.appendChild(el("th", { class: "chrx-print-th-day" }, DAYS[di]));
+      
+      sortedPeriods.forEach((p, idx) => {
+        tr.appendChild(cellFn(di, p));
+        if (idx < sortedPeriods.length - 1) {
+          const brk = getBreakBetween(s, p, sortedPeriods[idx + 1]);
+          if (brk) {
+            if (di === 0) {
+              const breakCell = el("td", {
+                class: "chrx-print-td-break",
+                rowspan: String(daysIn.length),
+                style: "vertical-align:middle; text-align:center; background:var(--paper-2); font-weight:600; text-transform:uppercase; color:var(--ink-3); font-size:10px; padding:4px;"
+              });
+              const textDiv = el("div", {
+                style: "writing-mode: vertical-lr; transform: rotate(180deg); margin: 0 auto; letter-spacing: 0.15em;"
+              }, brk.printtext || brk.name);
+              breakCell.appendChild(textDiv);
+              tr.appendChild(breakCell);
+            }
+          }
+        }
+      });
       tb.appendChild(tr);
     });
     tbl.appendChild(tb);
@@ -347,33 +530,77 @@
   }
 
   function cellFromCard(card) {
-    if (!card) return el("td", { class: "pp-cell-empty" }, "—");
-    const style = (APP.printCellStyles || {})[currentTemplate];
-    if (!style) {
-      // Default rendering — preserves legacy look.
-      return el("td", null,
-        el("div", { class: "pp-cell-subj" }, card.subjectAbbr || card.subject || ""),
-        el("div", { class: "pp-cell-meta" }, (card.teachers || []).join(", ")),
-        el("div", { class: "pp-cell-meta" }, card.classroom || ""));
+    const tuning = APP.printTuning || {
+      padding: 6,
+      fontSize: 9.5,
+      borderWidth: 1,
+      theme: "pastel",
+      showSubject: true,
+      showTeacher: true,
+      showClass: true,
+      showRoom: true
+    };
+
+    if (!card) {
+      return el("td", {
+        class: "pp-cell-empty",
+        style: `padding:${tuning.padding}px; font-size:${tuning.fontSize}px; border-width:${tuning.borderWidth}px; border-style:solid; border-color:var(--line); color:var(--ink-3); text-align:center; vertical-align:middle;`
+      }, "—");
     }
-    // Styled rendering — apply anchor, card-types, font, colors.
-    const [v, h] = style.anchor.split("-");
-    const items = v === "top" ? "flex-start" : v === "bottom" ? "flex-end" : "center";
-    const just  = h === "left" ? "flex-start" : h === "right" ? "flex-end" : "center";
-    const ta    = h === "left" ? "left" : h === "right" ? "right" : "center";
+
+    const hue = card.subjectAbbr ? subjectHue({ abbr: card.subjectAbbr, name: card.subject }) : 210;
+    
+    let bg = "var(--paper)";
+    let fg = "var(--ink)";
+    let border = `1px solid var(--line)`;
+    
+    if (tuning.theme === "pastel") {
+      bg = `hsla(${hue}, 70%, 96%, 0.9)`;
+      fg = `hsl(${hue}, 75%, 22%)`;
+      border = `${tuning.borderWidth}px solid hsl(${hue}, 60%, 45%)`;
+    } else if (tuning.theme === "mono") {
+      bg = "#f3f4f6";
+      fg = "#1f2937";
+      border = `${tuning.borderWidth}px solid #d1d5db`;
+    } else if (tuning.theme === "neon") {
+      bg = `hsla(${hue}, 80%, 93%, 1)`;
+      fg = `hsl(${hue}, 90%, 18%)`;
+      border = `${tuning.borderWidth}px solid hsl(${hue}, 85%, 38%)`;
+    } else { // classic
+      bg = card.color || "var(--paper)";
+      fg = "var(--ink)";
+      border = `${tuning.borderWidth}px solid var(--line)`;
+    }
+
     const td = el("td", {
-      style: `background:${style.colors.bg};color:${style.colors.fg};` +
-        `font-family:${style.font.family};font-size:${style.font.size}px;vertical-align:top` });
+      style: `background:${bg}; color:${fg}; border:${border}; padding:${tuning.padding}px; font-size:${tuning.fontSize}px; vertical-align:middle;`
+    });
+
     const box = el("div", {
-      style: `display:flex;flex-direction:column;justify-content:${items};align-items:${just};text-align:${ta};height:100%;gap:1px` });
-    const ct = style.cardTypes || {};
-    if (ct.subject)   box.appendChild(el("div", { style:"font-weight:600" }, card.subjectAbbr || card.subject || ""));
-    if (ct.teacher)   box.appendChild(el("div", null, (card.teachers || []).join(", ")));
-    if (ct.class)     box.appendChild(el("div", null, (card.classes  || card.class || []).toString()));
-    if (ct.group)     box.appendChild(el("div", null, (card.groups   || card.group || []).toString()));
-    if (ct.classroom) box.appendChild(el("div", { style:"opacity:.75" }, card.classroom || ""));
-    if (ct.count)     box.appendChild(el("div", { style:"opacity:.6;font-size:0.9em" }, String(card.count || "")));
-    if (ct.bellTimes) box.appendChild(el("div", { style:"opacity:.6;font-size:0.9em" }, card.bellTimes || ""));
+      style: "display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; gap:2px; height:100%;"
+    });
+
+    if (tuning.showSubject) {
+      box.appendChild(el("div", { style: "font-weight:750; font-family:var(--chrx-font-display); line-height:1.15; font-size:1.15em;" }, card.subjectAbbr || card.subject || ""));
+    }
+    
+    const metaText = [];
+    if (tuning.showTeacher && card.teachers?.length) {
+      metaText.push(card.teachers.join(", "));
+    }
+    if (tuning.showRoom && card.classroom) {
+      metaText.push(card.classroom);
+    }
+    if (tuning.showClass && (card.classes?.length || card.class?.length)) {
+      metaText.push(card.classes || card.class);
+    }
+
+    if (metaText.length) {
+      box.appendChild(el("div", {
+        style: "font-size:0.88em; opacity:0.85; line-height:1.2; font-family:var(--chrx-font-sans);"
+      }, metaText.join(" · ")));
+    }
+
     td.appendChild(box);
     return td;
   }

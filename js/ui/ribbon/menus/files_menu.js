@@ -45,7 +45,7 @@
         ]},
         { icon: "⇄",  label: "Compare", disabled: !has(), sub: [
           { icon: "🕘", label: "Compare with last saved",    run: () => fire("app:compare-last") },
-          { icon: "📂", label: "Compare with another file…", run: () => fire("app:compare-file") },
+          { icon: "📂", label: "Compare with another file…", run: () => fire("app:compare-with-file") },
         ]},
         { sep: true },
         { icon: "🖨", label: "Print preview…", disabled: !has(), run: () => fire("app:print-preview") },

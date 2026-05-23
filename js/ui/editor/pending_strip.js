@@ -74,6 +74,11 @@ window.PendingStrip = (function () {
   }
 
   function wire(rootEl) {
+    // Search + tab handlers are bound to elements created by innerHTML, so
+    // they die with each re-render — no leak. But the rootEl-level
+    // mousedown + the document-level editor:place subscription survive
+    // every render and accumulated one listener per render. Gate them
+    // wire-once via `_chrxWired`.
     rootEl.querySelector(".chrx-pending-search")?.addEventListener("input", (e) => {
       _state.filter = e.target.value.toLowerCase();
       render(rootEl);
@@ -84,6 +89,7 @@ window.PendingStrip = (function () {
         render(rootEl);
       });
     });
+    if (rootEl._chrxPendingWired) return;
     rootEl.addEventListener("mousedown", (ev) => {
       const vk = ev.target.closest(".chrx-vk-pending");
       if (!vk) return;
@@ -96,6 +102,7 @@ window.PendingStrip = (function () {
       document.dispatchEvent(new CustomEvent("editor:pickup", { detail: { cardId, lessonId, fromPending: true } }));
     });
     document.addEventListener("editor:place", () => render(rootEl));
+    rootEl._chrxPendingWired = true;
   }
 
   function countPlaced(S) {

@@ -196,8 +196,14 @@
   }
 
   function focusEditor() {
-    const stepBtn = document.querySelector('.step-btn[data-step="2"]');
-    if (stepBtn) stepBtn.click();
+    // Step 2 is School Info; the editor lives on step 3 (Class Grid). The
+    // sidebar "Editor" entry was opening School Info because of this.
+    // Try step 3 first; fall back to step 2 if a layout variant doesn't
+    // expose step 3 yet (school-loaded gates the higher steps).
+    const editorBtn = document.querySelector('.step-btn[data-step="3"]:not([disabled])')
+      || document.querySelector('.step-btn[data-step="3"]')
+      || document.querySelector('.step-btn[data-step="2"]');
+    if (editorBtn) editorBtn.click();
   }
 
   // ───────── Command palette (⌘K) ─────────

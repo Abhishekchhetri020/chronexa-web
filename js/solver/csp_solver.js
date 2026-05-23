@@ -169,8 +169,15 @@ function buildModel(school) {
         requiredRoomType: l.requiredRoomType || null,
         preferredRoomId: l.preferredRoomId || null,
         allowedRoomIds,
-        fixedDay: l.fixedDay == null ? null : l.fixedDay | 0,
-        fixedPeriod: l.fixedPeriod == null ? null : l.fixedPeriod | 0,
+        // Lesson-level lock (l.fixedDay/fixedPeriod) addresses ONE slot. For a
+        // multi-session lesson (reps > 1) we cannot pin every session to that
+        // same slot — only one would place; the other reps would be hard-
+        // unplaceable. Pin session #0 to honor the anchor; leave the rest
+        // free to find feasible slots. Per-session lock data should land via
+        // a future cards[].locked path, not by fanning a single lesson lock
+        // across every expansion.
+        fixedDay:    (i === 0 && l.fixedDay    != null) ? (l.fixedDay    | 0) : null,
+        fixedPeriod: (i === 0 && l.fixedPeriod != null) ? (l.fixedPeriod | 0) : null,
         isLabDouble: !!l.isLabDouble,
         tags: Array.isArray(l.tags) ? l.tags.slice() : [],
       });
@@ -178,36 +185,67 @@ function buildModel(school) {
   }
   const lessonCount = expanded.length;
 
-  // Groups (per-class subdivisions). Without this, the solver treats every
-  // class-shared lesson as a whole-class conflict and refuses to place
-  // simultaneous group lessons (e.g. Boys-PE + Girls-Music).
-  // Per class: assign each group a bit index 0..31. Cap at 32 groups per
-  // class — schools in practice use <16. Group with entireClass=true gets
-  // a sentinel that we expand to "all bits set" when computing lesson masks.
-  const classGroups = []; // classGroups[c] = [{id, isEntire}, …]
-  for (let c = 0; c < classIds.length; c++) classGroups.push([]);
-  const groupBitByGroupId = Object.create(null); // groupId → { classIdx, bit, isEntire }
+  // Groups (per-class subdivisions). A real class is partitioned by zero or
+  // more DIVISIONS (e.g. gender → Boys/Girls; activity → GroupA/GroupB).
+  // Each student belongs to exactly one group per division, so two lessons
+  // are compatible at the same slot ONLY if they share a division AND
+  // their group bitmasks within that division are disjoint. Cross-division
+  // lessons (Boys vs GroupA) share students and MUST conflict.
+  //
+  // Encoding for lessonClassGroupMask and state.classGroupOcc — packed
+  // into one uint32 per (class, slot):
+  //   bits  0..15  → divisionTag (0 = default/unspecified division;
+  //                  0xFFFF = whole-class sentinel)
+  //   bits 16..31  → bit-set of groups WITHIN that division (≤16 bits)
+  //
+  // canPlace flags a conflict when:
+  //   either side is whole-class (divIdx === 0xFFFF), OR
+  //   divisions differ (cross-division share students), OR
+  //   masks intersect within the same division.
+  //
+  // 0xFFFF is reserved; real schools use small divisionTag integers.
+  const WHOLE_CLASS_DIV = 0xFFFF;
+  // For each class, build a per-division ordered list of groups so each
+  // group gets a bit index local to its division (not flat across the
+  // class). Cap at 16 groups per division (mask fits in 16 bits).
+  const classDivisions = []; // classDivisions[c] = Map<divIdx, [{id, isEntire}]>
+  for (let c = 0; c < classIds.length; c++) classDivisions.push(new Map());
+  const groupBitByGroupId = Object.create(null); // groupId → { classIdx, divIdx, bit, isEntire }
   if (Array.isArray(school.groups)) {
     for (const g of school.groups) {
       const c = classIdx.get(g.classId);
       if (c == null) continue;
-      const bucket = classGroups[c];
-      if (bucket.length >= 32) continue; // mask is uint32
+      const divIdx = (g.divisionTag | 0); // parser defaults to 0 when missing
+      const divs = classDivisions[c];
+      let bucket = divs.get(divIdx);
+      if (!bucket) { bucket = []; divs.set(divIdx, bucket); }
+      if (bucket.length >= 16) continue; // mask uses 16 bits per division
       const bit = bucket.length;
       bucket.push({ id: g.id, isEntire: !!g.entireClass });
-      groupBitByGroupId[g.id] = { classIdx: c, bit, isEntire: !!g.entireClass };
+      groupBitByGroupId[g.id] = {
+        classIdx: c, divIdx, bit, isEntire: !!g.entireClass,
+      };
     }
   }
+  // Per-division "full mask" — used when a lesson references "entire class"
+  // within that division. classDivisionFullMask[c].get(divIdx) → mask.
+  const classDivisionFullMask = [];
   const classGroupCount = new Int32Array(classIds.length);
-  const classFullGroupMask = new Uint32Array(classIds.length);
   for (let c = 0; c < classIds.length; c++) {
-    const n = classGroups[c].length;
-    classGroupCount[c] = n;
-    classFullGroupMask[c] = n >= 32 ? 0xffffffff : ((1 << n) - 1) >>> 0;
-    // Classes with no <group> definitions still need a sentinel so the
-    // "whole-class" lesson can occupy something. Reserve bit 0 as default.
-    if (n === 0) classFullGroupMask[c] = 1;
+    const m = new Map();
+    let total = 0;
+    for (const [divIdx, bucket] of classDivisions[c].entries()) {
+      const n = bucket.length;
+      total += n;
+      m.set(divIdx, n >= 16 ? 0xffff : ((1 << n) - 1) >>> 0);
+    }
+    classDivisionFullMask.push(m);
+    classGroupCount[c] = total;
   }
+  // Back-compat sentinel for code outside buildModel that reads
+  // classFullGroupMask — keep the array but it's no longer used by the
+  // packed pipeline. classGroupCount above still serves the old purpose.
+  const classFullGroupMask = new Uint32Array(classIds.length); // unused, kept for export shape
 
   // Build flat layouts.
   const lessonClassStart = new Int32Array(lessonCount);
@@ -229,10 +267,14 @@ function buildModel(school) {
       const ix = classIdx.get(cid);
       if (ix == null) throw new Error(`Unknown classId in lesson ${l.id}: ${cid}`);
       lessonClassFlat.push(ix);
-      // Group mask for this class entry: OR of bits for the lesson's groupIds
-      // that belong to this class. If any of them is "entire class", expand
-      // to the full class mask. If the lesson has no groupIds at all (older
-      // template school), default to whole-class so it conflicts with everything.
+      // Build a packed (divIdx << 16 | mask) value per (lesson, class) entry.
+      // - All matching groupIds for this class should share one divisionTag
+      //   (a class can be split by multiple divisions, but a single lesson
+      //   addresses ONE of them). The first matching group wins on the
+      //   division choice; same-class groups in other divisions are skipped.
+      // - If any group is "entireClass" OR no group matches → whole-class
+      //   sentinel (divIdx = 0xFFFF), which conflicts with anything.
+      let chosenDiv = -1;
       let mask = 0;
       let sawEntire = false;
       const lgIds = l.groupIds || [];
@@ -240,10 +282,19 @@ function buildModel(school) {
         const bb = groupBitByGroupId[gid];
         if (!bb || bb.classIdx !== ix) continue;
         if (bb.isEntire) { sawEntire = true; break; }
+        if (chosenDiv === -1) chosenDiv = bb.divIdx;
+        else if (bb.divIdx !== chosenDiv) continue; // ignore cross-division
         mask = (mask | (1 << bb.bit)) >>> 0;
       }
-      if (sawEntire || mask === 0) mask = classFullGroupMask[ix];
-      lessonClassGroupMask.push(mask >>> 0);
+      let packed;
+      if (sawEntire || chosenDiv === -1 || mask === 0) {
+        // Whole-class — use sentinel divIdx + bit 0 so the packed value is
+        // non-zero (state.classGroupOcc tests "occ !== 0" to detect a hit).
+        packed = (WHOLE_CLASS_DIV | (1 << 16)) >>> 0;
+      } else {
+        packed = ((chosenDiv & 0xFFFF) | ((mask & 0xFFFF) << 16)) >>> 0;
+      }
+      lessonClassGroupMask.push(packed);
     }
     lessonClassCount[i] = l.classIds.length;
 
@@ -536,7 +587,12 @@ function buildModel(school) {
       roomCands = rx == null ? [-1] : [rx];
     } else if (l.requiredRoomType) {
       const bucket = roomTypeBuckets.get(l.requiredRoomType) || [];
-      roomCands = bucket.length > 0 ? bucket : [-1];
+      // If the school has NO rooms of the required type, the lesson is
+      // hard-infeasible — do NOT fall back to [-1] (no-room), which
+      // silently bypasses the room-type constraint and lets e.g. a lab
+      // lesson place anywhere. Empty roomCands → no feasible candidates
+      // → surfaces as HARD_required_room_type via initiallyInfeasible.
+      roomCands = bucket;
     } else {
       roomCands = [-1];
     }
@@ -741,7 +797,14 @@ function buildModel(school) {
     lessonSimultaneous[i] = null;
   }
   function gatherMatched(rel) {
-    const subjSet = new Set(rel.subjectids || []);
+    // Two-subject relations (e.g. n_5 must-follow, n_8 must-same-day,
+    // n_1 cannot-same-day) store the B-side subjects in `subject2ids`.
+    // Without this union, B-side subjects were invisible to the solver
+    // even when the UI saved them — relations silently became one-sided.
+    const subjSet = new Set([
+      ...(rel.subjectids  || []),
+      ...(rel.subject2ids || []),
+    ]);
     const classSet = new Set(rel.classids || []);
     const out = [];
     for (let i = 0; i < lessonCount; i++) {
@@ -783,11 +846,15 @@ function buildModel(school) {
         pairCrossSubject(matched, lessonMustFollowAny);
         break;
       case "n_6": {
-        // Ordered must-follow: every lesson of subjects[0] must be followed
-        // by a lesson of subjects[1] in the next period of the same day.
-        const ids = rel.subjectids || [];
-        if (ids.length < 2) break;
-        const firstSubj = ids[0], secondSubj = ids[1];
+        // Ordered must-follow: every lesson of subjectA must be followed
+        // by a lesson of subjectB in the next period of the same day.
+        // The UI stores A-side in rel.subjectids and B-side in
+        // rel.subject2ids (NEEDS_SUBJECT2 set in relations.js:74). Older
+        // saved relations may have both subjects in rel.subjectids[0..1]
+        // — accept either shape.
+        const firstSubj  = (rel.subjectids  || [])[0];
+        const secondSubj = (rel.subject2ids || [])[0] || (rel.subjectids || [])[1];
+        if (!firstSubj || !secondSubj) break;
         for (const i of matched) {
           const l = expanded[i];
           if (l.subjectId === firstSubj) {
@@ -936,8 +1003,23 @@ function inferDays(school) {
 }
 
 function inferPeriodsPerDay(school) {
-  const teachingCount = (school.bell?.periods || []).filter(p => p.isTeaching !== false).length;
-  return teachingCount || 8;
+  // Return the largest 1-based bell index (capped at 32 for the bitmask),
+  // not the count of teaching periods. Counting compresses the grid: a
+  // school with periods [1, 2, BREAK(3), 4, 5] (4 teaching periods) used
+  // to return 4, but card.period for the last slot is 5 — `card.period -
+  // 1 = 4` would fall outside the compressed 0..3 grid and get silently
+  // dropped (or land on a break slot). Returning maxIndex (5) keeps the
+  // grid aligned with bell.period.index; break periods are still gated
+  // out via classValidPeriodMask, so the solver won't place lessons in
+  // them.
+  const periods = school.bell?.periods || [];
+  let max = 0;
+  for (const p of periods) {
+    const i = (p && p.index | 0) || 0;
+    if (i > max) max = i;
+  }
+  if (max <= 0) return 8;
+  return Math.min(32, max);
 }
 
 function sharesTeacher(i, j, starts, counts, flat) {
@@ -1020,21 +1102,10 @@ function makeState(model) {
 // ---------------------------------------------------------------------------
 
 function canPlace(model, state, lessonIdx, slot, roomIdx) {
-  // WASM hot-path call site. When globalThis.__chronexaWasmExports is
-  // present (set by wasm/csp_wasm.js after loadWasm() resolves), the
-  // AssemblyScript canPlace runs alongside the JS implementation. JS
-  // remains authoritative; this side-by-side call provides the runway
-  // for the full cutover (next step: bind real flat-buffer pointers
-  // via setShape + bindArrays and use the WASM result as the source of
-  // truth for the basic-conflict checks, with JS only running for
-  // relation + lab-double checks). Cost when WASM isn't loaded: a
-  // single typeof check per call. Cost when loaded: one extra WASM
-  // dispatch with NULL-pointer arrays = immediate short-circuit.
-  const _wx = globalThis.__chronexaWasmExports;
-  if (_wx !== undefined && _wx !== null) {
-    try { _wx.canPlace(lessonIdx, slot, roomIdx); } catch (_e) { /* ignore */ }
-  }
-
+  // WASM cutover was never finished — the dispatched _wx.canPlace ran
+  // against NULL-pointer arrays and its return value was discarded. Cost
+  // when WASM was loaded: one dead call per canPlace, on the hot path.
+  // Removed; re-introduce with a real bindArrays() + result-as-truth path.
   const d = model.slotDay[slot];
   const p = model.slotPeriod[slot];
   const bit = (1 << p) >>> 0;
@@ -1070,11 +1141,20 @@ function canPlace(model, state, lessonIdx, slot, roomIdx) {
         (model.classValidPeriodMask[c] & bit) === 0) {
       return FAIL.CLASS_BELL_PERIOD_INVALID;
     }
-    // Group-aware conflict: two lessons sharing a class at the same (day,
-    // period) conflict only if their group bitmasks intersect.
-    const gMask = model.lessonClassGroupMask[classStart + k];
-    const occMask = state.classGroupOcc[(cd) * model.periodsPerDay + p];
-    if ((occMask & gMask) !== 0) return FAIL.CLASS_CONFLICT;
+    // Group-aware conflict using packed (divIdx | mask<<16). Two lessons
+    // sharing a class+slot conflict when either is whole-class, divisions
+    // differ (cross-division share students), or masks intersect within
+    // the same division.
+    const lessonPacked = model.lessonClassGroupMask[classStart + k];
+    const occPacked = state.classGroupOcc[(cd) * model.periodsPerDay + p];
+    if (occPacked !== 0) {
+      const lessonDiv = lessonPacked & 0xFFFF;
+      const occDiv = occPacked & 0xFFFF;
+      if (lessonDiv === 0xFFFF || occDiv === 0xFFFF || lessonDiv !== occDiv) {
+        return FAIL.CLASS_CONFLICT;
+      }
+      if (((lessonPacked >>> 16) & (occPacked >>> 16)) !== 0) return FAIL.CLASS_CONFLICT;
+    }
     const maxDay = model.classMaxPerDay[c];
     if (maxDay >= 0 && state.classDayLoad[cd] >= maxDay) return FAIL.CLASS_MAX_PER_DAY;
     const subjectKey = ((c * model.subjectCount) + subject) * model.days + d;
@@ -1235,9 +1315,14 @@ function canPlaceSecond(model, state, lessonIdx, slot, roomIdx) {
   for (let k = 0; k < classCount; k++) {
     const c = model.lessonClassFlat[classStart + k];
     const cd = c * model.days + d;
-    const gMask = model.lessonClassGroupMask[classStart + k];
-    const occMask = state.classGroupOcc[(cd) * model.periodsPerDay + p];
-    if ((occMask & gMask) !== 0) return FAIL.CLASS_CONFLICT;
+    const lessonPacked = model.lessonClassGroupMask[classStart + k];
+    const occPacked = state.classGroupOcc[(cd) * model.periodsPerDay + p];
+    if (occPacked !== 0) {
+      const lessonDiv = lessonPacked & 0xFFFF;
+      const occDiv = occPacked & 0xFFFF;
+      if (lessonDiv === 0xFFFF || occDiv === 0xFFFF || lessonDiv !== occDiv) return FAIL.CLASS_CONFLICT;
+      if (((lessonPacked >>> 16) & (occPacked >>> 16)) !== 0) return FAIL.CLASS_CONFLICT;
+    }
   }
   if (roomIdx >= 0) {
     const rd = roomIdx * model.days + d;
@@ -1375,9 +1460,25 @@ function applySingle(model, state, lessonIdx, slot, roomIdx) {
     const c = model.lessonClassFlat[classStart + k];
     const cd = c * model.days + d;
     state.classOcc[cd] = (state.classOcc[cd] | bit) >>> 0;
-    const gMask = model.lessonClassGroupMask[classStart + k];
-    state.classGroupOcc[(cd) * model.periodsPerDay + p] =
-      (state.classGroupOcc[(cd) * model.periodsPerDay + p] | gMask) >>> 0;
+    // Merge into packed (divIdx | mask<<16). canPlace guarantees same
+    // division (or empty); we OR the mask bits in the high half. Any
+    // other case (whole-class sentinel already in slot, or divisions
+    // disagree) should be unreachable in canPlace-gated flows; we
+    // defensively keep classGroupOcc unchanged rather than corrupt the
+    // encoding by merging across divisions.
+    const lessonPacked = model.lessonClassGroupMask[classStart + k];
+    const slotKey = (cd) * model.periodsPerDay + p;
+    const occPacked = state.classGroupOcc[slotKey];
+    if (occPacked === 0) {
+      state.classGroupOcc[slotKey] = lessonPacked;
+    } else {
+      const occDiv = occPacked & 0xFFFF;
+      const lessonDiv = lessonPacked & 0xFFFF;
+      if (lessonDiv === occDiv && occDiv !== 0xFFFF && lessonDiv !== 0xFFFF) {
+        state.classGroupOcc[slotKey] = (occPacked | (lessonPacked & 0xFFFF0000)) >>> 0;
+      }
+      // else: division mismatch or whole-class — leave occupancy as-is.
+    }
     state.classDayLoad[cd] += 1;
     const subjectKey = ((c * model.subjectCount) + subject) * model.days + d;
     state.classSubjectDayCount[subjectKey] += 1;
@@ -1395,6 +1496,10 @@ function applySingle(model, state, lessonIdx, slot, roomIdx) {
     }
   }
   state.slotLoad[slot] += 1;
+  // TEMP-REVERT: incremental totalPeriodLoadBalance update suspended to
+  // isolate whether claim-#1 fix is responsible for cold-mode placement
+  // regression. Add back once perf-baseline confirmed.
+  // state.totalPeriodLoadBalance += model.periodPref[p];
 }
 
 function removeSingle(model, state, lessonIdx, slot, roomIdx) {
@@ -1431,13 +1536,30 @@ function removeSingle(model, state, lessonIdx, slot, roomIdx) {
   for (let k = 0; k < classCount; k++) {
     const c = model.lessonClassFlat[classStart + k];
     const cd = c * model.days + d;
-    // Clear this lesson's group bits first; only clear the classOcc bit
-    // if no other lesson's groups still occupy the slot.
-    const gMask = model.lessonClassGroupMask[classStart + k];
+    // Clear this lesson's group bits within the packed value. The
+    // earlier permissive condition (`|| occDiv === 0xFFFF || lessonDiv
+    // === 0xFFFF`) let removeSingle enter the mask-clear branch when
+    // divisions DIDN'T match — clearing unrelated bits and sometimes
+    // wiping the entire slot, which let the solver re-place lessons on
+    // top of existing ones (Gemini analysis_results.md, 2026-05-23).
+    // Strict match: only mutate when occupancy and lesson are on the
+    // same division. Bug-path callers (rollback / materialize that
+    // bypass canPlace) silently no-op rather than corrupt state.
+    const lessonPacked = model.lessonClassGroupMask[classStart + k];
     const slotKey = (cd) * model.periodsPerDay + p;
-    state.classGroupOcc[slotKey] = (state.classGroupOcc[slotKey] & ~gMask) >>> 0;
-    if (state.classGroupOcc[slotKey] === 0) {
-      state.classOcc[cd] = (state.classOcc[cd] & ~bit) >>> 0;
+    const occPacked = state.classGroupOcc[slotKey];
+    const lessonDiv = lessonPacked & 0xFFFF;
+    const occDiv = occPacked & 0xFFFF;
+    if (occPacked !== 0 && occDiv === lessonDiv) {
+      const lessonMask = lessonPacked >>> 16;
+      const occMask = occPacked >>> 16;
+      const newMask = occMask & ~lessonMask;
+      if (newMask === 0) {
+        state.classGroupOcc[slotKey] = 0;
+        state.classOcc[cd] = (state.classOcc[cd] & ~bit) >>> 0;
+      } else {
+        state.classGroupOcc[slotKey] = ((occPacked & 0xFFFF) | (newMask << 16)) >>> 0;
+      }
     }
     state.classDayLoad[cd] -= 1;
     const subjectKey = ((c * model.subjectCount) + subject) * model.days + d;
@@ -1456,6 +1578,8 @@ function removeSingle(model, state, lessonIdx, slot, roomIdx) {
     }
   }
   state.slotLoad[slot] -= 1;
+  // TEMP-REVERT: see applySingle comment.
+  // state.totalPeriodLoadBalance -= model.periodPref[p];
 }
 
 function applyPlacement(model, state, lessonIdx, slot, roomIdx, undoStack) {
@@ -1734,39 +1858,42 @@ function teacherBuildingChangesPenalty(model, state) {
   const cap = model.maxBuildingChangesPerDay; // -1 = unlimited
   let penalty = 0;
   const tc = model.teacherCount, days = model.days, ppd = model.periodsPerDay;
-  // Bucket: teacher × day × period → buildingIdx (-1 = free)
+  // Single-pass bucketing — O(L·avgTeachersPerLesson) total to build the
+  // teacher × day × period → building table, then O(T·D·P) to count
+  // transitions. Previously this function was O(T·D·P·L) (a nested scan
+  // over all lessons per cell), which dominated softScore() on the hot
+  // backtrack loop for real-sized schools.
+  const tdp = tc * days * ppd;
+  const grid = new Int8Array(tdp); // 0 = unset, store (bld + 2) so 0 stays sentinel
+  for (let i = 0; i < model.lessonCount; i++) {
+    if (!state.lessonAssigned[i]) continue;
+    const roomIdx = state.lessonAssignedRoom[i];
+    if (roomIdx < 0) continue;
+    const bld = roomBuilding[roomIdx];
+    if (bld < 0 || bld > 124) continue; // Int8 stores (bld+2); cap to keep within range
+    const slot = state.lessonAssignedSlot[i];
+    const d = model.slotDay[slot];
+    const p = model.slotPeriod[slot];
+    const tStart = model.lessonTeacherStart[i];
+    const tCount = model.lessonTeacherCount[i];
+    const enc = bld + 2;
+    for (let k = 0; k < tCount; k++) {
+      const t = model.lessonTeacherFlat[tStart + k];
+      const idx = (t * days + d) * ppd + p;
+      // First-write wins — matches the prior `break` after finding any
+      // assigned lesson at this teacher/slot.
+      if (grid[idx] === 0) grid[idx] = enc;
+    }
+  }
+  const minGaps = model.minGapsBetweenBuildingChanges | 0;
   for (let t = 0; t < tc; t++) {
     for (let d = 0; d < days; d++) {
-      // Walk this teacher's lessons on day d in period order, count
-      // building transitions.
-      const seq = [];
-      for (let p = 0; p < ppd; p++) {
-        // Find any assigned lesson with this teacher at (d, p)
-        // — O(lessons) inner loop; fine for editor sizes.
-        let bld = -1;
-        for (let i = 0; i < model.lessonCount; i++) {
-          if (!state.lessonAssigned[i]) continue;
-          const slot = state.lessonAssignedSlot[i];
-          if (model.slotDay[slot] !== d || model.slotPeriod[slot] !== p) continue;
-          const tStart = model.lessonTeacherStart[i];
-          const tCount = model.lessonTeacherCount[i];
-          let has = false;
-          for (let k = 0; k < tCount; k++) {
-            if (model.lessonTeacherFlat[tStart + k] === t) { has = true; break; }
-          }
-          if (!has) continue;
-          const roomIdx = state.lessonAssignedRoom[i];
-          if (roomIdx >= 0) { bld = roomBuilding[roomIdx]; break; }
-        }
-        seq.push(bld);
-      }
-      // Count transitions between distinct non-(-1) buildings + track
-      // gaps between consecutive transitions for min-gaps penalty.
-      const minGaps = model.minGapsBetweenBuildingChanges | 0;
       let changes = 0, prev = -1, lastChangeAt = -1;
-      for (let p = 0; p < seq.length; p++) {
-        const b = seq[p];
-        if (b < 0) continue;
+      const base = (t * days + d) * ppd;
+      for (let p = 0; p < ppd; p++) {
+        const enc = grid[base + p];
+        if (enc === 0) continue;
+        const b = enc - 2;
         if (prev >= 0 && b !== prev) {
           changes++;
           if (lastChangeAt >= 0 && minGaps > 0) {
@@ -3541,6 +3668,90 @@ export function solve(school, options = {}) {
   }
   if (performance.now() >= totalDeadlineMs) anyTimedOut = true;
 
+  // Post-solve conflict scrub. The repair + LNS phases can occasionally
+  // leave `bestLessonAssigned` with two lessons that share a (class,
+  // day, period) with overlapping group masks, OR share a teacher or
+  // room at the same slot — bugs observed on real schools but not yet
+  // root-caused in iterativeRepair / LNS. Until that lands, scrub: walk
+  // placements once in lessonIdx order, drop any lesson whose placement
+  // collides with one already kept. The dropped lessons surface as
+  // HARD_unplaced_lesson in the violation list. Count is exposed via
+  // `stats.scrubbedConflicts` for the UI.
+  let scrubbedConflicts = 0;
+  {
+    const ppd = model.periodsPerDay;
+    const days = model.days;
+    const classMask    = new Uint32Array(model.classCount   * days * ppd);
+    const teacherTaken = new Uint8Array (model.teacherCount * model.totalSlots);
+    const roomTaken    = new Uint8Array (model.roomCount    * model.totalSlots);
+    for (let i = 0; i < model.lessonCount; i++) {
+      if (!globalBest.state.bestLessonAssigned[i]) continue;
+      const slot = globalBest.state.bestLessonAssignedSlot[i];
+      if (slot < 0) continue;
+      const roomIdx = globalBest.state.bestLessonAssignedRoom[i];
+      const d = model.slotDay[slot];
+      const p = model.slotPeriod[slot];
+      const classStart = model.lessonClassStart[i];
+      const classCount = model.lessonClassCount[i];
+      const teacherStart = model.lessonTeacherStart[i];
+      const teacherCount = model.lessonTeacherCount[i];
+
+      // Detect collision with already-kept placements (any axis). Class
+      // axis uses the packed (divIdx | mask<<16) comparison — mirrors
+      // canPlace exactly, so the scrubber respects multi-division
+      // student-sharing (Boys vs GroupA from different divisions both
+      // share students → must conflict).
+      let conflict = false;
+      for (let k = 0; k < classCount && !conflict; k++) {
+        const c = model.lessonClassFlat[classStart + k];
+        const lessonPacked = model.lessonClassGroupMask[classStart + k];
+        const idx = (c * days + d) * ppd + p;
+        const occPacked = classMask[idx];
+        if (occPacked !== 0) {
+          const lessonDiv = lessonPacked & 0xFFFF;
+          const occDiv = occPacked & 0xFFFF;
+          if (lessonDiv === 0xFFFF || occDiv === 0xFFFF || lessonDiv !== occDiv) conflict = true;
+          else if (((lessonPacked >>> 16) & (occPacked >>> 16)) !== 0) conflict = true;
+        }
+      }
+      for (let k = 0; k < teacherCount && !conflict; k++) {
+        const t = model.lessonTeacherFlat[teacherStart + k];
+        if (teacherTaken[t * model.totalSlots + slot]) conflict = true;
+      }
+      if (!conflict && roomIdx >= 0 && roomTaken[roomIdx * model.totalSlots + slot]) {
+        conflict = true;
+      }
+
+      if (conflict) {
+        globalBest.state.bestLessonAssigned[i] = 0;
+        globalBest.state.bestLessonAssignedSlot[i] = -1;
+        globalBest.state.bestLessonAssignedRoom[i] = -1;
+        scrubbedConflicts += 1;
+        continue;
+      }
+
+      // Record this lesson's occupancy across all axes (packed format).
+      for (let k = 0; k < classCount; k++) {
+        const c = model.lessonClassFlat[classStart + k];
+        const lessonPacked = model.lessonClassGroupMask[classStart + k];
+        const idx = (c * days + d) * ppd + p;
+        const occPacked = classMask[idx];
+        if (occPacked === 0) {
+          classMask[idx] = lessonPacked;
+        } else if ((occPacked & 0xFFFF) !== 0xFFFF) {
+          classMask[idx] = (occPacked | (lessonPacked & 0xFFFF0000)) >>> 0;
+        }
+      }
+      for (let k = 0; k < teacherCount; k++) {
+        const t = model.lessonTeacherFlat[teacherStart + k];
+        teacherTaken[t * model.totalSlots + slot] = 1;
+      }
+      if (roomIdx >= 0) {
+        roomTaken[roomIdx * model.totalSlots + slot] = 1;
+      }
+    }
+  }
+
   const assignment = [];
   const violations = [];
   const placedSrcIds = new Map();
@@ -3692,6 +3903,7 @@ export function solve(school, options = {}) {
       hardConflicts,
       softScore: globalBest.softScore,
       durationMs: Math.round(performance.now() - t0),
+      scrubbedConflicts,
     },
     violations,
     chyby,
@@ -3705,6 +3917,13 @@ function maxCandidatesPerLesson(model) {
   }
   return Math.max(1, m);
 }
+
+// Internals exposed for direct unit testing — never imported by
+// production code. Keeps `tools/test_*.mjs` from having to vm-load the
+// whole module to reach private functions.
+export const __test_internals = {
+  buildModel, makeState, applySingle, removeSingle, canPlace,
+};
 
 // In Web Worker context, setInterval is global; in unusual hosts it might not
 // be. Provide a no-op shim so tests in headless environments don't crash.

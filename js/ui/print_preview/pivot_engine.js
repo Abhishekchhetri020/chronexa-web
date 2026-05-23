@@ -47,12 +47,35 @@
   function entitiesFor(dim, school, periods) {
     periods = periods || PERIODS_DEFAULT;
     switch (dim) {
-      case "day":
-        return DAYS_DEFAULT.map((name, i) => ({ id: i, name, abbr: DAYS_SHORT[i], _dim: "day" }));
-      case "period":
-        return Array.from({length: periods}, (_, i) => ({
+      case "day": {
+        // Honor school.daysPerWeek so 5-day schools don't get a phantom
+        // Saturday column (or row) on every print. Previously this hardcoded
+        // 6 days, masked only by `hideEmptyRows: true` presets — and printed
+        // an empty Saturday for any preset that didn't opt in.
+        const dpw = (school && (school.daysPerWeek | 0)) || DAYS_DEFAULT.length;
+        const n = Math.max(1, Math.min(DAYS_DEFAULT.length, dpw));
+        return DAYS_DEFAULT.slice(0, n).map((name, i) => ({
+          id: i, name, abbr: DAYS_SHORT[i], _dim: "day",
+        }));
+      }
+      case "period": {
+        // When the caller passes the actual bell array (school.bell.periods),
+        // honor each period's real index + label — schools with break
+        // periods interleaved (e.g. P1 P2 BREAK P3) used to silently
+        // mis-match because we generated sequential ids 1..N regardless.
+        if (Array.isArray(periods) && periods.length > 0 && typeof periods[0] === "object") {
+          return periods.map((p, i) => ({
+            id: (p && p.index != null) ? (p.index | 0) : (i + 1),
+            name: (p && p.label) ? p.label : ordinal(i + 1),
+            abbr: (p && p.label) ? p.label : ordinal(i + 1),
+            _dim: "period",
+          }));
+        }
+        const n = (typeof periods === "number" && periods > 0) ? periods : PERIODS_DEFAULT;
+        return Array.from({length: n}, (_, i) => ({
           id: i+1, name: ordinal(i+1), abbr: ordinal(i+1), _dim: "period",
         }));
+      }
       case "week":
         return [{ id: "w1", name: "Week 1", abbr: "W1", _dim: "week" }];
       case "term":
@@ -388,13 +411,18 @@
     const lessonCards = (school.cards || []).map(card => {
       const l = lessonById.get(card.lessonId);
       if (!l) return card;
+      // Card-level classroomId is the authoritative per-placement room;
+      // the lesson's preferredRoomId is only a default for unrouted cards.
+      // Without preferring card.classroomId first, room print reports
+      // showed the lesson default for every card, hiding real overrides.
+      const cardRoom = card.classroomId || (Array.isArray(card.roomIds) && card.roomIds[0]) || null;
       return {
         ...card,
         classIds:   l.classIds   || [],
         teacherIds: l.teacherIds || [],
         subjectId:  l.subjectId,
         groupIds:   l.groupIds   || [],
-        roomId:     l.preferredRoomId || (Array.isArray(l.roomIds) && l.roomIds[0]) || null,
+        roomId:     cardRoom || l.preferredRoomId || (Array.isArray(l.roomIds) && l.roomIds[0]) || null,
         roomIds:    l.roomIds || [],
         studentIds: l.studentIds || [],
       };

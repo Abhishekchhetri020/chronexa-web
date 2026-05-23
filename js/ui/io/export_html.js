@@ -33,11 +33,15 @@
       const lesson = lessonById[c.lessonId];
       if (!lesson) continue;
       if (!(lesson.classIds || []).includes(classRow.id)) continue;
-      if (c.day >= 6 || c.period >= periods.length) continue;
+      // card.period is 1-based (per DATA_SHAPES + parse_timetable_xml.js);
+      // grid columns are 0-based. Without this -1 the first period rendered
+      // as the second column and the last period was silently dropped.
+      const pIdx = (c.period | 0) - 1;
+      if (c.day >= 6 || pIdx < 0 || pIdx >= periods.length) continue;
       const subj = subjectById[lesson.subjectId] || {};
       const teachers = (lesson.teacherIds || []).map(t => teacherById[t]?.short || teacherById[t]?.name || "—").join(", ");
       const room = c.classroomId ? (roomById[c.classroomId]?.short || roomById[c.classroomId]?.name || "") : "";
-      grid[c.day][c.period] = { subject: subj.short || subj.name || "?", color: subj.color || "#94a3b8", teachers, room };
+      grid[c.day][pIdx] = { subject: subj.short || subj.name || "?", color: subj.color || "#94a3b8", teachers, room };
     }
 
     let html = `<h2>${esc(classRow.name || classRow.short)}</h2><table class="tt">`;
@@ -113,4 +117,5 @@ ${body}
   window.addEventListener("app:export-html", exportHTML);
   APP.io = APP.io || {};
   APP.io.exportHTML = exportHTML;
+  APP.io.buildHtmlExport = buildHTML;
 })();

@@ -133,36 +133,42 @@
     if (STATE.relatedLessonIds) applyClasses();
   }
 
-  function enter(kind, entityId) {
+  function enter(kind, entityId, isHover) {
     if (!kind || !entityId) return;
     if (STATE.kind) exit();   // re-enter cleanly
     STATE.kind = kind;
     STATE.entityId = entityId;
     STATE.relatedLessonIds = computeRelatedLessons(kind, entityId);
-    STATE.banner = buildBanner(kind, entityId);
-    mountBanner(STATE.banner);
+    if (!isHover) {
+      STATE.banner = buildBanner(kind, entityId);
+      mountBanner(STATE.banner);
+      STATE.boundKey = onKey;
+      document.addEventListener("keydown", STATE.boundKey);
+    }
     applyClasses();
-    STATE.boundKey = onKey;
     STATE.boundReapply = onReapply;
-    document.addEventListener("keydown", STATE.boundKey);
     document.addEventListener("editor:place",  STATE.boundReapply);
     document.addEventListener("editor:pickup", STATE.boundReapply);
   }
 
   function exit() {
     if (!STATE.kind) return;
-    if (STATE.boundKey) document.removeEventListener("keydown", STATE.boundKey);
+    if (STATE.boundKey) {
+      document.removeEventListener("keydown", STATE.boundKey);
+      STATE.boundKey = null;
+    }
     if (STATE.boundReapply) {
       document.removeEventListener("editor:place",  STATE.boundReapply);
       document.removeEventListener("editor:pickup", STATE.boundReapply);
+      STATE.boundReapply = null;
     }
-    if (STATE.banner && STATE.banner.parentNode) STATE.banner.parentNode.removeChild(STATE.banner);
+    if (STATE.banner && STATE.banner.parentNode) {
+      STATE.banner.parentNode.removeChild(STATE.banner);
+    }
     STATE.kind = null;
     STATE.entityId = null;
     STATE.relatedLessonIds = null;
     STATE.banner = null;
-    STATE.boundKey = null;
-    STATE.boundReapply = null;
     applyClasses();   // strip remaining classes
   }
 

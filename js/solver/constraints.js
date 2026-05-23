@@ -389,6 +389,34 @@ export const CKRIT_FUNCTIONS = Object.freeze({
   ckrit_vhodne_na_spojenie: CKritVhodneNaSpojenie,
 });
 
+// Group bitmask for a (lesson, class) pair, matching the solver's
+// lessonClassGroupMask construction in csp_solver.buildModel (lines 232-246).
+// Required so checkPlacement treats Group-Boys-PE + Group-Girls-Music at the
+// same II-B slot as a legal split, not a class-conflict.
+function _classGroupMask(school, lesson, classId) {
+  const allGroups = Array.isArray(school && school.groups) ? school.groups : [];
+  // Per-class ordered group list — bit index = position in this filtered list.
+  const classGroups = [];
+  for (const g of allGroups) {
+    if (!g || g.classId !== classId) continue;
+    if (classGroups.length >= 32) break;
+    classGroups.push(g);
+  }
+  const n = classGroups.length;
+  const fullMask = (n === 0) ? 1 : (n >= 32 ? 0xffffffff : ((1 << n) - 1) >>> 0);
+  const lgIds = (lesson && lesson.groupIds) || [];
+  let mask = 0;
+  let sawEntire = false;
+  for (const gid of lgIds) {
+    const bit = classGroups.findIndex(cg => cg.id === gid);
+    if (bit < 0) continue;
+    if (classGroups[bit].entireClass) { sawEntire = true; break; }
+    mask = (mask | (1 << bit)) >>> 0;
+  }
+  if (sawEntire || mask === 0) mask = fullMask;
+  return mask >>> 0;
+}
+
 // ---------------------------------------------------------------------------
 // checkPlacement — per-cell hard/soft violation checker for the editor.
 //
@@ -500,21 +528,30 @@ export function checkPlacement(school, lessonId, day, period, roomId) {
     }
   }
 
-  // 4. Class conflict (hard).
+  // 4. Class conflict (hard). Group-aware: two lessons sharing a class at the
+  // same slot conflict only when their group bitmasks intersect (matches
+  // canPlace in csp_solver.js — lines 1075-1077). Without this guard, every
+  // legitimate group-split (e.g. Group-Boys-PE + Group-Girls-Music in the
+  // same class+slot) was flagged as a false-positive class-conflict.
   for (const c of sameSlot) {
     const other = idx.lessonById[c.lessonId];
     if (!other) continue;
+    let flagged = false;
     for (const cid of (other.classIds || [])) {
-      if (myClasses.has(cid)) {
-        const cls = idx.classById[cid];
-        const otherSubj = idx.subjectById[other.subjectId];
-        const otherSubjName = otherSubj ? (otherSubj.name || otherSubj.abbr) : other.subjectId;
-        result.hard.push(
-          `Class ${cls ? cls.name : cid} already has ${otherSubjName} in this period`
-        );
-        break;
-      }
+      if (!myClasses.has(cid)) continue;
+      const myMask    = _classGroupMask(school, lesson, cid);
+      const otherMask = _classGroupMask(school, other,  cid);
+      if ((myMask & otherMask) === 0) continue;
+      const cls = idx.classById[cid];
+      const otherSubj = idx.subjectById[other.subjectId];
+      const otherSubjName = otherSubj ? (otherSubj.name || otherSubj.abbr) : other.subjectId;
+      result.hard.push(
+        `Class ${cls ? cls.name : cid} already has ${otherSubjName} in this period`
+      );
+      flagged = true;
+      break;
     }
+    if (flagged) continue;
   }
 
   // 5. Room conflict + required-room-type (hard).
@@ -572,8 +609,18 @@ export function checkPlacement(school, lessonId, day, period, roomId) {
         c.day === day && c.period === period + 1 &&
         !(c.lessonId === lessonId)
       );
-      const labClassBusy = nextSlot.some(c =>
-        ((idx.lessonById[c.lessonId] || {}).classIds || []).some(cid => myClasses.has(cid)));
+      const labClassBusy = nextSlot.some(c => {
+        const other = idx.lessonById[c.lessonId];
+        if (!other) return false;
+        for (const cid of (other.classIds || [])) {
+          if (!myClasses.has(cid)) continue;
+          // Group-aware: legal to share class+slot when bitmasks are disjoint.
+          if ((_classGroupMask(school, lesson, cid) & _classGroupMask(school, other, cid)) !== 0) {
+            return true;
+          }
+        }
+        return false;
+      });
       if (labClassBusy) result.hard.push(`Lab P+${period + 1}: class already busy`);
       const labTeacherBusy = nextSlot.some(c =>
         ((idx.lessonById[c.lessonId] || {}).teacherIds || []).some(tid => myTeachers.has(tid)));

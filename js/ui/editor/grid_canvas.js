@@ -35,9 +35,7 @@ window.Editor = (function () {
     if (window.ConstraintExplainer && typeof window.ConstraintExplainer.attachTooltip === "function") {
       window.ConstraintExplainer.attachTooltip(rootEl);
     }
-  }
-
-  function buildCardLookup(S, perspective) {
+    function buildCardLookup(S, perspective) {
     const lookup = Object.create(null);
     for (const c of (S.cards || [])) {
       const lesson = S._idx.lessonById[c.lessonId];
@@ -46,8 +44,8 @@ window.Editor = (function () {
       const keysForCard = rowKeysForCard(lesson, perspective, c);
       for (const rowKey of keysForCard) {
         if (!lookup[rowKey]) lookup[rowKey] = Object.create(null);
-        // Multiple cards may collide on same slot post-edit; we just show first.
-        if (!lookup[rowKey][key]) lookup[rowKey][key] = c;
+        if (!lookup[rowKey][key]) lookup[rowKey][key] = [];
+        lookup[rowKey][key].push(c);
       }
     }
     return lookup;
@@ -143,7 +141,7 @@ window.Editor = (function () {
       `);
     }
     return `
-      <div class="chrx-row chrx-row-head">
+      <div class="chrx-row" data-row="head">
         <div class="chrx-rowlabel chrx-h">Row</div>
         ${dayBlocks.join("")}
       </div>
@@ -153,10 +151,6 @@ window.Editor = (function () {
   function rowHtml(S, row, periods, mobileDay, cardLookup) {
     const rowBucket = cardLookup[row.key] || null;
     const slots = [];
-    // Per-class bell period set (Top-30 #3). When the row is a class with
-    // its own bellId, mark slots outside its bell as `out-of-bell` so the
-    // grid greys them out and drag-drop refuses to land there. Other
-    // perspectives (teacher/room/subject) span the school default.
     const persp = (window.APP && window.APP.editor && window.APP.editor.perspective) || "class";
     let bellPeriodSet = null;
     if (persp === "class" && window.BellResolver) {
@@ -167,11 +161,16 @@ window.Editor = (function () {
     }
     for (let d = 0; d < NUM_DAYS; d++) {
       for (const p of periods) {
-        const card = rowBucket ? rowBucket[d + "_" + p.index] : null;
+        const cards = rowBucket ? rowBucket[d + "_" + p.index] : null;
         const hide = d !== mobileDay ? " mobile-hidden" : "";
         const outOfBell = bellPeriodSet && !bellPeriodSet.has(p.index | 0);
-        if (card) {
-          slots.push(cardHtml(S, card, d, p.index, row.key, hide));
+        if (cards && cards.length > 0) {
+          const oob = outOfBell ? " out-of-bell" : "";
+          const cardListHtml = cards.map(c => vkartaHtml(S, c, d, p.index, row.key)).join("");
+          const splitClass = cards.length > 1 ? " chrx-slot--split" : "";
+          slots.push(
+            `<div class="chrx-slot${hide}${oob}${splitClass}" data-day="${d}" data-period="${p.index}" data-row="${esc(row.key)}">${cardListHtml}</div>`
+          );
         } else {
           const oob = outOfBell ? " out-of-bell" : "";
           slots.push(
@@ -191,7 +190,7 @@ window.Editor = (function () {
     `;
   }
 
-  function cardHtml(S, card, day, period, rowKey, mobileHidden) {
+  function vkartaHtml(S, card, day, period, rowKey) {
     const lesson = S._idx.lessonById[card.lessonId];
     const subject = lesson ? S._idx.subjectById[lesson.subjectId] : null;
     const subjShort = subject ? (subject.abbr || subject.name) : "?";
@@ -226,32 +225,63 @@ window.Editor = (function () {
     const densityClass = compact ? " chrx-vkarta--compact" : "";
 
     return `
-      <div class="chrx-slot${mobileHidden}" data-day="${day}" data-period="${period}" data-row="${esc(rowKey)}">
-        <div class="chrx-vkarta${locked}${densityClass}"
-             data-card-id="${cardId}"
-             data-lesson-id="${esc(card.lessonId)}"
-             data-day="${day}"
-             data-period="${period}"
-             style="--chrx-card-hue:${hue}"
-             title="${esc(subjShort + (teacherShort ? ' · ' + teacherShort : '') + (roomShort ? ' · ' + roomShort : ''))}">
-          <div class="chrx-vk-line1">${esc(subjShort)}</div>
-          ${compact ? "" : `<div class="chrx-vk-line2">${esc(line2)}</div>`}
-          ${compact ? "" : `<div class="chrx-vk-line3">${esc(line3)}</div>`}
-        </div>
+      <div class="chrx-vkarta${locked}${densityClass}"
+           data-card-id="${cardId}"
+           data-lesson-id="${esc(card.lessonId)}"
+           data-day="${day}"
+           data-period="${period}"
+           style="--chrx-card-hue:${hue}"
+           title="${esc(subjShort + (teacherShort ? ' · ' + teacherShort : '') + (roomShort ? ' · ' + roomShort : ''))}">
+        <div class="chrx-vk-line1">${esc(subjShort)}</div>
+        ${compact ? "" : `<div class="chrx-vk-line2">${esc(line2)}</div>`}
+        ${compact ? "" : `<div class="chrx-vk-line3">${esc(line3)}</div>`}
       </div>
     `;
   }
 
   function wire(rootEl) {
-    // mousedown delegation
-    rootEl.addEventListener("mousedown", onMouseDown);
-    // Day tabs (mobile)
-    rootEl.querySelectorAll(".chrx-day-tab").forEach(btn => {
-      btn.addEventListener("click", () => {
-        window.APP.day = parseInt(btn.dataset.day, 10) || 0;
-        render(rootEl);
-      });
-    });
+    // mousedown delegation is wire-once: rootEl is the same node across
+    // re-renders (only innerHTML is replaced — child listeners die, but
+    // listeners on rootEl itself accumulate). Before this guard, every
+    // pick/place re-render attached another mousedown handler, so a
+    // normal edit session leaked hundreds of listeners until the tab froze.
+    if (!rootEl._chrxWired) {
+      rootEl.addEventListener("mousedown", onMouseDown);
+      // Day-tab click delegation off rootEl too — survives innerHTML
+      // replace without needing a re-bind every render.
+      rootEl.addEventListener("click", onRootClick);
+      rootEl.addEventListener("mouseover", onMouseOver);
+      rootEl.addEventListener("mouseout", onMouseOut);
+      rootEl._chrxWired = true;
+    }
+  }
+
+  function onMouseOver(ev) {
+    const label = ev.target.closest(".chrx-rowlabel");
+    if (!label) return;
+    const row = label.closest(".chrx-row");
+    if (!row) return;
+    const entityId = row.dataset.row;
+    if (!entityId || entityId === "head") return;
+    const perspective = window.APP.editor.perspective || "class";
+    if (window.FocusMode && typeof window.FocusMode.enter === "function") {
+      window.FocusMode.enter(perspective, entityId, true);
+    }
+  }
+
+  function onMouseOut(ev) {
+    const label = ev.target.closest(".chrx-rowlabel");
+    if (!label) return;
+    if (window.FocusMode && typeof window.FocusMode.exit === "function") {
+      window.FocusMode.exit();
+    }
+  }
+
+  function onRootClick(ev) {
+    const tab = ev.target.closest(".chrx-day-tab");
+    if (!tab) return;
+    window.APP.day = parseInt(tab.dataset.day, 10) || 0;
+    render(tab.closest(".chrx-editor"));
   }
 
   function onMouseDown(ev) {
@@ -264,6 +294,17 @@ window.Editor = (function () {
       const lessonId = vk.dataset.lessonId;
       const day = parseInt(vk.dataset.day, 10);
       const period = parseInt(vk.dataset.period, 10);
+      // If a card is already in hand, restore it to its origin slot before
+      // picking up the new one — matches aSc CLASSIC. Before this guard the
+      // second pickup silently overwrote cardInHand and the first card was
+      // permanently lost (already removed from S.cards by its own pickup).
+      const held = window.APP.editor.cardInHand;
+      if (held) {
+        placeCardOnSchool(held.lessonId, held.originDay, held.originPeriod);
+        window.APP.editor.cardInHand = null;
+        dispatch("editor:restore", { cardId: held.cardId, lessonId: held.lessonId,
+          day: held.originDay, period: held.originPeriod, reason: "second-pickup" });
+      }
       // Remove from data + DOM
       removeCardFromSchool(lessonId, day, period);
       const slot = vk.closest(".chrx-slot");
@@ -277,6 +318,12 @@ window.Editor = (function () {
       window.APP.editor.cardInHand = { cardId, lessonId, originDay: day, originPeriod: period };
       syncCardInHandClass();
       dispatch("editor:pickup", { cardId, lessonId, day, period });
+      // If we restored a held card above, re-render so the restored slot
+      // visibly reflects its newly-replaced occupant.
+      if (held) {
+        const host = vk.closest(".chrx-editor");
+        if (host) render(host);
+      }
       return;
     }
     // Empty-slot place (only when we have something in hand)
@@ -287,6 +334,18 @@ window.Editor = (function () {
       const period = parseInt(slot.dataset.period, 10);
       const rowKey = slot.dataset.row;
       const inHand = window.APP.editor.cardInHand;
+      // Run the same hard-constraint check the card_in_hand drag path
+      // uses (Placement.classify) BEFORE mutating school.cards. Without
+      // this guard, click-to-place silently committed cards that broke
+      // teacher/class/room conflicts — and the drag-path validation at
+      // card_in_hand.js:139 was effectively dead code for clicks.
+      const v = (window.Placement && window.Placement.classify)
+        ? window.Placement.classify(inHand.lessonId, day, period)
+        : { validity: "green", reasons: [] };
+      if (v.validity === "red") {
+        if (window._chrxNotify) window._chrxNotify("Can't place here: " + (v.reasons || []).join(" · "), "error");
+        return;
+      }
       // Mutate school cards + re-render the row to keep visual state honest
       placeCardOnSchool(inHand.lessonId, day, period);
       window.APP.editor.cardInHand = null;
