@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-23T14:34:04Z
+/* Chronexa bundle — generated 2026-05-23T15:45:37Z
  *      161 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -13168,7 +13168,9 @@ window.Editor = (function () {
     if (window.ConstraintExplainer && typeof window.ConstraintExplainer.attachTooltip === "function") {
       window.ConstraintExplainer.attachTooltip(rootEl);
     }
-    function buildCardLookup(S, perspective) {
+  }
+
+  function buildCardLookup(S, perspective) {
     const lookup = Object.create(null);
     for (const c of (S.cards || [])) {
       const lesson = S._idx.lessonById[c.lessonId];
