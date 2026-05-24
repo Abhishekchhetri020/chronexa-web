@@ -3,9 +3,9 @@
  * Mirrors ASC Timetables' card right-click: Remove, Lock, Unlock,
  * Edit lesson, Find, Time off, Quick changes.
  *
- * Lock/Unlock sets or clears fixedDay + fixedPeriod on the underlying
- * lesson, which the grid renderer already reads to apply the .locked
- * class (grey cursor, 🔒 icon, pickup prevention).
+ * Lock/Unlock sets or clears `card.locked` on the individual card
+ * object (not the lesson), so locking one card doesn't affect other
+ * cards of the same lesson on different days.
  */
 (function () {
   "use strict";
@@ -66,24 +66,22 @@
 
   function lockCard(lessonId, day, period) {
     const S = window.APP && window.APP.school;
-    if (!S) return;
-    const lesson = S._idx && S._idx.lessonById && S._idx.lessonById[lessonId];
-    if (!lesson) return;
-    lesson.fixedDay = day;
-    lesson.fixedPeriod = period;
+    if (!S || !S.cards) return;
+    const card = S.cards.find(c => c.lessonId === lessonId && c.day === day && c.period === period);
+    if (card) card.locked = true;
     rerender();
-    notify("Locked: " + (lesson.subjectId || lessonId));
+    const lesson = S._idx && S._idx.lessonById && S._idx.lessonById[lessonId];
+    notify("Locked: " + (lesson ? (lesson.subjectId || lessonId) : lessonId));
   }
 
-  function unlockCard(lessonId) {
+  function unlockCard(lessonId, day, period) {
     const S = window.APP && window.APP.school;
-    if (!S) return;
-    const lesson = S._idx && S._idx.lessonById && S._idx.lessonById[lessonId];
-    if (!lesson) return;
-    delete lesson.fixedDay;
-    delete lesson.fixedPeriod;
+    if (!S || !S.cards) return;
+    const card = S.cards.find(c => c.lessonId === lessonId && c.day === day && c.period === period);
+    if (card) delete card.locked;
     rerender();
-    notify("Unlocked: " + (lesson.subjectId || lessonId));
+    const lesson = S._idx && S._idx.lessonById && S._idx.lessonById[lessonId];
+    notify("Unlocked: " + (lesson ? (lesson.subjectId || lessonId) : lessonId));
   }
 
   function editLesson(lessonId) {
@@ -150,14 +148,15 @@
     close();
     const S = window.APP && window.APP.school;
     if (!S) return;
+    const card = (S.cards || []).find(c => c.lessonId === lessonId && c.day === day && c.period === period);
     const lesson = S._idx && S._idx.lessonById && S._idx.lessonById[lessonId];
-    const isLocked = lesson && (lesson.fixedDay != null || lesson.fixedPeriod != null);
+    const isLocked = (card && card.locked) || (lesson && (lesson.fixedDay != null || lesson.fixedPeriod != null));
 
     const items = [
       { icon: "🗑", label: "Remove",       run: () => removeCard(lessonId, day, period) },
       { sep: true },
       isLocked
-        ? { icon: "🔓", label: "Unlock",   run: () => unlockCard(lessonId) }
+        ? { icon: "🔓", label: "Unlock",   run: () => unlockCard(lessonId, day, period) }
         : { icon: "🔒", label: "Lock",     run: () => lockCard(lessonId, day, period) },
       { sep: true },
       { icon: "✎",  label: "Edit lesson", run: () => editLesson(lessonId) },

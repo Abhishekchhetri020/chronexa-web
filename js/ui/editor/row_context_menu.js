@@ -160,11 +160,9 @@
       if (!matches) continue;
 
       if (lock) {
-        lesson.fixedDay = card.day;
-        lesson.fixedPeriod = card.period;
+        card.locked = true;
       } else {
-        delete lesson.fixedDay;
-        delete lesson.fixedPeriod;
+        delete card.locked;
       }
       count++;
     }

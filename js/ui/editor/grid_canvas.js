@@ -291,7 +291,7 @@ window.Editor = (function () {
 
     const hue = cardHue(S, card, lesson, subject);
     const cardId = `placed_${card.lessonId}_${day}_${period}`;
-    const locked = (lesson?.fixedDay != null || lesson?.fixedPeriod != null) ? " locked" : "";
+    const locked = (card.locked || lesson?.fixedDay != null || lesson?.fixedPeriod != null) ? " locked" : "";
     // line 2 differs by perspective: class → teacher, teacher → class, room → class
     const line2 = window.APP.editor.perspective === "teacher" ? classShort : teacherShort;
     const line3 = window.APP.editor.perspective === "class" ? roomShort
