@@ -40,7 +40,7 @@
     }
 
     // 2. Period must be a teaching period for hard placement; non-teaching is amber.
-    const periodObj = (S.bell.periods || []).find(p => p.index === period);
+    const periodObj = (S.bell && S.bell.periods || []).find(p => p.index === period);
     if (periodObj && periodObj.isTeaching === false) {
       flag(1, `${periodObj.label || "P" + period} is non-teaching`);
     }

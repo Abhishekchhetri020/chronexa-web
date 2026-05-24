@@ -197,8 +197,7 @@
 
   function focusEditor() {
     const editorBtn = document.querySelector('.step-btn[data-step="6"]:not([disabled])')
-      || document.querySelector('.step-btn[data-step="6"]')
-      || document.querySelector('.step-btn[data-step="2"]');
+      || document.querySelector('.step-btn[data-step="6"]');
     if (editorBtn) editorBtn.click();
   }
 

@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-24T05:42:22Z
+/* Chronexa bundle — generated 2026-05-24T10:01:59Z
  *      161 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -7826,8 +7826,7 @@ window.Inspector = (function () {
 
   function focusEditor() {
     const editorBtn = document.querySelector('.step-btn[data-step="6"]:not([disabled])')
-      || document.querySelector('.step-btn[data-step="6"]')
-      || document.querySelector('.step-btn[data-step="2"]');
+      || document.querySelector('.step-btn[data-step="6"]');
     if (editorBtn) editorBtn.click();
   }
 
@@ -13002,11 +13001,16 @@ ${body}
   document.addEventListener("editor:place", updatePendingCount);
   document.addEventListener("editor:pickup", updatePendingCount);
 
-  // Re-render the editor whenever an entity changes (so the hero card swaps to grid)
+  // Re-render the editor whenever an entity changes (so the hero card swaps to grid).
+  // Debounced: rapid-fire undo/redo bursts dispatch many entity:changed events; coalesce them.
+  let _entityChangedTimer = null;
   document.addEventListener("entity:changed", () => {
-    if (document.getElementById("step-6") && !document.getElementById("step-6").classList.contains("hidden")) {
-      activate();
-    }
+    clearTimeout(_entityChangedTimer);
+    _entityChangedTimer = setTimeout(() => {
+      if (document.getElementById("step-6") && !document.getElementById("step-6").classList.contains("hidden")) {
+        activate();
+      }
+    }, 80);
   });
 
   global.EditorActivator = { activate, deactivate, updatePendingCount };
@@ -14342,7 +14346,7 @@ window.PendingStrip = (function () {
     }
 
     // 2. Period must be a teaching period for hard placement; non-teaching is amber.
-    const periodObj = (S.bell.periods || []).find(p => p.index === period);
+    const periodObj = (S.bell && S.bell.periods || []).find(p => p.index === period);
     if (periodObj && periodObj.isTeaching === false) {
       flag(1, `${periodObj.label || "P" + period} is non-teaching`);
     }
@@ -16367,6 +16371,7 @@ window.StartScreen = (function () {
     const buildBtn = document.getElementById("cta-build-new");
     if (buildBtn) {
       buildBtn.onclick = () => {
+        if (window.Tour && window.Tour.end) window.Tour.end();
         if (window.APP.school && (window.APP.school.teachers.length || window.APP.school.cards.length)) {
           if (!confirm("A timetable is already loaded. Replace it with a new one?")) return;
         }
@@ -16400,6 +16405,7 @@ window.StartScreen = (function () {
     const demoBtn = document.getElementById("cta-load-demo");
     if (demoBtn) {
       demoBtn.onclick = async () => {
+        if (window.Tour && window.Tour.end) window.Tour.end();
         const status = document.getElementById("xml-status");
         if (status) status.innerHTML = `<span class="text-slate-500">Loading bundled sample…</span>`;
         try {
@@ -17083,6 +17089,14 @@ window.StartScreen = (function () {
     },
   ];
 
+  let activeOverlay = null;
+
+  function end() {
+    document.querySelectorAll(".chrx-tour-spotlight").forEach(t => t.classList.remove("chrx-tour-spotlight"));
+    if (activeOverlay) { activeOverlay.remove(); activeOverlay = null; }
+    try { localStorage.setItem(SEEN_KEY, "1"); } catch {}
+  }
+
   function el(tag, attrs, ...kids) {
     const n = document.createElement(tag);
     if (attrs) for (const k in attrs) {
@@ -17109,8 +17123,9 @@ window.StartScreen = (function () {
   function start() {
     ensureStyles();
     let i = 0;
-    const overlay = el("div", { class: "chrx-tour-overlay" });
-    document.body.appendChild(overlay);
+    activeOverlay = el("div", { class: "chrx-tour-overlay" });
+    document.body.appendChild(activeOverlay);
+    const overlay = activeOverlay;
 
     function showStep(ix) {
       overlay.innerHTML = "";
@@ -17151,11 +17166,6 @@ window.StartScreen = (function () {
       card.querySelector(".chrx-tour-prev").onclick = () => { if (target) target.classList.remove("chrx-tour-spotlight"); showStep(ix - 1); };
       card.querySelector(".chrx-tour-next").onclick = () => { if (target) target.classList.remove("chrx-tour-spotlight"); showStep(ix + 1); };
     }
-    function end() {
-      document.querySelectorAll(".chrx-tour-spotlight").forEach(t => t.classList.remove("chrx-tour-spotlight"));
-      overlay.remove();
-      try { localStorage.setItem(SEEN_KEY, "1"); } catch {}
-    }
     showStep(0);
   }
 
@@ -17190,7 +17200,7 @@ window.StartScreen = (function () {
     document.addEventListener("DOMContentLoaded", maybeStart);
   } else maybeStart();
 
-  global.Tour = { start, maybeStart, reset: () => { try { localStorage.removeItem(SEEN_KEY); } catch {} } };
+  global.Tour = { start, end, maybeStart, reset: () => { try { localStorage.removeItem(SEEN_KEY); } catch {} } };
 })(window);
 
 /* ─── FILE: js/ui/onboarding/smart_defaults.js ─── */

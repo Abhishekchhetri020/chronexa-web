@@ -184,6 +184,7 @@
     const buildBtn = document.getElementById("cta-build-new");
     if (buildBtn) {
       buildBtn.onclick = () => {
+        if (window.Tour && window.Tour.end) window.Tour.end();
         if (window.APP.school && (window.APP.school.teachers.length || window.APP.school.cards.length)) {
           if (!confirm("A timetable is already loaded. Replace it with a new one?")) return;
         }
@@ -217,6 +218,7 @@
     const demoBtn = document.getElementById("cta-load-demo");
     if (demoBtn) {
       demoBtn.onclick = async () => {
+        if (window.Tour && window.Tour.end) window.Tour.end();
         const status = document.getElementById("xml-status");
         if (status) status.innerHTML = `<span class="text-slate-500">Loading bundled sample…</span>`;
         try {

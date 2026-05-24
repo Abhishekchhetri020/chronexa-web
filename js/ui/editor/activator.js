@@ -167,11 +167,16 @@
   document.addEventListener("editor:place", updatePendingCount);
   document.addEventListener("editor:pickup", updatePendingCount);
 
-  // Re-render the editor whenever an entity changes (so the hero card swaps to grid)
+  // Re-render the editor whenever an entity changes (so the hero card swaps to grid).
+  // Debounced: rapid-fire undo/redo bursts dispatch many entity:changed events; coalesce them.
+  let _entityChangedTimer = null;
   document.addEventListener("entity:changed", () => {
-    if (document.getElementById("step-6") && !document.getElementById("step-6").classList.contains("hidden")) {
-      activate();
-    }
+    clearTimeout(_entityChangedTimer);
+    _entityChangedTimer = setTimeout(() => {
+      if (document.getElementById("step-6") && !document.getElementById("step-6").classList.contains("hidden")) {
+        activate();
+      }
+    }, 80);
   });
 
   global.EditorActivator = { activate, deactivate, updatePendingCount };

@@ -36,6 +36,14 @@
     },
   ];
 
+  let activeOverlay = null;
+
+  function end() {
+    document.querySelectorAll(".chrx-tour-spotlight").forEach(t => t.classList.remove("chrx-tour-spotlight"));
+    if (activeOverlay) { activeOverlay.remove(); activeOverlay = null; }
+    try { localStorage.setItem(SEEN_KEY, "1"); } catch {}
+  }
+
   function el(tag, attrs, ...kids) {
     const n = document.createElement(tag);
     if (attrs) for (const k in attrs) {
@@ -62,8 +70,9 @@
   function start() {
     ensureStyles();
     let i = 0;
-    const overlay = el("div", { class: "chrx-tour-overlay" });
-    document.body.appendChild(overlay);
+    activeOverlay = el("div", { class: "chrx-tour-overlay" });
+    document.body.appendChild(activeOverlay);
+    const overlay = activeOverlay;
 
     function showStep(ix) {
       overlay.innerHTML = "";
@@ -104,11 +113,6 @@
       card.querySelector(".chrx-tour-prev").onclick = () => { if (target) target.classList.remove("chrx-tour-spotlight"); showStep(ix - 1); };
       card.querySelector(".chrx-tour-next").onclick = () => { if (target) target.classList.remove("chrx-tour-spotlight"); showStep(ix + 1); };
     }
-    function end() {
-      document.querySelectorAll(".chrx-tour-spotlight").forEach(t => t.classList.remove("chrx-tour-spotlight"));
-      overlay.remove();
-      try { localStorage.setItem(SEEN_KEY, "1"); } catch {}
-    }
     showStep(0);
   }
 
@@ -143,5 +147,5 @@
     document.addEventListener("DOMContentLoaded", maybeStart);
   } else maybeStart();
 
-  global.Tour = { start, maybeStart, reset: () => { try { localStorage.removeItem(SEEN_KEY); } catch {} } };
+  global.Tour = { start, end, maybeStart, reset: () => { try { localStorage.removeItem(SEEN_KEY); } catch {} } };
 })(window);
