@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-24T15:44:52Z
+/* Chronexa bundle — generated 2026-05-24T15:53:33Z
  *      161 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -213,6 +213,18 @@ window.parseTimetableXml = (function () {
     });
     periods.sort((a, b) => a.index - b.index);
 
+    // --- Breaks ---------------------------------------------------------------
+    const breaks = [];
+    xml.querySelectorAll("breaks > break").forEach(b => {
+      const name = (attr(b, "name") || attr(b, "short") || "BREAK").trim();
+      breaks.push({
+        name,
+        printtext: (attr(b, "short") || name).trim(),
+        starttime: attr(b, "starttime"),
+        endtime:   attr(b, "endtime"),
+      });
+    });
+
     // --- Subjects -------------------------------------------------------------
     const subjects = [];
     const subjectById = Object.create(null);
@@ -413,6 +425,7 @@ window.parseTimetableXml = (function () {
       schoolName,
       daysPerWeek,
       bell: { periods },
+      breaks,
       teachers,
       classes: cleanClasses,
       classrooms,
@@ -22063,7 +22076,7 @@ window.StartScreen = (function () {
 
     const page = el("div", {
       class: "chrx-print-page chrx-pivot-page",
-      style: "background:#fff;color:#111;width:100%;height:100%;padding:18mm 14mm;box-sizing:border-box;display:flex;flex-direction:column;gap:8px;font-family:system-ui",
+      style: "background:#fff;color:#111;width:100%;min-height:100%;padding:18mm 14mm;box-sizing:border-box;display:flex;flex-direction:column;gap:8px;font-family:system-ui",
     });
 
     const schoolName = (school.schoolName || school.name || "");
@@ -22097,10 +22110,10 @@ window.StartScreen = (function () {
       }, "Page " + (pageIndex+1) + " of " + totalPages));
     }
 
-    const tableWrap = el("div", { style: "flex:1;overflow:hidden;display:flex;gap:6px" });
+    const tableWrap = el("div", { style: "flex:1;overflow:visible;display:flex;gap:6px" });
     const table = el("table", {
       class: "chrx-pivot-grid",
-      style: "border-collapse:collapse;width:100%;height:100%;table-layout:fixed;font-size:11px",
+      style: "border-collapse:collapse;width:100%;table-layout:fixed;font-size:11px",
     });
 
     const thead = el("thead");

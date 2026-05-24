@@ -93,6 +93,18 @@ window.parseTimetableXml = (function () {
     });
     periods.sort((a, b) => a.index - b.index);
 
+    // --- Breaks ---------------------------------------------------------------
+    const breaks = [];
+    xml.querySelectorAll("breaks > break").forEach(b => {
+      const name = (attr(b, "name") || attr(b, "short") || "BREAK").trim();
+      breaks.push({
+        name,
+        printtext: (attr(b, "short") || name).trim(),
+        starttime: attr(b, "starttime"),
+        endtime:   attr(b, "endtime"),
+      });
+    });
+
     // --- Subjects -------------------------------------------------------------
     const subjects = [];
     const subjectById = Object.create(null);
@@ -293,6 +305,7 @@ window.parseTimetableXml = (function () {
       schoolName,
       daysPerWeek,
       bell: { periods },
+      breaks,
       teachers,
       classes: cleanClasses,
       classrooms,
