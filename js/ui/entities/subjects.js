@@ -71,10 +71,10 @@
     function autoAbbr(name) {
       const words = name.trim().split(/\s+/).filter(Boolean);
       if (!words.length) return "";
-      // Single word: use full word (capped at 6 chars) with first letter uppercase
+      // Single word ≤6 chars: keep as-is (preserves user casing like "IA", "EVS")
       if (words.length === 1) {
         const w = words[0];
-        return w.length <= 6 ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : w.substring(0, 5).toUpperCase();
+        return w.length <= 6 ? w : w.substring(0, 5).toUpperCase();
       }
       // Multi-word: first letter of each word, uppercase
       return words.map(w => w.charAt(0).toUpperCase()).join("");

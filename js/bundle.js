@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-24T21:33:34Z
+/* Chronexa bundle — generated 2026-05-24T21:43:05Z
  *      162 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -2864,10 +2864,10 @@ window.Inspector = (function () {
     function autoAbbr(name) {
       const words = name.trim().split(/\s+/).filter(Boolean);
       if (!words.length) return "";
-      // Single word: use full word (capped at 6 chars) with first letter uppercase
+      // Single word ≤6 chars: keep as-is (preserves user casing like "IA", "EVS")
       if (words.length === 1) {
         const w = words[0];
-        return w.length <= 6 ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : w.substring(0, 5).toUpperCase();
+        return w.length <= 6 ? w : w.substring(0, 5).toUpperCase();
       }
       // Multi-word: first letter of each word, uppercase
       return words.map(w => w.charAt(0).toUpperCase()).join("");
@@ -4292,16 +4292,46 @@ window.Inspector = (function () {
       fBell.appendChild(opt);
     });
     fBell.addEventListener("change", e => draft.bellId = e.target.value);
-    const fRooms = D.el("select", { multiple: "multiple", size: "4",
-      style: "width:240px;padding:4px 6px" });
-    (S && Array.isArray(S.classrooms) ? S.classrooms : []).forEach(rm => {
-      const opt = D.el("option", { value: rm.id }, rm.name + (rm.abbr ? ` (${rm.abbr})` : ""));
-      if (draft.classroomIds.includes(rm.id)) opt.selected = true;
-      fRooms.appendChild(opt);
+
+    // ─── Preferred classrooms: multi-select tick/untick ───
+    const roomSet = new Set(draft.classroomIds);
+    const fRoomWrap = D.el("div", {
+      style: "max-height:140px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:6px;background:#fff;padding:4px 0"
     });
-    fRooms.addEventListener("change", () => {
-      draft.classroomIds = Array.from(fRooms.selectedOptions).map(o => o.value);
-    });
+    function renderRoomList() {
+      fRoomWrap.innerHTML = "";
+      const rooms = (S && Array.isArray(S.classrooms) ? S.classrooms : []);
+      if (!rooms.length) {
+        fRoomWrap.appendChild(D.el("div", { style: "padding:6px 10px;color:#8e8e93;font-size:12px" }, "No classrooms defined"));
+        return;
+      }
+      for (const rm of rooms) {
+        const isSelected = roomSet.has(rm.id);
+        const row = D.el("label", {
+          style: `display:flex;align-items:center;gap:8px;padding:4px 10px;cursor:pointer;font-size:13px;transition:background .1s;${isSelected ? "background:#ecfdf5" : ""}`
+        });
+        row.onmouseenter = () => { if (!roomSet.has(rm.id)) row.style.background = "#f5f5f4"; };
+        row.onmouseleave = () => { row.style.background = roomSet.has(rm.id) ? "#ecfdf5" : ""; };
+        const cb = D.el("input", { type: "checkbox", style: "accent-color:#16a34a" });
+        cb.checked = isSelected;
+        cb.addEventListener("change", () => {
+          if (cb.checked) roomSet.add(rm.id); else roomSet.delete(rm.id);
+          draft.classroomIds = Array.from(roomSet);
+          renderRoomList();
+        });
+        const label = D.el("span", null, rm.name + (rm.abbr ? ` (${rm.abbr})` : ""));
+        const tick = D.el("span", {
+          style: `color:#16a34a;font-size:14px;${isSelected ? "" : "visibility:hidden"}`
+        }, "✓");
+        row.appendChild(cb);
+        row.appendChild(label);
+        row.appendChild(D.el("span", { style: "flex:1" }));
+        row.appendChild(tick);
+        fRoomWrap.appendChild(row);
+      }
+    }
+    renderRoomList();
+
     const fPrintColor = D.el("input", { type: "color",
       value: draft.printColor || "#000000",
       style: "width:50px;height:28px;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer",
@@ -4313,6 +4343,7 @@ window.Inspector = (function () {
       if (!draft.abbr.trim()) draft.abbr = autoAbbr(draft.firstName, draft.lastName);
       // Auto-assign unique color if none selected
       if (!draft.color) draft.color = D.autoPickColor("teachers");
+      draft.classroomIds = Array.from(roomSet);
       const all = window.APP.school.teachers;
       const fullName = `${draft.firstName.trim()} ${draft.lastName.trim()}`.trim();
       if (!isNew) {
@@ -4360,7 +4391,7 @@ window.Inspector = (function () {
         { label:"Max gaps/day", control:fGaps },
         { label:"Max consecutive periods", control:fConsec },
         { label:"Bell schedule", control:fBell },
-        { label:"Preferred classrooms", control:fRooms },
+        { label:"Preferred classrooms", control:fRoomWrap },
         { label:"Print color", control:fPrintColor },
       ],
       onSave: save,
