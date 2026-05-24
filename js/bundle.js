@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-24T20:56:47Z
+/* Chronexa bundle — generated 2026-05-24T21:04:19Z
  *      162 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -2906,11 +2906,13 @@ window.Inspector = (function () {
       requiresLab: false,
     }, ref.constraints || {});
 
-    /* ── "Set for more" dual-pane transfer dialog ── */
+    /* ── "Set for more" dual-pane transfer dialog ──
+       Single-click toggles: click a row on the left → green ✓ + appears
+       on the right. Click again → removed. Matches ASC Timetables. */
     function openSetForMore(fieldKey, fieldLabel, getValue) {
       const allSubjects = (window.APP.school && window.APP.school.subjects) || [];
       const others = allSubjects.filter(s => s.id !== ref.id);
-      const selected = new Set();
+      const chosen = new Set();                 // ids in right pane
 
       const overlay = D.el("div", {
         style: "position:fixed;inset:0;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;z-index:10100;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
@@ -2930,114 +2932,97 @@ window.Inspector = (function () {
       titleBar.appendChild(closeBtn);
       dialog.appendChild(titleBar);
 
-      // Body: two panes + arrow
+      // Body: two panes side by side
       const body = D.el("div", {
-        style: "display:flex;flex:1;overflow:hidden;min-height:320px"
+        style: "display:flex;flex:1;overflow:hidden;min-height:360px"
       });
 
-      // Left pane (all subjects)
+      // ─── Left pane (all subjects) ───
       const leftPane = D.el("div", { style: "flex:1;display:flex;flex-direction:column;border-right:1px solid #e2e8f0" });
       const leftHead = D.el("div", { style: "display:flex;gap:4px;padding:8px 12px;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-size:11px;font-weight:600;color:#475569" });
+      leftHead.appendChild(D.el("span", { style: "width:28px" }, ""));  // checkmark col
       leftHead.appendChild(D.el("span", { style: "width:100px" }, "Abbreviation"));
       leftHead.appendChild(D.el("span", null, "Name"));
       leftPane.appendChild(leftHead);
       const leftList = D.el("div", { style: "flex:1;overflow-y:auto" });
+      leftPane.appendChild(leftList);
+      body.appendChild(leftPane);
 
-      const rightSelectedIds = new Set();
-      const leftRows = [];
-      const rightRows = [];
+      // ─── Center: ↔ indicator (decorative, like ASC) ───
+      const center = D.el("div", {
+        style: "display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 6px;gap:6px"
+      });
+      center.appendChild(D.el("span", {
+        style: "font-size:20px;color:#0f766e;user-select:none"
+      }, "↔"));
+      body.appendChild(center);
+
+      // ─── Right pane (chosen subjects) ───
+      const rightPane = D.el("div", { style: "flex:1;display:flex;flex-direction:column" });
+      const rightHead = D.el("div", { style: "display:flex;gap:4px;padding:8px 12px;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-size:11px;font-weight:600;color:#475569" });
+      rightHead.appendChild(D.el("span", { style: "width:28px" }, ""));
+      rightHead.appendChild(D.el("span", { style: "width:100px" }, "Abbreviation"));
+      rightHead.appendChild(D.el("span", null, "Name"));
+      rightPane.appendChild(rightHead);
+      const rightList = D.el("div", { style: "flex:1;overflow-y:auto" });
+      rightPane.appendChild(rightList);
+      body.appendChild(rightPane);
+      dialog.appendChild(body);
+
+      // ─── Render helpers ───
+      function renderBoth() { renderLeft(); renderRight(); }
 
       function renderLeft() {
         leftList.innerHTML = "";
         for (const s of others) {
-          if (rightSelectedIds.has(s.id)) continue;
+          const isChosen = chosen.has(s.id);
           const row = D.el("div", {
-            style: "display:flex;gap:4px;padding:6px 12px;cursor:pointer;font-size:12px;border-bottom:1px solid #f1f5f9;transition:background .1s",
+            style: `display:flex;align-items:center;gap:4px;padding:6px 12px;cursor:pointer;font-size:12px;border-bottom:1px solid #f1f5f9;transition:background .15s;${isChosen ? "background:#ecfdf5" : ""}`,
             "data-id": s.id,
           });
-          row.onmouseenter = () => row.style.background = "#f1f5f9";
-          row.onmouseleave = () => row.style.background = selected.has(s.id) ? "#dbeafe" : "";
+          row.onmouseenter = () => { if (!chosen.has(s.id)) row.style.background = "#f1f5f9"; };
+          row.onmouseleave = () => { row.style.background = chosen.has(s.id) ? "#ecfdf5" : ""; };
           row.onclick = () => {
-            if (selected.has(s.id)) { selected.delete(s.id); row.style.background = ""; }
-            else { selected.add(s.id); row.style.background = "#dbeafe"; }
+            if (chosen.has(s.id)) chosen.delete(s.id);
+            else chosen.add(s.id);
+            renderBoth();
           };
-          if (selected.has(s.id)) row.style.background = "#dbeafe";
+          // Green checkmark column
+          const tick = D.el("span", {
+            style: `width:22px;text-align:center;font-size:15px;color:#16a34a;${isChosen ? "" : "visibility:hidden"}`
+          }, "✓");
+          row.appendChild(tick);
           row.appendChild(D.el("span", { style: "width:100px;font-weight:500" }, s.abbr || s.short || ""));
           row.appendChild(D.el("span", null, s.name || ""));
           leftList.appendChild(row);
         }
       }
 
-      leftPane.appendChild(leftList);
-      body.appendChild(leftPane);
-
-      // Center arrows
-      const center = D.el("div", {
-        style: "display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 8px;gap:6px"
-      });
-      const moveRight = D.el("button", { type: "button",
-        style: "background:#1d6b5a;color:#fff;border:0;border-radius:6px;width:36px;height:28px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center",
-        title: "Move selected →",
-        onclick: () => {
-          for (const id of selected) rightSelectedIds.add(id);
-          selected.clear();
-          renderLeft();
-          renderRight();
-        }
-      }, "→");
-      const moveLeft = D.el("button", { type: "button",
-        style: "background:#dc2626;color:#fff;border:0;border-radius:6px;width:36px;height:28px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center",
-        title: "← Remove selected",
-        onclick: () => {
-          for (const id of rightSelected) { rightSelectedIds.delete(id); }
-          rightSelected.clear();
-          renderLeft();
-          renderRight();
-        }
-      }, "←");
-      center.appendChild(moveRight);
-      center.appendChild(moveLeft);
-      body.appendChild(center);
-
-      // Right pane (chosen subjects)
-      const rightSelected = new Set();
-      const rightPane = D.el("div", { style: "flex:1;display:flex;flex-direction:column" });
-      const rightHead = D.el("div", { style: "display:flex;gap:4px;padding:8px 12px;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-size:11px;font-weight:600;color:#475569" });
-      rightHead.appendChild(D.el("span", { style: "width:100px" }, "Abbreviation"));
-      rightHead.appendChild(D.el("span", null, "Name"));
-      rightPane.appendChild(rightHead);
-      const rightList = D.el("div", { style: "flex:1;overflow-y:auto" });
-
       function renderRight() {
         rightList.innerHTML = "";
         for (const s of others) {
-          if (!rightSelectedIds.has(s.id)) continue;
+          if (!chosen.has(s.id)) continue;
           const row = D.el("div", {
-            style: "display:flex;gap:4px;padding:6px 12px;cursor:pointer;font-size:12px;border-bottom:1px solid #f1f5f9",
+            style: "display:flex;align-items:center;gap:4px;padding:6px 12px;cursor:pointer;font-size:12px;border-bottom:1px solid #f1f5f9;background:#f0fdf4;transition:background .15s",
             "data-id": s.id,
           });
           row.onmouseenter = () => row.style.background = "#fef2f2";
-          row.onmouseleave = () => row.style.background = rightSelected.has(s.id) ? "#fee2e2" : "";
+          row.onmouseleave = () => row.style.background = "#f0fdf4";
           row.onclick = () => {
-            if (rightSelected.has(s.id)) { rightSelected.delete(s.id); row.style.background = ""; }
-            else { rightSelected.add(s.id); row.style.background = "#fee2e2"; }
+            chosen.delete(s.id);
+            renderBoth();
           };
+          const tick = D.el("span", {
+            style: "width:22px;text-align:center;font-size:15px;color:#16a34a"
+          }, "✓");
+          row.appendChild(tick);
           row.appendChild(D.el("span", { style: "width:100px;font-weight:500" }, s.abbr || s.short || ""));
           row.appendChild(D.el("span", null, s.name || ""));
           rightList.appendChild(row);
         }
       }
 
-      rightPane.appendChild(rightList);
-      body.appendChild(rightPane);
-      dialog.appendChild(body);
-
-      // Right-side controls (↑ ✕ ↓)
-      const sideCtrl = D.el("div", {
-        style: "position:absolute;right:12px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:4px"
-      });
-
-      // Footer
+      // ─── Footer ───
       const footer = D.el("div", {
         style: "display:flex;align-items:center;justify-content:space-between;padding:10px 18px;border-top:1px solid #e2e8f0;background:#f8fafc"
       });
@@ -3045,13 +3030,13 @@ window.Inspector = (function () {
       leftActions.appendChild(D.el("button", { type: "button",
         style: "padding:6px 14px;font-size:12px;border:1px solid #cbd5e1;background:#fff;border-radius:6px;cursor:pointer",
         onclick: () => {
-          for (const s of others) selected.add(s.id);
-          renderLeft();
+          for (const s of others) chosen.add(s.id);
+          renderBoth();
         }
       }, "Select all"));
       leftActions.appendChild(D.el("button", { type: "button",
         style: "padding:6px 14px;font-size:12px;border:1px solid #cbd5e1;background:#fff;border-radius:6px;cursor:pointer",
-        onclick: () => { selected.clear(); renderLeft(); }
+        onclick: () => { chosen.clear(); renderBoth(); }
       }, "Clear selection"));
       footer.appendChild(leftActions);
 
@@ -3059,8 +3044,9 @@ window.Inspector = (function () {
         style: "padding:6px 20px;font-size:13px;font-weight:600;border:0;background:#16a34a;color:#fff;border-radius:6px;cursor:pointer",
         onclick: () => {
           const val = getValue();
-          for (const sid of rightSelectedIds) {
-            const subj = allSubjects.find(s => s.id === sid);
+          const allS = (window.APP.school && window.APP.school.subjects) || [];
+          for (const sid of chosen) {
+            const subj = allS.find(s => s.id === sid);
             if (!subj) continue;
             const before = subj.constraints ? { ...subj.constraints } : null;
             subj.constraints = Object.assign({}, subj.constraints || {});
@@ -3069,7 +3055,7 @@ window.Inspector = (function () {
           }
           overlay.remove();
           const notify = window._chrxNotify || console.log;
-          notify("Applied " + fieldLabel + " to " + rightSelectedIds.size + " subjects", "info");
+          notify("Applied " + fieldLabel + " to " + chosen.size + " subjects", "info");
         }
       }, "OK");
       footer.appendChild(okBtn);
@@ -3078,8 +3064,7 @@ window.Inspector = (function () {
       overlay.appendChild(dialog);
       overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
       document.body.appendChild(overlay);
-      renderLeft();
-      renderRight();
+      renderBoth();
     }
 
     // Helper: build a "Set for more" link
