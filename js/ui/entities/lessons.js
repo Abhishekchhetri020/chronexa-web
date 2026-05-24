@@ -923,39 +923,482 @@
   }
 
   function open() {
+    const s = window.APP.school;
     D.open({
       entity:"lessons", title:"Lessons",
       columns:columns(), rows:rows(),
       extras:[
-        { id:"copy", label:"Copy to" },
+        { id:"copy",   label:"Copy to" },
+        { id:"change", label:"Change" },
       ],
-      onAction:(cmd, row) => {
+      onAction:(cmd, row, allRows) => {
         if (cmd === "new")  return openEdit(null);
         if (cmd === "edit" && row) return openEdit(row);
-        if (cmd === "delete" && row) {
-          const all = window.APP.school.lessons;
-          const i = all.findIndex(x => x.id === row._ref.id);
-          if (i >= 0) {
-            const removed = all.splice(i, 1)[0];
-            window.APP.audit.append({ entity:"lessons", op:"remove", before:{...removed} });
-            D.refresh(rows());
-            window.dispatchEvent(new CustomEvent("entity:changed", { detail: { entity: "lessons" } }));
+
+        // ── Multi-delete ──────────────────────────────────────────────
+        if (cmd === "delete" && allRows && allRows.length) {
+          const all = s.lessons;
+          const idsToRemove = new Set(allRows.map(r => r._ref.id));
+          for (let i = all.length - 1; i >= 0; i--) {
+            if (idsToRemove.has(all[i].id)) {
+              const removed = all.splice(i, 1)[0];
+              window.APP.audit.append({ entity:"lessons", op:"remove", before:{...removed} });
+            }
           }
-          return;
-        }
-        if (cmd === "copy" && row) {
-          // Duplicate the row with a new id
-          const src = row._ref;
-          const dup = { ...src, id: D.uid("l"),
-            classIds: src.classIds.slice(), teacherIds: src.teacherIds.slice() };
-          window.APP.school.lessons.push(dup);
-          if (window.APP.school._idx) window.APP.school._idx.lessonById[dup.id] = dup;
-          window.APP.audit.append({ entity:"lessons", op:"copy", after:{...dup} });
           D.refresh(rows());
           window.dispatchEvent(new CustomEvent("entity:changed", { detail: { entity: "lessons" } }));
+          return;
+        }
+
+        // ── Copy to ───────────────────────────────────────────────────
+        if (cmd === "copy" && allRows && allRows.length) {
+          openCopyToDialog(allRows);
+          return;
+        }
+
+        // ── Change (bulk edit) ────────────────────────────────────────
+        if (cmd === "change" && allRows && allRows.length) {
+          openChangeDialog(allRows);
+          return;
         }
       },
     });
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // ── Copy To dialog ─────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  function openCopyToDialog(selectedRows) {
+    const s = window.APP.school;
+    const count = selectedRows.length;
+
+    const body = D.el("div", { style: "min-width:340px" });
+    body.appendChild(D.el("div", { style: "margin-bottom:12px;font-size:13px;color:#6b7280" },
+      `selected: ${count} Lesson${count > 1 ? "s" : ""}`));
+
+    const options = [
+      { id: "teacher", icon: "👤", label: "To another teacher" },
+      { id: "class",   icon: "📋", label: "To another class" },
+      { id: "dup",     icon: "✏️", label: "Duplicate" },
+    ];
+
+    options.forEach(opt => {
+      const btn = D.el("div", {
+        style: "display:flex;align-items:center;gap:10px;padding:10px 14px;margin-bottom:4px;border-radius:6px;cursor:pointer;font-size:14px;border:1px solid #e2e8f0;transition:background .1s",
+        onclick: () => {
+          D.closeSubSheet();
+          if (opt.id === "teacher") openCopyToTeacherDialog(selectedRows);
+          else if (opt.id === "class") openCopyToClassDialog(selectedRows);
+          else if (opt.id === "dup") doDuplicate(selectedRows);
+        }
+      });
+      btn.onmouseenter = () => btn.style.background = "#f5f5f4";
+      btn.onmouseleave = () => btn.style.background = "";
+      btn.appendChild(D.el("span", null, opt.icon));
+      btn.appendChild(D.el("span", null, opt.label));
+      body.appendChild(btn);
+    });
+
+    // Cancel
+    const foot = D.el("div", { style: "display:flex;justify-content:flex-end;margin-top:12px" });
+    foot.appendChild(D.el("button", {
+      type: "button",
+      style: "padding:6px 16px;border:1px solid #d1d5db;border-radius:5px;background:#fff;cursor:pointer",
+      onclick: () => D.closeSubSheet()
+    }, "Cancel"));
+    body.appendChild(foot);
+    D.openSubSheet(body, { title: "Copy to" });
+  }
+
+  function doDuplicate(selectedRows) {
+    const s = window.APP.school;
+    for (const r of selectedRows) {
+      const src = r._ref;
+      const dup = { ...src, id: D.uid("l"),
+        classIds: src.classIds.slice(), teacherIds: src.teacherIds.slice() };
+      s.lessons.push(dup);
+      if (s._idx) s._idx.lessonById[dup.id] = dup;
+      window.APP.audit.append({ entity:"lessons", op:"copy", after:{...dup} });
+    }
+    D.refresh(rows());
+    window.dispatchEvent(new CustomEvent("entity:changed", { detail: { entity: "lessons" } }));
+  }
+
+  function openCopyToTeacherDialog(selectedRows) {
+    const s = window.APP.school;
+    const tempSet = new Set();
+    const body = D.el("div", { style: "display:flex;gap:16px;min-width:560px" });
+
+    const leftTitle = D.el("div", { style: "font-size:12px;font-weight:600;margin-bottom:6px;color:#6b7280" }, "Available teachers");
+    const leftList = D.el("div", { style: "flex:1;max-height:340px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:6px;background:#fff;padding:4px 0" });
+    const rightTitle = D.el("div", { style: "font-size:12px;font-weight:600;margin-bottom:6px;color:#6b7280" }, "Copy to these teachers");
+    const rightList = D.el("div", { style: "flex:1;max-height:340px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:6px;background:#fff;padding:4px 0" });
+
+    function render() {
+      leftList.innerHTML = "";
+      rightList.innerHTML = "";
+      for (const t of (s.teachers || [])) {
+        const isSel = tempSet.has(t.id);
+        const leftRow = D.el("div", {
+          style: `display:flex;align-items:center;gap:8px;padding:4px 10px;cursor:pointer;font-size:13px;${isSel ? "background:#ecfdf5" : ""}`,
+          onclick: () => { if (isSel) tempSet.delete(t.id); else tempSet.add(t.id); render(); }
+        });
+        const tick = D.el("span", { style: `color:#16a34a;font-size:13px;width:16px;${isSel ? "" : "visibility:hidden"}` }, "✓");
+        leftRow.appendChild(tick);
+        leftRow.appendChild(D.el("span", { style: "min-width:60px;font-size:12px;color:#6b7280" }, t.abbr || ""));
+        leftRow.appendChild(D.el("span", null, t.name));
+        leftList.appendChild(leftRow);
+        if (isSel) {
+          const rightRow = D.el("div", {
+            style: "display:flex;align-items:center;gap:8px;padding:4px 10px;cursor:pointer;font-size:13px;background:#ecfdf5",
+            onclick: () => { tempSet.delete(t.id); render(); }
+          });
+          rightRow.appendChild(D.el("span", null, t.name));
+          rightList.appendChild(rightRow);
+        }
+      }
+      if (!tempSet.size) rightList.appendChild(D.el("div", { style: "padding:10px;color:#8e8e93;font-size:12px" }, "Click a teacher to select"));
+    }
+    render();
+
+    const leftCol = D.el("div", { style: "flex:1;display:flex;flex-direction:column" });
+    leftCol.appendChild(leftTitle);
+    leftCol.appendChild(leftList);
+    const selActions = D.el("div", { style: "display:flex;gap:8px;margin-top:6px" });
+    selActions.appendChild(D.el("button", { type: "button", style: "font-size:11px;padding:3px 8px;border:1px solid #d1d5db;border-radius:4px;background:#fff;cursor:pointer",
+      onclick: () => { (s.teachers || []).forEach(t => tempSet.add(t.id)); render(); }
+    }, "Select all"));
+    selActions.appendChild(D.el("button", { type: "button", style: "font-size:11px;padding:3px 8px;border:1px solid #d1d5db;border-radius:4px;background:#fff;cursor:pointer",
+      onclick: () => { tempSet.clear(); render(); }
+    }, "Clear selection"));
+    leftCol.appendChild(selActions);
+
+    const rightCol = D.el("div", { style: "flex:1;display:flex;flex-direction:column" });
+    rightCol.appendChild(rightTitle);
+    rightCol.appendChild(rightList);
+
+    body.appendChild(leftCol);
+    body.appendChild(rightCol);
+
+    const btns = D.el("div", { style: "display:flex;gap:8px;justify-content:flex-end;margin-top:12px" });
+    btns.appendChild(D.el("button", { type: "button", style: "padding:6px 16px;border:1px solid #d1d5db;border-radius:5px;background:#fff;cursor:pointer",
+      onclick: () => D.closeSubSheet()
+    }, "Cancel"));
+    btns.appendChild(D.el("button", { type: "button", style: "padding:6px 16px;border:none;border-radius:5px;background:#16a34a;color:#fff;cursor:pointer;font-weight:600",
+      onclick: () => {
+        if (!tempSet.size) return;
+        for (const r of selectedRows) {
+          const src = r._ref;
+          tempSet.forEach(tid => {
+            const dup = { ...src, id: D.uid("l"),
+              classIds: src.classIds.slice(),
+              teacherIds: [tid] };
+            s.lessons.push(dup);
+            if (s._idx) s._idx.lessonById[dup.id] = dup;
+            window.APP.audit.append({ entity:"lessons", op:"copy-to-teacher", after:{...dup} });
+          });
+        }
+        D.closeSubSheet();
+        D.refresh(rows());
+        window.dispatchEvent(new CustomEvent("entity:changed", { detail: { entity: "lessons" } }));
+      }
+    }, "OK"));
+    const wrap = D.el("div", null, body, btns);
+    D.openSubSheet(wrap, { title: "Teachers" });
+  }
+
+  function openCopyToClassDialog(selectedRows) {
+    const s = window.APP.school;
+    const tempSet = new Set();
+    const body = D.el("div", { style: "display:flex;gap:16px;min-width:560px" });
+
+    const leftTitle = D.el("div", { style: "font-size:12px;font-weight:600;margin-bottom:6px;color:#6b7280" }, "Available classes");
+    const leftList = D.el("div", { style: "flex:1;max-height:340px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:6px;background:#fff;padding:4px 0" });
+    const rightTitle = D.el("div", { style: "font-size:12px;font-weight:600;margin-bottom:6px;color:#6b7280" }, "Copy to these classes");
+    const rightList = D.el("div", { style: "flex:1;max-height:340px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:6px;background:#fff;padding:4px 0" });
+
+    function render() {
+      leftList.innerHTML = "";
+      rightList.innerHTML = "";
+      for (const c of (s.classes || [])) {
+        const isSel = tempSet.has(c.id);
+        const leftRow = D.el("div", {
+          style: `display:flex;align-items:center;gap:8px;padding:4px 10px;cursor:pointer;font-size:13px;${isSel ? "background:#ecfdf5" : ""}`,
+          onclick: () => { if (isSel) tempSet.delete(c.id); else tempSet.add(c.id); render(); }
+        });
+        const tick = D.el("span", { style: `color:#16a34a;font-size:13px;width:16px;${isSel ? "" : "visibility:hidden"}` }, "✓");
+        leftRow.appendChild(tick);
+        leftRow.appendChild(D.el("span", { style: "min-width:60px;font-size:12px;color:#6b7280" }, c.short || c.abbr || ""));
+        leftRow.appendChild(D.el("span", null, c.name));
+        leftList.appendChild(leftRow);
+        if (isSel) {
+          const rightRow = D.el("div", {
+            style: "display:flex;align-items:center;gap:8px;padding:4px 10px;cursor:pointer;font-size:13px;background:#ecfdf5",
+            onclick: () => { tempSet.delete(c.id); render(); }
+          });
+          rightRow.appendChild(D.el("span", null, c.name));
+          rightList.appendChild(rightRow);
+        }
+      }
+      if (!tempSet.size) rightList.appendChild(D.el("div", { style: "padding:10px;color:#8e8e93;font-size:12px" }, "Click a class to select"));
+    }
+    render();
+
+    const leftCol = D.el("div", { style: "flex:1;display:flex;flex-direction:column" });
+    leftCol.appendChild(leftTitle);
+    leftCol.appendChild(leftList);
+    const selActions = D.el("div", { style: "display:flex;gap:8px;margin-top:6px" });
+    selActions.appendChild(D.el("button", { type: "button", style: "font-size:11px;padding:3px 8px;border:1px solid #d1d5db;border-radius:4px;background:#fff;cursor:pointer",
+      onclick: () => { (s.classes || []).forEach(c => tempSet.add(c.id)); render(); }
+    }, "Select all"));
+    selActions.appendChild(D.el("button", { type: "button", style: "font-size:11px;padding:3px 8px;border:1px solid #d1d5db;border-radius:4px;background:#fff;cursor:pointer",
+      onclick: () => { tempSet.clear(); render(); }
+    }, "Clear selection"));
+    leftCol.appendChild(selActions);
+
+    const rightCol = D.el("div", { style: "flex:1;display:flex;flex-direction:column" });
+    rightCol.appendChild(rightTitle);
+    rightCol.appendChild(rightList);
+
+    body.appendChild(leftCol);
+    body.appendChild(rightCol);
+
+    const btns = D.el("div", { style: "display:flex;gap:8px;justify-content:flex-end;margin-top:12px" });
+    btns.appendChild(D.el("button", { type: "button", style: "padding:6px 16px;border:1px solid #d1d5db;border-radius:5px;background:#fff;cursor:pointer",
+      onclick: () => D.closeSubSheet()
+    }, "Cancel"));
+    btns.appendChild(D.el("button", { type: "button", style: "padding:6px 16px;border:none;border-radius:5px;background:#16a34a;color:#fff;cursor:pointer;font-weight:600",
+      onclick: () => {
+        if (!tempSet.size) return;
+        for (const r of selectedRows) {
+          const src = r._ref;
+          tempSet.forEach(cid => {
+            const dup = { ...src, id: D.uid("l"),
+              classIds: [cid],
+              teacherIds: src.teacherIds.slice() };
+            s.lessons.push(dup);
+            if (s._idx) s._idx.lessonById[dup.id] = dup;
+            window.APP.audit.append({ entity:"lessons", op:"copy-to-class", after:{...dup} });
+          });
+        }
+        D.closeSubSheet();
+        D.refresh(rows());
+        window.dispatchEvent(new CustomEvent("entity:changed", { detail: { entity: "lessons" } }));
+      }
+    }, "OK"));
+    const wrap = D.el("div", null, body, btns);
+    D.openSubSheet(wrap, { title: "Classes" });
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // ── Change dialog — bulk edit lesson properties ────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  function openChangeDialog(selectedRows) {
+    const s = window.APP.school;
+    const count = selectedRows.length;
+
+    const body = D.el("div", { style: "min-width:380px" });
+    body.appendChild(D.el("div", { style: "margin-bottom:12px;font-size:13px;color:#3b82f6" },
+      `ℹ Change — selected: ${count} Lesson${count > 1 ? "s" : ""}`));
+
+    const fields = [
+      { id: "classrooms", label: "Available classrooms" },
+      { id: "subject",    label: "Subject" },
+      { id: "teachers",   label: "Teachers" },
+      { id: "term",       label: "Term" },
+      { id: "week",       label: "Week" },
+      { id: "day",        label: "Day of week" },
+      { id: "count",      label: "Count" },
+      { id: "length",     label: "Length" },
+      { id: "capacity",   label: "Capacity" },
+      { id: "group",      label: "Group" },
+    ];
+
+    fields.forEach(f => {
+      const row = D.el("div", {
+        style: "display:flex;align-items:center;gap:10px;padding:8px 14px;margin-bottom:2px;border-radius:5px;cursor:pointer;font-size:14px;transition:background .1s",
+        onclick: () => {
+          D.closeSubSheet();
+          openChangeField(f.id, selectedRows);
+        }
+      });
+      row.onmouseenter = () => row.style.background = "#f5f5f4";
+      row.onmouseleave = () => row.style.background = "";
+      row.appendChild(D.el("span", { style: "color:#6b7280;font-size:13px" }, "→"));
+      row.appendChild(D.el("span", null, f.label));
+      body.appendChild(row);
+    });
+
+    const foot = D.el("div", { style: "display:flex;justify-content:flex-end;margin-top:12px" });
+    foot.appendChild(D.el("button", {
+      type: "button",
+      style: "padding:6px 16px;border:1px solid #d1d5db;border-radius:5px;background:#fff;cursor:pointer",
+      onclick: () => D.closeSubSheet()
+    }, "Cancel"));
+    body.appendChild(foot);
+    D.openSubSheet(body, { title: "Change" });
+  }
+
+  function openChangeField(fieldId, selectedRows) {
+    const s = window.APP.school;
+    const body = D.el("div", { style: "min-width:340px" });
+
+    function applyChange(mutate) {
+      for (const r of selectedRows) {
+        const before = { ...r._ref };
+        mutate(r._ref);
+        window.APP.audit.append({ entity:"lessons", op:"bulk-change", before, after:{...r._ref} });
+      }
+      D.closeSubSheet();
+      D.refresh(rows());
+      window.dispatchEvent(new CustomEvent("entity:changed", { detail: { entity: "lessons" } }));
+    }
+
+    if (fieldId === "subject") {
+      body.appendChild(D.el("label", { style: "font-size:13px;margin-bottom:6px;display:block" }, "New subject:"));
+      const sel = makeSelect(s.subjects, "", x => x.name + (x.abbr ? ` (${x.abbr})` : ""), () => {}, true);
+      body.appendChild(sel);
+      const foot = D.el("div", { style: "display:flex;gap:8px;justify-content:flex-end;margin-top:12px" });
+      foot.appendChild(D.el("button", { type: "button", style: "padding:6px 16px;border:1px solid #d1d5db;border-radius:5px;background:#fff;cursor:pointer",
+        onclick: () => D.closeSubSheet() }, "Cancel"));
+      foot.appendChild(D.el("button", { type: "button", style: "padding:6px 16px;border:none;border-radius:5px;background:#16a34a;color:#fff;cursor:pointer;font-weight:600",
+        onclick: () => { const v = sel.value; if (v) applyChange(l => { l.subjectId = v; }); }
+      }, "OK"));
+      body.appendChild(foot);
+    }
+    else if (fieldId === "teachers") {
+      body.appendChild(D.el("label", { style: "font-size:13px;margin-bottom:6px;display:block" }, "Set teachers:"));
+      const tSel = makeMulti(s.teachers, [], x => x.name + (x.abbr ? ` (${x.abbr})` : ""), () => {}, 8);
+      body.appendChild(tSel);
+      const foot = D.el("div", { style: "display:flex;gap:8px;justify-content:flex-end;margin-top:12px" });
+      foot.appendChild(D.el("button", { type: "button", style: "padding:6px 16px;border:1px solid #d1d5db;border-radius:5px;background:#fff;cursor:pointer",
+        onclick: () => D.closeSubSheet() }, "Cancel"));
+      foot.appendChild(D.el("button", { type: "button", style: "padding:6px 16px;border:none;border-radius:5px;background:#16a34a;color:#fff;cursor:pointer;font-weight:600",
+        onclick: () => {
+          const ids = Array.from(tSel.selectedOptions).map(o => o.value);
+          if (ids.length) applyChange(l => { l.teacherIds = ids.slice(); });
+        }
+      }, "OK"));
+      body.appendChild(foot);
+    }
+    else if (fieldId === "count") {
+      body.appendChild(D.el("label", { style: "font-size:13px;margin-bottom:6px;display:block" }, "New periods/week:"));
+      const inp = D.el("input", { type: "number", min: "1", max: "20", value: "1", style: "width:80px;padding:4px 8px" });
+      body.appendChild(inp);
+      const foot = D.el("div", { style: "display:flex;gap:8px;justify-content:flex-end;margin-top:12px" });
+      foot.appendChild(D.el("button", { type: "button", style: "padding:6px 16px;border:1px solid #d1d5db;border-radius:5px;background:#fff;cursor:pointer",
+        onclick: () => D.closeSubSheet() }, "Cancel"));
+      foot.appendChild(D.el("button", { type: "button", style: "padding:6px 16px;border:none;border-radius:5px;background:#16a34a;color:#fff;cursor:pointer;font-weight:600",
+        onclick: () => { const v = parseInt(inp.value, 10); if (v > 0) applyChange(l => { l.periodsPerWeek = v; }); }
+      }, "OK"));
+      body.appendChild(foot);
+    }
+    else if (fieldId === "length") {
+      body.appendChild(D.el("label", { style: "font-size:13px;margin-bottom:6px;display:block" }, "Lesson length:"));
+      const sel = D.el("select", { style: "padding:4px 8px;font-size:13px" });
+      const labels = ["Single", "Double", "Triple"];
+      for (let i = 1; i <= 8; i++) {
+        sel.appendChild(D.el("option", { value: String(i) }, i <= 3 ? labels[i-1] : String(i)));
+      }
+      body.appendChild(sel);
+      const foot = D.el("div", { style: "display:flex;gap:8px;justify-content:flex-end;margin-top:12px" });
+      foot.appendChild(D.el("button", { type: "button", style: "padding:6px 16px;border:1px solid #d1d5db;border-radius:5px;background:#fff;cursor:pointer",
+        onclick: () => D.closeSubSheet() }, "Cancel"));
+      foot.appendChild(D.el("button", { type: "button", style: "padding:6px 16px;border:none;border-radius:5px;background:#16a34a;color:#fff;cursor:pointer;font-weight:600",
+        onclick: () => {
+          const v = parseInt(sel.value, 10);
+          applyChange(l => { l.lessonLength = v; l.isLabDouble = v >= 2 || undefined; });
+        }
+      }, "OK"));
+      body.appendChild(foot);
+    }
+    else if (fieldId === "classrooms") {
+      body.appendChild(D.el("label", { style: "font-size:13px;margin-bottom:6px;display:block" }, "Set classroom:"));
+      const sel = D.el("select", null, D.el("option", { value: "" }, "— None —"));
+      (s.classrooms || []).forEach(rm => {
+        sel.appendChild(D.el("option", { value: rm.id }, rm.name + (rm.abbr ? ` (${rm.abbr})` : "")));
+      });
+      body.appendChild(sel);
+      const foot = D.el("div", { style: "display:flex;gap:8px;justify-content:flex-end;margin-top:12px" });
+      foot.appendChild(D.el("button", { type: "button", style: "padding:6px 16px;border:1px solid #d1d5db;border-radius:5px;background:#fff;cursor:pointer",
+        onclick: () => D.closeSubSheet() }, "Cancel"));
+      foot.appendChild(D.el("button", { type: "button", style: "padding:6px 16px;border:none;border-radius:5px;background:#16a34a;color:#fff;cursor:pointer;font-weight:600",
+        onclick: () => {
+          const v = sel.value;
+          applyChange(l => { l.preferredRoomId = v || undefined; l.classroomIdsByCard = undefined; l.classroomIdsExpansion = undefined; });
+        }
+      }, "OK"));
+      body.appendChild(foot);
+    }
+    else if (fieldId === "term") {
+      body.appendChild(D.el("label", { style: "font-size:13px;margin-bottom:6px;display:block" }, "Set term:"));
+      const termPatterns = (window.EntityTerms && window.EntityTerms.ensure() || s.terms || []);
+      const sel = makeSelect(termPatterns, "", t => t.name + (t.short ? ` (${t.short})` : ""), () => {}, true);
+      body.appendChild(sel);
+      const foot = D.el("div", { style: "display:flex;gap:8px;justify-content:flex-end;margin-top:12px" });
+      foot.appendChild(D.el("button", { type: "button", style: "padding:6px 16px;border:1px solid #d1d5db;border-radius:5px;background:#fff;cursor:pointer",
+        onclick: () => D.closeSubSheet() }, "Cancel"));
+      foot.appendChild(D.el("button", { type: "button", style: "padding:6px 16px;border:none;border-radius:5px;background:#16a34a;color:#fff;cursor:pointer;font-weight:600",
+        onclick: () => { applyChange(l => { l.termsDefId = sel.value || undefined; }); }
+      }, "OK"));
+      body.appendChild(foot);
+    }
+    else if (fieldId === "week") {
+      body.appendChild(D.el("label", { style: "font-size:13px;margin-bottom:6px;display:block" }, "Set week pattern:"));
+      const weekPatterns = (window.EntityWeeks && window.EntityWeeks.ensure() || s.weeks || []);
+      const sel = makeSelect(weekPatterns, "", w => w.name + (w.short ? ` (${w.short})` : ""), () => {}, true);
+      body.appendChild(sel);
+      const foot = D.el("div", { style: "display:flex;gap:8px;justify-content:flex-end;margin-top:12px" });
+      foot.appendChild(D.el("button", { type: "button", style: "padding:6px 16px;border:1px solid #d1d5db;border-radius:5px;background:#fff;cursor:pointer",
+        onclick: () => D.closeSubSheet() }, "Cancel"));
+      foot.appendChild(D.el("button", { type: "button", style: "padding:6px 16px;border:none;border-radius:5px;background:#16a34a;color:#fff;cursor:pointer;font-weight:600",
+        onclick: () => { applyChange(l => { l.weeksDefId = sel.value || undefined; }); }
+      }, "OK"));
+      body.appendChild(foot);
+    }
+    else if (fieldId === "day") {
+      body.appendChild(D.el("label", { style: "font-size:13px;margin-bottom:6px;display:block" }, "Set day pattern:"));
+      const dayPatterns = (window.EntityDays && window.EntityDays.ensure() || s.days || []);
+      const sel = makeSelect(dayPatterns, "", d => d.name + (d.short ? ` (${d.short})` : ""), () => {}, true);
+      body.appendChild(sel);
+      const foot = D.el("div", { style: "display:flex;gap:8px;justify-content:flex-end;margin-top:12px" });
+      foot.appendChild(D.el("button", { type: "button", style: "padding:6px 16px;border:1px solid #d1d5db;border-radius:5px;background:#fff;cursor:pointer",
+        onclick: () => D.closeSubSheet() }, "Cancel"));
+      foot.appendChild(D.el("button", { type: "button", style: "padding:6px 16px;border:none;border-radius:5px;background:#16a34a;color:#fff;cursor:pointer;font-weight:600",
+        onclick: () => { applyChange(l => { l.daysDefId = sel.value || undefined; }); }
+      }, "OK"));
+      body.appendChild(foot);
+    }
+    else if (fieldId === "capacity") {
+      body.appendChild(D.el("label", { style: "font-size:13px;margin-bottom:6px;display:block" }, "Max students:"));
+      const inp = D.el("input", { type: "number", min: "0", max: "500", placeholder: "unlimited", style: "width:100px;padding:4px 8px" });
+      body.appendChild(inp);
+      const foot = D.el("div", { style: "display:flex;gap:8px;justify-content:flex-end;margin-top:12px" });
+      foot.appendChild(D.el("button", { type: "button", style: "padding:6px 16px;border:1px solid #d1d5db;border-radius:5px;background:#fff;cursor:pointer",
+        onclick: () => D.closeSubSheet() }, "Cancel"));
+      foot.appendChild(D.el("button", { type: "button", style: "padding:6px 16px;border:none;border-radius:5px;background:#16a34a;color:#fff;cursor:pointer;font-weight:600",
+        onclick: () => {
+          const v = inp.value;
+          applyChange(l => { l.maxstudents = v !== "" ? parseInt(v, 10) : undefined; });
+        }
+      }, "OK"));
+      body.appendChild(foot);
+    }
+    else if (fieldId === "group") {
+      body.appendChild(D.el("div", { style: "padding:10px;color:#8e8e93;font-size:13px" }, "Group assignment is managed per lesson via the class division picker in the Edit dialog."));
+      const foot = D.el("div", { style: "display:flex;justify-content:flex-end;margin-top:12px" });
+      foot.appendChild(D.el("button", { type: "button", style: "padding:6px 16px;border:1px solid #d1d5db;border-radius:5px;background:#fff;cursor:pointer",
+        onclick: () => D.closeSubSheet() }, "OK"));
+      body.appendChild(foot);
+    }
+    else {
+      body.appendChild(D.el("div", { style: "padding:10px;color:#8e8e93;font-size:13px" }, `"${fieldId}" bulk change coming soon.`));
+      const foot = D.el("div", { style: "display:flex;justify-content:flex-end;margin-top:12px" });
+      foot.appendChild(D.el("button", { type: "button", style: "padding:6px 16px;border:1px solid #d1d5db;border-radius:5px;background:#fff;cursor:pointer",
+        onclick: () => D.closeSubSheet() }, "OK"));
+      body.appendChild(foot);
+    }
+    D.openSubSheet(body, { title: "Change" });
   }
 
   global.EntityLessons = { open };

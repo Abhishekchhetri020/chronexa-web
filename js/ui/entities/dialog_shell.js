@@ -39,7 +39,7 @@
   }
 
   let host=null, sheet=null, subSheet=null, cfg=null;
-  let selectedId=null, sortKey=null, sortDir=1;
+  let selectedId=null, selectedIds=new Set(), lastClickedIdx=-1, sortKey=null, sortDir=1;
   let filterText="", filterTimer=null, lastFocused=null;
 
   function el(tag, attrs, ...kids) {
@@ -67,7 +67,7 @@
   function open(c) {
     cfg = c;
     sortKey = (c.columns[0] && c.columns[0].key) || null;
-    sortDir = 1; filterText = ""; selectedId = null;
+    sortDir = 1; filterText = ""; selectedId = null; selectedIds = new Set(); lastClickedIdx = -1;
     lastFocused = document.activeElement;
     if (host) host.remove();
     host = buildShell();
@@ -174,6 +174,7 @@
       el("button", { class:"chrx-btn", onclick:()=>fireAction("undo") }, "↺ Undo"),
       el("button", { class:"chrx-btn", onclick:()=>fireAction("redo") }, "↻ Redo"),
       el("button", { class:"chrx-btn", onclick:()=>fireAction("help") }, "?"),
+      el("span", { class:"chrx-ent-sel-count", style:"font-size:12px;color:#6b7280;margin-left:8px" }),
       el("div", { class:"chrx-ent-foot-spacer" }),
       el("span", { class:"chrx-ent-hint" },
         el("span", { class:"chrx-kbd" }, "⌘N"), " new ",
@@ -226,11 +227,14 @@
 
   function updateSidebarState() {
     if (!host) return;
-    const hasRow = !!selectedId;
+    const hasRow = selectedIds.size > 0;
     host.querySelectorAll(".chrx-ent-btn[data-needs-row='1']").forEach(b => {
       b.disabled = !hasRow;
       b.classList.toggle("is-disabled", !hasRow);
     });
+    // Update selection count indicator
+    const countEl = host.querySelector(".chrx-ent-sel-count");
+    if (countEl) countEl.textContent = selectedIds.size > 1 ? `${selectedIds.size} selected` : "";
   }
 
   // ---- rows ---------------------------------------------------------------
@@ -247,13 +251,17 @@
     thead.appendChild(headerRow());
 
     tbody.innerHTML = "";
-    rows.forEach(r => {
+    rows.forEach((r, idx) => {
       const tr = el("tr", {
-        class: "chrx-ent-tr" + (r.id === selectedId ? " is-selected" : ""),
-        "data-id": r.id, tabindex: "0",
-        onclick: () => selectRow(r.id),
+        class: "chrx-ent-tr" + (selectedIds.has(r.id) ? " is-selected" : ""),
+        "data-id": r.id, "data-idx": String(idx), tabindex: "0",
+        onclick: (e) => selectRow(r.id, idx, e),
         ondblclick: () => { selectRow(r.id); fireAction("edit"); },
-        onkeydown: (e) => { if (e.key === "Enter") { e.preventDefault(); selectRow(r.id); fireAction("edit"); } },
+        onkeydown: (e) => {
+          if (e.key === "Enter") { e.preventDefault(); selectRow(r.id); fireAction("edit"); }
+          if (e.key === "ArrowDown" && e.shiftKey) { e.preventDefault(); selectNextRow(idx, 1); }
+          if (e.key === "ArrowUp" && e.shiftKey) { e.preventDefault(); selectNextRow(idx, -1); }
+        },
       });
       cfg.columns.forEach(col => {
         const v = col.render ? col.render(r) : r[col.key];
@@ -292,23 +300,63 @@
     return out;
   }
 
-  function selectRow(id) {
-    selectedId = id;
+  function selectRow(id, idx, e) {
+    const visibleRows = filterSort(cfg.rows || []);
+    if (e && e.shiftKey && lastClickedIdx >= 0) {
+      // Range select
+      const start = Math.min(lastClickedIdx, idx != null ? idx : lastClickedIdx);
+      const end = Math.max(lastClickedIdx, idx != null ? idx : lastClickedIdx);
+      if (!e.metaKey && !e.ctrlKey) selectedIds.clear();
+      for (let i = start; i <= end; i++) {
+        if (visibleRows[i]) selectedIds.add(visibleRows[i].id);
+      }
+    } else if (e && (e.metaKey || e.ctrlKey)) {
+      // Toggle select
+      if (selectedIds.has(id)) selectedIds.delete(id); else selectedIds.add(id);
+    } else {
+      // Single select
+      selectedIds.clear();
+      selectedIds.add(id);
+    }
+    if (idx != null) lastClickedIdx = idx;
+    selectedId = id;  // backward compat
     host.querySelectorAll(".chrx-ent-tr").forEach(tr => {
-      tr.classList.toggle("is-selected", tr.dataset.id === id);
+      tr.classList.toggle("is-selected", selectedIds.has(tr.dataset.id));
     });
     updateSidebarState();
     if (cfg.onSelect) cfg.onSelect(currentRow());
   }
+  function selectNextRow(currentIdx, dir) {
+    const visibleRows = filterSort(cfg.rows || []);
+    const nextIdx = currentIdx + dir;
+    if (nextIdx >= 0 && nextIdx < visibleRows.length) {
+      const nextRow = visibleRows[nextIdx];
+      selectedIds.add(nextRow.id);
+      selectedId = nextRow.id;
+      lastClickedIdx = nextIdx;
+      host.querySelectorAll(".chrx-ent-tr").forEach(tr => {
+        tr.classList.toggle("is-selected", selectedIds.has(tr.dataset.id));
+      });
+      // Focus and scroll into view
+      const nextTr = host.querySelector(`.chrx-ent-tr[data-idx="${nextIdx}"]`);
+      if (nextTr) { nextTr.focus(); nextTr.scrollIntoView({ block: "nearest" }); }
+      updateSidebarState();
+    }
+  }
   function currentRow() { return (cfg.rows || []).find(r => r.id === selectedId) || null; }
+  function currentRows() {
+    if (!selectedIds.size) return [];
+    return (cfg.rows || []).filter(r => selectedIds.has(r.id));
+  }
 
   function fireAction(cmd) {
     if (!cfg) return;
-    if (cmd === "delete" && selectedId) {
-      const r = currentRow();
-      if (!confirm(`Delete ${(r && (r.name||r.id)) || "this row"}?`)) return;
+    if (cmd === "delete" && selectedIds.size) {
+      const count = selectedIds.size;
+      const label = count === 1 ? (currentRow()?.name || currentRow()?.id || "this row") : `${count} items`;
+      if (!confirm(`Delete ${label}?`)) return;
     }
-    if (cfg.onAction) cfg.onAction(cmd, currentRow());
+    if (cfg.onAction) cfg.onAction(cmd, currentRow(), currentRows());
   }
 
   function onKey(e) {
@@ -709,5 +757,6 @@
     buildTimeOffMini, openTimeOffSheet,
     buildSetForMoreLink, openPickEntitiesPopover, openBatchEditSheet,
     openCopyChooser, autoPickColor,
+    currentRows,
   };
 })(window);
