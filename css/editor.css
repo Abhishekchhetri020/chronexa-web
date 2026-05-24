@@ -13,7 +13,7 @@
 .chrx-row{display:flex;align-items:stretch;height:26px;border-bottom:1px solid var(--chrx-bg-grid-line)}
 .chrx-row:last-child{border-bottom:0}
 .chrx-row-head{height:42px;background:var(--chrx-bg-panel);position:sticky;top:0;z-index:var(--chrx-z-grid);font-size:var(--chrx-font-eye);font-weight:var(--chrx-fw-semibold);color:var(--chrx-fg-secondary)}
-.chrx-rowlabel{width:80px;min-width:80px;padding:0 var(--chrx-space-1);display:flex;align-items:center;gap:var(--chrx-space-1);font-size:var(--chrx-font-eye);font-weight:var(--chrx-fw-semibold);background:var(--chrx-bg-tile);border-right:1px solid var(--chrx-line);position:sticky;left:0;z-index:calc(var(--chrx-z-grid) + 1);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.chrx-rowlabel{width:52px;min-width:52px;padding:0 var(--chrx-space-1);display:flex;align-items:center;gap:var(--chrx-space-1);font-size:var(--chrx-font-eye);font-weight:var(--chrx-fw-semibold);background:var(--chrx-bg-tile);border-right:1px solid var(--chrx-line);position:sticky;left:0;z-index:calc(var(--chrx-z-grid) + 1);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .chrx-grid .chrx-row{min-height:28px}
 /* Day group separator — slightly stronger vertical line at day boundary so the
    eye groups periods. EduPage uses the same visual cue. */
@@ -135,7 +135,7 @@ body.chrx-card-in-hand .chrx-card-panel{display:none}
 .chrx-shell.is-fullscreen .chrx-editor{height:100%;min-height:0}
 .chrx-shell.is-fullscreen .chrx-grid-scroll{flex:1 1 auto;max-height:none}
 .chrx-shell.is-fullscreen .chrx-grid{min-width:100%;width:100%}
-.chrx-shell.is-fullscreen .chrx-rowlabel{width:112px;min-width:112px}
+.chrx-shell.is-fullscreen .chrx-rowlabel{width:64px;min-width:64px}
 .chrx-shell.is-fullscreen .chrx-day-head-group,.chrx-shell.is-fullscreen .chrx-day-body-group{width:auto;min-width:0;flex:1 1 0}
 .chrx-shell.is-fullscreen .chrx-period-head-row,.chrx-shell.is-fullscreen .chrx-day-body-group{grid-template-columns:repeat(var(--chrx-periods, 8), minmax(28px, 1fr))}
 .chrx-shell.is-fullscreen .chrx-h-period{width:auto;min-width:0}
@@ -149,7 +149,7 @@ body.chrx-card-in-hand .chrx-card-panel{display:none}
 @media (max-width:767px){
   .chrx-day-tabs{display:flex}
   .chrx-editor .mobile-hidden{display:none!important}
-  .chrx-rowlabel{width:100px;min-width:100px}
+  .chrx-rowlabel{width:64px;min-width:64px}
   .chrx-slot{width:44px;min-width:44px}
   .chrx-grid-scroll{max-height:calc(100vh - 320px)}
   .chrx-editor-lower{grid-template-columns:1fr}
