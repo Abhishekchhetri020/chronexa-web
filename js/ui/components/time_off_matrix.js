@@ -112,7 +112,9 @@
       for (const list of Object.values(idx.cardsByClass || {})) {
         for (const c of list) {
           const k = c.day + "_" + c.period;
-          if (c.subjectId === id && !seen.has(k)) { seen.add(k); cardList.push(c); }
+          const lesson = c.lessonId ? (idx.lessonById || {})[c.lessonId] : null;
+          const sid = c.subjectId || lesson?.subjectId || (lesson?.subjectIds && lesson.subjectIds[0]);
+          if (sid === id && !seen.has(k)) { seen.add(k); cardList.push(c); }
         }
       }
     }

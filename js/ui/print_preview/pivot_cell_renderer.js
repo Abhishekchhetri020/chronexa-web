@@ -227,26 +227,33 @@
     const bg = getCardBgColor(cards, report, school);
     if (bg) cell.style.background = bg;
 
-    // The 7 elements are placed at 9 different anchors; render them stacked
-    // inside the cell. For Phase 1 we do a simple "render all anchored"
-    // approach — each element becomes its own absolutely-positioned chunk
-    // within the cell.
+    // Collect enabled elements grouped by anchor key so that elements sharing
+    // the same anchor (e.g. teacher + classroom) stack on separate lines in
+    // one wrapper rather than each getting their own overlapping absolute div.
     const ELEMENT_KEYS = ["subject","teacher","class","group","classroom","count","bellTimes"];
-
+    const byAnchor = new Map();
     for (const key of ELEMENT_KEYS) {
       const style = elementStyleFor(report, key);
       if (!style.enabled) continue;
       const text = joinElementLabels(cards, key, school, style);
       if (!text) continue;
-      const anchor = ANCHOR_TO_FLEX[style.anchor || "middle-center"] || ANCHOR_TO_FLEX["middle-center"];
+      const anchorKey = style.anchor || "middle-center";
+      if (!byAnchor.has(anchorKey)) byAnchor.set(anchorKey, []);
+      byAnchor.get(anchorKey).push({ text, style });
+    }
+
+    for (const [anchorKey, items] of byAnchor) {
+      const anchor = ANCHOR_TO_FLEX[anchorKey] || ANCHOR_TO_FLEX["middle-center"];
       const wrap = el("div", {
         style: "position:absolute;inset:0;display:flex;flex-direction:column;justify-content:" + anchor.justify +
           ";align-items:" + anchor.align +
           ";text-align:" + anchor.text +
           ";padding:2px 4px;pointer-events:none",
       });
-      const elNode = renderElement(text, style);
-      if (elNode) wrap.appendChild(elNode);
+      for (const { text, style } of items) {
+        const elNode = renderElement(text, style);
+        if (elNode) wrap.appendChild(elNode);
+      }
       cell.appendChild(wrap);
     }
 
