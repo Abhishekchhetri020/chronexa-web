@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-24T21:04:19Z
+/* Chronexa bundle — generated 2026-05-24T21:17:16Z
  *      162 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -23362,12 +23362,14 @@ window.StartScreen = (function () {
   }
 
   // ────────────────────────────────────────────────────────────────────
-  // Two-pane transfer list — used for each of the 6 sections
+  // Two-pane transfer list — single-click toggle with green ✓
+  // Click a row on left → ✓ appears, item shows on right.
+  // Click again → removed. Matches ASC Timetables.
   // ────────────────────────────────────────────────────────────────────
 
   function openTransferList(title, allEntities, selectedIds, onSave) {
-    // Internal mutable copy of selected order
-    let selected = (selectedIds || []).filter(id => allEntities.some(e => e.id === id));
+    // Internal mutable copy of selected set
+    const chosen = new Set((selectedIds || []).filter(id => allEntities.some(e => e.id === id)));
 
     const scrim = el("div", {
       style: "position:fixed;inset:0;background:rgba(26,23,20,.42);backdrop-filter:blur(6px);z-index:9400;display:flex;align-items:flex-start;justify-content:center;padding-top:8vh",
@@ -23393,86 +23395,101 @@ window.StartScreen = (function () {
     }, "×"));
     dlg.appendChild(header);
 
-    // Body: grid with left list, centre arrows column, right list
+    // Body: left pane + ↔ indicator + right pane
     const body = el("div", {
-      style: "display:grid;grid-template-columns:1fr 60px 1fr;gap:16px;padding:18px 24px;flex:1;overflow:hidden",
+      style: "display:flex;flex:1;overflow:hidden;padding:18px 24px;gap:8px;min-height:320px",
     });
     dlg.appendChild(body);
 
-    const leftPane  = makeListPane("Available");
-    const rightPane = makeListPane("Selected", true);
-    const centre = el("div", {
-      style: "display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px",
+    // Left pane
+    const leftWrap = el("div", {
+      style: "flex:1;display:flex;flex-direction:column;border:1px solid var(--chrx-line,#d8cfbb);background:#fff;border-radius:8px;overflow:hidden",
     });
-    body.appendChild(leftPane.node);
+    const leftHead = el("div", {
+      style: "display:grid;grid-template-columns:28px 90px 1fr;padding:8px 12px;background:#fafafa;border-bottom:1px solid #eee;font-size:12px;font-weight:600;color:#4a4339",
+    },
+      el("span", null, ""),
+      el("span", null, "Abbreviation"),
+      el("span", null, "Name"));
+    leftWrap.appendChild(leftHead);
+    const leftList = el("div", { style: "flex:1;overflow:auto;max-height:46vh;min-height:240px" });
+    leftWrap.appendChild(leftList);
+    body.appendChild(leftWrap);
+
+    // Centre ↔ indicator
+    const centre = el("div", {
+      style: "display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 4px",
+    });
+    centre.appendChild(el("span", {
+      style: "font-size:22px;color:#0d4f54;user-select:none"
+    }, "↔"));
     body.appendChild(centre);
-    body.appendChild(rightPane.node);
 
-    const swapBtn = el("button", {
-      type: "button",
-      style: "width:42px;height:42px;border-radius:50%;border:1px solid #d8cfbb;background:rgba(13,79,84,.08);color:#0d4f54;font-size:18px;cursor:pointer",
-      title: "Move selection ⇄",
-      onclick: () => {
-        // Move highlighted rows in left to right (and vice versa)
-        const leftSel = leftPane.getHighlighted();
-        const rightSel = rightPane.getHighlighted();
-        if (leftSel.length > 0) {
-          for (const id of leftSel) if (!selected.includes(id)) selected.push(id);
-        } else if (rightSel.length > 0) {
-          selected = selected.filter(id => !rightSel.includes(id));
-        }
-        refreshPanes();
-      },
-    }, "⇄");
-    centre.appendChild(swapBtn);
+    // Right pane
+    const rightWrap = el("div", {
+      style: "flex:1;display:flex;flex-direction:column;border:1px solid var(--chrx-line,#d8cfbb);background:#fff;border-radius:8px;overflow:hidden",
+    });
+    const rightHead = el("div", {
+      style: "display:grid;grid-template-columns:28px 90px 1fr;padding:8px 12px;background:#fafafa;border-bottom:1px solid #eee;font-size:12px;font-weight:600;color:#4a4339",
+    },
+      el("span", null, ""),
+      el("span", null, "Abbreviation"),
+      el("span", null, "Name"));
+    rightWrap.appendChild(rightHead);
+    const rightList = el("div", { style: "flex:1;overflow:auto;max-height:46vh;min-height:240px" });
+    rightWrap.appendChild(rightList);
+    body.appendChild(rightWrap);
 
-    // Reorder controls (right pane)
-    const upBtn = el("button", {
-      type: "button",
-      style: "width:36px;height:30px;border-radius:6px;border:1px solid #d8cfbb;background:#fff;cursor:pointer;font-size:14px",
-      title: "Move up",
-      onclick: () => {
-        const hl = rightPane.getHighlighted();
-        if (hl.length === 0) return;
-        for (const id of hl) {
-          const i = selected.indexOf(id);
-          if (i > 0) {
-            [selected[i-1], selected[i]] = [selected[i], selected[i-1]];
-          }
-        }
-        refreshPanes();
-      },
-    }, "▲");
-    const removeBtn = el("button", {
-      type: "button",
-      style: "width:36px;height:30px;border-radius:6px;border:1px solid #d8cfbb;background:#fff;cursor:pointer;font-size:14px;color:#9c4322",
-      title: "Remove from selected",
-      onclick: () => {
-        const hl = rightPane.getHighlighted();
-        selected = selected.filter(id => !hl.includes(id));
-        refreshPanes();
-      },
-    }, "×");
-    const downBtn = el("button", {
-      type: "button",
-      style: "width:36px;height:30px;border-radius:6px;border:1px solid #d8cfbb;background:#fff;cursor:pointer;font-size:14px",
-      title: "Move down",
-      onclick: () => {
-        const hl = rightPane.getHighlighted();
-        if (hl.length === 0) return;
-        for (let i = selected.length - 1; i >= 0; i--) {
-          if (hl.includes(selected[i]) && i < selected.length - 1) {
-            [selected[i+1], selected[i]] = [selected[i], selected[i+1]];
-          }
-        }
-        refreshPanes();
-      },
-    }, "▼");
-    centre.appendChild(upBtn);
-    centre.appendChild(removeBtn);
-    centre.appendChild(downBtn);
+    // ─── Render helpers ───
+    function renderBoth() { renderLeft(); renderRight(); }
 
-    // Footer with action buttons
+    function renderLeft() {
+      clearNode(leftList);
+      for (const e of allEntities) {
+        const isChosen = chosen.has(e.id);
+        const row = el("div", {
+          style: `display:grid;grid-template-columns:28px 90px 1fr;padding:6px 12px;font-size:13px;cursor:pointer;border-bottom:1px solid #f3f3f3;align-items:center;transition:background .12s;${isChosen ? "background:#ecfdf5" : ""}`,
+          "data-id": e.id,
+        });
+        row.onmouseenter = () => { if (!chosen.has(e.id)) row.style.background = "#f5f5f4"; };
+        row.onmouseleave = () => { row.style.background = chosen.has(e.id) ? "#ecfdf5" : ""; };
+        row.onclick = () => {
+          if (chosen.has(e.id)) chosen.delete(e.id);
+          else chosen.add(e.id);
+          renderBoth();
+        };
+        // Green checkmark
+        row.appendChild(el("span", {
+          style: `font-size:15px;color:#16a34a;text-align:center;${isChosen ? "" : "visibility:hidden"}`
+        }, "✓"));
+        row.appendChild(el("span", { style: "color:#0d4f54;font-weight:600" }, e.abbr || e.id));
+        row.appendChild(el("span", null, e.name || e.id));
+        leftList.appendChild(row);
+      }
+    }
+
+    function renderRight() {
+      clearNode(rightList);
+      for (const e of allEntities) {
+        if (!chosen.has(e.id)) continue;
+        const row = el("div", {
+          style: "display:grid;grid-template-columns:28px 90px 1fr;padding:6px 12px;font-size:13px;cursor:pointer;border-bottom:1px solid #f3f3f3;align-items:center;background:#f0fdf4;transition:background .12s",
+          "data-id": e.id,
+        });
+        row.onmouseenter = () => row.style.background = "#fef2f2";
+        row.onmouseleave = () => row.style.background = "#f0fdf4";
+        row.onclick = () => {
+          chosen.delete(e.id);
+          renderBoth();
+        };
+        row.appendChild(el("span", { style: "font-size:15px;color:#16a34a;text-align:center" }, "✓"));
+        row.appendChild(el("span", { style: "color:#0d4f54;font-weight:600" }, e.abbr || e.id));
+        row.appendChild(el("span", null, e.name || e.id));
+        rightList.appendChild(row);
+      }
+    }
+
+    // Footer
     const footer = el("div", {
       style: "padding:14px 24px 18px;display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--chrx-line,#d8cfbb);background:var(--chrx-bg,#f6f1e6)",
     });
@@ -23480,12 +23497,15 @@ window.StartScreen = (function () {
     leftFooter.appendChild(el("button", {
       type: "button",
       style: "padding:6px 14px;border:1px solid var(--chrx-line,#d8cfbb);background:#fff;border-radius:6px;cursor:pointer;font-size:13px",
-      onclick: () => { selected = allEntities.map(e => e.id); refreshPanes(); },
+      onclick: () => {
+        for (const e of allEntities) chosen.add(e.id);
+        renderBoth();
+      },
     }, "Select all"));
     leftFooter.appendChild(el("button", {
       type: "button",
       style: "padding:6px 14px;border:1px solid var(--chrx-line,#d8cfbb);background:#fff;border-radius:6px;cursor:pointer;font-size:13px",
-      onclick: () => { selected = []; refreshPanes(); },
+      onclick: () => { chosen.clear(); renderBoth(); },
     }, "Clear selection"));
     footer.appendChild(leftFooter);
     const rightFooter = el("div", { style: "display:flex;gap:8px" });
@@ -23497,81 +23517,13 @@ window.StartScreen = (function () {
     rightFooter.appendChild(el("button", {
       type: "button",
       style: "padding:6px 18px;border:0;background:#0d4f54;color:#fff;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600",
-      onclick: () => { close(); if (typeof onSave === "function") onSave(selected); },
+      onclick: () => { close(); if (typeof onSave === "function") onSave(Array.from(chosen)); },
     }, "OK"));
     footer.appendChild(rightFooter);
     dlg.appendChild(footer);
 
-    function refreshPanes() {
-      const selectedSet = new Set(selected);
-      const leftItems  = allEntities.filter(e => !selectedSet.has(e.id));
-      const rightItems = selected
-        .map(id => allEntities.find(e => e.id === id))
-        .filter(Boolean);
-      leftPane.setItems(leftItems, selectedSet);
-      rightPane.setItems(rightItems, selectedSet);
-    }
-    refreshPanes();
-
+    renderBoth();
     document.body.appendChild(scrim);
-  }
-
-  function makeListPane(label, selectedPane) {
-    const wrap = el("div", {
-      style: "display:flex;flex-direction:column;border:1px solid var(--chrx-line,#d8cfbb);background:#fff;border-radius:8px;overflow:hidden",
-    });
-    const head = el("div", {
-      style: "display:grid;grid-template-columns:90px 1fr;padding:8px 12px;background:#fafafa;border-bottom:1px solid #eee;font-size:12px;font-weight:600;color:#4a4339",
-    },
-      el("span", null, "Abbreviation"),
-      el("span", null, "Name"));
-    wrap.appendChild(head);
-
-    const list = el("div", {
-      style: "flex:1;overflow:auto;max-height:46vh;min-height:240px",
-    });
-    wrap.appendChild(list);
-
-    let highlighted = new Set();
-
-    function setItems(items, selectedSet) {
-      clearNode(list);
-      highlighted = new Set();
-      items.forEach(e => {
-        const row = el("div", {
-          style: "display:grid;grid-template-columns:90px 1fr;padding:6px 12px;font-size:13px;cursor:pointer;border-bottom:1px solid #f3f3f3;align-items:center",
-          "data-id": e.id,
-          onclick: (ev) => {
-            // Cmd/Ctrl-click for multi-select
-            if (!ev.metaKey && !ev.ctrlKey) highlighted.clear();
-            if (highlighted.has(e.id)) highlighted.delete(e.id);
-            else highlighted.add(e.id);
-            paintHighlight();
-          },
-          ondblclick: () => {
-            // Double-click moves the item across (handled outside by swap)
-            const sb = wrap.parentElement?.querySelector('button[title="Move selection ⇄"]');
-            if (sb) { highlighted.clear(); highlighted.add(e.id); paintHighlight(); sb.click(); }
-          },
-        });
-        row.appendChild(el("span", { style: "color:#0d4f54;font-weight:600" }, e.abbr || e.id));
-        row.appendChild(el("span", null, e.name || e.id));
-        list.appendChild(row);
-      });
-      paintHighlight();
-    }
-
-    function paintHighlight() {
-      list.querySelectorAll('div[data-id]').forEach(r => {
-        const id = r.getAttribute("data-id");
-        if (highlighted.has(id)) r.style.background = "rgba(91,110,61,.18)";
-        else r.style.background = "transparent";
-      });
-    }
-
-    function getHighlighted() { return Array.from(highlighted); }
-
-    return { node: wrap, setItems, getHighlighted };
   }
 
   // ────────────────────────────────────────────────────────────────────
