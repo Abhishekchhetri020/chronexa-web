@@ -128,7 +128,8 @@
     s.textContent = `
 .chrx-tour-overlay{position:fixed;inset:0;background:rgba(15,23,42,.45);pointer-events:none;z-index:9999}
 .chrx-tour-spotlight{position:relative;z-index:9998;outline:3px solid #4f46e5;outline-offset:4px;border-radius:8px;box-shadow:0 0 0 6px rgba(79,70,229,.25),0 0 0 9999px rgba(15,23,42,.55);transition:outline .2s ease}
-.chrx-tour-card{background:#fff;border-radius:12px;padding:14px 18px;box-shadow:0 12px 40px rgba(0,0,0,.3);font-family:-apple-system,sans-serif;color:#0f172a;pointer-events:auto}
+.chrx-tour-card{background:#fff;border-radius:12px;padding:14px 18px;box-shadow:0 12px 40px rgba(0,0,0,.3);font-family:-apple-system,sans-serif;color:#0f172a;pointer-events:none}
+.chrx-tour-card button,.chrx-tour-skip{pointer-events:auto}
 .chrx-tour-card header{display:flex;align-items:center;gap:10px;margin-bottom:6px}
 .chrx-tour-count{background:#e0e7ff;color:#4f46e5;font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px}
 .chrx-tour-card h3{margin:0;color:#1e3a8a;font-size:15px}
