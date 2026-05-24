@@ -16,6 +16,7 @@ window.PendingStrip = (function () {
     if (!rootEl) return;
     const S = window.APP.school;
     rootEl.classList.add("chrx-pending-strip");
+    applyTrayHeight(rootEl);
     if (!S) {
       rootEl.innerHTML = `<div class="chrx-pending-empty">No timetable loaded.</div>`;
       return;
@@ -24,6 +25,7 @@ window.PendingStrip = (function () {
     const groups = buildGroups(S, placedCounts);
 
     rootEl.innerHTML = `
+      <div class="chrx-pending-resize" title="Drag to resize pending cards"></div>
       ${toolbarHtml()}
       <div class="chrx-pending-scroll">
         ${groups.map(groupHtml).join("") || `<div class="chrx-pending-empty">All cards placed.</div>`}
@@ -33,11 +35,13 @@ window.PendingStrip = (function () {
   }
 
   function toolbarHtml() {
+    const cls = selectedClass();
     return `
       <div class="chrx-pending-toolbar">
         <input type="search" class="chrx-pending-search"
                placeholder="Search pending cards…"
                value="${esc(_state.filter)}">
+        ${cls ? `<button type="button" class="chrx-pending-class-filter" data-clear-class-filter="1" title="Show all pending cards">${esc(cls.name || cls.id)} ×</button>` : ""}
         <div class="chrx-pending-groupby" role="tablist">
           ${Object.entries(GROUPS).map(([k, v]) =>
             `<button class="chrx-pending-tab ${_state.groupBy === k ? "active" : ""}" data-group="${k}">${esc(v.label)}</button>`
@@ -89,7 +93,24 @@ window.PendingStrip = (function () {
         render(rootEl);
       });
     });
+    rootEl.querySelector("[data-clear-class-filter]")?.addEventListener("click", () => {
+      if (window.APP && window.APP.editor) window.APP.editor.selectedClassId = null;
+      render(rootEl);
+      const editor = document.querySelector(".chrx-editor");
+      if (editor && window.Editor && window.Editor.render) window.Editor.render(editor);
+    });
+    rootEl.querySelector(".chrx-pending-resize")?.addEventListener("pointerdown", (ev) => startResize(ev, rootEl));
     if (rootEl._chrxPendingWired) return;
+    rootEl.addEventListener("mouseover", (ev) => {
+      const vk = ev.target.closest(".chrx-vk-pending");
+      if (!vk || !window.EditorCardInspector) return;
+      window.EditorCardInspector.show(vk.dataset.lessonId, { source: "pending" });
+    });
+    rootEl.addEventListener("focusin", (ev) => {
+      const vk = ev.target.closest(".chrx-vk-pending");
+      if (!vk || !window.EditorCardInspector) return;
+      window.EditorCardInspector.show(vk.dataset.lessonId, { source: "pending" });
+    });
     rootEl.addEventListener("mousedown", (ev) => {
       const vk = ev.target.closest(".chrx-vk-pending");
       if (!vk) return;
@@ -99,7 +120,7 @@ window.PendingStrip = (function () {
       window.APP.editor.cardInHand = { cardId, lessonId, fromPending: true };
       document.body.classList.add("chrx-card-in-hand");
       vk.classList.add("chrx-vk-taken");
-      document.dispatchEvent(new CustomEvent("editor:pickup", { detail: { cardId, lessonId, fromPending: true } }));
+      document.dispatchEvent(new CustomEvent("editor:pickup", { detail: { cardId, lessonId, fromPending: true, sourceX: ev.clientX, sourceY: ev.clientY } }));
     });
     document.addEventListener("editor:place", () => render(rootEl));
     rootEl._chrxPendingWired = true;
@@ -115,8 +136,10 @@ window.PendingStrip = (function () {
     const groupKeyFn = GROUPS[_state.groupBy].keyFn;
     const f = (_state.filter || "").trim();
     const groups = Object.create(null);
+    const classFilterId = window.APP && window.APP.editor && window.APP.editor.selectedClassId;
 
     for (const L of (S.lessons || [])) {
+      if (classFilterId && !(L.classIds || []).includes(classFilterId)) continue;
       const ppw = Math.ceil(L.periodsPerWeek || 0);
       const placed = placedCounts[L.id] || 0;
       const missing = ppw - placed;
@@ -129,7 +152,7 @@ window.PendingStrip = (function () {
       const classShort = (L.classIds || []).map(c=>S._idx.classById[c])
         .filter(Boolean).map(c=>c.name).join(", ");
       const title = `${subjShort} · ${classShort}${teacherShort ? ' · ' + teacherShort : ''} — ${missing} more`;
-      const hue = hueOf(subjShort);
+      const hue = pendingHue(S, L, subj);
 
       // Filter
       const hay = `${subjShort} ${classShort} ${teacherShort}`.toLowerCase();
@@ -151,6 +174,39 @@ window.PendingStrip = (function () {
 
   function keyOf(rec) { return rec ? (rec.name || rec.abbr || "—") : "—"; }
 
+  function selectedClass() {
+    const S = window.APP && window.APP.school;
+    const id = window.APP && window.APP.editor && window.APP.editor.selectedClassId;
+    return S && S._idx && id ? S._idx.classById[id] : null;
+  }
+
+  function applyTrayHeight(rootEl) {
+    const h = window.APP && window.APP.editor && window.APP.editor.pendingTrayHeight;
+    if (Number.isFinite(h)) rootEl.style.height = Math.max(72, Math.min(420, h)) + "px";
+  }
+
+  function startResize(ev, rootEl) {
+    ev.preventDefault();
+    rootEl.setPointerCapture?.(ev.pointerId);
+    const startY = ev.clientY;
+    const startH = rootEl.getBoundingClientRect().height || 96;
+    rootEl.classList.add("is-resizing");
+    function move(e) {
+      const next = Math.max(72, Math.min(Math.round(window.innerHeight * 0.55), startH + (startY - e.clientY)));
+      rootEl.style.height = next + "px";
+      window.APP.editor = window.APP.editor || {};
+      window.APP.editor.pendingTrayHeight = next;
+    }
+    function up(e) {
+      rootEl.releasePointerCapture?.(ev.pointerId);
+      rootEl.classList.remove("is-resizing");
+      window.removeEventListener("pointermove", move, true);
+      window.removeEventListener("pointerup", up, true);
+    }
+    window.addEventListener("pointermove", move, true);
+    window.addEventListener("pointerup", up, true);
+  }
+
   // Hue mirror — synced with grid_canvas.
   const SHORT_HUES = {
     MA:220,MAT:220,MATH:220,MATHS:220,EN:12,ENG:12,ENGL:12,HI:32,HIN:32,HINDI:32,
@@ -162,6 +218,53 @@ window.PendingStrip = (function () {
     if (SHORT_HUES[k] != null) return SHORT_HUES[k];
     let h = 0; for (let i = 0; i < k.length; i++) h = (h * 31 + k.charCodeAt(i)) & 0xffff;
     return h % 360;
+  }
+
+  function pendingHue(S, lesson, subject) {
+    const axis = (window.APP && window.APP.editor && window.APP.editor.colorBy) || "subject";
+    if (axis === "subject") return hueOf(subject ? (subject.abbr || subject.name) : "");
+    if (axis === "teacher") {
+      const tid = lesson.teacherIds && lesson.teacherIds[0];
+      const t = tid ? S._idx.teacherById[tid] : null;
+      return (t && hexHue(t.color)) ?? hashHue(t && (t.abbr || t.name || t.id));
+    }
+    if (axis === "class") {
+      const cid = lesson.classIds && lesson.classIds[0];
+      const c = cid ? S._idx.classById[cid] : null;
+      return (c && hexHue(c.color)) ?? hashHue(c && (c.short || c.name || c.id));
+    }
+    if (axis === "room") {
+      const r = lesson.preferredRoomId ? S._idx.classroomById[lesson.preferredRoomId] : null;
+      return (r && hexHue(r.color)) ?? hashHue(r && (r.short || r.name || r.id));
+    }
+    return hueOf(subject ? (subject.abbr || subject.name) : "");
+  }
+
+  function hashHue(key) {
+    if (!key) return 210;
+    let h = 0;
+    const u = String(key).toUpperCase();
+    for (let i = 0; i < u.length; i++) h = (h * 31 + u.charCodeAt(i)) & 0xffff;
+    return h % 360;
+  }
+
+  function hexHue(hex) {
+    if (typeof hex !== "string") return null;
+    const m = hex.replace("#", "");
+    if (m.length !== 6) return null;
+    const r = parseInt(m.slice(0, 2), 16) / 255;
+    const g = parseInt(m.slice(2, 4), 16) / 255;
+    const b = parseInt(m.slice(4, 6), 16) / 255;
+    if ([r, g, b].some(v => Number.isNaN(v))) return null;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+    if (d === 0) return 210;
+    let h;
+    if (max === r) h = ((g - b) / d) % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h *= 60;
+    if (h < 0) h += 360;
+    return Math.round(h);
   }
 
   function esc(s) {

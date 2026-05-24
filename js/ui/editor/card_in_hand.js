@@ -8,7 +8,7 @@
 (function () {
   "use strict";
 
-  let ghost = null, inHand = null;
+  let ghost = null, inHand = null, carryPanel = null, collisionMenu = null;
   let dx = 0, dy = 0, px = 0, py = 0;
   let rafId = 0, lastValidate = 0, lastSlot = null;
   const VALIDATE_MS = 16;
@@ -32,7 +32,9 @@
     const lesson = S._idx.lessonById[d.lessonId];
     if (!lesson) return;
     inHand = { cardId: d.cardId, lessonId: d.lessonId,
-               originDay: d.day, originPeriod: d.period, fromPending: !!d.fromPending };
+               originDay: d.day, originPeriod: d.period,
+               originClassroomId: d.originClassroomId,
+               fromPending: !!d.fromPending };
     const subj = S._idx.subjectById[lesson.subjectId];
     const subjShort = subj ? (subj.abbr || subj.name) : "?";
     const teacherShort = (lesson.teacherIds || []).map(t => S._idx.teacherById[t])
@@ -49,6 +51,7 @@
       <div class="chrx-vk-line3">${esc(teacherShort)}</div></div>`;
     document.body.appendChild(ghost);
     document.body.classList.add("chrx-card-in-hand");
+    showCarryPanel(S, lesson, subjShort, classShort, teacherShort);
 
     // Sticky banner so users see they're carrying a card.
     let banner = document.getElementById("chrx-carry-banner");
@@ -80,20 +83,21 @@
     document.addEventListener("keydown", onKey, true);
   }
 
-  // Heatmap-on-pickup (audit §5.3). For every empty slot in the grid, run
+  // Heatmap-on-pickup (audit §5.3). For every slot in the grid, run
   // Placement.classify and set data-validity so green/amber/red slots show
   // at a glance — the user no longer has to drag-hover each slot to learn
-  // where their card would land cleanly. Out-of-bell slots already render
+  // where their card would land cleanly. Occupied slots are marked red and
+  // open the collision menu. Out-of-bell slots already render
   // hatched and are skipped here.
   function paintAllSlots() {
     if (!inHand || !window.Placement || typeof window.Placement.classify !== "function") return;
-    const slots = document.querySelectorAll(".chrx-editor .chrx-slot.empty:not(.out-of-bell)");
+    const slots = document.querySelectorAll(".chrx-editor .chrx-slot:not(.out-of-bell)");
     for (const slot of slots) {
       const d = parseInt(slot.dataset.day, 10);
       const p = parseInt(slot.dataset.period, 10);
       if (Number.isNaN(d) || Number.isNaN(p)) continue;
       try {
-        const v = window.Placement.classify(inHand.lessonId, d, p);
+        const v = classifySlot(slot);
         if (v && v.validity) slot.setAttribute("data-validity", v.validity);
       } catch (_e) { /* ignore */ }
     }
@@ -202,7 +206,8 @@
     ghost.style.visibility = "hidden";
     const el = document.elementFromPoint(x, y);
     ghost.style.visibility = "";
-    return el && el.closest ? el.closest(".chrx-slot.empty") : null;
+    const slot = el && el.closest ? el.closest(".chrx-slot") : null;
+    return slot && !slot.classList.contains("out-of-bell") ? slot : null;
   }
   
   function paint(x, y) {
@@ -215,9 +220,9 @@
     }
     lastSlot = slot || null;
     if (!slot) return;
-    const d = parseInt(slot.dataset.day, 10), p = parseInt(slot.dataset.period, 10);
-    const v = window.Placement ? window.Placement.classify(inHand.lessonId, d, p) : { validity: "green", reasons: [] };
+    const v = classifySlot(slot);
     slot.setAttribute("data-validity", v.validity);
+    updateCarryPanel(slot, v);
     if (v.reasons && v.reasons.length) {
       slot.title = v.reasons.join(" · ");
       showDragTooltip(v.reasons, v.validity, x, y);
@@ -228,12 +233,13 @@
 
   function onUp(e) {
     if (!ghost) return;
+    if (e.target && e.target.closest && e.target.closest(".chrx-collision-menu")) return;
     const slot = slotAt(e.clientX, e.clientY);
     if (!slot) return cancel();
     const d = parseInt(slot.dataset.day, 10), p = parseInt(slot.dataset.period, 10);
-    const v = window.Placement ? window.Placement.classify(inHand.lessonId, d, p) : { validity: "green", reasons: [] };
-    if (v.validity === "red") return bumpAndCancel(slot);
-    commit(d, p);
+    const v = classifySlot(slot);
+    if (v.validity === "red" || targetCardsForSlot(slot).length) return showCollisionMenu(slot, v, e.clientX, e.clientY);
+    commit(d, p, slot);
   }
   function onKey(e) {
     if (!ghost) return;
@@ -241,39 +247,60 @@
     if (e.key === "Tab") { e.preventDefault(); return moveFocus(e.shiftKey ? -1 : 1); }
     if (e.key === "Enter") {
       const f = document.activeElement;
-      if (f && f.classList && f.classList.contains("chrx-slot") && f.classList.contains("empty")) {
+      if (f && f.classList && f.classList.contains("chrx-slot") && !f.classList.contains("out-of-bell")) {
         e.preventDefault();
         const d = parseInt(f.dataset.day, 10), p = parseInt(f.dataset.period, 10);
-        const v = window.Placement ? window.Placement.classify(inHand.lessonId, d, p) : { validity: "green", reasons: [] };
-        if (v.validity === "red") bumpAndCancel(f); else commit(d, p);
+        const v = classifySlot(f);
+        if (v.validity === "red" || targetCardsForSlot(f).length) showCollisionMenu(f, v); else commit(d, p, f);
       }
     }
   }
   function moveFocus(dir) {
-    const slots = Array.from(document.querySelectorAll(".chrx-editor .chrx-slot.empty"));
+    const slots = Array.from(document.querySelectorAll(".chrx-editor .chrx-slot:not(.out-of-bell)"));
     if (!slots.length) return;
     slots.forEach(s => { if (!s.hasAttribute("tabindex")) s.setAttribute("tabindex", "-1"); });
     const i = slots.indexOf(document.activeElement);
     (slots[(i + dir + slots.length) % slots.length] || slots[0]).focus({ preventScroll: false });
   }
 
-  function commit(day, period) {
+  function commit(day, period, slot, options) {
+    closeCollisionMenu();
     const S = window.APP && window.APP.school;
     const cardId  = inHand.cardId;
     const lessonId = inHand.lessonId;
     const fromPending = !!inHand.fromPending;
     const originDay = inHand.originDay;
     const originPeriod = inHand.originPeriod;
+    const originClassroomId = inHand.originClassroomId;
     const isMove = !fromPending && Number.isFinite(originDay) && Number.isFinite(originPeriod);
+    const forced = !!(options && options.force);
+    const replace = !!(options && options.replace);
     const isSameSlot = isMove && originDay === day && originPeriod === period;
     const lesson = S && S._idx ? S._idx.lessonById[lessonId] : null;
-    const cid = lesson ? lesson.preferredRoomId : undefined;
+    const cid = slot ? classroomForSlot(lessonId, slot) : (lesson ? lesson.preferredRoomId : undefined);
+    const targetRemoved = replace ? targetCardsForSlot(slot).map(c => ({
+      lessonId: c.lessonId,
+      day: c.day,
+      period: c.period,
+      classroomId: c.classroomId,
+    })) : [];
 
     function applyPlacement() {
       if (!S) return;
       if (isMove) {
         const oi = S.cards.findIndex(c => c.lessonId === lessonId && c.day === originDay && c.period === originPeriod);
         if (oi !== -1) S.cards.splice(oi, 1);
+      }
+      if (replace && targetRemoved.length) {
+        for (const removed of targetRemoved) {
+          const ri = S.cards.findIndex(c =>
+            c.lessonId === removed.lessonId &&
+            c.day === removed.day &&
+            c.period === removed.period &&
+            (c.classroomId || "") === (removed.classroomId || "")
+          );
+          if (ri !== -1) S.cards.splice(ri, 1);
+        }
       }
       if (!S.cards.some(c => c.lessonId === lessonId && c.day === day && c.period === period))
         S.cards.push({ lessonId, day, period, classroomId: cid });
@@ -282,8 +309,23 @@
       if (!S) return;
       const ti = S.cards.findIndex(c => c.lessonId === lessonId && c.day === day && c.period === period);
       if (ti !== -1) S.cards.splice(ti, 1);
+      for (const removed of targetRemoved) {
+        if (!S.cards.some(c =>
+          c.lessonId === removed.lessonId &&
+          c.day === removed.day &&
+          c.period === removed.period &&
+          (c.classroomId || "") === (removed.classroomId || "")
+        )) {
+          S.cards.push({
+            lessonId: removed.lessonId,
+            day: removed.day,
+            period: removed.period,
+            classroomId: removed.classroomId,
+          });
+        }
+      }
       if (isMove && !S.cards.some(c => c.lessonId === lessonId && c.day === originDay && c.period === originPeriod))
-        S.cards.push({ lessonId, day: originDay, period: originPeriod, classroomId: cid });
+        S.cards.push({ lessonId, day: originDay, period: originPeriod, classroomId: originClassroomId || cid });
     }
 
     // Push onto undo stack so AI → Cleanup last card move can revert it.
@@ -295,7 +337,7 @@
         label,
         do() {
           applyPlacement();
-          document.dispatchEvent(new CustomEvent("editor:place", { detail: { cardId, lessonId, day, period } }));
+          document.dispatchEvent(new CustomEvent("editor:place", { detail: { cardId, lessonId, day, period, forced } }));
           rerender();
         },
         undo() {
@@ -307,7 +349,7 @@
     } else {
       applyPlacement();
       document.dispatchEvent(new CustomEvent("editor:place",
-        { detail: { cardId, lessonId, day, period } }));
+        { detail: { cardId, lessonId, day, period, forced } }));
       rerender();
     }
     if (window.APP.editor) window.APP.editor.cardInHand = null;
@@ -320,13 +362,97 @@
     cancel();
   }
 
+  function showCollisionMenu(slot, validity, x, y) {
+    if (!slot || !inHand) return cancel();
+    closeCollisionMenu();
+    slot.classList.add("chrx-slot-bump");
+    setTimeout(() => slot.classList.remove("chrx-slot-bump"), 200);
+    const d = parseInt(slot.dataset.day, 10), p = parseInt(slot.dataset.period, 10);
+    const occupants = targetCardsForSlot(slot);
+    const reasons = validity && validity.reasons && validity.reasons.length
+      ? validity.reasons
+      : ["Placement conflicts with the current timetable"];
+    const occupantNames = occupants.map(c => cardLabel(c)).filter(Boolean);
+    collisionMenu = document.createElement("div");
+    collisionMenu.className = "chrx-collision-menu";
+    collisionMenu.innerHTML = `
+      <div class="chrx-collision-menu__title">Collision at ${esc(dayLabel(d))} P${esc(p)}</div>
+      <ul class="chrx-collision-menu__reasons">
+        ${occupantNames.length ? `<li>slot already has ${esc(occupantNames.join(", "))}</li>` : ""}
+        ${reasons.slice(0, 5).map(r => `<li>${esc(r)}</li>`).join("")}
+      </ul>
+      <div class="chrx-collision-menu__actions">
+        <button type="button" data-act="return">Return</button>
+        <button type="button" data-act="find">Find clean slot</button>
+        ${occupants.length ? `<button type="button" data-act="replace">Replace slot</button>` : ""}
+        <button type="button" data-act="force">${occupants.length ? "Add alongside" : "Place anyway"}</button>
+      </div>
+    `;
+    collisionMenu.addEventListener("mousedown", e => e.stopPropagation(), true);
+    collisionMenu.addEventListener("mouseup", e => e.stopPropagation(), true);
+    collisionMenu.addEventListener("click", e => {
+      const btn = e.target.closest("button[data-act]");
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const act = btn.dataset.act;
+      if (act === "return") return cancel();
+      if (act === "force") return commit(d, p, slot, { force: true });
+      if (act === "replace") return commit(d, p, slot, { replace: true, force: true });
+      if (act === "find") return focusFirstCleanSlot();
+    });
+    document.body.appendChild(collisionMenu);
+    const r = slot.getBoundingClientRect();
+    const left = Number.isFinite(x) ? x : r.left + r.width;
+    const top = Number.isFinite(y) ? y : r.top;
+    placeCollisionMenu(left, top);
+    updateCarryPanel(slot, validity);
+  }
+
+  function placeCollisionMenu(x, y) {
+    if (!collisionMenu) return;
+    const margin = 12;
+    const w = collisionMenu.offsetWidth || 280;
+    const h = collisionMenu.offsetHeight || 160;
+    let left = x + margin;
+    let top = y + margin;
+    if (left + w + 8 > window.innerWidth) left = Math.max(8, x - w - margin);
+    if (top + h + 8 > window.innerHeight) top = Math.max(8, y - h - margin);
+    collisionMenu.style.left = left + "px";
+    collisionMenu.style.top = top + "px";
+  }
+
+  function closeCollisionMenu() {
+    if (collisionMenu && collisionMenu.parentNode) collisionMenu.parentNode.removeChild(collisionMenu);
+    collisionMenu = null;
+  }
+
+  function focusFirstCleanSlot() {
+    if (!inHand || !window.Placement) return;
+    const slots = Array.from(document.querySelectorAll(".chrx-editor .chrx-slot:not(.out-of-bell)"));
+    const clean = slots.find(slot => {
+      const d = parseInt(slot.dataset.day, 10), p = parseInt(slot.dataset.period, 10);
+      if (Number.isNaN(d) || Number.isNaN(p)) return false;
+      if (targetCardsForSlot(slot).length) return false;
+      const v = classifySlot(slot);
+      return v.validity !== "red";
+    });
+    if (!clean) return;
+    closeCollisionMenu();
+    clean.scrollIntoView({ block: "center", inline: "center" });
+    clean.classList.add("chrx-slot-suggested");
+    clean.setAttribute("tabindex", "-1");
+    clean.focus({ preventScroll: true });
+    setTimeout(() => clean.classList.remove("chrx-slot-suggested"), 1200);
+  }
+
   function cancel() {
     if (!ghost) return;
     if (!inHand.fromPending && Number.isFinite(inHand.originDay) && Number.isFinite(inHand.originPeriod)) {
       const S = window.APP && window.APP.school;
       if (S) {
         const lesson = S._idx.lessonById[inHand.lessonId];
-        const cid = lesson ? lesson.preferredRoomId : undefined;
+        const cid = inHand.originClassroomId || (lesson ? lesson.preferredRoomId : undefined);
         if (!S.cards.some(c => c.lessonId === inHand.lessonId && c.day === inHand.originDay && c.period === inHand.originPeriod))
           S.cards.push({ lessonId: inHand.lessonId, day: inHand.originDay, period: inHand.originPeriod, classroomId: cid });
       }
@@ -362,12 +488,17 @@
     if (lastSlot) { lastSlot.removeAttribute("data-validity"); lastSlot.removeAttribute("title"); }
     lastSlot = null;
     hideDragTooltip();
+    closeCollisionMenu();
     if (dragTooltipEl && dragTooltipEl.parentNode) {
       dragTooltipEl.parentNode.removeChild(dragTooltipEl);
       dragTooltipEl = null;
     }
+    if (carryPanel && carryPanel.parentNode) {
+      carryPanel.parentNode.removeChild(carryPanel);
+      carryPanel = null;
+    }
     // Clear the at-pickup heatmap painted by paintAllSlots().
-    document.querySelectorAll(".chrx-editor .chrx-slot.empty[data-validity]").forEach(
+    document.querySelectorAll(".chrx-editor .chrx-slot[data-validity]").forEach(
       s => s.removeAttribute("data-validity"));
     if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
     if (ghost && ghost.parentNode) ghost.parentNode.removeChild(ghost);
@@ -379,4 +510,124 @@
 
   document.addEventListener("editor:pickup", e => { if (ghost) cleanup(); pickup(e.detail || {}); });
   window.CardInHand = { _cleanup: cleanup };
+
+  function rowPlacementCheck(lessonId, slot) {
+    const S = window.APP && window.APP.school;
+    const perspective = (window.APP && window.APP.editor && window.APP.editor.perspective) || "class";
+    const rowKey = slot && (slot.dataset.row || slot.closest(".chrx-row")?.dataset.row);
+    const lesson = S && S._idx ? S._idx.lessonById[lessonId] : null;
+    if (!lesson || !rowKey) return { ok: true };
+    if (perspective === "class" && !(lesson.classIds || []).includes(rowKey)) {
+      const cls = S._idx.classById[rowKey];
+      return { ok: false, reason: `Not a card for ${cls ? cls.name : rowKey}` };
+    }
+    if (perspective === "teacher" && !(lesson.teacherIds || []).includes(rowKey)) {
+      const teacher = S._idx.teacherById[rowKey];
+      return { ok: false, reason: `Not a card for ${teacher ? (teacher.abbr || teacher.name) : rowKey}` };
+    }
+    if (perspective === "subject" && lesson.subjectId !== rowKey) {
+      const subject = S._idx.subjectById[rowKey];
+      return { ok: false, reason: `Not a ${subject ? (subject.abbr || subject.name) : rowKey} card` };
+    }
+    return { ok: true };
+  }
+
+  function classifySlot(slot) {
+    const d = parseInt(slot.dataset.day, 10);
+    const p = parseInt(slot.dataset.period, 10);
+    const rowCheck = rowPlacementCheck(inHand.lessonId, slot);
+    const base = rowCheck.ok
+      ? (window.Placement ? window.Placement.classify(inHand.lessonId, d, p, classroomForSlot(inHand.lessonId, slot)) : { validity: "green", reasons: [] })
+      : { validity: "red", reasons: [rowCheck.reason] };
+    const occupants = targetCardsForSlot(slot);
+    if (!occupants.length) return base;
+    const reasons = (base.reasons || []).slice();
+    const labels = occupants.map(c => cardLabel(c)).filter(Boolean);
+    reasons.unshift(labels.length ? `slot occupied by ${labels.join(", ")}` : "slot occupied");
+    return { validity: "red", reasons };
+  }
+
+  function targetCardsForSlot(slot) {
+    const S = window.APP && window.APP.school;
+    if (!S || !slot) return [];
+    const d = parseInt(slot.dataset.day, 10);
+    const p = parseInt(slot.dataset.period, 10);
+    if (!Number.isFinite(d) || !Number.isFinite(p)) return [];
+    const rowKey = slot.dataset.row || slot.closest(".chrx-row")?.dataset.row;
+    const perspective = (window.APP && window.APP.editor && window.APP.editor.perspective) || "class";
+    return (S.cards || []).filter(c => {
+      if (c.day !== d || c.period !== p) return false;
+      if (!rowKey || rowKey === "head") return true;
+      const lesson = S._idx.lessonById[c.lessonId];
+      if (!lesson) return false;
+      if (perspective === "class") return (lesson.classIds || []).includes(rowKey);
+      if (perspective === "teacher") return (lesson.teacherIds || []).includes(rowKey);
+      if (perspective === "subject") return lesson.subjectId === rowKey;
+      if (perspective === "room") return (c.classroomId || lesson.preferredRoomId) === rowKey;
+      return true;
+    });
+  }
+
+  function cardLabel(card) {
+    const S = window.APP && window.APP.school;
+    const lesson = S && S._idx ? S._idx.lessonById[card.lessonId] : null;
+    const subject = lesson ? S._idx.subjectById[lesson.subjectId] : null;
+    const classes = lesson ? (lesson.classIds || [])
+      .map(id => S._idx.classById[id])
+      .filter(Boolean)
+      .map(c => c.name || c.id)
+      .join("/") : "";
+    const subjectName = subject ? (subject.abbr || subject.name) : card.lessonId;
+    return classes ? `${subjectName} ${classes}` : subjectName;
+  }
+
+  function classroomForSlot(lessonId, slot) {
+    const S = window.APP && window.APP.school;
+    const lesson = S && S._idx ? S._idx.lessonById[lessonId] : null;
+    const perspective = (window.APP && window.APP.editor && window.APP.editor.perspective) || "class";
+    const rowKey = slot && (slot.dataset.row || slot.closest(".chrx-row")?.dataset.row);
+    if (perspective === "room" && rowKey) return rowKey;
+    return lesson ? lesson.preferredRoomId : undefined;
+  }
+
+  function showCarryPanel(S, lesson, subjShort, classShort, teacherShort) {
+    if (carryPanel && carryPanel.parentNode) carryPanel.parentNode.removeChild(carryPanel);
+    const roomShort = (() => {
+      const rid = lesson && lesson.preferredRoomId;
+      const room = rid ? S._idx.classroomById[rid] : null;
+      return room ? room.name : "No room";
+    })();
+    carryPanel = document.createElement("aside");
+    carryPanel.className = "chrx-carry-panel";
+    carryPanel.innerHTML = `
+      <div class="chrx-carry-panel__eyebrow">Card in hand</div>
+      <div class="chrx-carry-panel__title">${esc(subjShort)}</div>
+      <dl class="chrx-carry-panel__facts">
+        <div><dt>Class</dt><dd>${esc(classShort || "—")}</dd></div>
+        <div><dt>Teacher</dt><dd>${esc(teacherShort || "—")}</dd></div>
+        <div><dt>Room</dt><dd>${esc(roomShort)}</dd></div>
+      </dl>
+      <div class="chrx-carry-panel__status" data-state="idle">Choose a slot in the matching row.</div>
+    `;
+    document.body.appendChild(carryPanel);
+  }
+
+  function updateCarryPanel(slot, validity) {
+    if (!carryPanel) return;
+    const status = carryPanel.querySelector(".chrx-carry-panel__status");
+    if (!status) return;
+    const d = slot ? parseInt(slot.dataset.day, 10) : NaN;
+    const p = slot ? parseInt(slot.dataset.period, 10) : NaN;
+    const label = Number.isFinite(d) && Number.isFinite(p)
+      ? `${dayLabel(d)} P${p}`
+      : "Choose a slot";
+    status.dataset.state = validity.validity || "idle";
+    status.textContent = validity.reasons && validity.reasons.length
+      ? `${label}: ${validity.reasons.join(" · ")}`
+      : `${label}: clean placement`;
+  }
+
+  function dayLabel(d) {
+    return ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d] || "D" + d;
+  }
 })();

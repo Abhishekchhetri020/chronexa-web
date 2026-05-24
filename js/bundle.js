@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-23T15:45:37Z
+/* Chronexa bundle — generated 2026-05-24T05:42:22Z
  *      161 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -7825,12 +7825,8 @@ window.Inspector = (function () {
   }
 
   function focusEditor() {
-    // Step 2 is School Info; the editor lives on step 3 (Class Grid). The
-    // sidebar "Editor" entry was opening School Info because of this.
-    // Try step 3 first; fall back to step 2 if a layout variant doesn't
-    // expose step 3 yet (school-loaded gates the higher steps).
-    const editorBtn = document.querySelector('.step-btn[data-step="3"]:not([disabled])')
-      || document.querySelector('.step-btn[data-step="3"]')
+    const editorBtn = document.querySelector('.step-btn[data-step="6"]:not([disabled])')
+      || document.querySelector('.step-btn[data-step="6"]')
       || document.querySelector('.step-btn[data-step="2"]');
     if (editorBtn) editorBtn.click();
   }
@@ -7970,12 +7966,27 @@ window.Inspector = (function () {
       }));
     } catch (e) {}
   }
+  function setEditorWorkspace(active) {
+    const shellEl = document.getElementById("chrx-shell");
+    if (!shellEl) return;
+    if (active) {
+      if (!shellEl.classList.contains("is-fullscreen")) {
+        shellEl.dataset.autoFullscreen = "1";
+        shellEl.classList.add("is-fullscreen", "is-side-hidden", "is-rail-hidden");
+      }
+      document.documentElement.setAttribute("data-skin", "classic");
+    } else if (shellEl.dataset.autoFullscreen === "1") {
+      delete shellEl.dataset.autoFullscreen;
+      shellEl.classList.remove("is-fullscreen", "is-side-hidden", "is-rail-hidden");
+    }
+  }
   function togglePanel(which) {
     const shellEl = document.getElementById("chrx-shell");
     if (!shellEl) return;
     if (which === "fs") {
       // Fullscreen editor: compound toggle — sets/clears side + rail + chrome
       const enabling = !shellEl.classList.contains("is-fullscreen");
+      delete shellEl.dataset.autoFullscreen;
       shellEl.classList.toggle("is-fullscreen", enabling);
       shellEl.classList.toggle("is-side-hidden", enabling);
       shellEl.classList.toggle("is-rail-hidden", enabling);
@@ -8077,6 +8088,10 @@ window.Inspector = (function () {
   }
 
   global.addEventListener("app:school-loaded", () => { updateCrumbs(); updateSolverPanel(null); });
+  document.addEventListener("step:changed", (e) => {
+    const step = e.detail && e.detail.step;
+    setEditorWorkspace(step === 6);
+  });
   global.addEventListener("app:solver-result", (e) => updateSolverPanel(e.detail));
   global.addEventListener("app:solver-progress", (e) => {
     if (e.detail && Array.isArray(e.detail.latestViolations)) updateFaults(e.detail.latestViolations);
@@ -8091,6 +8106,7 @@ window.Inspector = (function () {
   }
 
   global.ChrxShell = { mount, openPalette, closePalette, togglePanel,
+    focusEditor, setEditorWorkspace,
     refresh: () => { updateCrumbs(); updateSolverPanel(null); updateFaults(lastFaults); } };
 })(window);
 
@@ -13153,7 +13169,7 @@ window.Editor = (function () {
       return;
     }
     const perspective = window.APP.editor.perspective;
-    const periods = S.bell.periods;
+    const periods = displayPeriods(S);
     const rows = rowsFor(S, perspective);
     const mobileDay = window.APP.day || 0;
 
@@ -13165,6 +13181,7 @@ window.Editor = (function () {
 
     wire(rootEl);
     syncCardInHandClass();
+    updateClassPanel(S);
     if (window.ConstraintExplainer && typeof window.ConstraintExplainer.attachTooltip === "function") {
       window.ConstraintExplainer.attachTooltip(rootEl);
     }
@@ -13208,7 +13225,26 @@ window.Editor = (function () {
     const A = window.APP;
     A.editor = A.editor || {};
     if (!A.editor.perspective) A.editor.perspective = "class";
+    if (!A.editor.colorBy) A.editor.colorBy = "subject";
     if (A.editor.cardInHand === undefined) A.editor.cardInHand = null;
+  }
+
+  function displayPeriods(S) {
+    const raw = (S && S.bell && Array.isArray(S.bell.periods)) ? S.bell.periods : [];
+    const byIndex = Object.create(null);
+    let max = 0;
+    for (const p of raw) {
+      const ix = p && Number.isFinite(p.index) ? p.index : parseInt(p && p.index, 10);
+      if (!Number.isFinite(ix) || ix <= 0) continue;
+      byIndex[ix] = p;
+      if (ix > max) max = ix;
+    }
+    const end = Math.max(8, max || raw.length || 8);
+    const out = [];
+    for (let i = 1; i <= end; i++) {
+      out.push(byIndex[i] || { index: i, label: "P" + i, isTeaching: false, synthetic: true });
+    }
+    return out;
   }
 
   function syncCardInHandClass() {
@@ -13243,18 +13279,49 @@ window.Editor = (function () {
   function html(S, rows, periods, mobileDay, cardLookup) {
     const headerHtml = headerRowHtml(periods, mobileDay);
     const dayTabsHtml = dayTabsHtml_(mobileDay);
+    const toolsHtml = toolsHtml_(S);
 
     const bodyHtml = rows.map(row => rowHtml(S, row, periods, mobileDay, cardLookup)).join("");
 
     return `
+      ${toolsHtml}
       ${dayTabsHtml}
       <div class="chrx-grid-scroll">
-        <div class="chrx-grid">
+        <div class="chrx-grid" style="--chrx-periods:${periods.length || 8}">
           ${headerHtml}
           ${bodyHtml}
         </div>
       </div>
     `;
+  }
+
+  function toolsHtml_(S) {
+    const editor = window.APP.editor || {};
+    const perspective = editor.perspective || "class";
+    const colorBy = editor.colorBy || "subject";
+    const density = editor.density || "compact";
+    const pending = pendingCount(S);
+    return `
+      <div class="chrx-editor-tools" aria-label="Editor tools">
+        <button type="button" class="chrx-editor-tool" data-editor-tool="perspective">${esc(PERSPECTIVE_LABEL[perspective] || "By Class")}</button>
+        <button type="button" class="chrx-editor-tool" data-editor-tool="color">${esc(COLOR_LABEL[colorBy] || "Color: Subject")}</button>
+        <button type="button" class="chrx-editor-tool" data-editor-tool="density">${density === "compact" ? "Compact" : "Comfortable"}</button>
+        <span class="chrx-editor-tool__count">${pending} unplaced</span>
+      </div>
+    `;
+  }
+
+  const PERSPECTIVES = ["class", "teacher", "room", "subject"];
+  const PERSPECTIVE_LABEL = { class: "By Class", teacher: "By Teacher", room: "By Room", subject: "By Subject" };
+  const COLOR_AXES = ["subject", "teacher", "class", "room"];
+  const COLOR_LABEL = { subject: "Color: Subject", teacher: "Color: Teacher", class: "Color: Class", room: "Color: Room" };
+
+  function pendingCount(S) {
+    const placed = Object.create(null);
+    for (const c of (S.cards || [])) placed[c.lessonId] = (placed[c.lessonId] || 0) + 1;
+    let total = 0;
+    for (const L of (S.lessons || [])) total += Math.max(0, Math.ceil(L.periodsPerWeek || 0) - (placed[L.id] || 0));
+    return total;
   }
 
   function dayTabsHtml_(mobileDay) {
@@ -13268,15 +13335,17 @@ window.Editor = (function () {
     const dayBlocks = [];
     for (let d = 0; d < NUM_DAYS; d++) {
       const cells = periods.map(p =>
-        `<div class="chrx-h chrx-h-period ${d !== mobileDay ? "mobile-hidden" : ""}" data-day="${d}">P${p.index}</div>`
+        `<div class="chrx-h chrx-h-period${p.synthetic ? " is-synthetic" : ""}" data-day="${d}" data-period="${p.index}">${esc(p.label || ("P" + p.index))}</div>`
       ).join("");
       dayBlocks.push(`
-        <div class="chrx-h-day ${d !== mobileDay ? "mobile-hidden" : ""}" data-day="${d}">${esc(DAY_LABELS_EN[d])}</div>
-        ${cells}
+        <div class="chrx-day-head-group ${d !== mobileDay ? "mobile-hidden" : ""}" data-day="${d}">
+          <div class="chrx-h-day" data-day="${d}">${esc(DAY_LABELS_EN[d])}</div>
+          <div class="chrx-period-head-row">${cells}</div>
+        </div>
       `);
     }
     return `
-      <div class="chrx-row" data-row="head">
+      <div class="chrx-row chrx-row-head" data-row="head">
         <div class="chrx-rowlabel chrx-h">Row</div>
         ${dayBlocks.join("")}
       </div>
@@ -13287,6 +13356,7 @@ window.Editor = (function () {
     const rowBucket = cardLookup[row.key] || null;
     const slots = [];
     const persp = (window.APP && window.APP.editor && window.APP.editor.perspective) || "class";
+    const selected = persp === "class" && window.APP.editor && window.APP.editor.selectedClassId === row.key;
     let bellPeriodSet = null;
     if (persp === "class" && window.BellResolver) {
       const bell = window.BellResolver.forClass(S, row.key);
@@ -13298,7 +13368,7 @@ window.Editor = (function () {
       for (const p of periods) {
         const cards = rowBucket ? rowBucket[d + "_" + p.index] : null;
         const hide = d !== mobileDay ? " mobile-hidden" : "";
-        const outOfBell = bellPeriodSet && !bellPeriodSet.has(p.index | 0);
+        const outOfBell = p.synthetic || (bellPeriodSet && !bellPeriodSet.has(p.index | 0));
         if (cards && cards.length > 0) {
           const oob = outOfBell ? " out-of-bell" : "";
           const cardListHtml = cards.map(c => vkartaHtml(S, c, d, p.index, row.key)).join("");
@@ -13315,8 +13385,8 @@ window.Editor = (function () {
       }
     }
     return `
-      <div class="chrx-row" data-row="${esc(row.key)}">
-        <div class="chrx-rowlabel" title="${esc(row.label)}">
+      <div class="chrx-row${selected ? " chrx-row--selected" : ""}" data-row="${esc(row.key)}">
+        <div class="chrx-rowlabel" title="${esc(row.label)}" role="button" tabindex="0" aria-pressed="${selected ? "true" : "false"}">
           <span class="chrx-rowlabel-main">${esc(row.label)}</span>
           ${row.sub ? `<span class="chrx-rowlabel-sub">${esc(row.sub)}</span>` : ""}
         </div>
@@ -13365,6 +13435,7 @@ window.Editor = (function () {
            data-lesson-id="${esc(card.lessonId)}"
            data-day="${day}"
            data-period="${period}"
+           data-classroom-id="${esc(card.classroomId || "")}"
            style="--chrx-card-hue:${hue}"
            title="${esc(subjShort + (teacherShort ? ' · ' + teacherShort : '') + (roomShort ? ' · ' + roomShort : ''))}">
         <div class="chrx-vk-line1">${esc(subjShort)}</div>
@@ -13386,12 +13457,23 @@ window.Editor = (function () {
       // replace without needing a re-bind every render.
       rootEl.addEventListener("click", onRootClick);
       rootEl.addEventListener("mouseover", onMouseOver);
+      rootEl.addEventListener("focusin", onFocusIn);
       rootEl.addEventListener("mouseout", onMouseOut);
       rootEl._chrxWired = true;
     }
   }
 
   function onMouseOver(ev) {
+    const vk = ev.target.closest(".chrx-vkarta");
+    if (vk && vk.dataset.lessonId) {
+      showCardPanel(vk.dataset.lessonId, {
+        day: parseInt(vk.dataset.day, 10),
+        period: parseInt(vk.dataset.period, 10),
+        classroomId: vk.dataset.classroomId || undefined,
+        source: "placed",
+      });
+      return;
+    }
     const label = ev.target.closest(".chrx-rowlabel");
     if (!label) return;
     const row = label.closest(".chrx-row");
@@ -13404,6 +13486,18 @@ window.Editor = (function () {
     }
   }
 
+  function onFocusIn(ev) {
+    const vk = ev.target.closest(".chrx-vkarta");
+    if (vk && vk.dataset.lessonId) {
+      showCardPanel(vk.dataset.lessonId, {
+        day: parseInt(vk.dataset.day, 10),
+        period: parseInt(vk.dataset.period, 10),
+        classroomId: vk.dataset.classroomId || undefined,
+        source: "placed",
+      });
+    }
+  }
+
   function onMouseOut(ev) {
     const label = ev.target.closest(".chrx-rowlabel");
     if (!label) return;
@@ -13413,10 +13507,175 @@ window.Editor = (function () {
   }
 
   function onRootClick(ev) {
+    const tool = ev.target.closest("[data-editor-tool]");
+    if (tool) {
+      ev.preventDefault();
+      handleEditorTool(tool.dataset.editorTool, tool.closest(".chrx-editor"));
+      return;
+    }
     const tab = ev.target.closest(".chrx-day-tab");
-    if (!tab) return;
-    window.APP.day = parseInt(tab.dataset.day, 10) || 0;
-    render(tab.closest(".chrx-editor"));
+    if (tab) {
+      window.APP.day = parseInt(tab.dataset.day, 10) || 0;
+      render(tab.closest(".chrx-editor"));
+      return;
+    }
+    const label = ev.target.closest(".chrx-rowlabel");
+    if (!label) return;
+    const row = label.closest(".chrx-row");
+    const rowKey = row && row.dataset.row;
+    if (!rowKey || rowKey === "head") return;
+    if ((window.APP.editor.perspective || "class") !== "class") return;
+    window.APP.editor.selectedClassId = window.APP.editor.selectedClassId === rowKey ? null : rowKey;
+    render(label.closest(".chrx-editor"));
+    const pend = document.querySelector(".chrx-pending-strip");
+    if (pend && window.PendingStrip && window.PendingStrip.render) window.PendingStrip.render(pend);
+  }
+
+  function handleEditorTool(kind, host) {
+    window.APP.editor = window.APP.editor || {};
+    if (kind === "perspective") {
+      const cur = window.APP.editor.perspective || "class";
+      const next = PERSPECTIVES[(PERSPECTIVES.indexOf(cur) + 1) % PERSPECTIVES.length];
+      window.APP.editor.perspective = next;
+      syncExternalButton("editor-perspective", PERSPECTIVE_LABEL[next]);
+    } else if (kind === "color") {
+      const cur = window.APP.editor.colorBy || "subject";
+      const next = COLOR_AXES[(COLOR_AXES.indexOf(cur) + 1) % COLOR_AXES.length];
+      window.APP.editor.colorBy = next;
+      try { localStorage.setItem("chronexa.editor.colorBy", next); } catch (_e) {}
+      syncExternalButton("editor-color-by", COLOR_LABEL[next]);
+    } else if (kind === "density") {
+      const next = (window.APP.editor.density || "compact") === "compact" ? "comfortable" : "compact";
+      window.APP.editor.density = next;
+      try { localStorage.setItem("chronexa.editor.density", next); } catch (_e) {}
+      syncExternalButton("editor-density", next === "compact" ? "Compact" : "Comfortable");
+    }
+    if (host) render(host);
+    const pend = document.querySelector(".chrx-pending-strip");
+    if (pend && window.PendingStrip && window.PendingStrip.render) window.PendingStrip.render(pend);
+  }
+
+  function syncExternalButton(id, text) {
+    const btn = document.getElementById(id);
+    if (btn) btn.textContent = text;
+  }
+
+  function updateClassPanel(S) {
+    const existing = document.getElementById("chrx-class-panel");
+    const selectedId = window.APP && window.APP.editor && window.APP.editor.selectedClassId;
+    const cls = selectedId && S && S._idx ? S._idx.classById[selectedId] : null;
+    if (!cls) {
+      if (existing) existing.remove();
+      return;
+    }
+    const stats = classStats(S, selectedId);
+    const panel = existing || document.createElement("aside");
+    panel.id = "chrx-class-panel";
+    panel.className = "chrx-class-panel";
+    panel.innerHTML = `
+      <div class="chrx-class-panel__eyebrow">Selected class</div>
+      <div class="chrx-class-panel__title">${esc(cls.name || cls.id)}</div>
+      <div class="chrx-class-panel__stats">
+        <div><strong>${stats.placed}</strong><span>placed</span></div>
+        <div><strong>${stats.pending}</strong><span>pending</span></div>
+        <div><strong>${stats.conflicts}</strong><span>conflicts</span></div>
+      </div>
+      <div class="chrx-class-panel__meta">${esc(stats.teachers || "No teachers assigned")}</div>
+      <div class="chrx-class-panel__actions">
+        <button type="button" data-act="clear">Show all</button>
+        <button type="button" data-act="lesson-grid">Lesson grid</button>
+      </div>
+    `;
+    panel.querySelector('[data-act="clear"]').onclick = () => {
+      window.APP.editor.selectedClassId = null;
+      const host = document.querySelector(".chrx-editor");
+      if (host) render(host);
+      const pend = document.querySelector(".chrx-pending-strip");
+      if (pend && window.PendingStrip && window.PendingStrip.render) window.PendingStrip.render(pend);
+    };
+    panel.querySelector('[data-act="lesson-grid"]').onclick = () => {
+      if (window.LessonsGridMatrix && window.LessonsGridMatrix.open) window.LessonsGridMatrix.open(S);
+    };
+    if (!existing) document.body.appendChild(panel);
+  }
+
+  function showCardPanel(lessonId, opts) {
+    const S = window.APP && window.APP.school;
+    const L = S && S._idx ? S._idx.lessonById[lessonId] : null;
+    if (!L) return;
+    const subject = S._idx.subjectById[L.subjectId];
+    const subjectName = subject ? (subject.name || subject.abbr) : "Unknown";
+    const classNames = (L.classIds || []).map(id => S._idx.classById[id]).filter(Boolean).map(c => c.name || c.id).join(", ");
+    const teacherNames = (L.teacherIds || []).map(id => S._idx.teacherById[id]).filter(Boolean).map(t => t.abbr || t.name).join(", ");
+    const roomId = opts && opts.classroomId ? opts.classroomId : L.preferredRoomId;
+    const room = roomId ? S._idx.classroomById[roomId] : null;
+    const need = Math.ceil(L.periodsPerWeek || 0);
+    const placed = (S.cards || []).filter(c => c.lessonId === L.id).length;
+    const position = opts && Number.isFinite(opts.day) && Number.isFinite(opts.period)
+      ? `${DAY_LABELS_EN[opts.day] || ("D" + opts.day)} P${opts.period}`
+      : "Unplaced";
+    const status = placementStatus(L.id, opts);
+    const panel = document.getElementById("chrx-card-panel") || document.createElement("aside");
+    panel.id = "chrx-card-panel";
+    panel.className = "chrx-card-panel";
+    panel.innerHTML = `
+      <div class="chrx-card-panel__eyebrow">${opts && opts.source === "pending" ? "Pending card" : "Card detail"}</div>
+      <div class="chrx-card-panel__title">${esc(subjectName)}</div>
+      <dl class="chrx-card-panel__facts">
+        <div><dt>Class</dt><dd>${esc(classNames || "—")}</dd></div>
+        <div><dt>Teacher</dt><dd>${esc(teacherNames || "—")}</dd></div>
+        <div><dt>Room</dt><dd>${esc(room ? room.name : "No room")}</dd></div>
+        <div><dt>Slot</dt><dd>${esc(position)}</dd></div>
+      </dl>
+      <div class="chrx-card-panel__progress"><span style="width:${Math.min(100, need ? placed / need * 100 : 0)}%"></span></div>
+      <div class="chrx-card-panel__foot">${placed}/${need || 0} placed · ${esc(status.text)}</div>
+    `;
+    panel.dataset.state = status.state;
+    if (!panel.parentNode) document.body.appendChild(panel);
+  }
+
+  function placementStatus(lessonId, opts) {
+    if (!opts || !Number.isFinite(opts.day) || !Number.isFinite(opts.period) || !window.Placement) {
+      return { state: "idle", text: "ready to place" };
+    }
+    try {
+      const v = window.Placement.classify(lessonId, opts.day, opts.period, opts.classroomId);
+      if (v.validity === "red") return { state: "red", text: (v.reasons || ["hard conflict"])[0] };
+      if (v.validity === "amber") return { state: "amber", text: (v.reasons || ["soft warning"])[0] };
+      return { state: "green", text: "clean slot" };
+    } catch (_e) {
+      return { state: "idle", text: "ready to place" };
+    }
+  }
+
+  function classStats(S, classId) {
+    let pending = 0, placed = 0, conflicts = 0;
+    const teacherNames = new Set();
+    for (const L of (S.lessons || [])) {
+      if (!(L.classIds || []).includes(classId)) continue;
+      const need = Math.ceil(L.periodsPerWeek || 0);
+      const have = (S.cards || []).filter(c => c.lessonId === L.id).length;
+      pending += Math.max(0, need - have);
+      placed += have;
+      (L.teacherIds || []).forEach(tid => {
+        const t = S._idx.teacherById[tid];
+        if (t) teacherNames.add(t.abbr || t.name);
+      });
+    }
+    const bySlot = Object.create(null);
+    for (const c of (S.cards || [])) {
+      const L = S._idx.lessonById[c.lessonId];
+      if (!L || !(L.classIds || []).includes(classId)) continue;
+      const key = c.day + "_" + c.period;
+      bySlot[key] = (bySlot[key] || 0) + 1;
+    }
+    conflicts = Object.values(bySlot).filter(n => n > 1).length;
+    return {
+      pending,
+      placed,
+      conflicts,
+      teachers: Array.from(teacherNames).slice(0, 6).join(", "),
+    };
   }
 
   function onMouseDown(ev) {
@@ -13429,6 +13688,7 @@ window.Editor = (function () {
       const lessonId = vk.dataset.lessonId;
       const day = parseInt(vk.dataset.day, 10);
       const period = parseInt(vk.dataset.period, 10);
+      const originClassroomId = vk.dataset.classroomId || undefined;
       // If a card is already in hand, restore it to its origin slot before
       // picking up the new one — matches aSc CLASSIC. Before this guard the
       // second pickup silently overwrote cardInHand and the first card was
@@ -13450,9 +13710,9 @@ window.Editor = (function () {
         slot.dataset.day = String(day);
         slot.dataset.period = String(period);
       }
-      window.APP.editor.cardInHand = { cardId, lessonId, originDay: day, originPeriod: period };
+      window.APP.editor.cardInHand = { cardId, lessonId, originDay: day, originPeriod: period, originClassroomId };
       syncCardInHandClass();
-      dispatch("editor:pickup", { cardId, lessonId, day, period });
+      dispatch("editor:pickup", { cardId, lessonId, day, period, originClassroomId, sourceX: ev.clientX, sourceY: ev.clientY });
       // If we restored a held card above, re-render so the restored slot
       // visibly reflects its newly-replaced occupant.
       if (held) {
@@ -13464,31 +13724,13 @@ window.Editor = (function () {
     // Empty-slot place (only when we have something in hand)
     const slot = ev.target.closest(".chrx-slot.empty");
     if (slot && window.APP.editor.cardInHand) {
+      // CardInHand owns placement on mouseup so the same path handles
+      // click-to-place, drag-to-place, validation, undo, and snap-back.
+      // Mutating here on mousedown races the mouseup validator and can
+      // duplicate the moved card by restoring its origin after the target
+      // has already been filled.
       ev.preventDefault();
-      const day = parseInt(slot.dataset.day, 10);
-      const period = parseInt(slot.dataset.period, 10);
-      const rowKey = slot.dataset.row;
-      const inHand = window.APP.editor.cardInHand;
-      // Run the same hard-constraint check the card_in_hand drag path
-      // uses (Placement.classify) BEFORE mutating school.cards. Without
-      // this guard, click-to-place silently committed cards that broke
-      // teacher/class/room conflicts — and the drag-path validation at
-      // card_in_hand.js:139 was effectively dead code for clicks.
-      const v = (window.Placement && window.Placement.classify)
-        ? window.Placement.classify(inHand.lessonId, day, period)
-        : { validity: "green", reasons: [] };
-      if (v.validity === "red") {
-        if (window._chrxNotify) window._chrxNotify("Can't place here: " + (v.reasons || []).join(" · "), "error");
-        return;
-      }
-      // Mutate school cards + re-render the row to keep visual state honest
-      placeCardOnSchool(inHand.lessonId, day, period);
-      window.APP.editor.cardInHand = null;
-      syncCardInHandClass();
-      dispatch("editor:place", { cardId: inHand.cardId, lessonId: inHand.lessonId, day, period, rowKey });
-      // Cheapest correct re-render: redraw whole grid. (Rows are few; perf ok.)
-      const host = slot.closest(".chrx-editor");
-      if (host) render(host);
+      return;
     }
   }
 
@@ -13508,11 +13750,12 @@ window.Editor = (function () {
     const S = window.APP.school;
     if (!S) return;
     const lesson = S._idx.lessonById[lessonId];
-    const classroomId = lesson ? lesson.preferredRoomId : undefined;
+    const classroomId = arguments.length >= 4 ? arguments[3] : (lesson ? lesson.preferredRoomId : undefined);
     // Avoid a duplicate placement on the same {lessonId, day, period}
     if (S.cards.some(c => c.lessonId === lessonId && c.day === day && c.period === period)) return;
     S.cards.push({ lessonId, day, period, classroomId });
   }
+
 
   // Subject hue: known short codes match design tokens, else hash.
   const SHORT_HUES = {
@@ -13593,6 +13836,14 @@ window.Editor = (function () {
     return String(s == null ? "" : s).replace(/[&<>"']/g,
       c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
   }
+
+  window.EditorCardInspector = {
+    show: showCardPanel,
+    clear() {
+      const p = document.getElementById("chrx-card-panel");
+      if (p) p.remove();
+    },
+  };
 
   return { render, setPerspective };
 })();
@@ -13789,6 +14040,7 @@ window.PendingStrip = (function () {
     if (!rootEl) return;
     const S = window.APP.school;
     rootEl.classList.add("chrx-pending-strip");
+    applyTrayHeight(rootEl);
     if (!S) {
       rootEl.innerHTML = `<div class="chrx-pending-empty">No timetable loaded.</div>`;
       return;
@@ -13797,6 +14049,7 @@ window.PendingStrip = (function () {
     const groups = buildGroups(S, placedCounts);
 
     rootEl.innerHTML = `
+      <div class="chrx-pending-resize" title="Drag to resize pending cards"></div>
       ${toolbarHtml()}
       <div class="chrx-pending-scroll">
         ${groups.map(groupHtml).join("") || `<div class="chrx-pending-empty">All cards placed.</div>`}
@@ -13806,11 +14059,13 @@ window.PendingStrip = (function () {
   }
 
   function toolbarHtml() {
+    const cls = selectedClass();
     return `
       <div class="chrx-pending-toolbar">
         <input type="search" class="chrx-pending-search"
                placeholder="Search pending cards…"
                value="${esc(_state.filter)}">
+        ${cls ? `<button type="button" class="chrx-pending-class-filter" data-clear-class-filter="1" title="Show all pending cards">${esc(cls.name || cls.id)} ×</button>` : ""}
         <div class="chrx-pending-groupby" role="tablist">
           ${Object.entries(GROUPS).map(([k, v]) =>
             `<button class="chrx-pending-tab ${_state.groupBy === k ? "active" : ""}" data-group="${k}">${esc(v.label)}</button>`
@@ -13862,7 +14117,24 @@ window.PendingStrip = (function () {
         render(rootEl);
       });
     });
+    rootEl.querySelector("[data-clear-class-filter]")?.addEventListener("click", () => {
+      if (window.APP && window.APP.editor) window.APP.editor.selectedClassId = null;
+      render(rootEl);
+      const editor = document.querySelector(".chrx-editor");
+      if (editor && window.Editor && window.Editor.render) window.Editor.render(editor);
+    });
+    rootEl.querySelector(".chrx-pending-resize")?.addEventListener("pointerdown", (ev) => startResize(ev, rootEl));
     if (rootEl._chrxPendingWired) return;
+    rootEl.addEventListener("mouseover", (ev) => {
+      const vk = ev.target.closest(".chrx-vk-pending");
+      if (!vk || !window.EditorCardInspector) return;
+      window.EditorCardInspector.show(vk.dataset.lessonId, { source: "pending" });
+    });
+    rootEl.addEventListener("focusin", (ev) => {
+      const vk = ev.target.closest(".chrx-vk-pending");
+      if (!vk || !window.EditorCardInspector) return;
+      window.EditorCardInspector.show(vk.dataset.lessonId, { source: "pending" });
+    });
     rootEl.addEventListener("mousedown", (ev) => {
       const vk = ev.target.closest(".chrx-vk-pending");
       if (!vk) return;
@@ -13872,7 +14144,7 @@ window.PendingStrip = (function () {
       window.APP.editor.cardInHand = { cardId, lessonId, fromPending: true };
       document.body.classList.add("chrx-card-in-hand");
       vk.classList.add("chrx-vk-taken");
-      document.dispatchEvent(new CustomEvent("editor:pickup", { detail: { cardId, lessonId, fromPending: true } }));
+      document.dispatchEvent(new CustomEvent("editor:pickup", { detail: { cardId, lessonId, fromPending: true, sourceX: ev.clientX, sourceY: ev.clientY } }));
     });
     document.addEventListener("editor:place", () => render(rootEl));
     rootEl._chrxPendingWired = true;
@@ -13888,8 +14160,10 @@ window.PendingStrip = (function () {
     const groupKeyFn = GROUPS[_state.groupBy].keyFn;
     const f = (_state.filter || "").trim();
     const groups = Object.create(null);
+    const classFilterId = window.APP && window.APP.editor && window.APP.editor.selectedClassId;
 
     for (const L of (S.lessons || [])) {
+      if (classFilterId && !(L.classIds || []).includes(classFilterId)) continue;
       const ppw = Math.ceil(L.periodsPerWeek || 0);
       const placed = placedCounts[L.id] || 0;
       const missing = ppw - placed;
@@ -13902,7 +14176,7 @@ window.PendingStrip = (function () {
       const classShort = (L.classIds || []).map(c=>S._idx.classById[c])
         .filter(Boolean).map(c=>c.name).join(", ");
       const title = `${subjShort} · ${classShort}${teacherShort ? ' · ' + teacherShort : ''} — ${missing} more`;
-      const hue = hueOf(subjShort);
+      const hue = pendingHue(S, L, subj);
 
       // Filter
       const hay = `${subjShort} ${classShort} ${teacherShort}`.toLowerCase();
@@ -13924,6 +14198,39 @@ window.PendingStrip = (function () {
 
   function keyOf(rec) { return rec ? (rec.name || rec.abbr || "—") : "—"; }
 
+  function selectedClass() {
+    const S = window.APP && window.APP.school;
+    const id = window.APP && window.APP.editor && window.APP.editor.selectedClassId;
+    return S && S._idx && id ? S._idx.classById[id] : null;
+  }
+
+  function applyTrayHeight(rootEl) {
+    const h = window.APP && window.APP.editor && window.APP.editor.pendingTrayHeight;
+    if (Number.isFinite(h)) rootEl.style.height = Math.max(72, Math.min(420, h)) + "px";
+  }
+
+  function startResize(ev, rootEl) {
+    ev.preventDefault();
+    rootEl.setPointerCapture?.(ev.pointerId);
+    const startY = ev.clientY;
+    const startH = rootEl.getBoundingClientRect().height || 96;
+    rootEl.classList.add("is-resizing");
+    function move(e) {
+      const next = Math.max(72, Math.min(Math.round(window.innerHeight * 0.55), startH + (startY - e.clientY)));
+      rootEl.style.height = next + "px";
+      window.APP.editor = window.APP.editor || {};
+      window.APP.editor.pendingTrayHeight = next;
+    }
+    function up(e) {
+      rootEl.releasePointerCapture?.(ev.pointerId);
+      rootEl.classList.remove("is-resizing");
+      window.removeEventListener("pointermove", move, true);
+      window.removeEventListener("pointerup", up, true);
+    }
+    window.addEventListener("pointermove", move, true);
+    window.addEventListener("pointerup", up, true);
+  }
+
   // Hue mirror — synced with grid_canvas.
   const SHORT_HUES = {
     MA:220,MAT:220,MATH:220,MATHS:220,EN:12,ENG:12,ENGL:12,HI:32,HIN:32,HINDI:32,
@@ -13935,6 +14242,53 @@ window.PendingStrip = (function () {
     if (SHORT_HUES[k] != null) return SHORT_HUES[k];
     let h = 0; for (let i = 0; i < k.length; i++) h = (h * 31 + k.charCodeAt(i)) & 0xffff;
     return h % 360;
+  }
+
+  function pendingHue(S, lesson, subject) {
+    const axis = (window.APP && window.APP.editor && window.APP.editor.colorBy) || "subject";
+    if (axis === "subject") return hueOf(subject ? (subject.abbr || subject.name) : "");
+    if (axis === "teacher") {
+      const tid = lesson.teacherIds && lesson.teacherIds[0];
+      const t = tid ? S._idx.teacherById[tid] : null;
+      return (t && hexHue(t.color)) ?? hashHue(t && (t.abbr || t.name || t.id));
+    }
+    if (axis === "class") {
+      const cid = lesson.classIds && lesson.classIds[0];
+      const c = cid ? S._idx.classById[cid] : null;
+      return (c && hexHue(c.color)) ?? hashHue(c && (c.short || c.name || c.id));
+    }
+    if (axis === "room") {
+      const r = lesson.preferredRoomId ? S._idx.classroomById[lesson.preferredRoomId] : null;
+      return (r && hexHue(r.color)) ?? hashHue(r && (r.short || r.name || r.id));
+    }
+    return hueOf(subject ? (subject.abbr || subject.name) : "");
+  }
+
+  function hashHue(key) {
+    if (!key) return 210;
+    let h = 0;
+    const u = String(key).toUpperCase();
+    for (let i = 0; i < u.length; i++) h = (h * 31 + u.charCodeAt(i)) & 0xffff;
+    return h % 360;
+  }
+
+  function hexHue(hex) {
+    if (typeof hex !== "string") return null;
+    const m = hex.replace("#", "");
+    if (m.length !== 6) return null;
+    const r = parseInt(m.slice(0, 2), 16) / 255;
+    const g = parseInt(m.slice(2, 4), 16) / 255;
+    const b = parseInt(m.slice(4, 6), 16) / 255;
+    if ([r, g, b].some(v => Number.isNaN(v))) return null;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+    if (d === 0) return 210;
+    let h;
+    if (max === r) h = ((g - b) / d) % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h *= 60;
+    if (h < 0) h += 360;
+    return Math.round(h);
   }
 
   function esc(s) {
@@ -14116,7 +14470,7 @@ window.PendingStrip = (function () {
 (function () {
   "use strict";
 
-  let ghost = null, inHand = null;
+  let ghost = null, inHand = null, carryPanel = null, collisionMenu = null;
   let dx = 0, dy = 0, px = 0, py = 0;
   let rafId = 0, lastValidate = 0, lastSlot = null;
   const VALIDATE_MS = 16;
@@ -14140,7 +14494,9 @@ window.PendingStrip = (function () {
     const lesson = S._idx.lessonById[d.lessonId];
     if (!lesson) return;
     inHand = { cardId: d.cardId, lessonId: d.lessonId,
-               originDay: d.day, originPeriod: d.period, fromPending: !!d.fromPending };
+               originDay: d.day, originPeriod: d.period,
+               originClassroomId: d.originClassroomId,
+               fromPending: !!d.fromPending };
     const subj = S._idx.subjectById[lesson.subjectId];
     const subjShort = subj ? (subj.abbr || subj.name) : "?";
     const teacherShort = (lesson.teacherIds || []).map(t => S._idx.teacherById[t])
@@ -14157,6 +14513,7 @@ window.PendingStrip = (function () {
       <div class="chrx-vk-line3">${esc(teacherShort)}</div></div>`;
     document.body.appendChild(ghost);
     document.body.classList.add("chrx-card-in-hand");
+    showCarryPanel(S, lesson, subjShort, classShort, teacherShort);
 
     // Sticky banner so users see they're carrying a card.
     let banner = document.getElementById("chrx-carry-banner");
@@ -14188,20 +14545,21 @@ window.PendingStrip = (function () {
     document.addEventListener("keydown", onKey, true);
   }
 
-  // Heatmap-on-pickup (audit §5.3). For every empty slot in the grid, run
+  // Heatmap-on-pickup (audit §5.3). For every slot in the grid, run
   // Placement.classify and set data-validity so green/amber/red slots show
   // at a glance — the user no longer has to drag-hover each slot to learn
-  // where their card would land cleanly. Out-of-bell slots already render
+  // where their card would land cleanly. Occupied slots are marked red and
+  // open the collision menu. Out-of-bell slots already render
   // hatched and are skipped here.
   function paintAllSlots() {
     if (!inHand || !window.Placement || typeof window.Placement.classify !== "function") return;
-    const slots = document.querySelectorAll(".chrx-editor .chrx-slot.empty:not(.out-of-bell)");
+    const slots = document.querySelectorAll(".chrx-editor .chrx-slot:not(.out-of-bell)");
     for (const slot of slots) {
       const d = parseInt(slot.dataset.day, 10);
       const p = parseInt(slot.dataset.period, 10);
       if (Number.isNaN(d) || Number.isNaN(p)) continue;
       try {
-        const v = window.Placement.classify(inHand.lessonId, d, p);
+        const v = classifySlot(slot);
         if (v && v.validity) slot.setAttribute("data-validity", v.validity);
       } catch (_e) { /* ignore */ }
     }
@@ -14310,7 +14668,8 @@ window.PendingStrip = (function () {
     ghost.style.visibility = "hidden";
     const el = document.elementFromPoint(x, y);
     ghost.style.visibility = "";
-    return el && el.closest ? el.closest(".chrx-slot.empty") : null;
+    const slot = el && el.closest ? el.closest(".chrx-slot") : null;
+    return slot && !slot.classList.contains("out-of-bell") ? slot : null;
   }
   
   function paint(x, y) {
@@ -14323,9 +14682,9 @@ window.PendingStrip = (function () {
     }
     lastSlot = slot || null;
     if (!slot) return;
-    const d = parseInt(slot.dataset.day, 10), p = parseInt(slot.dataset.period, 10);
-    const v = window.Placement ? window.Placement.classify(inHand.lessonId, d, p) : { validity: "green", reasons: [] };
+    const v = classifySlot(slot);
     slot.setAttribute("data-validity", v.validity);
+    updateCarryPanel(slot, v);
     if (v.reasons && v.reasons.length) {
       slot.title = v.reasons.join(" · ");
       showDragTooltip(v.reasons, v.validity, x, y);
@@ -14336,12 +14695,13 @@ window.PendingStrip = (function () {
 
   function onUp(e) {
     if (!ghost) return;
+    if (e.target && e.target.closest && e.target.closest(".chrx-collision-menu")) return;
     const slot = slotAt(e.clientX, e.clientY);
     if (!slot) return cancel();
     const d = parseInt(slot.dataset.day, 10), p = parseInt(slot.dataset.period, 10);
-    const v = window.Placement ? window.Placement.classify(inHand.lessonId, d, p) : { validity: "green", reasons: [] };
-    if (v.validity === "red") return bumpAndCancel(slot);
-    commit(d, p);
+    const v = classifySlot(slot);
+    if (v.validity === "red" || targetCardsForSlot(slot).length) return showCollisionMenu(slot, v, e.clientX, e.clientY);
+    commit(d, p, slot);
   }
   function onKey(e) {
     if (!ghost) return;
@@ -14349,39 +14709,60 @@ window.PendingStrip = (function () {
     if (e.key === "Tab") { e.preventDefault(); return moveFocus(e.shiftKey ? -1 : 1); }
     if (e.key === "Enter") {
       const f = document.activeElement;
-      if (f && f.classList && f.classList.contains("chrx-slot") && f.classList.contains("empty")) {
+      if (f && f.classList && f.classList.contains("chrx-slot") && !f.classList.contains("out-of-bell")) {
         e.preventDefault();
         const d = parseInt(f.dataset.day, 10), p = parseInt(f.dataset.period, 10);
-        const v = window.Placement ? window.Placement.classify(inHand.lessonId, d, p) : { validity: "green", reasons: [] };
-        if (v.validity === "red") bumpAndCancel(f); else commit(d, p);
+        const v = classifySlot(f);
+        if (v.validity === "red" || targetCardsForSlot(f).length) showCollisionMenu(f, v); else commit(d, p, f);
       }
     }
   }
   function moveFocus(dir) {
-    const slots = Array.from(document.querySelectorAll(".chrx-editor .chrx-slot.empty"));
+    const slots = Array.from(document.querySelectorAll(".chrx-editor .chrx-slot:not(.out-of-bell)"));
     if (!slots.length) return;
     slots.forEach(s => { if (!s.hasAttribute("tabindex")) s.setAttribute("tabindex", "-1"); });
     const i = slots.indexOf(document.activeElement);
     (slots[(i + dir + slots.length) % slots.length] || slots[0]).focus({ preventScroll: false });
   }
 
-  function commit(day, period) {
+  function commit(day, period, slot, options) {
+    closeCollisionMenu();
     const S = window.APP && window.APP.school;
     const cardId  = inHand.cardId;
     const lessonId = inHand.lessonId;
     const fromPending = !!inHand.fromPending;
     const originDay = inHand.originDay;
     const originPeriod = inHand.originPeriod;
+    const originClassroomId = inHand.originClassroomId;
     const isMove = !fromPending && Number.isFinite(originDay) && Number.isFinite(originPeriod);
+    const forced = !!(options && options.force);
+    const replace = !!(options && options.replace);
     const isSameSlot = isMove && originDay === day && originPeriod === period;
     const lesson = S && S._idx ? S._idx.lessonById[lessonId] : null;
-    const cid = lesson ? lesson.preferredRoomId : undefined;
+    const cid = slot ? classroomForSlot(lessonId, slot) : (lesson ? lesson.preferredRoomId : undefined);
+    const targetRemoved = replace ? targetCardsForSlot(slot).map(c => ({
+      lessonId: c.lessonId,
+      day: c.day,
+      period: c.period,
+      classroomId: c.classroomId,
+    })) : [];
 
     function applyPlacement() {
       if (!S) return;
       if (isMove) {
         const oi = S.cards.findIndex(c => c.lessonId === lessonId && c.day === originDay && c.period === originPeriod);
         if (oi !== -1) S.cards.splice(oi, 1);
+      }
+      if (replace && targetRemoved.length) {
+        for (const removed of targetRemoved) {
+          const ri = S.cards.findIndex(c =>
+            c.lessonId === removed.lessonId &&
+            c.day === removed.day &&
+            c.period === removed.period &&
+            (c.classroomId || "") === (removed.classroomId || "")
+          );
+          if (ri !== -1) S.cards.splice(ri, 1);
+        }
       }
       if (!S.cards.some(c => c.lessonId === lessonId && c.day === day && c.period === period))
         S.cards.push({ lessonId, day, period, classroomId: cid });
@@ -14390,8 +14771,23 @@ window.PendingStrip = (function () {
       if (!S) return;
       const ti = S.cards.findIndex(c => c.lessonId === lessonId && c.day === day && c.period === period);
       if (ti !== -1) S.cards.splice(ti, 1);
+      for (const removed of targetRemoved) {
+        if (!S.cards.some(c =>
+          c.lessonId === removed.lessonId &&
+          c.day === removed.day &&
+          c.period === removed.period &&
+          (c.classroomId || "") === (removed.classroomId || "")
+        )) {
+          S.cards.push({
+            lessonId: removed.lessonId,
+            day: removed.day,
+            period: removed.period,
+            classroomId: removed.classroomId,
+          });
+        }
+      }
       if (isMove && !S.cards.some(c => c.lessonId === lessonId && c.day === originDay && c.period === originPeriod))
-        S.cards.push({ lessonId, day: originDay, period: originPeriod, classroomId: cid });
+        S.cards.push({ lessonId, day: originDay, period: originPeriod, classroomId: originClassroomId || cid });
     }
 
     // Push onto undo stack so AI → Cleanup last card move can revert it.
@@ -14403,7 +14799,7 @@ window.PendingStrip = (function () {
         label,
         do() {
           applyPlacement();
-          document.dispatchEvent(new CustomEvent("editor:place", { detail: { cardId, lessonId, day, period } }));
+          document.dispatchEvent(new CustomEvent("editor:place", { detail: { cardId, lessonId, day, period, forced } }));
           rerender();
         },
         undo() {
@@ -14415,7 +14811,7 @@ window.PendingStrip = (function () {
     } else {
       applyPlacement();
       document.dispatchEvent(new CustomEvent("editor:place",
-        { detail: { cardId, lessonId, day, period } }));
+        { detail: { cardId, lessonId, day, period, forced } }));
       rerender();
     }
     if (window.APP.editor) window.APP.editor.cardInHand = null;
@@ -14428,13 +14824,97 @@ window.PendingStrip = (function () {
     cancel();
   }
 
+  function showCollisionMenu(slot, validity, x, y) {
+    if (!slot || !inHand) return cancel();
+    closeCollisionMenu();
+    slot.classList.add("chrx-slot-bump");
+    setTimeout(() => slot.classList.remove("chrx-slot-bump"), 200);
+    const d = parseInt(slot.dataset.day, 10), p = parseInt(slot.dataset.period, 10);
+    const occupants = targetCardsForSlot(slot);
+    const reasons = validity && validity.reasons && validity.reasons.length
+      ? validity.reasons
+      : ["Placement conflicts with the current timetable"];
+    const occupantNames = occupants.map(c => cardLabel(c)).filter(Boolean);
+    collisionMenu = document.createElement("div");
+    collisionMenu.className = "chrx-collision-menu";
+    collisionMenu.innerHTML = `
+      <div class="chrx-collision-menu__title">Collision at ${esc(dayLabel(d))} P${esc(p)}</div>
+      <ul class="chrx-collision-menu__reasons">
+        ${occupantNames.length ? `<li>slot already has ${esc(occupantNames.join(", "))}</li>` : ""}
+        ${reasons.slice(0, 5).map(r => `<li>${esc(r)}</li>`).join("")}
+      </ul>
+      <div class="chrx-collision-menu__actions">
+        <button type="button" data-act="return">Return</button>
+        <button type="button" data-act="find">Find clean slot</button>
+        ${occupants.length ? `<button type="button" data-act="replace">Replace slot</button>` : ""}
+        <button type="button" data-act="force">${occupants.length ? "Add alongside" : "Place anyway"}</button>
+      </div>
+    `;
+    collisionMenu.addEventListener("mousedown", e => e.stopPropagation(), true);
+    collisionMenu.addEventListener("mouseup", e => e.stopPropagation(), true);
+    collisionMenu.addEventListener("click", e => {
+      const btn = e.target.closest("button[data-act]");
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const act = btn.dataset.act;
+      if (act === "return") return cancel();
+      if (act === "force") return commit(d, p, slot, { force: true });
+      if (act === "replace") return commit(d, p, slot, { replace: true, force: true });
+      if (act === "find") return focusFirstCleanSlot();
+    });
+    document.body.appendChild(collisionMenu);
+    const r = slot.getBoundingClientRect();
+    const left = Number.isFinite(x) ? x : r.left + r.width;
+    const top = Number.isFinite(y) ? y : r.top;
+    placeCollisionMenu(left, top);
+    updateCarryPanel(slot, validity);
+  }
+
+  function placeCollisionMenu(x, y) {
+    if (!collisionMenu) return;
+    const margin = 12;
+    const w = collisionMenu.offsetWidth || 280;
+    const h = collisionMenu.offsetHeight || 160;
+    let left = x + margin;
+    let top = y + margin;
+    if (left + w + 8 > window.innerWidth) left = Math.max(8, x - w - margin);
+    if (top + h + 8 > window.innerHeight) top = Math.max(8, y - h - margin);
+    collisionMenu.style.left = left + "px";
+    collisionMenu.style.top = top + "px";
+  }
+
+  function closeCollisionMenu() {
+    if (collisionMenu && collisionMenu.parentNode) collisionMenu.parentNode.removeChild(collisionMenu);
+    collisionMenu = null;
+  }
+
+  function focusFirstCleanSlot() {
+    if (!inHand || !window.Placement) return;
+    const slots = Array.from(document.querySelectorAll(".chrx-editor .chrx-slot:not(.out-of-bell)"));
+    const clean = slots.find(slot => {
+      const d = parseInt(slot.dataset.day, 10), p = parseInt(slot.dataset.period, 10);
+      if (Number.isNaN(d) || Number.isNaN(p)) return false;
+      if (targetCardsForSlot(slot).length) return false;
+      const v = classifySlot(slot);
+      return v.validity !== "red";
+    });
+    if (!clean) return;
+    closeCollisionMenu();
+    clean.scrollIntoView({ block: "center", inline: "center" });
+    clean.classList.add("chrx-slot-suggested");
+    clean.setAttribute("tabindex", "-1");
+    clean.focus({ preventScroll: true });
+    setTimeout(() => clean.classList.remove("chrx-slot-suggested"), 1200);
+  }
+
   function cancel() {
     if (!ghost) return;
     if (!inHand.fromPending && Number.isFinite(inHand.originDay) && Number.isFinite(inHand.originPeriod)) {
       const S = window.APP && window.APP.school;
       if (S) {
         const lesson = S._idx.lessonById[inHand.lessonId];
-        const cid = lesson ? lesson.preferredRoomId : undefined;
+        const cid = inHand.originClassroomId || (lesson ? lesson.preferredRoomId : undefined);
         if (!S.cards.some(c => c.lessonId === inHand.lessonId && c.day === inHand.originDay && c.period === inHand.originPeriod))
           S.cards.push({ lessonId: inHand.lessonId, day: inHand.originDay, period: inHand.originPeriod, classroomId: cid });
       }
@@ -14470,12 +14950,17 @@ window.PendingStrip = (function () {
     if (lastSlot) { lastSlot.removeAttribute("data-validity"); lastSlot.removeAttribute("title"); }
     lastSlot = null;
     hideDragTooltip();
+    closeCollisionMenu();
     if (dragTooltipEl && dragTooltipEl.parentNode) {
       dragTooltipEl.parentNode.removeChild(dragTooltipEl);
       dragTooltipEl = null;
     }
+    if (carryPanel && carryPanel.parentNode) {
+      carryPanel.parentNode.removeChild(carryPanel);
+      carryPanel = null;
+    }
     // Clear the at-pickup heatmap painted by paintAllSlots().
-    document.querySelectorAll(".chrx-editor .chrx-slot.empty[data-validity]").forEach(
+    document.querySelectorAll(".chrx-editor .chrx-slot[data-validity]").forEach(
       s => s.removeAttribute("data-validity"));
     if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
     if (ghost && ghost.parentNode) ghost.parentNode.removeChild(ghost);
@@ -14487,6 +14972,126 @@ window.PendingStrip = (function () {
 
   document.addEventListener("editor:pickup", e => { if (ghost) cleanup(); pickup(e.detail || {}); });
   window.CardInHand = { _cleanup: cleanup };
+
+  function rowPlacementCheck(lessonId, slot) {
+    const S = window.APP && window.APP.school;
+    const perspective = (window.APP && window.APP.editor && window.APP.editor.perspective) || "class";
+    const rowKey = slot && (slot.dataset.row || slot.closest(".chrx-row")?.dataset.row);
+    const lesson = S && S._idx ? S._idx.lessonById[lessonId] : null;
+    if (!lesson || !rowKey) return { ok: true };
+    if (perspective === "class" && !(lesson.classIds || []).includes(rowKey)) {
+      const cls = S._idx.classById[rowKey];
+      return { ok: false, reason: `Not a card for ${cls ? cls.name : rowKey}` };
+    }
+    if (perspective === "teacher" && !(lesson.teacherIds || []).includes(rowKey)) {
+      const teacher = S._idx.teacherById[rowKey];
+      return { ok: false, reason: `Not a card for ${teacher ? (teacher.abbr || teacher.name) : rowKey}` };
+    }
+    if (perspective === "subject" && lesson.subjectId !== rowKey) {
+      const subject = S._idx.subjectById[rowKey];
+      return { ok: false, reason: `Not a ${subject ? (subject.abbr || subject.name) : rowKey} card` };
+    }
+    return { ok: true };
+  }
+
+  function classifySlot(slot) {
+    const d = parseInt(slot.dataset.day, 10);
+    const p = parseInt(slot.dataset.period, 10);
+    const rowCheck = rowPlacementCheck(inHand.lessonId, slot);
+    const base = rowCheck.ok
+      ? (window.Placement ? window.Placement.classify(inHand.lessonId, d, p, classroomForSlot(inHand.lessonId, slot)) : { validity: "green", reasons: [] })
+      : { validity: "red", reasons: [rowCheck.reason] };
+    const occupants = targetCardsForSlot(slot);
+    if (!occupants.length) return base;
+    const reasons = (base.reasons || []).slice();
+    const labels = occupants.map(c => cardLabel(c)).filter(Boolean);
+    reasons.unshift(labels.length ? `slot occupied by ${labels.join(", ")}` : "slot occupied");
+    return { validity: "red", reasons };
+  }
+
+  function targetCardsForSlot(slot) {
+    const S = window.APP && window.APP.school;
+    if (!S || !slot) return [];
+    const d = parseInt(slot.dataset.day, 10);
+    const p = parseInt(slot.dataset.period, 10);
+    if (!Number.isFinite(d) || !Number.isFinite(p)) return [];
+    const rowKey = slot.dataset.row || slot.closest(".chrx-row")?.dataset.row;
+    const perspective = (window.APP && window.APP.editor && window.APP.editor.perspective) || "class";
+    return (S.cards || []).filter(c => {
+      if (c.day !== d || c.period !== p) return false;
+      if (!rowKey || rowKey === "head") return true;
+      const lesson = S._idx.lessonById[c.lessonId];
+      if (!lesson) return false;
+      if (perspective === "class") return (lesson.classIds || []).includes(rowKey);
+      if (perspective === "teacher") return (lesson.teacherIds || []).includes(rowKey);
+      if (perspective === "subject") return lesson.subjectId === rowKey;
+      if (perspective === "room") return (c.classroomId || lesson.preferredRoomId) === rowKey;
+      return true;
+    });
+  }
+
+  function cardLabel(card) {
+    const S = window.APP && window.APP.school;
+    const lesson = S && S._idx ? S._idx.lessonById[card.lessonId] : null;
+    const subject = lesson ? S._idx.subjectById[lesson.subjectId] : null;
+    const classes = lesson ? (lesson.classIds || [])
+      .map(id => S._idx.classById[id])
+      .filter(Boolean)
+      .map(c => c.name || c.id)
+      .join("/") : "";
+    const subjectName = subject ? (subject.abbr || subject.name) : card.lessonId;
+    return classes ? `${subjectName} ${classes}` : subjectName;
+  }
+
+  function classroomForSlot(lessonId, slot) {
+    const S = window.APP && window.APP.school;
+    const lesson = S && S._idx ? S._idx.lessonById[lessonId] : null;
+    const perspective = (window.APP && window.APP.editor && window.APP.editor.perspective) || "class";
+    const rowKey = slot && (slot.dataset.row || slot.closest(".chrx-row")?.dataset.row);
+    if (perspective === "room" && rowKey) return rowKey;
+    return lesson ? lesson.preferredRoomId : undefined;
+  }
+
+  function showCarryPanel(S, lesson, subjShort, classShort, teacherShort) {
+    if (carryPanel && carryPanel.parentNode) carryPanel.parentNode.removeChild(carryPanel);
+    const roomShort = (() => {
+      const rid = lesson && lesson.preferredRoomId;
+      const room = rid ? S._idx.classroomById[rid] : null;
+      return room ? room.name : "No room";
+    })();
+    carryPanel = document.createElement("aside");
+    carryPanel.className = "chrx-carry-panel";
+    carryPanel.innerHTML = `
+      <div class="chrx-carry-panel__eyebrow">Card in hand</div>
+      <div class="chrx-carry-panel__title">${esc(subjShort)}</div>
+      <dl class="chrx-carry-panel__facts">
+        <div><dt>Class</dt><dd>${esc(classShort || "—")}</dd></div>
+        <div><dt>Teacher</dt><dd>${esc(teacherShort || "—")}</dd></div>
+        <div><dt>Room</dt><dd>${esc(roomShort)}</dd></div>
+      </dl>
+      <div class="chrx-carry-panel__status" data-state="idle">Choose a slot in the matching row.</div>
+    `;
+    document.body.appendChild(carryPanel);
+  }
+
+  function updateCarryPanel(slot, validity) {
+    if (!carryPanel) return;
+    const status = carryPanel.querySelector(".chrx-carry-panel__status");
+    if (!status) return;
+    const d = slot ? parseInt(slot.dataset.day, 10) : NaN;
+    const p = slot ? parseInt(slot.dataset.period, 10) : NaN;
+    const label = Number.isFinite(d) && Number.isFinite(p)
+      ? `${dayLabel(d)} P${p}`
+      : "Choose a slot";
+    status.dataset.state = validity.validity || "idle";
+    status.textContent = validity.reasons && validity.reasons.length
+      ? `${label}: ${validity.reasons.join(" · ")}`
+      : `${label}: clean placement`;
+  }
+
+  function dayLabel(d) {
+    return ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d] || "D" + d;
+  }
 })();
 
 /* ─── FILE: js/ui/editor/row_context_menu.js ─── */
@@ -15857,6 +16462,27 @@ window.StartScreen = (function () {
         window.APP.editor.perspective = next;
         persBtn.textContent = LABEL[next];
         // Re-render
+        if (window.EditorActivator) window.EditorActivator.activate();
+      };
+    }
+
+    // ─── Card color axis rotator ──────────────────
+    const colorBtn = document.getElementById("editor-color-by");
+    if (colorBtn) {
+      const AXIS = ["subject", "teacher", "class", "room"];
+      const LABEL = { subject: "Color: Subject", teacher: "Color: Teacher", class: "Color: Class", room: "Color: Room" };
+      let savedAxis = "subject";
+      try { savedAxis = localStorage.getItem("chronexa.editor.colorBy") || "subject"; } catch {}
+      if (!AXIS.includes(savedAxis)) savedAxis = "subject";
+      window.APP.editor = window.APP.editor || {};
+      window.APP.editor.colorBy = savedAxis;
+      colorBtn.textContent = LABEL[savedAxis];
+      colorBtn.onclick = () => {
+        const cur = window.APP.editor.colorBy || "subject";
+        const next = AXIS[(AXIS.indexOf(cur) + 1) % AXIS.length];
+        window.APP.editor.colorBy = next;
+        colorBtn.textContent = LABEL[next];
+        try { localStorage.setItem("chronexa.editor.colorBy", next); } catch {}
         if (window.EditorActivator) window.EditorActivator.activate();
       };
     }

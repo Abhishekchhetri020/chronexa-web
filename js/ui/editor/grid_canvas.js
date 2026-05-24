@@ -20,7 +20,7 @@ window.Editor = (function () {
       return;
     }
     const perspective = window.APP.editor.perspective;
-    const periods = S.bell.periods;
+    const periods = displayPeriods(S);
     const rows = rowsFor(S, perspective);
     const mobileDay = window.APP.day || 0;
 
@@ -32,6 +32,7 @@ window.Editor = (function () {
 
     wire(rootEl);
     syncCardInHandClass();
+    updateClassPanel(S);
     if (window.ConstraintExplainer && typeof window.ConstraintExplainer.attachTooltip === "function") {
       window.ConstraintExplainer.attachTooltip(rootEl);
     }
@@ -75,7 +76,26 @@ window.Editor = (function () {
     const A = window.APP;
     A.editor = A.editor || {};
     if (!A.editor.perspective) A.editor.perspective = "class";
+    if (!A.editor.colorBy) A.editor.colorBy = "subject";
     if (A.editor.cardInHand === undefined) A.editor.cardInHand = null;
+  }
+
+  function displayPeriods(S) {
+    const raw = (S && S.bell && Array.isArray(S.bell.periods)) ? S.bell.periods : [];
+    const byIndex = Object.create(null);
+    let max = 0;
+    for (const p of raw) {
+      const ix = p && Number.isFinite(p.index) ? p.index : parseInt(p && p.index, 10);
+      if (!Number.isFinite(ix) || ix <= 0) continue;
+      byIndex[ix] = p;
+      if (ix > max) max = ix;
+    }
+    const end = Math.max(8, max || raw.length || 8);
+    const out = [];
+    for (let i = 1; i <= end; i++) {
+      out.push(byIndex[i] || { index: i, label: "P" + i, isTeaching: false, synthetic: true });
+    }
+    return out;
   }
 
   function syncCardInHandClass() {
@@ -110,18 +130,49 @@ window.Editor = (function () {
   function html(S, rows, periods, mobileDay, cardLookup) {
     const headerHtml = headerRowHtml(periods, mobileDay);
     const dayTabsHtml = dayTabsHtml_(mobileDay);
+    const toolsHtml = toolsHtml_(S);
 
     const bodyHtml = rows.map(row => rowHtml(S, row, periods, mobileDay, cardLookup)).join("");
 
     return `
+      ${toolsHtml}
       ${dayTabsHtml}
       <div class="chrx-grid-scroll">
-        <div class="chrx-grid">
+        <div class="chrx-grid" style="--chrx-periods:${periods.length || 8}">
           ${headerHtml}
           ${bodyHtml}
         </div>
       </div>
     `;
+  }
+
+  function toolsHtml_(S) {
+    const editor = window.APP.editor || {};
+    const perspective = editor.perspective || "class";
+    const colorBy = editor.colorBy || "subject";
+    const density = editor.density || "compact";
+    const pending = pendingCount(S);
+    return `
+      <div class="chrx-editor-tools" aria-label="Editor tools">
+        <button type="button" class="chrx-editor-tool" data-editor-tool="perspective">${esc(PERSPECTIVE_LABEL[perspective] || "By Class")}</button>
+        <button type="button" class="chrx-editor-tool" data-editor-tool="color">${esc(COLOR_LABEL[colorBy] || "Color: Subject")}</button>
+        <button type="button" class="chrx-editor-tool" data-editor-tool="density">${density === "compact" ? "Compact" : "Comfortable"}</button>
+        <span class="chrx-editor-tool__count">${pending} unplaced</span>
+      </div>
+    `;
+  }
+
+  const PERSPECTIVES = ["class", "teacher", "room", "subject"];
+  const PERSPECTIVE_LABEL = { class: "By Class", teacher: "By Teacher", room: "By Room", subject: "By Subject" };
+  const COLOR_AXES = ["subject", "teacher", "class", "room"];
+  const COLOR_LABEL = { subject: "Color: Subject", teacher: "Color: Teacher", class: "Color: Class", room: "Color: Room" };
+
+  function pendingCount(S) {
+    const placed = Object.create(null);
+    for (const c of (S.cards || [])) placed[c.lessonId] = (placed[c.lessonId] || 0) + 1;
+    let total = 0;
+    for (const L of (S.lessons || [])) total += Math.max(0, Math.ceil(L.periodsPerWeek || 0) - (placed[L.id] || 0));
+    return total;
   }
 
   function dayTabsHtml_(mobileDay) {
@@ -135,15 +186,17 @@ window.Editor = (function () {
     const dayBlocks = [];
     for (let d = 0; d < NUM_DAYS; d++) {
       const cells = periods.map(p =>
-        `<div class="chrx-h chrx-h-period ${d !== mobileDay ? "mobile-hidden" : ""}" data-day="${d}">P${p.index}</div>`
+        `<div class="chrx-h chrx-h-period${p.synthetic ? " is-synthetic" : ""}" data-day="${d}" data-period="${p.index}">${esc(p.label || ("P" + p.index))}</div>`
       ).join("");
       dayBlocks.push(`
-        <div class="chrx-h-day ${d !== mobileDay ? "mobile-hidden" : ""}" data-day="${d}">${esc(DAY_LABELS_EN[d])}</div>
-        ${cells}
+        <div class="chrx-day-head-group ${d !== mobileDay ? "mobile-hidden" : ""}" data-day="${d}">
+          <div class="chrx-h-day" data-day="${d}">${esc(DAY_LABELS_EN[d])}</div>
+          <div class="chrx-period-head-row">${cells}</div>
+        </div>
       `);
     }
     return `
-      <div class="chrx-row" data-row="head">
+      <div class="chrx-row chrx-row-head" data-row="head">
         <div class="chrx-rowlabel chrx-h">Row</div>
         ${dayBlocks.join("")}
       </div>
@@ -154,6 +207,7 @@ window.Editor = (function () {
     const rowBucket = cardLookup[row.key] || null;
     const slots = [];
     const persp = (window.APP && window.APP.editor && window.APP.editor.perspective) || "class";
+    const selected = persp === "class" && window.APP.editor && window.APP.editor.selectedClassId === row.key;
     let bellPeriodSet = null;
     if (persp === "class" && window.BellResolver) {
       const bell = window.BellResolver.forClass(S, row.key);
@@ -165,7 +219,7 @@ window.Editor = (function () {
       for (const p of periods) {
         const cards = rowBucket ? rowBucket[d + "_" + p.index] : null;
         const hide = d !== mobileDay ? " mobile-hidden" : "";
-        const outOfBell = bellPeriodSet && !bellPeriodSet.has(p.index | 0);
+        const outOfBell = p.synthetic || (bellPeriodSet && !bellPeriodSet.has(p.index | 0));
         if (cards && cards.length > 0) {
           const oob = outOfBell ? " out-of-bell" : "";
           const cardListHtml = cards.map(c => vkartaHtml(S, c, d, p.index, row.key)).join("");
@@ -182,8 +236,8 @@ window.Editor = (function () {
       }
     }
     return `
-      <div class="chrx-row" data-row="${esc(row.key)}">
-        <div class="chrx-rowlabel" title="${esc(row.label)}">
+      <div class="chrx-row${selected ? " chrx-row--selected" : ""}" data-row="${esc(row.key)}">
+        <div class="chrx-rowlabel" title="${esc(row.label)}" role="button" tabindex="0" aria-pressed="${selected ? "true" : "false"}">
           <span class="chrx-rowlabel-main">${esc(row.label)}</span>
           ${row.sub ? `<span class="chrx-rowlabel-sub">${esc(row.sub)}</span>` : ""}
         </div>
@@ -232,6 +286,7 @@ window.Editor = (function () {
            data-lesson-id="${esc(card.lessonId)}"
            data-day="${day}"
            data-period="${period}"
+           data-classroom-id="${esc(card.classroomId || "")}"
            style="--chrx-card-hue:${hue}"
            title="${esc(subjShort + (teacherShort ? ' · ' + teacherShort : '') + (roomShort ? ' · ' + roomShort : ''))}">
         <div class="chrx-vk-line1">${esc(subjShort)}</div>
@@ -253,12 +308,23 @@ window.Editor = (function () {
       // replace without needing a re-bind every render.
       rootEl.addEventListener("click", onRootClick);
       rootEl.addEventListener("mouseover", onMouseOver);
+      rootEl.addEventListener("focusin", onFocusIn);
       rootEl.addEventListener("mouseout", onMouseOut);
       rootEl._chrxWired = true;
     }
   }
 
   function onMouseOver(ev) {
+    const vk = ev.target.closest(".chrx-vkarta");
+    if (vk && vk.dataset.lessonId) {
+      showCardPanel(vk.dataset.lessonId, {
+        day: parseInt(vk.dataset.day, 10),
+        period: parseInt(vk.dataset.period, 10),
+        classroomId: vk.dataset.classroomId || undefined,
+        source: "placed",
+      });
+      return;
+    }
     const label = ev.target.closest(".chrx-rowlabel");
     if (!label) return;
     const row = label.closest(".chrx-row");
@@ -271,6 +337,18 @@ window.Editor = (function () {
     }
   }
 
+  function onFocusIn(ev) {
+    const vk = ev.target.closest(".chrx-vkarta");
+    if (vk && vk.dataset.lessonId) {
+      showCardPanel(vk.dataset.lessonId, {
+        day: parseInt(vk.dataset.day, 10),
+        period: parseInt(vk.dataset.period, 10),
+        classroomId: vk.dataset.classroomId || undefined,
+        source: "placed",
+      });
+    }
+  }
+
   function onMouseOut(ev) {
     const label = ev.target.closest(".chrx-rowlabel");
     if (!label) return;
@@ -280,10 +358,175 @@ window.Editor = (function () {
   }
 
   function onRootClick(ev) {
+    const tool = ev.target.closest("[data-editor-tool]");
+    if (tool) {
+      ev.preventDefault();
+      handleEditorTool(tool.dataset.editorTool, tool.closest(".chrx-editor"));
+      return;
+    }
     const tab = ev.target.closest(".chrx-day-tab");
-    if (!tab) return;
-    window.APP.day = parseInt(tab.dataset.day, 10) || 0;
-    render(tab.closest(".chrx-editor"));
+    if (tab) {
+      window.APP.day = parseInt(tab.dataset.day, 10) || 0;
+      render(tab.closest(".chrx-editor"));
+      return;
+    }
+    const label = ev.target.closest(".chrx-rowlabel");
+    if (!label) return;
+    const row = label.closest(".chrx-row");
+    const rowKey = row && row.dataset.row;
+    if (!rowKey || rowKey === "head") return;
+    if ((window.APP.editor.perspective || "class") !== "class") return;
+    window.APP.editor.selectedClassId = window.APP.editor.selectedClassId === rowKey ? null : rowKey;
+    render(label.closest(".chrx-editor"));
+    const pend = document.querySelector(".chrx-pending-strip");
+    if (pend && window.PendingStrip && window.PendingStrip.render) window.PendingStrip.render(pend);
+  }
+
+  function handleEditorTool(kind, host) {
+    window.APP.editor = window.APP.editor || {};
+    if (kind === "perspective") {
+      const cur = window.APP.editor.perspective || "class";
+      const next = PERSPECTIVES[(PERSPECTIVES.indexOf(cur) + 1) % PERSPECTIVES.length];
+      window.APP.editor.perspective = next;
+      syncExternalButton("editor-perspective", PERSPECTIVE_LABEL[next]);
+    } else if (kind === "color") {
+      const cur = window.APP.editor.colorBy || "subject";
+      const next = COLOR_AXES[(COLOR_AXES.indexOf(cur) + 1) % COLOR_AXES.length];
+      window.APP.editor.colorBy = next;
+      try { localStorage.setItem("chronexa.editor.colorBy", next); } catch (_e) {}
+      syncExternalButton("editor-color-by", COLOR_LABEL[next]);
+    } else if (kind === "density") {
+      const next = (window.APP.editor.density || "compact") === "compact" ? "comfortable" : "compact";
+      window.APP.editor.density = next;
+      try { localStorage.setItem("chronexa.editor.density", next); } catch (_e) {}
+      syncExternalButton("editor-density", next === "compact" ? "Compact" : "Comfortable");
+    }
+    if (host) render(host);
+    const pend = document.querySelector(".chrx-pending-strip");
+    if (pend && window.PendingStrip && window.PendingStrip.render) window.PendingStrip.render(pend);
+  }
+
+  function syncExternalButton(id, text) {
+    const btn = document.getElementById(id);
+    if (btn) btn.textContent = text;
+  }
+
+  function updateClassPanel(S) {
+    const existing = document.getElementById("chrx-class-panel");
+    const selectedId = window.APP && window.APP.editor && window.APP.editor.selectedClassId;
+    const cls = selectedId && S && S._idx ? S._idx.classById[selectedId] : null;
+    if (!cls) {
+      if (existing) existing.remove();
+      return;
+    }
+    const stats = classStats(S, selectedId);
+    const panel = existing || document.createElement("aside");
+    panel.id = "chrx-class-panel";
+    panel.className = "chrx-class-panel";
+    panel.innerHTML = `
+      <div class="chrx-class-panel__eyebrow">Selected class</div>
+      <div class="chrx-class-panel__title">${esc(cls.name || cls.id)}</div>
+      <div class="chrx-class-panel__stats">
+        <div><strong>${stats.placed}</strong><span>placed</span></div>
+        <div><strong>${stats.pending}</strong><span>pending</span></div>
+        <div><strong>${stats.conflicts}</strong><span>conflicts</span></div>
+      </div>
+      <div class="chrx-class-panel__meta">${esc(stats.teachers || "No teachers assigned")}</div>
+      <div class="chrx-class-panel__actions">
+        <button type="button" data-act="clear">Show all</button>
+        <button type="button" data-act="lesson-grid">Lesson grid</button>
+      </div>
+    `;
+    panel.querySelector('[data-act="clear"]').onclick = () => {
+      window.APP.editor.selectedClassId = null;
+      const host = document.querySelector(".chrx-editor");
+      if (host) render(host);
+      const pend = document.querySelector(".chrx-pending-strip");
+      if (pend && window.PendingStrip && window.PendingStrip.render) window.PendingStrip.render(pend);
+    };
+    panel.querySelector('[data-act="lesson-grid"]').onclick = () => {
+      if (window.LessonsGridMatrix && window.LessonsGridMatrix.open) window.LessonsGridMatrix.open(S);
+    };
+    if (!existing) document.body.appendChild(panel);
+  }
+
+  function showCardPanel(lessonId, opts) {
+    const S = window.APP && window.APP.school;
+    const L = S && S._idx ? S._idx.lessonById[lessonId] : null;
+    if (!L) return;
+    const subject = S._idx.subjectById[L.subjectId];
+    const subjectName = subject ? (subject.name || subject.abbr) : "Unknown";
+    const classNames = (L.classIds || []).map(id => S._idx.classById[id]).filter(Boolean).map(c => c.name || c.id).join(", ");
+    const teacherNames = (L.teacherIds || []).map(id => S._idx.teacherById[id]).filter(Boolean).map(t => t.abbr || t.name).join(", ");
+    const roomId = opts && opts.classroomId ? opts.classroomId : L.preferredRoomId;
+    const room = roomId ? S._idx.classroomById[roomId] : null;
+    const need = Math.ceil(L.periodsPerWeek || 0);
+    const placed = (S.cards || []).filter(c => c.lessonId === L.id).length;
+    const position = opts && Number.isFinite(opts.day) && Number.isFinite(opts.period)
+      ? `${DAY_LABELS_EN[opts.day] || ("D" + opts.day)} P${opts.period}`
+      : "Unplaced";
+    const status = placementStatus(L.id, opts);
+    const panel = document.getElementById("chrx-card-panel") || document.createElement("aside");
+    panel.id = "chrx-card-panel";
+    panel.className = "chrx-card-panel";
+    panel.innerHTML = `
+      <div class="chrx-card-panel__eyebrow">${opts && opts.source === "pending" ? "Pending card" : "Card detail"}</div>
+      <div class="chrx-card-panel__title">${esc(subjectName)}</div>
+      <dl class="chrx-card-panel__facts">
+        <div><dt>Class</dt><dd>${esc(classNames || "—")}</dd></div>
+        <div><dt>Teacher</dt><dd>${esc(teacherNames || "—")}</dd></div>
+        <div><dt>Room</dt><dd>${esc(room ? room.name : "No room")}</dd></div>
+        <div><dt>Slot</dt><dd>${esc(position)}</dd></div>
+      </dl>
+      <div class="chrx-card-panel__progress"><span style="width:${Math.min(100, need ? placed / need * 100 : 0)}%"></span></div>
+      <div class="chrx-card-panel__foot">${placed}/${need || 0} placed · ${esc(status.text)}</div>
+    `;
+    panel.dataset.state = status.state;
+    if (!panel.parentNode) document.body.appendChild(panel);
+  }
+
+  function placementStatus(lessonId, opts) {
+    if (!opts || !Number.isFinite(opts.day) || !Number.isFinite(opts.period) || !window.Placement) {
+      return { state: "idle", text: "ready to place" };
+    }
+    try {
+      const v = window.Placement.classify(lessonId, opts.day, opts.period, opts.classroomId);
+      if (v.validity === "red") return { state: "red", text: (v.reasons || ["hard conflict"])[0] };
+      if (v.validity === "amber") return { state: "amber", text: (v.reasons || ["soft warning"])[0] };
+      return { state: "green", text: "clean slot" };
+    } catch (_e) {
+      return { state: "idle", text: "ready to place" };
+    }
+  }
+
+  function classStats(S, classId) {
+    let pending = 0, placed = 0, conflicts = 0;
+    const teacherNames = new Set();
+    for (const L of (S.lessons || [])) {
+      if (!(L.classIds || []).includes(classId)) continue;
+      const need = Math.ceil(L.periodsPerWeek || 0);
+      const have = (S.cards || []).filter(c => c.lessonId === L.id).length;
+      pending += Math.max(0, need - have);
+      placed += have;
+      (L.teacherIds || []).forEach(tid => {
+        const t = S._idx.teacherById[tid];
+        if (t) teacherNames.add(t.abbr || t.name);
+      });
+    }
+    const bySlot = Object.create(null);
+    for (const c of (S.cards || [])) {
+      const L = S._idx.lessonById[c.lessonId];
+      if (!L || !(L.classIds || []).includes(classId)) continue;
+      const key = c.day + "_" + c.period;
+      bySlot[key] = (bySlot[key] || 0) + 1;
+    }
+    conflicts = Object.values(bySlot).filter(n => n > 1).length;
+    return {
+      pending,
+      placed,
+      conflicts,
+      teachers: Array.from(teacherNames).slice(0, 6).join(", "),
+    };
   }
 
   function onMouseDown(ev) {
@@ -296,6 +539,7 @@ window.Editor = (function () {
       const lessonId = vk.dataset.lessonId;
       const day = parseInt(vk.dataset.day, 10);
       const period = parseInt(vk.dataset.period, 10);
+      const originClassroomId = vk.dataset.classroomId || undefined;
       // If a card is already in hand, restore it to its origin slot before
       // picking up the new one — matches aSc CLASSIC. Before this guard the
       // second pickup silently overwrote cardInHand and the first card was
@@ -317,9 +561,9 @@ window.Editor = (function () {
         slot.dataset.day = String(day);
         slot.dataset.period = String(period);
       }
-      window.APP.editor.cardInHand = { cardId, lessonId, originDay: day, originPeriod: period };
+      window.APP.editor.cardInHand = { cardId, lessonId, originDay: day, originPeriod: period, originClassroomId };
       syncCardInHandClass();
-      dispatch("editor:pickup", { cardId, lessonId, day, period });
+      dispatch("editor:pickup", { cardId, lessonId, day, period, originClassroomId, sourceX: ev.clientX, sourceY: ev.clientY });
       // If we restored a held card above, re-render so the restored slot
       // visibly reflects its newly-replaced occupant.
       if (held) {
@@ -331,31 +575,13 @@ window.Editor = (function () {
     // Empty-slot place (only when we have something in hand)
     const slot = ev.target.closest(".chrx-slot.empty");
     if (slot && window.APP.editor.cardInHand) {
+      // CardInHand owns placement on mouseup so the same path handles
+      // click-to-place, drag-to-place, validation, undo, and snap-back.
+      // Mutating here on mousedown races the mouseup validator and can
+      // duplicate the moved card by restoring its origin after the target
+      // has already been filled.
       ev.preventDefault();
-      const day = parseInt(slot.dataset.day, 10);
-      const period = parseInt(slot.dataset.period, 10);
-      const rowKey = slot.dataset.row;
-      const inHand = window.APP.editor.cardInHand;
-      // Run the same hard-constraint check the card_in_hand drag path
-      // uses (Placement.classify) BEFORE mutating school.cards. Without
-      // this guard, click-to-place silently committed cards that broke
-      // teacher/class/room conflicts — and the drag-path validation at
-      // card_in_hand.js:139 was effectively dead code for clicks.
-      const v = (window.Placement && window.Placement.classify)
-        ? window.Placement.classify(inHand.lessonId, day, period)
-        : { validity: "green", reasons: [] };
-      if (v.validity === "red") {
-        if (window._chrxNotify) window._chrxNotify("Can't place here: " + (v.reasons || []).join(" · "), "error");
-        return;
-      }
-      // Mutate school cards + re-render the row to keep visual state honest
-      placeCardOnSchool(inHand.lessonId, day, period);
-      window.APP.editor.cardInHand = null;
-      syncCardInHandClass();
-      dispatch("editor:place", { cardId: inHand.cardId, lessonId: inHand.lessonId, day, period, rowKey });
-      // Cheapest correct re-render: redraw whole grid. (Rows are few; perf ok.)
-      const host = slot.closest(".chrx-editor");
-      if (host) render(host);
+      return;
     }
   }
 
@@ -375,11 +601,12 @@ window.Editor = (function () {
     const S = window.APP.school;
     if (!S) return;
     const lesson = S._idx.lessonById[lessonId];
-    const classroomId = lesson ? lesson.preferredRoomId : undefined;
+    const classroomId = arguments.length >= 4 ? arguments[3] : (lesson ? lesson.preferredRoomId : undefined);
     // Avoid a duplicate placement on the same {lessonId, day, period}
     if (S.cards.some(c => c.lessonId === lessonId && c.day === day && c.period === period)) return;
     S.cards.push({ lessonId, day, period, classroomId });
   }
+
 
   // Subject hue: known short codes match design tokens, else hash.
   const SHORT_HUES = {
@@ -460,6 +687,14 @@ window.Editor = (function () {
     return String(s == null ? "" : s).replace(/[&<>"']/g,
       c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
   }
+
+  window.EditorCardInspector = {
+    show: showCardPanel,
+    clear() {
+      const p = document.getElementById("chrx-card-panel");
+      if (p) p.remove();
+    },
+  };
 
   return { render, setPerspective };
 })();

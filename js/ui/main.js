@@ -283,6 +283,27 @@
       };
     }
 
+    // ─── Card color axis rotator ──────────────────
+    const colorBtn = document.getElementById("editor-color-by");
+    if (colorBtn) {
+      const AXIS = ["subject", "teacher", "class", "room"];
+      const LABEL = { subject: "Color: Subject", teacher: "Color: Teacher", class: "Color: Class", room: "Color: Room" };
+      let savedAxis = "subject";
+      try { savedAxis = localStorage.getItem("chronexa.editor.colorBy") || "subject"; } catch {}
+      if (!AXIS.includes(savedAxis)) savedAxis = "subject";
+      window.APP.editor = window.APP.editor || {};
+      window.APP.editor.colorBy = savedAxis;
+      colorBtn.textContent = LABEL[savedAxis];
+      colorBtn.onclick = () => {
+        const cur = window.APP.editor.colorBy || "subject";
+        const next = AXIS[(AXIS.indexOf(cur) + 1) % AXIS.length];
+        window.APP.editor.colorBy = next;
+        colorBtn.textContent = LABEL[next];
+        try { localStorage.setItem("chronexa.editor.colorBy", next); } catch {}
+        if (window.EditorActivator) window.EditorActivator.activate();
+      };
+    }
+
     // ─── Lesson-grid matrix entry in editor header ──────────────
     const lgBtn = document.getElementById("editor-lesson-grid");
     if (lgBtn) {

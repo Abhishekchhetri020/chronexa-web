@@ -14,7 +14,7 @@
  */
 
 const CACHE_PREFIX = "chronexa-";
-const APP_VER = "20260523-p93-repair-rollback-canplace";
+const APP_VER = "20260524-p100-occupied-collision";
 const CACHE_NAME = CACHE_PREFIX + APP_VER;
 
 // Minimal app shell. Critical JS (bundle + solver worker + dynamic-

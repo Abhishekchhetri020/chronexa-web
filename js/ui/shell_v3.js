@@ -196,12 +196,8 @@
   }
 
   function focusEditor() {
-    // Step 2 is School Info; the editor lives on step 3 (Class Grid). The
-    // sidebar "Editor" entry was opening School Info because of this.
-    // Try step 3 first; fall back to step 2 if a layout variant doesn't
-    // expose step 3 yet (school-loaded gates the higher steps).
-    const editorBtn = document.querySelector('.step-btn[data-step="3"]:not([disabled])')
-      || document.querySelector('.step-btn[data-step="3"]')
+    const editorBtn = document.querySelector('.step-btn[data-step="6"]:not([disabled])')
+      || document.querySelector('.step-btn[data-step="6"]')
       || document.querySelector('.step-btn[data-step="2"]');
     if (editorBtn) editorBtn.click();
   }
@@ -341,12 +337,27 @@
       }));
     } catch (e) {}
   }
+  function setEditorWorkspace(active) {
+    const shellEl = document.getElementById("chrx-shell");
+    if (!shellEl) return;
+    if (active) {
+      if (!shellEl.classList.contains("is-fullscreen")) {
+        shellEl.dataset.autoFullscreen = "1";
+        shellEl.classList.add("is-fullscreen", "is-side-hidden", "is-rail-hidden");
+      }
+      document.documentElement.setAttribute("data-skin", "classic");
+    } else if (shellEl.dataset.autoFullscreen === "1") {
+      delete shellEl.dataset.autoFullscreen;
+      shellEl.classList.remove("is-fullscreen", "is-side-hidden", "is-rail-hidden");
+    }
+  }
   function togglePanel(which) {
     const shellEl = document.getElementById("chrx-shell");
     if (!shellEl) return;
     if (which === "fs") {
       // Fullscreen editor: compound toggle — sets/clears side + rail + chrome
       const enabling = !shellEl.classList.contains("is-fullscreen");
+      delete shellEl.dataset.autoFullscreen;
       shellEl.classList.toggle("is-fullscreen", enabling);
       shellEl.classList.toggle("is-side-hidden", enabling);
       shellEl.classList.toggle("is-rail-hidden", enabling);
@@ -448,6 +459,10 @@
   }
 
   global.addEventListener("app:school-loaded", () => { updateCrumbs(); updateSolverPanel(null); });
+  document.addEventListener("step:changed", (e) => {
+    const step = e.detail && e.detail.step;
+    setEditorWorkspace(step === 6);
+  });
   global.addEventListener("app:solver-result", (e) => updateSolverPanel(e.detail));
   global.addEventListener("app:solver-progress", (e) => {
     if (e.detail && Array.isArray(e.detail.latestViolations)) updateFaults(e.detail.latestViolations);
@@ -462,5 +477,6 @@
   }
 
   global.ChrxShell = { mount, openPalette, closePalette, togglePanel,
+    focusEditor, setEditorWorkspace,
     refresh: () => { updateCrumbs(); updateSolverPanel(null); updateFaults(lastFaults); } };
 })(window);
