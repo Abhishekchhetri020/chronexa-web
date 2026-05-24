@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-24T20:50:34Z
+/* Chronexa bundle — generated 2026-05-24T20:56:47Z
  *      162 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -2906,6 +2906,190 @@ window.Inspector = (function () {
       requiresLab: false,
     }, ref.constraints || {});
 
+    /* ── "Set for more" dual-pane transfer dialog ── */
+    function openSetForMore(fieldKey, fieldLabel, getValue) {
+      const allSubjects = (window.APP.school && window.APP.school.subjects) || [];
+      const others = allSubjects.filter(s => s.id !== ref.id);
+      const selected = new Set();
+
+      const overlay = D.el("div", {
+        style: "position:fixed;inset:0;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;z-index:10100;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
+      });
+      const dialog = D.el("div", {
+        style: "background:#fff;border-radius:12px;box-shadow:0 24px 64px rgba(15,23,42,.28);width:min(720px,95vw);max-height:85vh;display:flex;flex-direction:column;overflow:hidden"
+      });
+
+      // Title bar
+      const titleBar = D.el("div", {
+        style: "display:flex;align-items:center;justify-content:space-between;padding:14px 18px;background:#1e6b5a;color:#fff;font-size:14px;font-weight:600"
+      });
+      titleBar.appendChild(D.el("span", null, "Subjects"));
+      const closeBtn = D.el("button", { type: "button",
+        style: "background:none;border:0;color:#fff;font-size:18px;cursor:pointer;line-height:1;padding:0 4px",
+        onclick: () => overlay.remove() }, "✕");
+      titleBar.appendChild(closeBtn);
+      dialog.appendChild(titleBar);
+
+      // Body: two panes + arrow
+      const body = D.el("div", {
+        style: "display:flex;flex:1;overflow:hidden;min-height:320px"
+      });
+
+      // Left pane (all subjects)
+      const leftPane = D.el("div", { style: "flex:1;display:flex;flex-direction:column;border-right:1px solid #e2e8f0" });
+      const leftHead = D.el("div", { style: "display:flex;gap:4px;padding:8px 12px;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-size:11px;font-weight:600;color:#475569" });
+      leftHead.appendChild(D.el("span", { style: "width:100px" }, "Abbreviation"));
+      leftHead.appendChild(D.el("span", null, "Name"));
+      leftPane.appendChild(leftHead);
+      const leftList = D.el("div", { style: "flex:1;overflow-y:auto" });
+
+      const rightSelectedIds = new Set();
+      const leftRows = [];
+      const rightRows = [];
+
+      function renderLeft() {
+        leftList.innerHTML = "";
+        for (const s of others) {
+          if (rightSelectedIds.has(s.id)) continue;
+          const row = D.el("div", {
+            style: "display:flex;gap:4px;padding:6px 12px;cursor:pointer;font-size:12px;border-bottom:1px solid #f1f5f9;transition:background .1s",
+            "data-id": s.id,
+          });
+          row.onmouseenter = () => row.style.background = "#f1f5f9";
+          row.onmouseleave = () => row.style.background = selected.has(s.id) ? "#dbeafe" : "";
+          row.onclick = () => {
+            if (selected.has(s.id)) { selected.delete(s.id); row.style.background = ""; }
+            else { selected.add(s.id); row.style.background = "#dbeafe"; }
+          };
+          if (selected.has(s.id)) row.style.background = "#dbeafe";
+          row.appendChild(D.el("span", { style: "width:100px;font-weight:500" }, s.abbr || s.short || ""));
+          row.appendChild(D.el("span", null, s.name || ""));
+          leftList.appendChild(row);
+        }
+      }
+
+      leftPane.appendChild(leftList);
+      body.appendChild(leftPane);
+
+      // Center arrows
+      const center = D.el("div", {
+        style: "display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 8px;gap:6px"
+      });
+      const moveRight = D.el("button", { type: "button",
+        style: "background:#1d6b5a;color:#fff;border:0;border-radius:6px;width:36px;height:28px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center",
+        title: "Move selected →",
+        onclick: () => {
+          for (const id of selected) rightSelectedIds.add(id);
+          selected.clear();
+          renderLeft();
+          renderRight();
+        }
+      }, "→");
+      const moveLeft = D.el("button", { type: "button",
+        style: "background:#dc2626;color:#fff;border:0;border-radius:6px;width:36px;height:28px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center",
+        title: "← Remove selected",
+        onclick: () => {
+          for (const id of rightSelected) { rightSelectedIds.delete(id); }
+          rightSelected.clear();
+          renderLeft();
+          renderRight();
+        }
+      }, "←");
+      center.appendChild(moveRight);
+      center.appendChild(moveLeft);
+      body.appendChild(center);
+
+      // Right pane (chosen subjects)
+      const rightSelected = new Set();
+      const rightPane = D.el("div", { style: "flex:1;display:flex;flex-direction:column" });
+      const rightHead = D.el("div", { style: "display:flex;gap:4px;padding:8px 12px;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-size:11px;font-weight:600;color:#475569" });
+      rightHead.appendChild(D.el("span", { style: "width:100px" }, "Abbreviation"));
+      rightHead.appendChild(D.el("span", null, "Name"));
+      rightPane.appendChild(rightHead);
+      const rightList = D.el("div", { style: "flex:1;overflow-y:auto" });
+
+      function renderRight() {
+        rightList.innerHTML = "";
+        for (const s of others) {
+          if (!rightSelectedIds.has(s.id)) continue;
+          const row = D.el("div", {
+            style: "display:flex;gap:4px;padding:6px 12px;cursor:pointer;font-size:12px;border-bottom:1px solid #f1f5f9",
+            "data-id": s.id,
+          });
+          row.onmouseenter = () => row.style.background = "#fef2f2";
+          row.onmouseleave = () => row.style.background = rightSelected.has(s.id) ? "#fee2e2" : "";
+          row.onclick = () => {
+            if (rightSelected.has(s.id)) { rightSelected.delete(s.id); row.style.background = ""; }
+            else { rightSelected.add(s.id); row.style.background = "#fee2e2"; }
+          };
+          row.appendChild(D.el("span", { style: "width:100px;font-weight:500" }, s.abbr || s.short || ""));
+          row.appendChild(D.el("span", null, s.name || ""));
+          rightList.appendChild(row);
+        }
+      }
+
+      rightPane.appendChild(rightList);
+      body.appendChild(rightPane);
+      dialog.appendChild(body);
+
+      // Right-side controls (↑ ✕ ↓)
+      const sideCtrl = D.el("div", {
+        style: "position:absolute;right:12px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:4px"
+      });
+
+      // Footer
+      const footer = D.el("div", {
+        style: "display:flex;align-items:center;justify-content:space-between;padding:10px 18px;border-top:1px solid #e2e8f0;background:#f8fafc"
+      });
+      const leftActions = D.el("div", { style: "display:flex;gap:8px" });
+      leftActions.appendChild(D.el("button", { type: "button",
+        style: "padding:6px 14px;font-size:12px;border:1px solid #cbd5e1;background:#fff;border-radius:6px;cursor:pointer",
+        onclick: () => {
+          for (const s of others) selected.add(s.id);
+          renderLeft();
+        }
+      }, "Select all"));
+      leftActions.appendChild(D.el("button", { type: "button",
+        style: "padding:6px 14px;font-size:12px;border:1px solid #cbd5e1;background:#fff;border-radius:6px;cursor:pointer",
+        onclick: () => { selected.clear(); renderLeft(); }
+      }, "Clear selection"));
+      footer.appendChild(leftActions);
+
+      const okBtn = D.el("button", { type: "button",
+        style: "padding:6px 20px;font-size:13px;font-weight:600;border:0;background:#16a34a;color:#fff;border-radius:6px;cursor:pointer",
+        onclick: () => {
+          const val = getValue();
+          for (const sid of rightSelectedIds) {
+            const subj = allSubjects.find(s => s.id === sid);
+            if (!subj) continue;
+            const before = subj.constraints ? { ...subj.constraints } : null;
+            subj.constraints = Object.assign({}, subj.constraints || {});
+            subj.constraints[fieldKey] = val;
+            window.APP.audit.append({ entity: "subjects", op: "constraints", id: sid, before, after: { ...subj.constraints } });
+          }
+          overlay.remove();
+          const notify = window._chrxNotify || console.log;
+          notify("Applied " + fieldLabel + " to " + rightSelectedIds.size + " subjects", "info");
+        }
+      }, "OK");
+      footer.appendChild(okBtn);
+      dialog.appendChild(footer);
+
+      overlay.appendChild(dialog);
+      overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+      document.body.appendChild(overlay);
+      renderLeft();
+      renderRight();
+    }
+
+    // Helper: build a "Set for more" link
+    function setForMoreLink(fieldKey, fieldLabel, getValue) {
+      return D.el("a", {
+        href: "#", style: "font-size:12px;color:#0891b2;text-decoration:none;margin-left:8px;white-space:nowrap",
+        onclick: (e) => { e.preventDefault(); openSetForMore(fieldKey, fieldLabel, getValue); }
+      }, "Set for more");
+    }
+
     // ─── Card distribution over the week ───
     const distOptions = [
       { value: "none",   label: "No dist."  },
@@ -2921,13 +3105,12 @@ window.Inspector = (function () {
       if (o.value === (c.cardDistribution || "ideal")) opt.selected = true;
       fDist.appendChild(opt);
     }
-    const distNote = D.el("span", { style: "font-size:11px;color:#64748b;margin-left:8px" },
-      "Can be only once per day");
-    const distRow = D.el("div", { style: "display:flex;align-items:center;gap:6px" });
+    const distRow = D.el("div", { style: "display:flex;align-items:center;gap:4px;flex-wrap:wrap" });
     distRow.appendChild(fDist);
-    distRow.appendChild(distNote);
+    distRow.appendChild(setForMoreLink("cardDistribution", "Card distribution", () => c.cardDistribution));
+    distRow.appendChild(D.el("span", { style: "font-size:11px;color:#64748b;margin-left:6px" }, "Can be only once per day"));
 
-    // ─── Max on the question marked (replaces old maxPerDay number) ───
+    // ─── Max on the question marked ───
     const maxOptions = [
       { value: "",  label: "Any" },
       { value: "1", label: "1" }, { value: "2", label: "2" },
@@ -2943,6 +3126,9 @@ window.Inspector = (function () {
       if (o.value === String(c.maxPerDay || "")) opt.selected = true;
       fMax.appendChild(opt);
     }
+    const maxRow = D.el("div", { style: "display:flex;align-items:center;gap:4px" });
+    maxRow.appendChild(fMax);
+    maxRow.appendChild(setForMoreLink("maxPerDay", "Max per day", () => c.maxPerDay));
 
     // ─── Checkboxes ───
     const fDoubleBreaks = D.el("input", { type: "checkbox",
@@ -2958,15 +3144,20 @@ window.Inspector = (function () {
       checked: c.temporarySubject ? "checked" : null,
       onchange: (e) => c.temporarySubject = e.target.checked });
 
-    // ─── Number inputs ───
+    // ─── Number inputs with Set for more ───
     const fStudents = D.el("input", { type: "number", min: "0", max: "999",
-      value: c.maxStudents || "", placeholder: "",
-      style: "width:80px",
+      value: c.maxStudents || "", style: "width:80px",
       oninput: (e) => c.maxStudents = e.target.value });
+    const studentsRow = D.el("div", { style: "display:flex;align-items:center;gap:4px" });
+    studentsRow.appendChild(fStudents);
+    studentsRow.appendChild(setForMoreLink("maxStudents", "Max students", () => c.maxStudents));
+
     const fContract = D.el("input", { type: "number", min: "0", max: "99",
-      value: c.teacherContractLength || "", placeholder: "",
-      style: "width:80px",
+      value: c.teacherContractLength || "", style: "width:80px",
       oninput: (e) => c.teacherContractLength = e.target.value });
+    const contractRow = D.el("div", { style: "display:flex;align-items:center;gap:4px" });
+    contractRow.appendChild(fContract);
+    contractRow.appendChild(setForMoreLink("teacherContractLength", "Contract length", () => c.teacherContractLength));
 
     // ─── Separator ───
     const sep = D.el("div", { style: "border-top:1px solid #e2e8f0;margin:4px 0" });
@@ -3006,14 +3197,14 @@ window.Inspector = (function () {
       title: `Constraints — ${ref.name}`,
       fields: [
         { label: "Card distribution over the week", control: distRow },
-        { label: "Max. on the question marked",     control: fMax },
+        { label: "Max. on the question marked",     control: maxRow },
         { label: null,                              control: sep },
         { label: "Doublelessons can span over 'long breaks'", control: fDoubleBreaks },
         { label: "Can be over lunch",               control: fLunch },
         { label: "Homework preparation required",   control: fHomework },
         { label: null,                              control: D.el("div", { style: "border-top:1px solid #e2e8f0;margin:4px 0" }) },
-        { label: "Max students on lesson with this subject", control: fStudents },
-        { label: "Length for teacher's contract",    control: fContract },
+        { label: "Max students on lesson with this subject", control: studentsRow },
+        { label: "Length for teacher's contract",    control: contractRow },
         { label: null,                              control: D.el("div", { style: "border-top:1px solid #e2e8f0;margin:4px 0" }) },
         { label: "Temporary subject",               control: fTemp },
         { label: null,                              control: relList },
