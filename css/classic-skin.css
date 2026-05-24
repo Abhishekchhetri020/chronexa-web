@@ -44,6 +44,9 @@ html[data-skin="classic"] .chrx-row-head { height: 28px; }
 html[data-skin="classic"] .chrx-day-head-group {
   border-right-color: var(--edu-day-sep);
 }
+html[data-skin="classic"] .chrx-day-body-group {
+  border-right-color: var(--edu-day-sep);
+}
 html[data-skin="classic"] .chrx-h-period {
   font-size: var(--edu-head-text);
   font-weight: 600;

@@ -79,9 +79,19 @@ check(
   editor.querySelectorAll(".chrx-day-head-group").length === 6
 );
 check(
+  "each body row renders six day groups",
+  Array.from(editor.querySelectorAll(".chrx-row:not(.chrx-row-head):not(.chrx-floor-row)"))
+    .every(r => r.querySelectorAll(":scope > .chrx-day-body-group").length === 6)
+);
+check(
   "each day group has one period header per bell period",
   Array.from(editor.querySelectorAll(".chrx-day-head-group"))
     .every(g => g.querySelectorAll(".chrx-h-period").length === 8)
+);
+check(
+  "each body day group has eight slots",
+  Array.from(editor.querySelectorAll(".chrx-day-body-group"))
+    .every(g => g.querySelectorAll(".chrx-slot").length === 8)
 );
 check("synthetic missing periods are marked", editor.querySelectorAll('.chrx-h-period.is-synthetic[data-period="8"]').length === 6);
 check("editor clamps visible periods to P1-P8", editor.querySelectorAll('[data-period="9"]').length === 0);

@@ -14,7 +14,7 @@
  */
 
 const CACHE_PREFIX = "chronexa-";
-const APP_VER = "20260524-p106-grid-p8-clamp";
+const APP_VER = "20260524-p107-day-group-alignment";
 const CACHE_NAME = CACHE_PREFIX + APP_VER;
 
 // Minimal app shell. Critical JS (bundle + solver worker + dynamic-

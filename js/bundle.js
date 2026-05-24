@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-24T15:07:10Z
+/* Chronexa bundle — generated 2026-05-24T15:38:37Z
  *      161 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -13360,7 +13360,7 @@ window.Editor = (function () {
 
   function rowHtml(S, row, periods, mobileDay, cardLookup) {
     const rowBucket = cardLookup[row.key] || null;
-    const slots = [];
+    const dayBlocks = [];
     const persp = (window.APP && window.APP.editor && window.APP.editor.perspective) || "class";
     const selected = persp === "class" && window.APP.editor && window.APP.editor.selectedClassId === row.key;
     let bellPeriodSet = null;
@@ -13371,24 +13371,29 @@ window.Editor = (function () {
       }
     }
     for (let d = 0; d < NUM_DAYS; d++) {
+      const slots = [];
       for (const p of periods) {
         const cards = rowBucket ? rowBucket[d + "_" + p.index] : null;
-        const hide = d !== mobileDay ? " mobile-hidden" : "";
         const outOfBell = p.synthetic || (bellPeriodSet && !bellPeriodSet.has(p.index | 0));
         if (cards && cards.length > 0) {
           const oob = outOfBell ? " out-of-bell" : "";
           const cardListHtml = cards.map(c => vkartaHtml(S, c, d, p.index, row.key)).join("");
           const splitClass = cards.length > 1 ? " chrx-slot--split" : "";
           slots.push(
-            `<div class="chrx-slot${hide}${oob}${splitClass}" data-day="${d}" data-period="${p.index}" data-row="${esc(row.key)}">${cardListHtml}</div>`
+            `<div class="chrx-slot${oob}${splitClass}" data-day="${d}" data-period="${p.index}" data-row="${esc(row.key)}">${cardListHtml}</div>`
           );
         } else {
           const oob = outOfBell ? " out-of-bell" : "";
           slots.push(
-            `<div class="chrx-slot empty${hide}${oob}" data-day="${d}" data-period="${p.index}" data-row="${esc(row.key)}"${outOfBell ? ' aria-hidden="true"' : ''}></div>`
+            `<div class="chrx-slot empty${oob}" data-day="${d}" data-period="${p.index}" data-row="${esc(row.key)}"${outOfBell ? ' aria-hidden="true"' : ''}></div>`
           );
         }
       }
+      dayBlocks.push(`
+        <div class="chrx-day-body-group ${d !== mobileDay ? "mobile-hidden" : ""}" data-day="${d}">
+          ${slots.join("")}
+        </div>
+      `);
     }
     return `
       <div class="chrx-row${selected ? " chrx-row--selected" : ""}" data-row="${esc(row.key)}">
@@ -13396,7 +13401,7 @@ window.Editor = (function () {
           <span class="chrx-rowlabel-main">${esc(row.label)}</span>
           ${row.sub ? `<span class="chrx-rowlabel-sub">${esc(row.sub)}</span>` : ""}
         </div>
-        ${slots.join("")}
+        ${dayBlocks.join("")}
       </div>
     `;
   }

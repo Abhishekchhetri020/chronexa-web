@@ -20,8 +20,9 @@
 .chrx-h-day{border-right-width:2px}
 .chrx-rowlabel-main{overflow:hidden;text-overflow:ellipsis}
 .chrx-rowlabel-sub{color:var(--chrx-fg-tertiary);font-weight:var(--chrx-fw-regular);font-size:var(--chrx-font-eye)}
-.chrx-day-head-group{display:flex;flex-direction:column;width:calc(var(--chrx-periods, 8) * 40px);min-width:calc(var(--chrx-periods, 8) * 40px);border-right:2px solid var(--chrx-line)}
-.chrx-period-head-row{display:grid;grid-template-columns:repeat(var(--chrx-periods, 8), 40px)}
+.chrx-day-head-group,.chrx-day-body-group{width:calc(var(--chrx-periods, 8) * 40px);min-width:calc(var(--chrx-periods, 8) * 40px);border-right:2px solid var(--chrx-line)}
+.chrx-day-head-group{display:flex;flex-direction:column}
+.chrx-period-head-row,.chrx-day-body-group{display:grid;grid-template-columns:repeat(var(--chrx-periods, 8), 40px)}
 .chrx-h-day{min-width:0;text-align:center;font-weight:var(--chrx-fw-semibold);font-size:var(--chrx-font-small);background:var(--chrx-bg-tile);border-right:0;border-bottom:1px solid var(--chrx-line);padding:2px 0}
 .chrx-h-period{width:40px;min-width:40px;text-align:center;border-right:1px solid var(--chrx-bg-grid-line);padding:2px 0;color:var(--chrx-fg-tertiary);font-size:var(--chrx-font-eye)}
 .chrx-h-period.is-synthetic{color:rgba(100,116,139,.55);background:repeating-linear-gradient(45deg,rgba(148,163,184,.10) 0 4px,transparent 4px 8px)}
@@ -135,8 +136,8 @@ body.chrx-card-in-hand .chrx-card-panel{display:none}
 .chrx-shell.is-fullscreen .chrx-grid-scroll{flex:1 1 auto;max-height:none}
 .chrx-shell.is-fullscreen .chrx-grid{min-width:100%;width:100%}
 .chrx-shell.is-fullscreen .chrx-rowlabel{width:112px;min-width:112px}
-.chrx-shell.is-fullscreen .chrx-day-head-group{width:auto;min-width:0;flex:1 1 0}
-.chrx-shell.is-fullscreen .chrx-period-head-row{grid-template-columns:repeat(var(--chrx-periods, 8), minmax(28px, 1fr))}
+.chrx-shell.is-fullscreen .chrx-day-head-group,.chrx-shell.is-fullscreen .chrx-day-body-group{width:auto;min-width:0;flex:1 1 0}
+.chrx-shell.is-fullscreen .chrx-period-head-row,.chrx-shell.is-fullscreen .chrx-day-body-group{grid-template-columns:repeat(var(--chrx-periods, 8), minmax(28px, 1fr))}
 .chrx-shell.is-fullscreen .chrx-h-period{width:auto;min-width:0}
 .chrx-shell.is-fullscreen .chrx-slot{width:auto;min-width:28px;flex:1 1 0}
 .chrx-shell.is-fullscreen .chrx-editor-lower{flex:0 0 auto;margin-top:8px!important;grid-template-columns:300px minmax(0,1fr);gap:8px;min-height:124px}
