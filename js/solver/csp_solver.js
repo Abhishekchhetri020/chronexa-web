@@ -674,10 +674,13 @@ function buildModel(school) {
   }
 
   // Subject daily limit — flat (class, subject, day) → cap. -1 = no cap.
+  // Default to 2 so the generator cannot stack a whole week's subject load
+  // into one day. Imported schools can still override this globally, and
+  // "*" / "i" preserve the legacy unlimited behaviour for special cases.
   const subjectDailyLimit = new Int32Array(classIds.length * subjectIds.length * days).fill(-1);
   // globals.constraints.subjectDailyLimit acts as the school-wide default
   // for any (class, subject, day) not overridden by a per-class-subject value.
-  const globalSDL = gFallback(undefined, "subjectDailyLimit");
+  const globalSDL = g.subjectDailyLimit == null ? 2 : gFallback(undefined, "subjectDailyLimit");
   if (globalSDL > 0) {
     for (let i = 0; i < subjectDailyLimit.length; i++) {
       if (subjectDailyLimit[i] < 0) subjectDailyLimit[i] = globalSDL;
@@ -1309,9 +1312,12 @@ function canPlaceSecond(model, state, lessonIdx, slot, roomIdx) {
     const td = t * model.days + d;
     if ((state.teacherOcc[td] & bit) !== 0) return FAIL.TEACHER_CONFLICT;
     if ((model.teacherAvailabilityMask[td] & bit) === 0) return FAIL.TEACHER_UNAVAILABLE;
+    const maxDay = model.teacherMaxPerDay[t];
+    if (maxDay >= 0 && state.teacherDayLoad[td] + 1 >= maxDay) return FAIL.TEACHER_MAX_PER_DAY;
   }
   const classStart = model.lessonClassStart[lessonIdx];
   const classCount = model.lessonClassCount[lessonIdx];
+  const subject = model.lessonSubject[lessonIdx];
   for (let k = 0; k < classCount; k++) {
     const c = model.lessonClassFlat[classStart + k];
     const cd = c * model.days + d;
@@ -1322,6 +1328,13 @@ function canPlaceSecond(model, state, lessonIdx, slot, roomIdx) {
       const occDiv = occPacked & 0xFFFF;
       if (lessonDiv === 0xFFFF || occDiv === 0xFFFF || lessonDiv !== occDiv) return FAIL.CLASS_CONFLICT;
       if (((lessonPacked >>> 16) & (occPacked >>> 16)) !== 0) return FAIL.CLASS_CONFLICT;
+    }
+    const maxDay = model.classMaxPerDay[c];
+    if (maxDay >= 0 && state.classDayLoad[cd] + 1 >= maxDay) return FAIL.CLASS_MAX_PER_DAY;
+    const subjectKey = ((c * model.subjectCount) + subject) * model.days + d;
+    const subjectLimit = model.subjectDailyLimit[subjectKey];
+    if (subjectLimit >= 0 && state.classSubjectDayCount[subjectKey] + 1 >= subjectLimit) {
+      return FAIL.SUBJECT_DAILY_LIMIT;
     }
   }
   if (roomIdx >= 0) {
