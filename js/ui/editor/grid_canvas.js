@@ -33,6 +33,7 @@ window.Editor = (function () {
 
     wire(rootEl);
     syncCardInHandClass();
+    autoFitRowLabels(rootEl);
     updateClassPanel(S);
     if (window.ConstraintExplainer && typeof window.ConstraintExplainer.attachTooltip === "function") {
       window.ConstraintExplainer.attachTooltip(rootEl);
@@ -706,6 +707,38 @@ window.Editor = (function () {
       return (r && hexHue(r.color)) ?? hashHue(r && (r.short || r.name));
     }
     return subjectHue(subject);
+  }
+
+  /**
+   * Auto-fit row labels: measure text, scale down with CSS transform so it
+   * fits in one line within the container. No wrapping, no ellipsis — just
+   * proportional horizontal compression.
+   */
+  function autoFitRowLabels(rootEl) {
+    const labels = rootEl.querySelectorAll(".chrx-rowlabel");
+    for (const lbl of labels) {
+      const containerW = lbl.clientWidth - 4; // 2px padding each side
+      if (containerW <= 0) continue;
+      const main = lbl.querySelector(".chrx-rowlabel-main");
+      const sub  = lbl.querySelector(".chrx-rowlabel-sub");
+      if (main) {
+        main.style.transform = "none";
+        const textW = main.scrollWidth;
+        if (textW > containerW) {
+          const scale = containerW / textW;
+          main.style.transform = "scaleX(" + Math.max(0.45, scale).toFixed(3) + ")";
+        }
+      }
+      if (sub) {
+        sub.style.transform = "none";
+        const textW = sub.scrollWidth;
+        const availW = containerW - (main ? Math.min(main.scrollWidth, containerW) : 0) - 1;
+        if (availW > 0 && textW > availW) {
+          const scale = availW / textW;
+          sub.style.transform = "scaleX(" + Math.max(0.45, scale).toFixed(3) + ")";
+        }
+      }
+    }
   }
 
   function esc(s) {

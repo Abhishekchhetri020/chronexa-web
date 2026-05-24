@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-24T20:00:47Z
+/* Chronexa bundle — generated 2026-05-24T20:05:27Z
  *      161 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -13295,6 +13295,7 @@ window.Editor = (function () {
 
     wire(rootEl);
     syncCardInHandClass();
+    autoFitRowLabels(rootEl);
     updateClassPanel(S);
     if (window.ConstraintExplainer && typeof window.ConstraintExplainer.attachTooltip === "function") {
       window.ConstraintExplainer.attachTooltip(rootEl);
@@ -13970,6 +13971,38 @@ window.Editor = (function () {
     return subjectHue(subject);
   }
 
+  /**
+   * Auto-fit row labels: measure text, scale down with CSS transform so it
+   * fits in one line within the container. No wrapping, no ellipsis — just
+   * proportional horizontal compression.
+   */
+  function autoFitRowLabels(rootEl) {
+    const labels = rootEl.querySelectorAll(".chrx-rowlabel");
+    for (const lbl of labels) {
+      const containerW = lbl.clientWidth - 4; // 2px padding each side
+      if (containerW <= 0) continue;
+      const main = lbl.querySelector(".chrx-rowlabel-main");
+      const sub  = lbl.querySelector(".chrx-rowlabel-sub");
+      if (main) {
+        main.style.transform = "none";
+        const textW = main.scrollWidth;
+        if (textW > containerW) {
+          const scale = containerW / textW;
+          main.style.transform = "scaleX(" + Math.max(0.45, scale).toFixed(3) + ")";
+        }
+      }
+      if (sub) {
+        sub.style.transform = "none";
+        const textW = sub.scrollWidth;
+        const availW = containerW - (main ? Math.min(main.scrollWidth, containerW) : 0) - 1;
+        if (availW > 0 && textW > availW) {
+          const scale = availW / textW;
+          sub.style.transform = "scaleX(" + Math.max(0.45, scale).toFixed(3) + ")";
+        }
+      }
+    }
+  }
+
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g,
       c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
@@ -14107,6 +14140,19 @@ window.CanvasGeometry = (function () {
       frag.appendChild(row);
     }
     head.after(frag);
+    // Auto-fit injected floor labels with the same scaleX approach
+    frag.querySelectorAll ? void 0 : void 0; // frag is consumed by after()
+    rootEl.querySelectorAll(".chrx-floor-row .chrx-rowlabel-main").forEach(main => {
+      const lbl = main.closest(".chrx-rowlabel");
+      if (!lbl) return;
+      const containerW = lbl.clientWidth - 4;
+      if (containerW <= 0) return;
+      main.style.transform = "none";
+      const textW = main.scrollWidth;
+      if (textW > containerW) {
+        main.style.transform = "scaleX(" + Math.max(0.45, containerW / textW).toFixed(3) + ")";
+      }
+    });
   }
 
   // ─────────── install (wrap Editor.render additively) ───────────
