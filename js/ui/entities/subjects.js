@@ -129,16 +129,84 @@
 
   function openConstraints(r) {
     const ref = r._ref;
-    const c = Object.assign({ maxPerDay:"", requiresLab:false }, ref.constraints || {});
-    const fMax = D.el("input", { type:"number", min:"0", max:"9", value:c.maxPerDay,
-      oninput:(e)=> c.maxPerDay = e.target.value });
-    const fLab = D.el("input", { type:"checkbox", checked: c.requiresLab ? "checked" : null,
-      onchange:(e)=> c.requiresLab = e.target.checked });
+    const c = Object.assign({
+      cardDistribution: "ideal",
+      maxPerDay: "",
+      doubleLessonsSpanBreaks: false,
+      canBeOverLunch: false,
+      homeworkPrepRequired: false,
+      maxStudents: "",
+      teacherContractLength: "",
+      temporarySubject: false,
+      requiresLab: false,
+    }, ref.constraints || {});
 
-    // Top-30 #23 — filtered card-relations view inline on the Subject
-    // Constraints sheet. Surfaces every n_* relation touching this subject
-    // so the admin can see and jump to edit them without scanning the
-    // full Relations dialog.
+    // ─── Card distribution over the week ───
+    const distOptions = [
+      { value: "none",   label: "No dist."  },
+      { value: "low",    label: "Low"       },
+      { value: "medium", label: "Medium"    },
+      { value: "ideal",  label: "Ideal"     },
+      { value: "ideal+", label: "Ideal+"    },
+    ];
+    const fDist = D.el("select", { style: "min-width:120px",
+      onchange: (e) => c.cardDistribution = e.target.value });
+    for (const o of distOptions) {
+      const opt = D.el("option", { value: o.value }, o.label);
+      if (o.value === (c.cardDistribution || "ideal")) opt.selected = true;
+      fDist.appendChild(opt);
+    }
+    const distNote = D.el("span", { style: "font-size:11px;color:#64748b;margin-left:8px" },
+      "Can be only once per day");
+    const distRow = D.el("div", { style: "display:flex;align-items:center;gap:6px" });
+    distRow.appendChild(fDist);
+    distRow.appendChild(distNote);
+
+    // ─── Max on the question marked (replaces old maxPerDay number) ───
+    const maxOptions = [
+      { value: "",  label: "Any" },
+      { value: "1", label: "1" }, { value: "2", label: "2" },
+      { value: "3", label: "3" }, { value: "4", label: "4" },
+      { value: "5", label: "5" }, { value: "6", label: "6" },
+      { value: "7", label: "7" }, { value: "8", label: "8" },
+      { value: "9", label: "9" },
+    ];
+    const fMax = D.el("select", { style: "min-width:80px",
+      onchange: (e) => c.maxPerDay = e.target.value });
+    for (const o of maxOptions) {
+      const opt = D.el("option", { value: o.value }, o.label);
+      if (o.value === String(c.maxPerDay || "")) opt.selected = true;
+      fMax.appendChild(opt);
+    }
+
+    // ─── Checkboxes ───
+    const fDoubleBreaks = D.el("input", { type: "checkbox",
+      checked: c.doubleLessonsSpanBreaks ? "checked" : null,
+      onchange: (e) => c.doubleLessonsSpanBreaks = e.target.checked });
+    const fLunch = D.el("input", { type: "checkbox",
+      checked: c.canBeOverLunch ? "checked" : null,
+      onchange: (e) => c.canBeOverLunch = e.target.checked });
+    const fHomework = D.el("input", { type: "checkbox",
+      checked: c.homeworkPrepRequired ? "checked" : null,
+      onchange: (e) => c.homeworkPrepRequired = e.target.checked });
+    const fTemp = D.el("input", { type: "checkbox",
+      checked: c.temporarySubject ? "checked" : null,
+      onchange: (e) => c.temporarySubject = e.target.checked });
+
+    // ─── Number inputs ───
+    const fStudents = D.el("input", { type: "number", min: "0", max: "999",
+      value: c.maxStudents || "", placeholder: "",
+      style: "width:80px",
+      oninput: (e) => c.maxStudents = e.target.value });
+    const fContract = D.el("input", { type: "number", min: "0", max: "99",
+      value: c.teacherContractLength || "", placeholder: "",
+      style: "width:80px",
+      oninput: (e) => c.teacherContractLength = e.target.value });
+
+    // ─── Separator ───
+    const sep = D.el("div", { style: "border-top:1px solid #e2e8f0;margin:4px 0" });
+
+    // ─── Card relations section ───
     const S = window.APP && window.APP.school;
     const relations = (S && Array.isArray(S.relations)) ? S.relations : [];
     const touching = relations.filter(rel =>
@@ -170,18 +238,30 @@
     }
 
     D.buildEditSheet({
-      title:`Constraints — ${ref.name}`,
-      fields:[
-        { label:"Max periods per day", control:fMax },
-        { label:"Requires lab",        control:fLab },
-        { label:null,                  control:relList },
+      title: `Constraints — ${ref.name}`,
+      fields: [
+        { label: "Card distribution over the week", control: distRow },
+        { label: "Max. on the question marked",     control: fMax },
+        { label: null,                              control: sep },
+        { label: "Doublelessons can span over 'long breaks'", control: fDoubleBreaks },
+        { label: "Can be over lunch",               control: fLunch },
+        { label: "Homework preparation required",   control: fHomework },
+        { label: null,                              control: D.el("div", { style: "border-top:1px solid #e2e8f0;margin:4px 0" }) },
+        { label: "Max students on lesson with this subject", control: fStudents },
+        { label: "Length for teacher's contract",    control: fContract },
+        { label: null,                              control: D.el("div", { style: "border-top:1px solid #e2e8f0;margin:4px 0" }) },
+        { label: "Temporary subject",               control: fTemp },
+        { label: null,                              control: relList },
       ],
-      onSave:()=>{
+      onSave: () => {
         const before = ref.constraints;
         ref.constraints = c;
-        window.APP.audit.append({ entity:"subjects", op:"constraints", id:ref.id, before, after:c });
+        window.APP.audit.append({ entity: "subjects", op: "constraints", id: ref.id, before, after: c });
         D.closeSheet(); D.refresh(rows());
       },
+      siblingRows: rows(),
+      currentRowId: r.id,
+      onNavigate: openConstraints,
     });
   }
 
