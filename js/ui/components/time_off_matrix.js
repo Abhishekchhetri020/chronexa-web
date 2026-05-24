@@ -140,14 +140,18 @@
     grid.style.gridTemplateColumns = `64px repeat(${nPeriods}, 1fr)`;
 
     function toggleCol(p) {
-      const allBlocked = days.every((_, d) => state[d][p] === 2);
-      const nxt = allBlocked ? 0 : 2;
+      const vals = days.map((_, d) => state[d][p]);
+      const allSame = vals.every(v => v === vals[0]);
+      const cur = allSame ? vals[0] : -1;
+      const nxt = (cur + 1 + 3) % 3;
       for (let d = 0; d < nDays; d++) state[d][p] = nxt;
       buildGrid();
     }
     function toggleRow(d) {
-      const allBlocked = Array.from({length: nPeriods}, (_, p) => state[d][p]).every(v => v === 2);
-      const nxt = allBlocked ? 0 : 2;
+      const vals = Array.from({length: nPeriods}, (_, p) => state[d][p]);
+      const allSame = vals.every(v => v === vals[0]);
+      const cur = allSame ? vals[0] : -1;
+      const nxt = (cur + 1 + 3) % 3;
       for (let p = 0; p < nPeriods; p++) state[d][p] = nxt;
       buildGrid();
     }
