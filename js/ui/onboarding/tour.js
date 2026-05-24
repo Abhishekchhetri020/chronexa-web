@@ -40,7 +40,8 @@
 
   function end() {
     document.querySelectorAll(".chrx-tour-spotlight").forEach(t => t.classList.remove("chrx-tour-spotlight"));
-    if (activeOverlay) { activeOverlay.remove(); activeOverlay = null; }
+    document.querySelectorAll(".chrx-tour-overlay").forEach(o => o.remove());
+    activeOverlay = null;
     try { localStorage.setItem(SEEN_KEY, "1"); } catch {}
   }
 

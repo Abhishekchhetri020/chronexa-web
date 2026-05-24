@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-24T10:10:55Z
+/* Chronexa bundle — generated 2026-05-24T10:13:43Z
  *      161 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -17093,7 +17093,8 @@ window.StartScreen = (function () {
 
   function end() {
     document.querySelectorAll(".chrx-tour-spotlight").forEach(t => t.classList.remove("chrx-tour-spotlight"));
-    if (activeOverlay) { activeOverlay.remove(); activeOverlay = null; }
+    document.querySelectorAll(".chrx-tour-overlay").forEach(o => o.remove());
+    activeOverlay = null;
     try { localStorage.setItem(SEEN_KEY, "1"); } catch {}
   }
 
