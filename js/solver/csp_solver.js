@@ -1346,6 +1346,21 @@ function canPlaceSecond(model, state, lessonIdx, slot, roomIdx) {
     if ((state.roomOcc[rd] & bit) !== 0) return FAIL.ROOM_CONFLICT;
   }
 
+  // n_0: cannot-follow — check adjacency of the SECOND slot (p) against placed
+  // partners. canPlace checks this for the first slot (p-1); partners at p+1
+  // (= first-slot p + 2) are only adjacent to the second slot and are missed.
+  const partnersN0 = model.lessonN0Partners && model.lessonN0Partners[lessonIdx];
+  if (partnersN0) {
+    for (const pIdx of partnersN0) {
+      if (state.lessonAssigned && state.lessonAssigned[pIdx]) {
+        const ps = state.lessonAssignedSlot[pIdx];
+        if (ps >= 0 && model.slotDay[ps] === d && Math.abs(model.slotPeriod[ps] - p) === 1) {
+          return FAIL.RELATION_CANNOT_FOLLOW;
+        }
+      }
+    }
+  }
+
   return null;
 }
 
