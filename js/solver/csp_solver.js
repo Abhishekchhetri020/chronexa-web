@@ -1409,7 +1409,8 @@ function refreshSubjectCell(model, state, classId, subjectId, day) {
   const key = ((classId * model.subjectCount) + subjectId) * model.days + day;
   state.totalSubjectDistribution -= state.subjectDayOverflow[key];
   const c = state.classSubjectDayCount[key];
-  const v = c - 2 > 0 ? c - 2 : 0;
+  const limit = model.subjectDailyLimit[key];
+  const v = c > limit ? c - limit : 0;
   state.subjectDayOverflow[key] = v;
   state.totalSubjectDistribution += v;
 }
