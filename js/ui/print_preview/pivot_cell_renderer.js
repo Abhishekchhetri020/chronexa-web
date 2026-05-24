@@ -97,7 +97,10 @@
           out.push(entityName(school, "teacher", tid, fmt));
         }
       }
-      return out.join(", ");
+      const MAX_TEACHERS = 3;
+      return out.length > MAX_TEACHERS
+        ? out.slice(0, MAX_TEACHERS).join(" / ") + " …"
+        : out.join(" / ");
     }
     if (key === "class") {
       // Per-card class lists join with slashes (multi-class activity),

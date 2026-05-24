@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-24T14:41:15Z
+/* Chronexa bundle — generated 2026-05-24T14:59:10Z
  *      161 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -21652,7 +21652,10 @@ window.StartScreen = (function () {
           out.push(entityName(school, "teacher", tid, fmt));
         }
       }
-      return out.join(", ");
+      const MAX_TEACHERS = 3;
+      return out.length > MAX_TEACHERS
+        ? out.slice(0, MAX_TEACHERS).join(" / ") + " …"
+        : out.join(" / ");
     }
     if (key === "class") {
       // Per-card class lists join with slashes (multi-class activity),
@@ -21880,6 +21883,8 @@ window.StartScreen = (function () {
             name: (p && p.label) ? p.label : ordinal(i + 1),
             abbr: (p && p.label) ? p.label : ordinal(i + 1),
             _dim: "period",
+            _startMin: (p && p.startMin != null) ? p.startMin : null,
+            _endMin:   (p && p.endMin   != null) ? p.endMin   : null,
           }));
         }
         const n = (typeof periods === "number" && periods > 0) ? periods : PERIODS_DEFAULT;
@@ -21914,6 +21919,11 @@ window.StartScreen = (function () {
       default:
         return [];
     }
+  }
+
+  function fmtMin(min) {
+    if (min == null || min < 0) return "";
+    return Math.floor(min / 60) + ":" + String(min % 60).padStart(2, "0");
   }
 
   function ordinal(n) {
@@ -22044,6 +22054,20 @@ window.StartScreen = (function () {
         style: "text-align:center;font-weight:700;font-size:18px;font-family:'Fraunces',serif;font-style:italic;letter-spacing:-.01em",
       }, pageTitle));
     }
+    // Sub-header: school name left + class teacher right (only for class-paged reports)
+    const classEnt = pageBindings && pageBindings.get("class");
+    if (classEnt) {
+      const cls = (school.classes || []).find(c => c.id === classEnt.id);
+      const tid = cls && (cls.teacherId || cls.classTeacherId);
+      const tObj = tid && (school.teachers || []).find(t => t.id === tid);
+      const ctName = tObj ? (tObj.name || tObj.abbreviation || "") : "";
+      const sub = el("div", {
+        style: "display:flex;justify-content:space-between;font-size:9.5px;color:#555;border-bottom:1px solid #bbb;padding-bottom:4px;margin-bottom:2px",
+      });
+      sub.appendChild(el("span", null, schoolName));
+      if (ctName) sub.appendChild(el("span", null, "Class teacher: " + ctName));
+      page.appendChild(sub);
+    }
     if (totalPages > 1) {
       page.appendChild(el("div", {
         style: "text-align:right;font-size:10px;color:#666;font-family:'JetBrains Mono',ui-monospace,monospace",
@@ -22063,10 +22087,21 @@ window.StartScreen = (function () {
     }, ""));
     for (const cc of visibleCols) {
       const labels = [];
-      for (const [, ent] of cc.entries()) labels.push(ent.abbr || ent.name);
-      headerRow.appendChild(el("th", {
+      let startMin = null, endMin = null;
+      for (const [, ent] of cc.entries()) {
+        labels.push(ent.abbr || ent.name);
+        if (ent._startMin != null) startMin = ent._startMin;
+        if (ent._endMin   != null) endMin   = ent._endMin;
+      }
+      const th = el("th", {
         style: "border:1px solid #999;padding:4px 2px;background:#fafafa;font-weight:700;font-size:11px;text-align:center;font-family:system-ui",
-      }, labels.join(" · ")));
+      });
+      th.appendChild(el("div", { style: "font-weight:700" }, labels.join(" · ")));
+      if (startMin != null && endMin != null) {
+        th.appendChild(el("div", { style: "font-size:8.5px;font-weight:400;color:#555;margin-top:1px" },
+          fmtMin(startMin) + "–" + fmtMin(endMin)));
+      }
+      headerRow.appendChild(th);
     }
     thead.appendChild(headerRow);
     table.appendChild(thead);
