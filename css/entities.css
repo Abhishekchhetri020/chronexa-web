@@ -278,6 +278,15 @@
   padding: 4px 0;
   border-radius: var(--chrx-radius-xs);
 }
+.chrx-ent-tomatrix__h--btn {
+  border: 0; cursor: pointer;
+  transition: background var(--chrx-duration-fast) var(--chrx-ease),
+              color var(--chrx-duration-fast) var(--chrx-ease);
+}
+.chrx-ent-tomatrix__h--btn:hover {
+  background: var(--chrx-accent);
+  color: #fff;
+}
 .chrx-ent-tomatrix__c {
   background: var(--chrx-green); border: 0;
   height: 26px; min-width: 26px;
@@ -291,6 +300,18 @@
 .chrx-ent-tomatrix__c.is-conditional { background: var(--chrx-blue); }
 .chrx-ent-tomatrix__c.is-unavailable { background: var(--chrx-red); }
 .chrx-ent-tomatrix__c.is-blocked     { background: var(--chrx-red); }
+.chrx-ent-tomatrix__c.is-placed      { box-shadow: inset 0 0 0 2px rgba(255,255,255,0.7); }
+
+/* ---------- Subject time-off bar (in the Subjects grid column) ---------- */
+.chrx-subj-tobar { display: flex; gap: 2px; align-items: center; }
+.chrx-subj-tobar__dot {
+  width: 7px; height: 16px;
+  border-radius: 2px;
+  background: var(--chrx-green);
+  flex-shrink: 0;
+}
+.chrx-subj-tobar__dot[data-state="1"] { background: var(--chrx-blue); }
+.chrx-subj-tobar__dot[data-state="2"] { background: var(--chrx-red); }
 
 /* ---------- Time-off matrix decoration (tip, legend, quick actions) ---------- */
 .chrx-timeoff-body { display: flex; flex-direction: column; gap: 8px; }

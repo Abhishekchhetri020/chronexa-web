@@ -91,42 +91,98 @@
     return e.name || (e.lastName && e.firstName ? `${e.firstName} ${e.lastName}` : "") || e.lastName || e.id;
   }
 
+  function getPeriodLabel(pIdx) {
+    const s = window.APP && window.APP.school;
+    const ps = (s && s.bell && s.bell.periods) || [];
+    const p = ps.find(x => x.index === pIdx + 1);
+    return (p && p.label) || `P${pIdx + 1}`;
+  }
+
+  function getPlacedSlots(entity, kind, nDays, nPeriods) {
+    const s = window.APP && window.APP.school;
+    const idx = s && s._idx;
+    if (!idx) return null;
+    const id = entity && entity.id;
+    let cardList = [];
+    if (kind === "teachers")        cardList = (idx.cardsByTeacher || {})[id] || [];
+    else if (kind === "classes")    cardList = (idx.cardsByClass || {})[id] || [];
+    else if (kind === "classrooms") cardList = (idx.cardsByRoom || {})[id] || [];
+    else if (kind === "subjects") {
+      const seen = new Set();
+      for (const list of Object.values(idx.cardsByClass || {})) {
+        for (const c of list) {
+          const k = c.day + "_" + c.period;
+          if (c.subjectId === id && !seen.has(k)) { seen.add(k); cardList.push(c); }
+        }
+      }
+    }
+    const placed = Array.from({length: nDays}, () => new Array(nPeriods).fill(false));
+    for (const c of cardList) {
+      const d = c.day, p = c.period - 1;
+      if (d >= 0 && d < nDays && p >= 0 && p < nPeriods) placed[d][p] = true;
+    }
+    return placed;
+  }
+
   function open(entity, kind, onSave) {
     const days = getDays();
     const nDays = days.length;
     const nPeriods = getPeriodCount();
     const noun = KIND_NOUN[kind] || "item";
 
-    // Working copy — never mutate entity.timeOff until Save.
     const state = normalize(entity && entity.timeOff, nDays, nPeriods);
+    const placed = getPlacedSlots(entity, kind, nDays, nPeriods);
 
     // ---- grid ----
     const grid = el("div", { class: "chrx-ent-tomatrix" });
     grid.style.gridTemplateColumns = `64px repeat(${nPeriods}, 1fr)`;
 
+    function toggleCol(p) {
+      const allBlocked = days.every((_, d) => state[d][p] === 2);
+      const nxt = allBlocked ? 0 : 2;
+      for (let d = 0; d < nDays; d++) state[d][p] = nxt;
+      buildGrid();
+    }
+    function toggleRow(d) {
+      const allBlocked = Array.from({length: nPeriods}, (_, p) => state[d][p]).every(v => v === 2);
+      const nxt = allBlocked ? 0 : 2;
+      for (let p = 0; p < nPeriods; p++) state[d][p] = nxt;
+      buildGrid();
+    }
+
     function buildGrid() {
-      grid.innerHTML = "";
+      while (grid.firstChild) grid.removeChild(grid.firstChild);
       grid.appendChild(el("div", { class: "chrx-ent-tomatrix__corner" }));
       for (let p = 0; p < nPeriods; p++) {
-        grid.appendChild(el("div", { class: "chrx-ent-tomatrix__h" }, `P${p + 1}`));
+        const lbl = getPeriodLabel(p);
+        grid.appendChild(el("button", {
+          type: "button",
+          class: "chrx-ent-tomatrix__h chrx-ent-tomatrix__h--btn",
+          title: `Toggle period ${lbl} for all days`,
+          onclick: () => toggleCol(p),
+        }, lbl));
       }
       for (let d = 0; d < nDays; d++) {
-        grid.appendChild(el("div", { class: "chrx-ent-tomatrix__h" }, days[d] || `D${d + 1}`));
+        grid.appendChild(el("button", {
+          type: "button",
+          class: "chrx-ent-tomatrix__h chrx-ent-tomatrix__h--btn",
+          title: `Toggle ${days[d]} for all periods`,
+          onclick: () => toggleRow(d),
+        }, days[d] || `D${d + 1}`));
         for (let p = 0; p < nPeriods; p++) {
+          const isPlaced = placed && placed[d][p];
           const cell = el("button", {
             type: "button",
-            class: cellClass(state[d][p]),
-            "data-d": d,
-            "data-p": p,
+            class: cellClass(state[d][p]) + (isPlaced ? " is-placed" : ""),
+            "data-d": d, "data-p": p,
             "aria-label": `${days[d]} P${p + 1}: ${stateName(state[d][p])}`,
-            title: `${days[d]} P${p + 1} — ${stateName(state[d][p])}`,
+            title: `${days[d]} P${p + 1} — ${stateName(state[d][p])}${isPlaced ? " · lesson placed here" : ""}`,
             onclick: (e) => {
               const nx = (state[d][p] + 1) % 3;
               state[d][p] = nx;
-              e.currentTarget.className = cellClass(nx);
-              e.currentTarget.title = `${days[d]} P${p + 1} — ${stateName(nx)}`;
-              e.currentTarget.setAttribute("aria-label",
-                `${days[d]} P${p + 1}: ${stateName(nx)}`);
+              e.currentTarget.className = cellClass(nx) + (isPlaced ? " is-placed" : "");
+              e.currentTarget.title = `${days[d]} P${p + 1} — ${stateName(nx)}${isPlaced ? " · lesson placed here" : ""}`;
+              e.currentTarget.setAttribute("aria-label", `${days[d]} P${p + 1}: ${stateName(nx)}`);
             },
           });
           grid.appendChild(cell);
@@ -137,7 +193,7 @@
 
     // ---- tip ----
     const tip = el("p", { class: "chrx-ent-tomatrix__tip" },
-      `Click cells to mark when this ${noun} is unavailable.`);
+      `Click a cell to cycle its state. Click a day or period header to toggle the whole row/column. Cells with a white border have a lesson placed there.`);
 
     // ---- legend ----
     const legend = el("div", { class: "chrx-ent-tomatrix__legend" },

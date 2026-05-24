@@ -4,23 +4,57 @@
   const D = window.EntityDialog;
   if (!D) return;
 
+  function getSubjectNPeriods() {
+    const s = window.APP && window.APP.school;
+    return (s && s.bell && s.bell.periods && s.bell.periods.length) || 8;
+  }
+  function getSubjectNDays() {
+    const s = window.APP && window.APP.school;
+    return ((s && s._idx && s._idx.days) || ["Mon","Tue","Wed","Thu","Fri","Sat"]).length;
+  }
+
   function rows() {
-    return ((window.APP.school && window.APP.school.subjects) || []).map(s => ({
-      id: s.id, name: s.name || "", short: s.abbr || s.short || "",
-      color: s.color || "",
-      contractWeight: s.contractWeight != null ? s.contractWeight : 1,
-      pictureUrl: s.pictureUrl || "", _ref: s,
-    }));
+    const nP = getSubjectNPeriods();
+    const nD = getSubjectNDays();
+    return ((window.APP.school && window.APP.school.subjects) || []).map(s => {
+      const norm = window.TimeOffMatrix
+        ? window.TimeOffMatrix.normalize(s.timeOff, nD, nP)
+        : null;
+      return {
+        id: s.id, name: s.name || "", short: s.abbr || s.short || "",
+        color: s.color || "",
+        contractWeight: s.contractWeight != null ? s.contractWeight : 1,
+        pictureUrl: s.pictureUrl || "", _ref: s,
+        _timeOff: norm, _nP: nP,
+      };
+    });
   }
 
   function columns() { return [
     { key:"color", label:"", sortable:false,
       render:(r)=>D.el("span", { class:"chrx-ent-swatch-dot",
         style:`background:${r.color || "transparent"}`, "aria-hidden":"true" }) },
-    { key:"name",   label:"Name" },
-    { key:"short",  label:"Short" },
+    { key:"name",  label:"Name" },
+    { key:"short", label:"Short" },
     { key:"contractWeight", label:"Weight" },
-    { key:"pictureUrl", label:"Picture", render:(r)=> r.pictureUrl ? "✔" : "—" },
+    { key:"timeOff", label:"Time off", sortable:false,
+      render:(r) => {
+        const wrap = D.el("div", { class:"chrx-subj-tobar", "aria-hidden":"true" });
+        for (let p = 0; p < r._nP; p++) {
+          let maxState = 0;
+          if (r._timeOff) {
+            for (let d = 0; d < r._timeOff.length; d++) {
+              if (r._timeOff[d][p] > maxState) maxState = r._timeOff[d][p];
+            }
+          }
+          wrap.appendChild(D.el("span", {
+            class: "chrx-subj-tobar__dot",
+            "data-state": String(maxState),
+          }));
+        }
+        return wrap;
+      },
+    },
   ]; }
 
   function openEdit(r) {
