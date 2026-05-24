@@ -1321,6 +1321,10 @@ function canPlaceSecond(model, state, lessonIdx, slot, roomIdx) {
   for (let k = 0; k < classCount; k++) {
     const c = model.lessonClassFlat[classStart + k];
     const cd = c * model.days + d;
+    if (model.classValidPeriodMask &&
+        (model.classValidPeriodMask[c] & bit) === 0) {
+      return FAIL.CLASS_BELL_PERIOD_INVALID;
+    }
     const lessonPacked = model.lessonClassGroupMask[classStart + k];
     const occPacked = state.classGroupOcc[(cd) * model.periodsPerDay + p];
     if (occPacked !== 0) {
@@ -2588,7 +2592,7 @@ function listBlockers(model, state, lessonIdx, slot, room) {
   for (let k = 0; k < teacherCount; k++) {
     const t = model.lessonTeacherFlat[teacherStart + k];
     const td = t * model.days + d;
-    if ((model.teacherAvailabilityMask[td] & (1 << p)) === 0) return null;
+    if ((model.teacherAvailabilityMask[td] & ((1 << p) >>> 0)) === 0) return null;
     const occ = state.teacherSlotOccupant[t * model.totalSlots + slot];
     if (occ >= 0 && occ !== lessonIdx && !seen.has(occ)) {
       seen.add(occ); blockers.push(occ);
@@ -2616,7 +2620,7 @@ function listBlockers(model, state, lessonIdx, slot, room) {
     for (let k = 0; k < teacherCount; k++) {
       const t = model.lessonTeacherFlat[teacherStart + k];
       const td = t * model.days + d;
-      if ((model.teacherAvailabilityMask[td] & (1 << (p + 1))) === 0) return null;
+      if ((model.teacherAvailabilityMask[td] & ((1 << (p + 1)) >>> 0)) === 0) return null;
       const occ = state.teacherSlotOccupant[t * model.totalSlots + slot2];
       if (occ >= 0 && occ !== lessonIdx && !seen.has(occ)) {
         seen.add(occ); blockers.push(occ);
