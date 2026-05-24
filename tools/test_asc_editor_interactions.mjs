@@ -20,10 +20,12 @@ globalThis.window = dom.window;
 globalThis.document = dom.window.document;
 globalThis.CustomEvent = dom.window.CustomEvent;
 globalThis.MouseEvent = dom.window.MouseEvent;
+globalThis.MutationObserver = dom.window.MutationObserver;
+document.documentElement.setAttribute("data-skin", "classic");
 
 const APP = {
   school: {
-    bell: { periods: [{ index: 1, isTeaching: true }, { index: 2, isTeaching: true }] },
+    bell: { periods: [{ index: 1, isTeaching: true }, { index: 2, isTeaching: true }, { index: 9, isTeaching: true }] },
     classes: [{ id: "C1", name: "V-A" }, { id: "C2", name: "VI-B" }],
     teachers: [{ id: "T1", name: "Teacher One", abbr: "T1", timeOff: {} }],
     classrooms: [{ id: "R1", name: "Room 1" }],
@@ -52,7 +54,7 @@ const APP = {
 globalThis.window.APP = APP;
 globalThis.APP = APP;
 
-for (const rel of ["js/ui/editor/grid_canvas.js", "js/ui/editor/pending_strip.js", "js/ui/editor/card_in_hand.js"]) {
+for (const rel of ["js/ui/editor/grid_canvas.js", "js/ui/editor/pending_strip.js", "js/ui/editor/card_in_hand.js", "js/ui/editor/canvas_geometry.js"]) {
   vm.runInThisContext(fs.readFileSync(path.join(repoRoot, rel), "utf8"), { filename: rel });
 }
 
@@ -82,6 +84,14 @@ check(
     .every(g => g.querySelectorAll(".chrx-h-period").length === 8)
 );
 check("synthetic missing periods are marked", editor.querySelectorAll('.chrx-h-period.is-synthetic[data-period="8"]').length === 6);
+check("editor clamps visible periods to P1-P8", editor.querySelectorAll('[data-period="9"]').length === 0);
+check("classic empty slots do not show FD placeholders", editor.querySelectorAll(".chrx-row:not(.chrx-floor-row) .chrx-slot.empty .chrx-fd-tag").length === 0);
+APP.school.cards = [{ lessonId: "L1", day: 0, period: 9, classroomId: "R1" }];
+window.Editor.render(editor);
+check("cards outside P1-P8 are not rendered beyond Saturday", editor.querySelectorAll('.chrx-vkarta[data-period="9"]').length === 0);
+APP.school.cards = [];
+window.Editor.render(editor);
+window.PendingStrip.render(pending);
 
 const c1Label = editor.querySelector('.chrx-row[data-row="C1"] .chrx-rowlabel');
 c1Label.dispatchEvent(new MouseEvent("click", { bubbles: true }));

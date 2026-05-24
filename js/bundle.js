@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-24T14:59:10Z
+/* Chronexa bundle — generated 2026-05-24T15:07:10Z
  *      161 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -13154,7 +13154,7 @@ ${body}
 /**
  * Editor.render(rootEl) — writable timetable grid.
  * Rows = entities (class/teacher/room per APP.editor.perspective).
- * Cols = NUM_DAYS × bell.periods.
+ * Cols = Monday-Saturday × P1-P8.
  * Pickup/place via mousedown (no HTML5 drag). See EDITOR.md (TBD).
  */
 window.Editor = (function () {
@@ -13174,11 +13174,12 @@ window.Editor = (function () {
     }
     const perspective = window.APP.editor.perspective;
     const periods = displayPeriods(S);
+    const visiblePeriodSet = new Set(periods.map(p => p.index | 0));
     const rows = rowsFor(S, perspective);
     const mobileDay = window.APP.day || 0;
 
     // Per-render index: { rowKey -> { "d_p" -> card } }. Cheaper than scanning S.cards per cell.
-    const cardLookup = buildCardLookup(S, perspective);
+    const cardLookup = buildCardLookup(S, perspective, visiblePeriodSet);
 
     rootEl.classList.add("chrx-editor");
     rootEl.innerHTML = html(S, rows, periods, mobileDay, cardLookup);
@@ -13191,12 +13192,16 @@ window.Editor = (function () {
     }
   }
 
-  function buildCardLookup(S, perspective) {
+  function buildCardLookup(S, perspective, visiblePeriodSet) {
     const lookup = Object.create(null);
     for (const c of (S.cards || [])) {
+      const day = parseInt(c.day, 10);
+      const period = parseInt(c.period, 10);
+      if (!Number.isFinite(day) || day < 0 || day >= NUM_DAYS) continue;
+      if (!visiblePeriodSet.has(period | 0)) continue;
       const lesson = S._idx.lessonById[c.lessonId];
       if (!lesson) continue;
-      const key = c.day + "_" + c.period;
+      const key = day + "_" + period;
       const keysForCard = rowKeysForCard(lesson, perspective, c);
       for (const rowKey of keysForCard) {
         if (!lookup[rowKey]) lookup[rowKey] = Object.create(null);
@@ -13236,16 +13241,13 @@ window.Editor = (function () {
   function displayPeriods(S) {
     const raw = (S && S.bell && Array.isArray(S.bell.periods)) ? S.bell.periods : [];
     const byIndex = Object.create(null);
-    let max = 0;
     for (const p of raw) {
       const ix = p && Number.isFinite(p.index) ? p.index : parseInt(p && p.index, 10);
-      if (!Number.isFinite(ix) || ix <= 0) continue;
+      if (!Number.isFinite(ix) || ix <= 0 || ix > 8) continue;
       byIndex[ix] = p;
-      if (ix > max) max = ix;
     }
-    const end = Math.max(8, max || raw.length || 8);
     const out = [];
-    for (let i = 1; i <= end; i++) {
+    for (let i = 1; i <= 8; i++) {
       out.push(byIndex[i] || { index: i, label: "P" + i, isTeaching: false, synthetic: true });
     }
     return out;
@@ -13867,8 +13869,8 @@ window.Editor = (function () {
  *
  * Decorates the rendered editor with:
  *   - "Floor" supervision rows when perspective === "room"
- *   - "FD" (Free Duty) tags in empty slots when perspective === "class"
- * Both overlays are gated on `<html data-skin="classic">` and are additive
+ *   - floor supervision rows when perspective === "room"
+ * The overlay is gated on `<html data-skin="classic">` and is additive
  * (no source file owned by Agent E is touched).
  *
  * Agent I — wave-3, chronexa-web.
@@ -13921,8 +13923,7 @@ window.CanvasGeometry = (function () {
     paintHalos(rootEl);
     if (document.documentElement.getAttribute("data-skin") !== "classic") return;
     const persp = (window.APP && window.APP.editor && window.APP.editor.perspective) || "class";
-    if (persp === "room")  injectFloorRows(rootEl);
-    if (persp === "class") injectFDTags(rootEl);
+    if (persp === "room") injectFloorRows(rootEl);
   }
 
   // Verification halo (Top-30 #12). Walks every placed card and asks
@@ -13980,18 +13981,6 @@ window.CanvasGeometry = (function () {
       frag.appendChild(row);
     }
     head.after(frag);
-  }
-
-  function injectFDTags(rootEl) {
-    rootEl
-      .querySelectorAll(".chrx-row:not(.chrx-row-head):not(.chrx-floor-row) .chrx-slot.empty")
-      .forEach(slot => {
-        if (slot.querySelector(".chrx-fd-tag")) return;
-        const t = document.createElement("span");
-        t.className = "chrx-fd-tag";
-        t.textContent = "FD";
-        slot.appendChild(t);
-      });
   }
 
   // ─────────── install (wrap Editor.render additively) ───────────

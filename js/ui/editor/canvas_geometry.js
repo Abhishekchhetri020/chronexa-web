@@ -6,8 +6,8 @@
  *
  * Decorates the rendered editor with:
  *   - "Floor" supervision rows when perspective === "room"
- *   - "FD" (Free Duty) tags in empty slots when perspective === "class"
- * Both overlays are gated on `<html data-skin="classic">` and are additive
+ *   - floor supervision rows when perspective === "room"
+ * The overlay is gated on `<html data-skin="classic">` and is additive
  * (no source file owned by Agent E is touched).
  *
  * Agent I — wave-3, chronexa-web.
@@ -60,8 +60,7 @@ window.CanvasGeometry = (function () {
     paintHalos(rootEl);
     if (document.documentElement.getAttribute("data-skin") !== "classic") return;
     const persp = (window.APP && window.APP.editor && window.APP.editor.perspective) || "class";
-    if (persp === "room")  injectFloorRows(rootEl);
-    if (persp === "class") injectFDTags(rootEl);
+    if (persp === "room") injectFloorRows(rootEl);
   }
 
   // Verification halo (Top-30 #12). Walks every placed card and asks
@@ -119,18 +118,6 @@ window.CanvasGeometry = (function () {
       frag.appendChild(row);
     }
     head.after(frag);
-  }
-
-  function injectFDTags(rootEl) {
-    rootEl
-      .querySelectorAll(".chrx-row:not(.chrx-row-head):not(.chrx-floor-row) .chrx-slot.empty")
-      .forEach(slot => {
-        if (slot.querySelector(".chrx-fd-tag")) return;
-        const t = document.createElement("span");
-        t.className = "chrx-fd-tag";
-        t.textContent = "FD";
-        slot.appendChild(t);
-      });
   }
 
   // ─────────── install (wrap Editor.render additively) ───────────
