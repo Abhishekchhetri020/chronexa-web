@@ -118,17 +118,15 @@ window.CanvasGeometry = (function () {
       frag.appendChild(row);
     }
     head.after(frag);
-    // Auto-fit injected floor labels with the same scaleX approach
-    frag.querySelectorAll ? void 0 : void 0; // frag is consumed by after()
+    // Auto-fit injected floor labels using the grid's computed column width
+    const grid = rootEl.querySelector(".chrx-grid");
+    const colW = grid ? parseFloat(getComputedStyle(grid).getPropertyValue("--chrx-rowlabel-w")) || 52 : 52;
+    const usable = colW - 8;
     rootEl.querySelectorAll(".chrx-floor-row .chrx-rowlabel-main").forEach(main => {
-      const lbl = main.closest(".chrx-rowlabel");
-      if (!lbl) return;
-      const containerW = lbl.clientWidth - 4;
-      if (containerW <= 0) return;
       main.style.transform = "none";
       const textW = main.scrollWidth;
-      if (textW > containerW) {
-        main.style.transform = "scaleX(" + Math.max(0.45, containerW / textW).toFixed(3) + ")";
+      if (usable > 0 && textW > usable) {
+        main.style.transform = "scaleX(" + Math.max(0.5, usable / textW).toFixed(3) + ")";
       }
     });
   }

@@ -710,33 +710,45 @@ window.Editor = (function () {
   }
 
   /**
-   * Auto-fit row labels: measure text, scale down with CSS transform so it
-   * fits in one line within the container. No wrapping, no ellipsis — just
-   * proportional horizontal compression.
+   * Auto-size row-label column width + scale individual labels.
+   *
+   * 1. Temporarily remove width constraint so we can measure natural text width.
+   * 2. Find the widest label (clamped to 32–120 px).
+   * 3. Set --chrx-rowlabel-w on the grid so all rows get the same width.
+   * 4. Any label still wider than the column gets scaleX() compression.
    */
   function autoFitRowLabels(rootEl) {
-    const labels = rootEl.querySelectorAll(".chrx-rowlabel");
-    for (const lbl of labels) {
-      const containerW = lbl.clientWidth - 4; // 2px padding each side
-      if (containerW <= 0) continue;
-      const main = lbl.querySelector(".chrx-rowlabel-main");
-      const sub  = lbl.querySelector(".chrx-rowlabel-sub");
-      if (main) {
-        main.style.transform = "none";
-        const textW = main.scrollWidth;
-        if (textW > containerW) {
-          const scale = containerW / textW;
-          main.style.transform = "scaleX(" + Math.max(0.45, scale).toFixed(3) + ")";
-        }
-      }
-      if (sub) {
-        sub.style.transform = "none";
-        const textW = sub.scrollWidth;
-        const availW = containerW - (main ? Math.min(main.scrollWidth, containerW) : 0) - 1;
-        if (availW > 0 && textW > availW) {
-          const scale = availW / textW;
-          sub.style.transform = "scaleX(" + Math.max(0.45, scale).toFixed(3) + ")";
-        }
+    const grid = rootEl.querySelector(".chrx-grid");
+    if (!grid) return;
+    const mains = grid.querySelectorAll(".chrx-rowlabel-main");
+    if (!mains.length) return;
+
+    // Step 1 — reset transforms and temporarily let labels be auto-width
+    // so we can measure their natural text width
+    for (const m of mains) m.style.transform = "none";
+    grid.style.setProperty("--chrx-rowlabel-w", "auto");
+
+    // Step 2 — find the widest label's natural text width
+    let maxW = 0;
+    for (const m of mains) {
+      const w = m.scrollWidth;
+      if (w > maxW) maxW = w;
+    }
+
+    // Step 3 — compute optimal column width (text + 6px padding), clamped
+    const PAD = 8; // 3px padding each side + 2px safety
+    const MIN_W = 32;
+    const MAX_W = 120;
+    const optimalW = Math.min(MAX_W, Math.max(MIN_W, maxW + PAD));
+    grid.style.setProperty("--chrx-rowlabel-w", optimalW + "px");
+
+    // Step 4 — scaleX any labels that are wider than the column
+    const usable = optimalW - PAD;
+    for (const m of mains) {
+      const textW = m.scrollWidth;
+      if (textW > usable) {
+        const scale = usable / textW;
+        m.style.transform = "scaleX(" + Math.max(0.5, scale).toFixed(3) + ")";
       }
     }
   }
