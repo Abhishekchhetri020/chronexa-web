@@ -25,7 +25,13 @@ document.documentElement.setAttribute("data-skin", "classic");
 
 const APP = {
   school: {
-    bell: { periods: [{ index: 1, isTeaching: true }, { index: 2, isTeaching: true }, { index: 9, isTeaching: true }] },
+    bell: {
+      periods: Array.from({ length: 7 }, (_, i) => ({
+        index: i + 1,
+        label: "P" + (i + 1),
+        isTeaching: true,
+      })),
+    },
     classes: [{ id: "C1", name: "V-A" }, { id: "C2", name: "VI-B" }],
     teachers: [{ id: "T1", name: "Teacher One", abbr: "T1", timeOff: {} }],
     classrooms: [{ id: "R1", name: "Room 1" }],
@@ -86,19 +92,19 @@ check(
 check(
   "each day group has one period header per bell period",
   Array.from(editor.querySelectorAll(".chrx-day-head-group"))
-    .every(g => g.querySelectorAll(".chrx-h-period").length === 8)
+    .every(g => g.querySelectorAll(".chrx-h-period").length === 7)
 );
 check(
-  "each body day group has eight slots",
+  "each body day group has one slot per bell period",
   Array.from(editor.querySelectorAll(".chrx-day-body-group"))
-    .every(g => g.querySelectorAll(".chrx-slot").length === 8)
+    .every(g => g.querySelectorAll(".chrx-slot").length === 7)
 );
-check("synthetic missing periods are marked", editor.querySelectorAll('.chrx-h-period.is-synthetic[data-period="8"]').length === 6);
-check("editor clamps visible periods to P1-P8", editor.querySelectorAll('[data-period="9"]').length === 0);
+check("editor does not synthesize missing period 8", editor.querySelectorAll('.chrx-h-period[data-period="8"]').length === 0);
+check("editor CSS period count follows the bell", editor.querySelector(".chrx-grid")?.style.getPropertyValue("--chrx-periods") === "7");
 check("classic empty slots do not show FD placeholders", editor.querySelectorAll(".chrx-row:not(.chrx-floor-row) .chrx-slot.empty .chrx-fd-tag").length === 0);
-APP.school.cards = [{ lessonId: "L1", day: 0, period: 9, classroomId: "R1" }];
+APP.school.cards = [{ lessonId: "L1", day: 0, period: 8, classroomId: "R1" }];
 window.Editor.render(editor);
-check("cards outside P1-P8 are not rendered beyond Saturday", editor.querySelectorAll('.chrx-vkarta[data-period="9"]').length === 0);
+check("cards outside configured bell periods are not rendered beyond Saturday", editor.querySelectorAll('.chrx-vkarta[data-period="8"]').length === 0);
 APP.school.cards = [];
 window.Editor.render(editor);
 window.PendingStrip.render(pending);

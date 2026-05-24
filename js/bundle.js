@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-24T17:50:40Z
+/* Chronexa bundle — generated 2026-05-24T18:10:15Z
  *      161 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -13257,7 +13257,7 @@ ${body}
 /**
  * Editor.render(rootEl) — writable timetable grid.
  * Rows = entities (class/teacher/room per APP.editor.perspective).
- * Cols = Monday-Saturday × P1-P8.
+ * Cols = Monday-Saturday × the school's configured bell periods.
  * Pickup/place via mousedown (no HTML5 drag). See EDITOR.md (TBD).
  */
 window.Editor = (function () {
@@ -13346,14 +13346,26 @@ window.Editor = (function () {
     const byIndex = Object.create(null);
     for (const p of raw) {
       const ix = p && Number.isFinite(p.index) ? p.index : parseInt(p && p.index, 10);
-      if (!Number.isFinite(ix) || ix <= 0 || ix > 8) continue;
-      byIndex[ix] = p;
+      if (!Number.isFinite(ix) || ix <= 0) continue;
+      byIndex[ix] = {
+        ...p,
+        index: ix,
+        label: p.label || ("P" + ix),
+        synthetic: false,
+      };
     }
-    const out = [];
-    for (let i = 1; i <= 8; i++) {
-      out.push(byIndex[i] || { index: i, label: "P" + i, isTeaching: false, synthetic: true });
-    }
-    return out;
+    const out = Object.keys(byIndex)
+      .map(k => byIndex[k])
+      .sort((a, b) => (a.index | 0) - (b.index | 0));
+    if (out.length) return out;
+
+    const fallbackCount = Math.max(1, Math.min(30, (S && S.periodsPerDay | 0) || 8));
+    return Array.from({ length: fallbackCount }, (_, i) => ({
+      index: i + 1,
+      label: "P" + (i + 1),
+      isTeaching: false,
+      synthetic: true,
+    }));
   }
 
   function syncCardInHandClass() {
