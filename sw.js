@@ -14,7 +14,7 @@
  */
 
 const CACHE_PREFIX = "chronexa-";
-const APP_VER = "20260525-p114-solver-hardconstraint-fix";
+const APP_VER = "20260525-p115-solver-penalty-repair";
 const CACHE_NAME = CACHE_PREFIX + APP_VER;
 
 // Minimal app shell. Critical JS (bundle + solver worker + dynamic-

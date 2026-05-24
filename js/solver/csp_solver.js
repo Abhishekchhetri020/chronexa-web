@@ -1774,10 +1774,10 @@ function modeBlockPairingPenalty(model, state) {
     if (model.lessonLabDouble[i] === 1) {
       if (p % 2 !== 0) penalty += 2;
     } else {
-      if (p % 2 !== 0) penalty += 0.5;
+      if (p % 2 !== 0) penalty += 1;
     }
   }
-  return penalty | 0;
+  return penalty;
 }
 
 // Tier-B FET — Working in hourly interval max days per week. Each
@@ -2720,10 +2720,13 @@ function tryPlaceViaRepair(model, state, lessonIdx, chainDepth, evictedThisChain
 
     // Now place lessonIdx (should fit if blockers were the only obstacle).
     if (canPlace(model, state, lessonIdx, c.slot, c.room) !== null) {
-      // Should be rare; rollback.
+      // Should be rare; rollback. Guard with canPlace to avoid placing on
+      // top of a lesson that was placed by an earlier chain step.
       for (let k = evicted.length - 1; k >= 0; k--) {
         const e = evicted[k];
-        applyPlacement(model, state, e.idx, e.slot, e.room, null);
+        if (canPlace(model, state, e.idx, e.slot, e.room) === null) {
+          applyPlacement(model, state, e.idx, e.slot, e.room, null);
+        }
         evictedThisChain.delete(e.idx);
       }
       continue;
