@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-24T15:38:37Z
+/* Chronexa bundle — generated 2026-05-24T15:44:52Z
  *      161 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -21920,6 +21920,35 @@ window.StartScreen = (function () {
     return Math.floor(min / 60) + ":" + String(min % 60).padStart(2, "0");
   }
 
+  function timeToMin(timeStr) {
+    if (!timeStr) return -1;
+    const m = String(timeStr).match(/^(\d{1,2}):(\d{2})$/);
+    if (!m) return -1;
+    return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+  }
+
+  function getPeriodEnt(combo) {
+    for (const [, ent] of combo.entries()) {
+      if (ent._dim === "period") return ent;
+    }
+    return null;
+  }
+
+  function breakAfterCol(cols, idx, school) {
+    if (!school || !school.breaks || !school.breaks.length) return null;
+    if (idx >= cols.length - 1) return null;
+    const p1 = getPeriodEnt(cols[idx]);
+    const p2 = getPeriodEnt(cols[idx + 1]);
+    if (!p1 || !p2 || p1._endMin == null || p2._startMin == null) return null;
+    const t1 = p1._endMin, t2 = p2._startMin;
+    if (t2 <= t1) return null;
+    for (const b of school.breaks) {
+      const bs = timeToMin(b.starttime), be = timeToMin(b.endtime);
+      if (bs !== -1 && be !== -1 && bs >= t1 - 5 && be <= t2 + 5) return b;
+    }
+    return null;
+  }
+
   function ordinal(n) {
     const suff = ["th","st","nd","rd"];
     const v = n % 100;
@@ -22052,7 +22081,7 @@ window.StartScreen = (function () {
     const classEnt = pageBindings && pageBindings.get("class");
     if (classEnt) {
       const cls = (school.classes || []).find(c => c.id === classEnt.id);
-      const tid = cls && (cls.teacherId || cls.classTeacherId);
+      const tid = cls && (cls._teacherId || cls.teacherId || cls.classTeacherId);
       const tObj = tid && (school.teachers || []).find(t => t.id === tid);
       const ctName = tObj ? (tObj.name || tObj.abbreviation || "") : "";
       const sub = el("div", {
@@ -22079,7 +22108,8 @@ window.StartScreen = (function () {
     headerRow.appendChild(el("th", {
       style: "border:1px solid #999;padding:4px;background:#fafafa;width:80px",
     }, ""));
-    for (const cc of visibleCols) {
+    for (let ci = 0; ci < visibleCols.length; ci++) {
+      const cc = visibleCols[ci];
       const labels = [];
       let startMin = null, endMin = null;
       for (const [, ent] of cc.entries()) {
@@ -22096,19 +22126,27 @@ window.StartScreen = (function () {
           fmtMin(startMin) + "–" + fmtMin(endMin)));
       }
       headerRow.appendChild(th);
+      const brk = breakAfterCol(visibleCols, ci, school);
+      if (brk) {
+        headerRow.appendChild(el("th", {
+          style: "border:1px solid #bbb;padding:2px;background:#efefeb;width:28px;font-size:8px;text-align:center;color:#666",
+        }, ""));
+      }
     }
     thead.appendChild(headerRow);
     table.appendChild(thead);
 
     const tbody = el("tbody");
-    for (const rc of visibleRows) {
+    for (let ri = 0; ri < visibleRows.length; ri++) {
+      const rc = visibleRows[ri];
       const tr = el("tr");
       const rowLabels = [];
       for (const [, ent] of rc.entries()) rowLabels.push(ent.name || ent.abbr);
       tr.appendChild(el("td", {
         style: "border:1px solid #999;padding:6px 8px;background:#fafafa;font-weight:600;text-align:center;font-family:'Fraunces',serif;font-size:14px",
       }, rowLabels.join(" · ")));
-      for (const cc of visibleCols) {
+      for (let ci = 0; ci < visibleCols.length; ci++) {
+        const cc = visibleCols[ci];
         const combined = new Map([...pageBindings, ...rc, ...cc]);
         const cellCards = cardsMatching(pageCards, combined);
         const cellNode = el("td", {
@@ -22122,6 +22160,19 @@ window.StartScreen = (function () {
           cellNode.appendChild(el("div", { style: "padding:4px;font-size:11px;text-align:center" }, text));
         }
         tr.appendChild(cellNode);
+        const brk = breakAfterCol(visibleCols, ci, school);
+        if (brk && ri === 0) {
+          const brkText = brk.printtext || brk.name || "BREAK";
+          const brkTd = el("td", {
+            rowspan: String(visibleRows.length),
+            style: "border:1px solid #bbb;padding:2px;background:#efefeb;width:28px;vertical-align:middle;text-align:center",
+          });
+          const brkInner = el("div", {
+            style: "writing-mode:vertical-lr;transform:rotate(180deg);font-weight:700;font-size:8.5px;text-transform:uppercase;letter-spacing:.1em;color:#555;margin:0 auto",
+          }, brkText);
+          brkTd.appendChild(brkInner);
+          tr.appendChild(brkTd);
+        }
       }
       tbody.appendChild(tr);
     }
