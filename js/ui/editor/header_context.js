@@ -25,7 +25,32 @@
   }
   function notify(msg) { (window._chrxNotify || console.log)(msg, "info"); }
 
+  function lockDay(d, lock) {
+    const S = window.APP && window.APP.school;
+    if (!S || !S.cards) return;
+    let count = 0;
+    for (const card of S.cards) {
+      if (card.day !== d) continue;
+      const lesson = S._idx && S._idx.lessonById && S._idx.lessonById[card.lessonId];
+      if (!lesson) continue;
+      if (lock) {
+        lesson.fixedDay = card.day;
+        lesson.fixedPeriod = card.period;
+      } else {
+        delete lesson.fixedDay;
+        delete lesson.fixedPeriod;
+      }
+      count++;
+    }
+    const host = document.querySelector(".chrx-editor");
+    if (host && window.Editor && window.Editor.render) window.Editor.render(host);
+    const dayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+    notify((lock ? "Locked " : "Unlocked ") + count + " cards on " + (dayNames[d] || "day " + (d + 1)));
+  }
+
   function itemsForDay(d) {
+    const dayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+    const dayName = dayNames[d] || ("Day " + (d + 1));
     return [
       { icon: "🎯", label: "Focus this day only", run: () => {
         window.APP = window.APP || {}; window.APP.day = d;
@@ -42,6 +67,9 @@
         if (host && window.Editor && window.Editor.render) window.Editor.render(host);
         notify("All days visible");
       } },
+      { sep: true },
+      { icon: "🔒", label: "Lock " + dayName, run: () => lockDay(d, true) },
+      { icon: "🔓", label: "Unlock " + dayName, run: () => lockDay(d, false) },
       { sep: true },
       { icon: "📊", label: "Statistics for day…",
         run: () => fire("app:statistics", { focusDay: d }) },

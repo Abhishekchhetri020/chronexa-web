@@ -144,11 +144,43 @@
   function lockRow(perspective, rowId, lock) {
     const APP = window.APP;
     if (!APP || !APP.school) return;
+    const S = APP.school;
+    if (!S.cards || !S._idx) return;
+
+    // Find all cards belonging to this row
+    let count = 0;
+    for (const card of S.cards) {
+      const lesson = S._idx.lessonById && S._idx.lessonById[card.lessonId];
+      if (!lesson) continue;
+      let matches = false;
+      if (perspective === "class")   matches = (lesson.classIds || []).includes(rowId);
+      if (perspective === "teacher") matches = (lesson.teacherIds || []).includes(rowId);
+      if (perspective === "room")    matches = card.classroomId === rowId;
+      if (perspective === "subject") matches = lesson.subjectId === rowId;
+      if (!matches) continue;
+
+      if (lock) {
+        lesson.fixedDay = card.day;
+        lesson.fixedPeriod = card.period;
+      } else {
+        delete lesson.fixedDay;
+        delete lesson.fixedPeriod;
+      }
+      count++;
+    }
+
+    // Also track in lockedRows for cosmetic state
     APP.editor = APP.editor || {};
     APP.editor.lockedRows = APP.editor.lockedRows || { class: {}, teacher: {}, room: {}, subject: {} };
     if (lock) APP.editor.lockedRows[perspective][rowId] = true;
     else delete APP.editor.lockedRows[perspective][rowId];
-    notify((lock ? "Locked: " : "Unlocked: ") + rowId);
+
+    // Re-render to show lock icons
+    const host = document.querySelector(".chrx-editor");
+    if (host && window.Editor && typeof window.Editor.render === "function") {
+      window.Editor.render(host);
+    }
+    notify((lock ? "Locked " : "Unlocked ") + count + " cards for " + rowId);
   }
 
   function open(perspective, rowId, rowLabel, x, y) {
