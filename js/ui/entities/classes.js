@@ -43,19 +43,125 @@
   function openEdit(r) {
     const isNew = !r;
     const draft = isNew
-      ? { name:"", short:"", color:"", teacherId:"", classroomIds:[], bellId:"", bell:"" }
+      ? { name:"", short:"", color:"", teacherIds:[], classroomIds:[], bellId:"", bell:"" }
       : { name:r.name, short:r.short, color:r.color,
-          teacherId: r._ref.teacherId || r._ref._teacherId || "",
+          teacherIds: (r._ref.teacherIds || (r._ref.teacherId ? [r._ref.teacherId] : r._ref._teacherId ? [r._ref._teacherId] : [])).slice(),
           classroomIds: (r._ref.classroomIds || r._ref._classroomIds || []).slice(),
           bellId: r._ref.bellId || "",
           bell: r._ref.bell || "" };
 
+    let abbrManuallySet = !isNew && !!draft.short;
+
+    /** Generate short name from class name */
+    function autoShort(name) {
+      const n = name.trim();
+      if (!n) return "";
+      // Already short (≤4 chars): use as-is
+      if (n.length <= 4) return n;
+      // Remove common words and abbreviate
+      const words = n.split(/\s+/).filter(Boolean);
+      if (words.length === 1) return n.substring(0, 4);
+      // Multi-word: first letters + numbers
+      return words.map(w => {
+        if (/^\d+$/.test(w)) return w;   // keep numbers intact
+        return w.charAt(0).toUpperCase();
+      }).join("");
+    }
+
     const fName = D.el("input", { type:"text", value:draft.name, required:"required",
-      maxlength:"30", oninput:(e)=>draft.name = e.target.value });
+      maxlength:"30", oninput:(e) => {
+        draft.name = e.target.value;
+        if (!abbrManuallySet) {
+          const auto = autoShort(draft.name);
+          draft.short = auto;
+          fShort.value = auto;
+        }
+      }});
     const fShort = D.el("input", { type:"text", value:draft.short, maxlength:"10",
-      oninput:(e)=>draft.short = e.target.value });
-    const fTeacher = makeSelect(window.APP.school?.teachers, draft.teacherId,
-      t => t.name + (t.abbr ? ` (${t.abbr})` : ""), v => draft.teacherId = v);
+      oninput:(e) => {
+        draft.short = e.target.value;
+        abbrManuallySet = true;
+        if (!e.target.value.trim()) abbrManuallySet = false;
+      }});
+
+    // ─── Class teacher: multi-select tick/untick ───
+    const teacherSet = new Set(draft.teacherIds);
+    const fTeacherWrap = D.el("div", {
+      style: "max-height:140px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:6px;background:#fff;padding:4px 0"
+    });
+    function renderTeacherList() {
+      fTeacherWrap.innerHTML = "";
+      const teachers = (window.APP.school?.teachers) || [];
+      if (!teachers.length) {
+        fTeacherWrap.appendChild(D.el("div", { style: "padding:6px 10px;color:#8e8e93;font-size:12px" }, "No teachers defined"));
+        return;
+      }
+      for (const t of teachers) {
+        const isSelected = teacherSet.has(t.id);
+        const row = D.el("label", {
+          style: `display:flex;align-items:center;gap:8px;padding:4px 10px;cursor:pointer;font-size:13px;transition:background .1s;${isSelected ? "background:#ecfdf5" : ""}`
+        });
+        row.onmouseenter = () => { if (!teacherSet.has(t.id)) row.style.background = "#f5f5f4"; };
+        row.onmouseleave = () => { row.style.background = teacherSet.has(t.id) ? "#ecfdf5" : ""; };
+        const cb = D.el("input", { type: "checkbox", style: "accent-color:#16a34a" });
+        cb.checked = isSelected;
+        cb.addEventListener("change", () => {
+          if (cb.checked) teacherSet.add(t.id); else teacherSet.delete(t.id);
+          draft.teacherIds = Array.from(teacherSet);
+          renderTeacherList();
+        });
+        const label = D.el("span", null, t.name + (t.abbr ? ` (${t.abbr})` : ""));
+        const tick = D.el("span", {
+          style: `color:#16a34a;font-size:14px;${isSelected ? "" : "visibility:hidden"}`
+        }, "✓");
+        row.appendChild(cb);
+        row.appendChild(label);
+        row.appendChild(D.el("span", { style: "flex:1" }));
+        row.appendChild(tick);
+        fTeacherWrap.appendChild(row);
+      }
+    }
+    renderTeacherList();
+
+    // ─── Home classrooms: multi-select tick/untick ───
+    const roomSet = new Set(draft.classroomIds);
+    const fRoomWrap = D.el("div", {
+      style: "max-height:140px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:6px;background:#fff;padding:4px 0"
+    });
+    function renderRoomList() {
+      fRoomWrap.innerHTML = "";
+      const rooms = (window.APP.school?.classrooms) || [];
+      if (!rooms.length) {
+        fRoomWrap.appendChild(D.el("div", { style: "padding:6px 10px;color:#8e8e93;font-size:12px" }, "No classrooms defined"));
+        return;
+      }
+      for (const rm of rooms) {
+        const isSelected = roomSet.has(rm.id);
+        const row = D.el("label", {
+          style: `display:flex;align-items:center;gap:8px;padding:4px 10px;cursor:pointer;font-size:13px;transition:background .1s;${isSelected ? "background:#ecfdf5" : ""}`
+        });
+        row.onmouseenter = () => { if (!roomSet.has(rm.id)) row.style.background = "#f5f5f4"; };
+        row.onmouseleave = () => { row.style.background = roomSet.has(rm.id) ? "#ecfdf5" : ""; };
+        const cb = D.el("input", { type: "checkbox", style: "accent-color:#16a34a" });
+        cb.checked = isSelected;
+        cb.addEventListener("change", () => {
+          if (cb.checked) roomSet.add(rm.id); else roomSet.delete(rm.id);
+          draft.classroomIds = Array.from(roomSet);
+          renderRoomList();
+        });
+        const label = D.el("span", null, rm.name + (rm.abbr ? ` (${rm.abbr})` : ""));
+        const tick = D.el("span", {
+          style: `color:#16a34a;font-size:14px;${isSelected ? "" : "visibility:hidden"}`
+        }, "✓");
+        row.appendChild(cb);
+        row.appendChild(label);
+        row.appendChild(D.el("span", { style: "flex:1" }));
+        row.appendChild(tick);
+        fRoomWrap.appendChild(row);
+      }
+    }
+    renderRoomList();
+
     // Per-class bell schedule (Top-30 #3). Empty = use school default.
     const fBell = D.el("select", null,
       D.el("option", { value: "" }, "(school default)"));
@@ -68,18 +174,14 @@
     fBell.addEventListener("change", e => draft.bellId = e.target.value);
     const fColor = D.buildSwatchPicker(draft.color, v => draft.color = v);
 
-    const fRooms = D.el("select", { multiple:"multiple", size:"4" });
-    ((window.APP.school?.classrooms) || []).forEach(rm => {
-      const opt = D.el("option", { value:rm.id }, rm.name);
-      if (draft.classroomIds.includes(rm.id)) opt.selected = true;
-      fRooms.appendChild(opt);
-    });
-    fRooms.addEventListener("change", () => {
-      draft.classroomIds = Array.from(fRooms.selectedOptions).map(o => o.value);
-    });
-
     function save() {
       if (!draft.name.trim()) { fName.focus(); return false; }
+      // Auto-assign short name if empty
+      if (!draft.short.trim()) draft.short = autoShort(draft.name);
+      // Auto-assign unique color if none selected
+      if (!draft.color) draft.color = D.autoPickColor("classes");
+      draft.classroomIds = Array.from(roomSet);
+      draft.teacherIds = Array.from(teacherSet);
       const all = window.APP.school.classes;
       if (!isNew) {
         const c = r._ref;
@@ -87,7 +189,8 @@
         c.name = draft.name.trim();
         c.abbr = draft.short.trim() || undefined;
         c.color = draft.color || undefined;
-        c.teacherId = draft.teacherId || undefined;
+        c.teacherId = draft.teacherIds[0] || undefined;
+        c.teacherIds = draft.teacherIds.length ? draft.teacherIds.slice() : undefined;
         c.classroomIds = draft.classroomIds.slice();
         c.bellId = draft.bellId || undefined;
         c.bell = draft.bell || undefined;
@@ -95,7 +198,8 @@
       } else {
         const nc = { id:D.uid("c"), name:draft.name.trim(),
           abbr:draft.short.trim() || undefined, color:draft.color || undefined,
-          teacherId:draft.teacherId || undefined,
+          teacherId:draft.teacherIds[0] || undefined,
+          teacherIds: draft.teacherIds.length ? draft.teacherIds.slice() : undefined,
           classroomIds:draft.classroomIds.slice(),
           bellId: draft.bellId || undefined,
           bell:draft.bell || undefined };
@@ -113,8 +217,8 @@
       fields:[
         { label:"Name", control:fName },
         { label:"Short", control:fShort },
-        { label:"Class teacher", control:fTeacher },
-        { label:"Home classrooms", control:fRooms },
+        { label:"Class teacher (optional)", control:fTeacherWrap },
+        { label:"Home classrooms (optional)", control:fRoomWrap },
         { label:"Bell schedule", control:fBell },
         { label:"Color", control:fColor },
       ],

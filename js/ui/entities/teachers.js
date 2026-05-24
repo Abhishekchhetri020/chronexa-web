@@ -65,12 +65,38 @@
           classroomIds: Array.isArray(r._ref.classroomIds) ? r._ref.classroomIds.slice() : [],
           printColor: r._ref.printColor || "" };
 
+    let abbrManuallySet = !isNew && !!draft.abbr;
+
+    /** Generate abbreviation: first letter of first name + first letter of last name */
+    function autoAbbr(first, last) {
+      const f = (first || "").trim();
+      const l = (last || "").trim();
+      if (!f && !l) return "";
+      const initF = f ? f.charAt(0).toUpperCase() : "";
+      const initL = l ? l.charAt(0).toUpperCase() : "";
+      // If only last name: use first 2 chars
+      if (!initF && initL) return l.substring(0, Math.min(2, l.length)).toUpperCase();
+      return initF + initL;
+    }
+
+    function updateAutoAbbr() {
+      if (!abbrManuallySet) {
+        const auto = autoAbbr(draft.firstName, draft.lastName);
+        draft.abbr = auto;
+        fAbbr.value = auto;
+      }
+    }
+
     const fFirst = D.el("input", { type:"text", value:draft.firstName, maxlength:"40",
-      oninput:(e)=>draft.firstName = e.target.value });
+      oninput:(e) => { draft.firstName = e.target.value; updateAutoAbbr(); } });
     const fLast = D.el("input", { type:"text", value:draft.lastName, required:"required",
-      maxlength:"40", oninput:(e)=>draft.lastName = e.target.value });
+      maxlength:"40", oninput:(e) => { draft.lastName = e.target.value; updateAutoAbbr(); } });
     const fAbbr = D.el("input", { type:"text", value:draft.abbr, maxlength:"10",
-      oninput:(e)=>draft.abbr = e.target.value });
+      oninput:(e) => {
+        draft.abbr = e.target.value;
+        abbrManuallySet = true;
+        if (!e.target.value.trim()) abbrManuallySet = false;
+      }});
     const fColor = D.buildSwatchPicker(draft.color, v => draft.color = v);
     const fGaps = D.el("input", { type:"number", min:"0", value:draft.maxGapsPerDay,
       oninput:(e)=>draft.maxGapsPerDay = e.target.value });
@@ -103,6 +129,10 @@
 
     function save() {
       if (!draft.lastName.trim()) { fLast.focus(); return false; }
+      // Auto-assign abbreviation if empty
+      if (!draft.abbr.trim()) draft.abbr = autoAbbr(draft.firstName, draft.lastName);
+      // Auto-assign unique color if none selected
+      if (!draft.color) draft.color = D.autoPickColor("teachers");
       const all = window.APP.school.teachers;
       const fullName = `${draft.firstName.trim()} ${draft.lastName.trim()}`.trim();
       if (!isNew) {

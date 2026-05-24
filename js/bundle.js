@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-24T21:17:16Z
+/* Chronexa bundle — generated 2026-05-24T21:33:34Z
  *      162 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -1053,6 +1053,34 @@ window.Inspector = (function () {
   const SWATCHES = ["#007AFF","#34C759","#FF3B30","#FF9F0A","#FFCC00",
     "#AF52DE","#FF2D55","#5AC8FA","#A2845E","#8E8E93"];
 
+  // Extended palette for auto-assign — 30 distinguishable colors
+  const SWATCHES_EXTENDED = [
+    "#007AFF","#34C759","#FF3B30","#FF9F0A","#FFCC00",
+    "#AF52DE","#FF2D55","#5AC8FA","#A2845E","#8E8E93",
+    "#30B0C7","#FF6482","#64D2FF","#BF5AF2","#FFD60A",
+    "#AC8E68","#32D74B","#FF453A","#0A84FF","#5E5CE6",
+    "#EB4D3D","#1AAD19","#10AEFF","#F76260","#576B95",
+    "#E95B54","#8B572A","#7B68EE","#20B2AA","#FF7F50",
+  ];
+
+  /** Pick a color not yet used by any entity of the given kind(s). */
+  function autoPickColor(entityKind) {
+    const S = window.APP && window.APP.school;
+    if (!S) return SWATCHES_EXTENDED[0];
+    const used = new Set();
+    const kinds = Array.isArray(entityKind) ? entityKind : [entityKind];
+    for (const k of kinds) {
+      const list = S[k] || [];
+      for (const e of list) { if (e.color) used.add(e.color.toUpperCase()); }
+    }
+    for (const c of SWATCHES_EXTENDED) {
+      if (!used.has(c.toUpperCase())) return c;
+    }
+    // All used — generate a random hue
+    const h = Math.floor(Math.random() * 360);
+    return `hsl(${h}, 65%, 55%)`;
+  }
+
   let host=null, sheet=null, subSheet=null, cfg=null;
   let selectedId=null, sortKey=null, sortDir=1;
   let filterText="", filterTimer=null, lastFocused=null;
@@ -1719,11 +1747,11 @@ window.Inspector = (function () {
   global.EntityDialog = {
     open, close, refresh, openSheet, closeSheet,
     openSubSheet, closeSubSheet,
-    SWATCHES, el, esc, uid,
+    SWATCHES, SWATCHES_EXTENDED, el, esc, uid,
     buildField, buildSwatchPicker, buildEditSheet,
     buildTimeOffMini, openTimeOffSheet,
     buildSetForMoreLink, openPickEntitiesPopover, openBatchEditSheet,
-    openCopyChooser,
+    openCopyChooser, autoPickColor,
   };
 })(window);
 
@@ -2829,10 +2857,39 @@ window.Inspector = (function () {
       : { name:r.name, short:r.short, color:r.color,
           contractWeight:r.contractWeight, pictureUrl:r.pictureUrl };
 
+    // Track whether the user has manually edited the abbreviation
+    let abbrManuallySet = !isNew && !!draft.short;
+
+    /** Generate abbreviation from subject name */
+    function autoAbbr(name) {
+      const words = name.trim().split(/\s+/).filter(Boolean);
+      if (!words.length) return "";
+      // Single word: use full word (capped at 6 chars) with first letter uppercase
+      if (words.length === 1) {
+        const w = words[0];
+        return w.length <= 6 ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : w.substring(0, 5).toUpperCase();
+      }
+      // Multi-word: first letter of each word, uppercase
+      return words.map(w => w.charAt(0).toUpperCase()).join("");
+    }
+
     const fName = D.el("input", { type:"text", value:draft.name, required:"required",
-      maxlength:"60", oninput:(e)=>draft.name = e.target.value });
+      maxlength:"60", oninput:(e) => {
+        draft.name = e.target.value;
+        // Auto-fill abbreviation only if user hasn't manually changed it
+        if (!abbrManuallySet) {
+          const auto = autoAbbr(draft.name);
+          draft.short = auto;
+          fShort.value = auto;
+        }
+      }});
     const fShort = D.el("input", { type:"text", value:draft.short, maxlength:"10",
-      oninput:(e)=>draft.short = e.target.value });
+      oninput:(e) => {
+        draft.short = e.target.value;
+        abbrManuallySet = true;
+        // If user clears the field, go back to auto mode
+        if (!e.target.value.trim()) abbrManuallySet = false;
+      }});
     const fColor = D.buildSwatchPicker(draft.color, v => draft.color = v);
     const fWeight = D.el("input", { type:"number", min:"0", max:"5", step:"0.1",
       value:draft.contractWeight,
@@ -2842,6 +2899,10 @@ window.Inspector = (function () {
 
     function save() {
       if (!draft.name.trim()) { fName.focus(); return false; }
+      // Auto-assign abbreviation if empty
+      if (!draft.short.trim()) draft.short = autoAbbr(draft.name);
+      // Auto-assign unique color if none selected
+      if (!draft.color) draft.color = D.autoPickColor("subjects");
       const all = window.APP.school.subjects;
       if (!isNew) {
         const subj = r._ref;
@@ -3375,19 +3436,125 @@ window.Inspector = (function () {
   function openEdit(r) {
     const isNew = !r;
     const draft = isNew
-      ? { name:"", short:"", color:"", teacherId:"", classroomIds:[], bellId:"", bell:"" }
+      ? { name:"", short:"", color:"", teacherIds:[], classroomIds:[], bellId:"", bell:"" }
       : { name:r.name, short:r.short, color:r.color,
-          teacherId: r._ref.teacherId || r._ref._teacherId || "",
+          teacherIds: (r._ref.teacherIds || (r._ref.teacherId ? [r._ref.teacherId] : r._ref._teacherId ? [r._ref._teacherId] : [])).slice(),
           classroomIds: (r._ref.classroomIds || r._ref._classroomIds || []).slice(),
           bellId: r._ref.bellId || "",
           bell: r._ref.bell || "" };
 
+    let abbrManuallySet = !isNew && !!draft.short;
+
+    /** Generate short name from class name */
+    function autoShort(name) {
+      const n = name.trim();
+      if (!n) return "";
+      // Already short (≤4 chars): use as-is
+      if (n.length <= 4) return n;
+      // Remove common words and abbreviate
+      const words = n.split(/\s+/).filter(Boolean);
+      if (words.length === 1) return n.substring(0, 4);
+      // Multi-word: first letters + numbers
+      return words.map(w => {
+        if (/^\d+$/.test(w)) return w;   // keep numbers intact
+        return w.charAt(0).toUpperCase();
+      }).join("");
+    }
+
     const fName = D.el("input", { type:"text", value:draft.name, required:"required",
-      maxlength:"30", oninput:(e)=>draft.name = e.target.value });
+      maxlength:"30", oninput:(e) => {
+        draft.name = e.target.value;
+        if (!abbrManuallySet) {
+          const auto = autoShort(draft.name);
+          draft.short = auto;
+          fShort.value = auto;
+        }
+      }});
     const fShort = D.el("input", { type:"text", value:draft.short, maxlength:"10",
-      oninput:(e)=>draft.short = e.target.value });
-    const fTeacher = makeSelect(window.APP.school?.teachers, draft.teacherId,
-      t => t.name + (t.abbr ? ` (${t.abbr})` : ""), v => draft.teacherId = v);
+      oninput:(e) => {
+        draft.short = e.target.value;
+        abbrManuallySet = true;
+        if (!e.target.value.trim()) abbrManuallySet = false;
+      }});
+
+    // ─── Class teacher: multi-select tick/untick ───
+    const teacherSet = new Set(draft.teacherIds);
+    const fTeacherWrap = D.el("div", {
+      style: "max-height:140px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:6px;background:#fff;padding:4px 0"
+    });
+    function renderTeacherList() {
+      fTeacherWrap.innerHTML = "";
+      const teachers = (window.APP.school?.teachers) || [];
+      if (!teachers.length) {
+        fTeacherWrap.appendChild(D.el("div", { style: "padding:6px 10px;color:#8e8e93;font-size:12px" }, "No teachers defined"));
+        return;
+      }
+      for (const t of teachers) {
+        const isSelected = teacherSet.has(t.id);
+        const row = D.el("label", {
+          style: `display:flex;align-items:center;gap:8px;padding:4px 10px;cursor:pointer;font-size:13px;transition:background .1s;${isSelected ? "background:#ecfdf5" : ""}`
+        });
+        row.onmouseenter = () => { if (!teacherSet.has(t.id)) row.style.background = "#f5f5f4"; };
+        row.onmouseleave = () => { row.style.background = teacherSet.has(t.id) ? "#ecfdf5" : ""; };
+        const cb = D.el("input", { type: "checkbox", style: "accent-color:#16a34a" });
+        cb.checked = isSelected;
+        cb.addEventListener("change", () => {
+          if (cb.checked) teacherSet.add(t.id); else teacherSet.delete(t.id);
+          draft.teacherIds = Array.from(teacherSet);
+          renderTeacherList();
+        });
+        const label = D.el("span", null, t.name + (t.abbr ? ` (${t.abbr})` : ""));
+        const tick = D.el("span", {
+          style: `color:#16a34a;font-size:14px;${isSelected ? "" : "visibility:hidden"}`
+        }, "✓");
+        row.appendChild(cb);
+        row.appendChild(label);
+        row.appendChild(D.el("span", { style: "flex:1" }));
+        row.appendChild(tick);
+        fTeacherWrap.appendChild(row);
+      }
+    }
+    renderTeacherList();
+
+    // ─── Home classrooms: multi-select tick/untick ───
+    const roomSet = new Set(draft.classroomIds);
+    const fRoomWrap = D.el("div", {
+      style: "max-height:140px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:6px;background:#fff;padding:4px 0"
+    });
+    function renderRoomList() {
+      fRoomWrap.innerHTML = "";
+      const rooms = (window.APP.school?.classrooms) || [];
+      if (!rooms.length) {
+        fRoomWrap.appendChild(D.el("div", { style: "padding:6px 10px;color:#8e8e93;font-size:12px" }, "No classrooms defined"));
+        return;
+      }
+      for (const rm of rooms) {
+        const isSelected = roomSet.has(rm.id);
+        const row = D.el("label", {
+          style: `display:flex;align-items:center;gap:8px;padding:4px 10px;cursor:pointer;font-size:13px;transition:background .1s;${isSelected ? "background:#ecfdf5" : ""}`
+        });
+        row.onmouseenter = () => { if (!roomSet.has(rm.id)) row.style.background = "#f5f5f4"; };
+        row.onmouseleave = () => { row.style.background = roomSet.has(rm.id) ? "#ecfdf5" : ""; };
+        const cb = D.el("input", { type: "checkbox", style: "accent-color:#16a34a" });
+        cb.checked = isSelected;
+        cb.addEventListener("change", () => {
+          if (cb.checked) roomSet.add(rm.id); else roomSet.delete(rm.id);
+          draft.classroomIds = Array.from(roomSet);
+          renderRoomList();
+        });
+        const label = D.el("span", null, rm.name + (rm.abbr ? ` (${rm.abbr})` : ""));
+        const tick = D.el("span", {
+          style: `color:#16a34a;font-size:14px;${isSelected ? "" : "visibility:hidden"}`
+        }, "✓");
+        row.appendChild(cb);
+        row.appendChild(label);
+        row.appendChild(D.el("span", { style: "flex:1" }));
+        row.appendChild(tick);
+        fRoomWrap.appendChild(row);
+      }
+    }
+    renderRoomList();
+
     // Per-class bell schedule (Top-30 #3). Empty = use school default.
     const fBell = D.el("select", null,
       D.el("option", { value: "" }, "(school default)"));
@@ -3400,18 +3567,14 @@ window.Inspector = (function () {
     fBell.addEventListener("change", e => draft.bellId = e.target.value);
     const fColor = D.buildSwatchPicker(draft.color, v => draft.color = v);
 
-    const fRooms = D.el("select", { multiple:"multiple", size:"4" });
-    ((window.APP.school?.classrooms) || []).forEach(rm => {
-      const opt = D.el("option", { value:rm.id }, rm.name);
-      if (draft.classroomIds.includes(rm.id)) opt.selected = true;
-      fRooms.appendChild(opt);
-    });
-    fRooms.addEventListener("change", () => {
-      draft.classroomIds = Array.from(fRooms.selectedOptions).map(o => o.value);
-    });
-
     function save() {
       if (!draft.name.trim()) { fName.focus(); return false; }
+      // Auto-assign short name if empty
+      if (!draft.short.trim()) draft.short = autoShort(draft.name);
+      // Auto-assign unique color if none selected
+      if (!draft.color) draft.color = D.autoPickColor("classes");
+      draft.classroomIds = Array.from(roomSet);
+      draft.teacherIds = Array.from(teacherSet);
       const all = window.APP.school.classes;
       if (!isNew) {
         const c = r._ref;
@@ -3419,7 +3582,8 @@ window.Inspector = (function () {
         c.name = draft.name.trim();
         c.abbr = draft.short.trim() || undefined;
         c.color = draft.color || undefined;
-        c.teacherId = draft.teacherId || undefined;
+        c.teacherId = draft.teacherIds[0] || undefined;
+        c.teacherIds = draft.teacherIds.length ? draft.teacherIds.slice() : undefined;
         c.classroomIds = draft.classroomIds.slice();
         c.bellId = draft.bellId || undefined;
         c.bell = draft.bell || undefined;
@@ -3427,7 +3591,8 @@ window.Inspector = (function () {
       } else {
         const nc = { id:D.uid("c"), name:draft.name.trim(),
           abbr:draft.short.trim() || undefined, color:draft.color || undefined,
-          teacherId:draft.teacherId || undefined,
+          teacherId:draft.teacherIds[0] || undefined,
+          teacherIds: draft.teacherIds.length ? draft.teacherIds.slice() : undefined,
           classroomIds:draft.classroomIds.slice(),
           bellId: draft.bellId || undefined,
           bell:draft.bell || undefined };
@@ -3445,8 +3610,8 @@ window.Inspector = (function () {
       fields:[
         { label:"Name", control:fName },
         { label:"Short", control:fShort },
-        { label:"Class teacher", control:fTeacher },
-        { label:"Home classrooms", control:fRooms },
+        { label:"Class teacher (optional)", control:fTeacherWrap },
+        { label:"Home classrooms (optional)", control:fRoomWrap },
         { label:"Bell schedule", control:fBell },
         { label:"Color", control:fColor },
       ],
@@ -4080,12 +4245,38 @@ window.Inspector = (function () {
           classroomIds: Array.isArray(r._ref.classroomIds) ? r._ref.classroomIds.slice() : [],
           printColor: r._ref.printColor || "" };
 
+    let abbrManuallySet = !isNew && !!draft.abbr;
+
+    /** Generate abbreviation: first letter of first name + first letter of last name */
+    function autoAbbr(first, last) {
+      const f = (first || "").trim();
+      const l = (last || "").trim();
+      if (!f && !l) return "";
+      const initF = f ? f.charAt(0).toUpperCase() : "";
+      const initL = l ? l.charAt(0).toUpperCase() : "";
+      // If only last name: use first 2 chars
+      if (!initF && initL) return l.substring(0, Math.min(2, l.length)).toUpperCase();
+      return initF + initL;
+    }
+
+    function updateAutoAbbr() {
+      if (!abbrManuallySet) {
+        const auto = autoAbbr(draft.firstName, draft.lastName);
+        draft.abbr = auto;
+        fAbbr.value = auto;
+      }
+    }
+
     const fFirst = D.el("input", { type:"text", value:draft.firstName, maxlength:"40",
-      oninput:(e)=>draft.firstName = e.target.value });
+      oninput:(e) => { draft.firstName = e.target.value; updateAutoAbbr(); } });
     const fLast = D.el("input", { type:"text", value:draft.lastName, required:"required",
-      maxlength:"40", oninput:(e)=>draft.lastName = e.target.value });
+      maxlength:"40", oninput:(e) => { draft.lastName = e.target.value; updateAutoAbbr(); } });
     const fAbbr = D.el("input", { type:"text", value:draft.abbr, maxlength:"10",
-      oninput:(e)=>draft.abbr = e.target.value });
+      oninput:(e) => {
+        draft.abbr = e.target.value;
+        abbrManuallySet = true;
+        if (!e.target.value.trim()) abbrManuallySet = false;
+      }});
     const fColor = D.buildSwatchPicker(draft.color, v => draft.color = v);
     const fGaps = D.el("input", { type:"number", min:"0", value:draft.maxGapsPerDay,
       oninput:(e)=>draft.maxGapsPerDay = e.target.value });
@@ -4118,6 +4309,10 @@ window.Inspector = (function () {
 
     function save() {
       if (!draft.lastName.trim()) { fLast.focus(); return false; }
+      // Auto-assign abbreviation if empty
+      if (!draft.abbr.trim()) draft.abbr = autoAbbr(draft.firstName, draft.lastName);
+      // Auto-assign unique color if none selected
+      if (!draft.color) draft.color = D.autoPickColor("teachers");
       const all = window.APP.school.teachers;
       const fullName = `${draft.firstName.trim()} ${draft.lastName.trim()}`.trim();
       if (!isNew) {

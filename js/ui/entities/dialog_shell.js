@@ -10,6 +10,34 @@
   const SWATCHES = ["#007AFF","#34C759","#FF3B30","#FF9F0A","#FFCC00",
     "#AF52DE","#FF2D55","#5AC8FA","#A2845E","#8E8E93"];
 
+  // Extended palette for auto-assign — 30 distinguishable colors
+  const SWATCHES_EXTENDED = [
+    "#007AFF","#34C759","#FF3B30","#FF9F0A","#FFCC00",
+    "#AF52DE","#FF2D55","#5AC8FA","#A2845E","#8E8E93",
+    "#30B0C7","#FF6482","#64D2FF","#BF5AF2","#FFD60A",
+    "#AC8E68","#32D74B","#FF453A","#0A84FF","#5E5CE6",
+    "#EB4D3D","#1AAD19","#10AEFF","#F76260","#576B95",
+    "#E95B54","#8B572A","#7B68EE","#20B2AA","#FF7F50",
+  ];
+
+  /** Pick a color not yet used by any entity of the given kind(s). */
+  function autoPickColor(entityKind) {
+    const S = window.APP && window.APP.school;
+    if (!S) return SWATCHES_EXTENDED[0];
+    const used = new Set();
+    const kinds = Array.isArray(entityKind) ? entityKind : [entityKind];
+    for (const k of kinds) {
+      const list = S[k] || [];
+      for (const e of list) { if (e.color) used.add(e.color.toUpperCase()); }
+    }
+    for (const c of SWATCHES_EXTENDED) {
+      if (!used.has(c.toUpperCase())) return c;
+    }
+    // All used — generate a random hue
+    const h = Math.floor(Math.random() * 360);
+    return `hsl(${h}, 65%, 55%)`;
+  }
+
   let host=null, sheet=null, subSheet=null, cfg=null;
   let selectedId=null, sortKey=null, sortDir=1;
   let filterText="", filterTimer=null, lastFocused=null;
@@ -676,10 +704,10 @@
   global.EntityDialog = {
     open, close, refresh, openSheet, closeSheet,
     openSubSheet, closeSubSheet,
-    SWATCHES, el, esc, uid,
+    SWATCHES, SWATCHES_EXTENDED, el, esc, uid,
     buildField, buildSwatchPicker, buildEditSheet,
     buildTimeOffMini, openTimeOffSheet,
     buildSetForMoreLink, openPickEntitiesPopover, openBatchEditSheet,
-    openCopyChooser,
+    openCopyChooser, autoPickColor,
   };
 })(window);

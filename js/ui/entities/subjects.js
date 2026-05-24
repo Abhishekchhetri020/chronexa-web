@@ -64,10 +64,39 @@
       : { name:r.name, short:r.short, color:r.color,
           contractWeight:r.contractWeight, pictureUrl:r.pictureUrl };
 
+    // Track whether the user has manually edited the abbreviation
+    let abbrManuallySet = !isNew && !!draft.short;
+
+    /** Generate abbreviation from subject name */
+    function autoAbbr(name) {
+      const words = name.trim().split(/\s+/).filter(Boolean);
+      if (!words.length) return "";
+      // Single word: use full word (capped at 6 chars) with first letter uppercase
+      if (words.length === 1) {
+        const w = words[0];
+        return w.length <= 6 ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : w.substring(0, 5).toUpperCase();
+      }
+      // Multi-word: first letter of each word, uppercase
+      return words.map(w => w.charAt(0).toUpperCase()).join("");
+    }
+
     const fName = D.el("input", { type:"text", value:draft.name, required:"required",
-      maxlength:"60", oninput:(e)=>draft.name = e.target.value });
+      maxlength:"60", oninput:(e) => {
+        draft.name = e.target.value;
+        // Auto-fill abbreviation only if user hasn't manually changed it
+        if (!abbrManuallySet) {
+          const auto = autoAbbr(draft.name);
+          draft.short = auto;
+          fShort.value = auto;
+        }
+      }});
     const fShort = D.el("input", { type:"text", value:draft.short, maxlength:"10",
-      oninput:(e)=>draft.short = e.target.value });
+      oninput:(e) => {
+        draft.short = e.target.value;
+        abbrManuallySet = true;
+        // If user clears the field, go back to auto mode
+        if (!e.target.value.trim()) abbrManuallySet = false;
+      }});
     const fColor = D.buildSwatchPicker(draft.color, v => draft.color = v);
     const fWeight = D.el("input", { type:"number", min:"0", max:"5", step:"0.1",
       value:draft.contractWeight,
@@ -77,6 +106,10 @@
 
     function save() {
       if (!draft.name.trim()) { fName.focus(); return false; }
+      // Auto-assign abbreviation if empty
+      if (!draft.short.trim()) draft.short = autoAbbr(draft.name);
+      // Auto-assign unique color if none selected
+      if (!draft.color) draft.color = D.autoPickColor("subjects");
       const all = window.APP.school.subjects;
       if (!isNew) {
         const subj = r._ref;
