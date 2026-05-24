@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-24T21:43:05Z
+/* Chronexa bundle — generated 2026-05-24T22:03:26Z
  *      162 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -4613,7 +4613,11 @@ window.Inspector = (function () {
       classes: names(idxC, l.classIds),
       teachers: names(idxT, l.teacherIds),
       count: l.periodsPerWeek || 0,
-      duration: l.isLabDouble ? "Double" : "Single",
+      duration: (() => {
+        const len = l.lessonLength || (l.isLabDouble ? 2 : 1);
+        if (len <= 3) return ["Single", "Double", "Triple"][len - 1];
+        return String(len);
+      })(),
       classroom: classroomDisplay(l, idxR),
       term: l.termsDefId
         ? (termById[l.termsDefId]?.name || l.termsDefId)
@@ -4709,13 +4713,21 @@ window.Inspector = (function () {
     const defWk   = window.EntityWeeks && window.EntityWeeks.defaultId && window.EntityWeeks.defaultId() || "";
     const defTerm = window.EntityTerms && window.EntityTerms.defaultId && window.EntityTerms.defaultId() || "";
 
+    // ── Backward compat: read lessonLength from existing isLabDouble ──
+    function readLessonLength(ref) {
+      if (ref.lessonLength != null) return ref.lessonLength;
+      return ref.isLabDouble ? 2 : 1;
+    }
+
     const draft = isNew
       ? { subjectId:"", classIds:[], teacherIds:[], periodsPerWeek:1,
+          lessonLength:1,
           isLabDouble:false, preferredRoomId:"",
           classroomIdsByCard:null,         // null = use single preferredRoomId
           classroomIdsExpansion:null,      // null|"home"|"shared"|"teacher"|"subject"
           wildcardTeacher:false,           // CLASSIC '??' — solver picks any teacher
           wildcardRoom:false,              // CLASSIC '??' — solver picks any room
+          classGroupMap:{},               // { classId: groupId | null }
           daysDefId: defDay,
           weeksDefId: defWk,
           termsDefId: defTerm,
@@ -4725,6 +4737,7 @@ window.Inspector = (function () {
       : { subjectId:r._ref.subjectId, classIds:r._ref.classIds.slice(),
           teacherIds:r._ref.teacherIds.slice(),
           periodsPerWeek:r._ref.periodsPerWeek || 1,
+          lessonLength: readLessonLength(r._ref),
           isLabDouble: !!r._ref.isLabDouble,
           preferredRoomId: r._ref.preferredRoomId || "",
           classroomIdsByCard: Array.isArray(r._ref.classroomIdsByCard)
@@ -4733,6 +4746,7 @@ window.Inspector = (function () {
           classroomIdsExpansion: r._ref.classroomIdsExpansion || null,
           wildcardTeacher: !!r._ref.wildcardTeacher,
           wildcardRoom: !!r._ref.wildcardRoom,
+          classGroupMap: r._ref.classGroupMap ? { ...r._ref.classGroupMap } : {},
           daysDefId: r._ref.daysDefId || defDay,
           weeksDefId: r._ref.weeksDefId || defWk,
           termsDefId: r._ref.termsDefId || defTerm,
@@ -4741,23 +4755,378 @@ window.Inspector = (function () {
           fixedDay: r._ref.fixedDay != null ? r._ref.fixedDay : "",
           fixedPeriod: r._ref.fixedPeriod != null ? r._ref.fixedPeriod : "" };
 
+    // ── Helpers ──────────────────────────────────────────────────────────────
+    /** Count how many lessons a teacher is assigned to */
+    function teacherLessonCount(tid) {
+      return (s.lessons || []).filter(l => (l.teacherIds || []).includes(tid)).length;
+    }
+
+    // ── Subject dropdown ────────────────────────────────────────────────────
     const fSubj = makeSelect(s.subjects, draft.subjectId,
       x => x.name + (x.abbr ? ` (${x.abbr})` : ""),
-      v => { draft.subjectId = v; refreshRoomBlock(); }, true);
-    const fClasses = makeMulti(s.classes, draft.classIds,
-      x => x.name, v => { draft.classIds = v; refreshRoomBlock(); }, 5);
-    const fTeach = makeMulti(s.teachers, draft.teacherIds,
-      x => x.name + (x.abbr ? ` (${x.abbr})` : ""),
-      v => { draft.teacherIds = v; refreshRoomBlock(); }, 5);
+      v => { draft.subjectId = v; refreshRoomBlock(); refreshCardPreview(); }, true);
 
+    // ══════════════════════════════════════════════════════════════════════════
+    // ── 1. Teacher Selector: tick/untick with color dot + lesson count ─────
+    // ══════════════════════════════════════════════════════════════════════════
+    const teacherSet = new Set(draft.teacherIds);
+    const fTeachWrap = D.el("div", {
+      style: "display:flex;flex-direction:column;gap:6px"
+    });
+    const fTeachList = D.el("div", {
+      style: "max-height:150px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:6px;background:#fff;padding:4px 0"
+    });
+    function renderTeacherList() {
+      fTeachList.innerHTML = "";
+      const teachers = s.teachers || [];
+      if (!teachers.length) {
+        fTeachList.appendChild(D.el("div", { style: "padding:6px 10px;color:#8e8e93;font-size:12px" }, "No teachers defined"));
+        return;
+      }
+      for (const t of teachers) {
+        const isSel = teacherSet.has(t.id);
+        const count = teacherLessonCount(t.id);
+        const row = D.el("label", {
+          style: `display:flex;align-items:center;gap:8px;padding:5px 10px;cursor:pointer;font-size:13px;transition:background .1s;${isSel ? "background:#ecfdf5" : ""}`
+        });
+        row.onmouseenter = () => { if (!teacherSet.has(t.id)) row.style.background = "#f5f5f4"; };
+        row.onmouseleave = () => { row.style.background = teacherSet.has(t.id) ? "#ecfdf5" : ""; };
+        const cb = D.el("input", { type: "checkbox", style: "accent-color:#16a34a" });
+        cb.checked = isSel;
+        cb.addEventListener("change", () => {
+          if (cb.checked) teacherSet.add(t.id); else teacherSet.delete(t.id);
+          draft.teacherIds = Array.from(teacherSet);
+          refreshRoomBlock();
+          renderTeacherList();
+        });
+        // Color dot
+        const dot = D.el("span", {
+          style: `display:inline-block;width:12px;height:12px;border-radius:50%;background:${t.color || "#94a3b8"};flex-shrink:0`
+        });
+        // Name + abbr
+        const name = D.el("span", null, t.name + (t.abbr ? ` (${t.abbr})` : ""));
+        // Lesson count badge
+        const badge = D.el("span", {
+          style: "font-size:11px;color:#6b7280;min-width:20px;text-align:right"
+        }, String(count));
+        // Green tick
+        const tick = D.el("span", {
+          style: `color:#16a34a;font-size:14px;margin-left:2px;${isSel ? "" : "visibility:hidden"}`
+        }, "✓");
+        row.appendChild(cb);
+        row.appendChild(dot);
+        row.appendChild(name);
+        row.appendChild(D.el("span", { style: "flex:1" }));
+        row.appendChild(badge);
+        row.appendChild(tick);
+        fTeachList.appendChild(row);
+      }
+    }
+    renderTeacherList();
+
+    // "More teachers" button → transfer-list sub-dialog
+    const btnMoreTeachers = D.el("button", {
+      type: "button",
+      style: "align-self:flex-start;padding:4px 12px;font-size:12px;border:1px solid #cbd5e1;border-radius:5px;background:#fff;cursor:pointer;color:#374151",
+      onclick: () => openMoreTeachersDialog()
+    }, "More teachers");
+
+    fTeachWrap.appendChild(fTeachList);
+    fTeachWrap.appendChild(btnMoreTeachers);
+
+    function openMoreTeachersDialog() {
+      const tempSet = new Set(teacherSet);
+      const body = D.el("div", { style: "display:flex;gap:16px;min-width:560px" });
+
+      // Left pane: all teachers
+      const leftTitle = D.el("div", { style: "font-size:12px;font-weight:600;margin-bottom:6px;color:#6b7280" }, "Available teachers");
+      const leftList = D.el("div", { style: "flex:1;max-height:320px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:6px;background:#fff;padding:4px 0" });
+      // Right pane: selected
+      const rightTitle = D.el("div", { style: "font-size:12px;font-weight:600;margin-bottom:6px;color:#6b7280" }, "Selected teachers");
+      const rightList = D.el("div", { style: "flex:1;max-height:320px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:6px;background:#fff;padding:4px 0" });
+
+      function renderTransfer() {
+        leftList.innerHTML = "";
+        rightList.innerHTML = "";
+        for (const t of (s.teachers || [])) {
+          const isSel = tempSet.has(t.id);
+          const leftRow = D.el("div", {
+            style: `display:flex;align-items:center;gap:8px;padding:4px 10px;cursor:pointer;font-size:13px;${isSel ? "background:#ecfdf5" : ""}`,
+            onclick: () => { if (isSel) tempSet.delete(t.id); else tempSet.add(t.id); renderTransfer(); }
+          });
+          const dot = D.el("span", { style: `display:inline-block;width:10px;height:10px;border-radius:50%;background:${t.color || "#94a3b8"}` });
+          const tick = D.el("span", { style: `color:#16a34a;font-size:13px;width:16px;${isSel ? "" : "visibility:hidden"}` }, "✓");
+          leftRow.appendChild(tick);
+          leftRow.appendChild(dot);
+          leftRow.appendChild(D.el("span", null, (t.abbr || "") + "  "));
+          leftRow.appendChild(D.el("span", null, t.name));
+          leftList.appendChild(leftRow);
+
+          if (isSel) {
+            const rightRow = D.el("div", {
+              style: "display:flex;align-items:center;gap:8px;padding:4px 10px;cursor:pointer;font-size:13px;background:#ecfdf5",
+              onclick: () => { tempSet.delete(t.id); renderTransfer(); }
+            });
+            const dot2 = D.el("span", { style: `display:inline-block;width:10px;height:10px;border-radius:50%;background:${t.color || "#94a3b8"}` });
+            rightRow.appendChild(dot2);
+            rightRow.appendChild(D.el("span", null, t.name));
+            rightList.appendChild(rightRow);
+          }
+        }
+        if (!tempSet.size) {
+          rightList.appendChild(D.el("div", { style: "padding:10px;color:#8e8e93;font-size:12px" }, "Click a teacher to select"));
+        }
+      }
+      renderTransfer();
+
+      const leftCol = D.el("div", { style: "flex:1;display:flex;flex-direction:column" });
+      leftCol.appendChild(leftTitle);
+      leftCol.appendChild(leftList);
+      // Select all / Clear
+      const selActions = D.el("div", { style: "display:flex;gap:8px;margin-top:6px" });
+      selActions.appendChild(D.el("button", {
+        type: "button",
+        style: "font-size:11px;padding:3px 8px;border:1px solid #d1d5db;border-radius:4px;background:#fff;cursor:pointer",
+        onclick: () => { (s.teachers || []).forEach(t => tempSet.add(t.id)); renderTransfer(); }
+      }, "Select all"));
+      selActions.appendChild(D.el("button", {
+        type: "button",
+        style: "font-size:11px;padding:3px 8px;border:1px solid #d1d5db;border-radius:4px;background:#fff;cursor:pointer",
+        onclick: () => { tempSet.clear(); renderTransfer(); }
+      }, "Clear selection"));
+      leftCol.appendChild(selActions);
+
+      const rightCol = D.el("div", { style: "flex:1;display:flex;flex-direction:column" });
+      rightCol.appendChild(rightTitle);
+      rightCol.appendChild(rightList);
+
+      body.appendChild(leftCol);
+      body.appendChild(rightCol);
+
+      // OK / Cancel
+      const btns = D.el("div", { style: "display:flex;gap:8px;justify-content:flex-end;margin-top:12px" });
+      btns.appendChild(D.el("button", {
+        type: "button",
+        style: "padding:6px 16px;border:1px solid #d1d5db;border-radius:5px;background:#fff;cursor:pointer",
+        onclick: () => D.closeSubSheet()
+      }, "Cancel"));
+      btns.appendChild(D.el("button", {
+        type: "button",
+        style: "padding:6px 16px;border:none;border-radius:5px;background:#16a34a;color:#fff;cursor:pointer;font-weight:600",
+        onclick: () => {
+          // Apply selection
+          teacherSet.clear();
+          tempSet.forEach(id => teacherSet.add(id));
+          draft.teacherIds = Array.from(teacherSet);
+          renderTeacherList();
+          refreshRoomBlock();
+          D.closeSubSheet();
+        }
+      }, "OK"));
+      const wrap = D.el("div", null, body, btns);
+      D.openSubSheet(wrap, { title: "Teachers" });
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // ── 2. Class Selector: tick/untick with division picker ────────────────
+    // ══════════════════════════════════════════════════════════════════════════
+    const classSet = new Set(draft.classIds);
+    const fClassWrap = D.el("div", {
+      style: "display:flex;flex-direction:column;gap:6px"
+    });
+    const fClassList = D.el("div", {
+      style: "max-height:150px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:6px;background:#fff;padding:4px 0"
+    });
+
+    function getDivisionsForClass(classId) {
+      const cls = (s.classes || []).find(c => c.id === classId);
+      if (!cls || !Array.isArray(cls.divisions) || !cls.divisions.length) return [];
+      // Flatten all groups from all division sets
+      const groups = [];
+      for (const div of cls.divisions) {
+        if (Array.isArray(div.groups)) {
+          for (const g of div.groups) {
+            groups.push({ id: g.id, name: g.name || div.name + " " + (g.name || "") });
+          }
+        }
+      }
+      return groups;
+    }
+
+    function renderClassList() {
+      fClassList.innerHTML = "";
+      const classes = s.classes || [];
+      if (!classes.length) {
+        fClassList.appendChild(D.el("div", { style: "padding:6px 10px;color:#8e8e93;font-size:12px" }, "No classes defined"));
+        return;
+      }
+      for (const c of classes) {
+        const isSel = classSet.has(c.id);
+        const row = D.el("div", {
+          style: `display:flex;align-items:center;gap:8px;padding:5px 10px;font-size:13px;transition:background .1s;${isSel ? "background:#ecfdf5" : ""}`
+        });
+        row.onmouseenter = () => { if (!classSet.has(c.id)) row.style.background = "#f5f5f4"; };
+        row.onmouseleave = () => { row.style.background = classSet.has(c.id) ? "#ecfdf5" : ""; };
+
+        const cb = D.el("input", { type: "checkbox", style: "accent-color:#16a34a;cursor:pointer" });
+        cb.checked = isSel;
+        cb.addEventListener("change", () => {
+          if (cb.checked) classSet.add(c.id); else { classSet.delete(c.id); delete draft.classGroupMap[c.id]; }
+          draft.classIds = Array.from(classSet);
+          refreshRoomBlock();
+          renderClassList();
+          refreshCardPreview();
+        });
+
+        const nameEl = D.el("span", { style: "cursor:pointer", onclick: () => { cb.checked = !cb.checked; cb.dispatchEvent(new Event("change")); } },
+          c.name + (c.short ? ` (${c.short})` : ""));
+
+        const tick = D.el("span", {
+          style: `color:#16a34a;font-size:14px;${isSel ? "" : "visibility:hidden"}`
+        }, "✓");
+
+        row.appendChild(cb);
+        row.appendChild(nameEl);
+        row.appendChild(D.el("span", { style: "flex:1" }));
+
+        // Division picker (only if class is selected and has divisions)
+        if (isSel) {
+          const divGroups = getDivisionsForClass(c.id);
+          if (divGroups.length) {
+            const divSel = D.el("select", {
+              style: "font-size:12px;padding:2px 6px;border:1px solid #d1d5db;border-radius:4px;max-width:120px",
+              onchange: (e) => {
+                draft.classGroupMap[c.id] = e.target.value || null;
+              }
+            });
+            divSel.appendChild(D.el("option", { value: "" }, "Entire class"));
+            for (const g of divGroups) {
+              const opt = D.el("option", { value: g.id }, g.name);
+              if (draft.classGroupMap[c.id] === g.id) opt.selected = true;
+              divSel.appendChild(opt);
+            }
+            row.appendChild(divSel);
+          }
+        }
+
+        row.appendChild(tick);
+        fClassList.appendChild(row);
+      }
+    }
+    renderClassList();
+
+    // "Joined classes" button → sub-dialog
+    const btnJoinedClasses = D.el("button", {
+      type: "button",
+      style: "align-self:flex-start;padding:4px 12px;font-size:12px;border:1px solid #cbd5e1;border-radius:5px;background:#fff;cursor:pointer;color:#374151",
+      onclick: () => openJoinedClassesDialog()
+    }, "Joined classes");
+
+    fClassWrap.appendChild(fClassList);
+    fClassWrap.appendChild(btnJoinedClasses);
+
+    function openJoinedClassesDialog() {
+      const slots = [];
+      // Pre-fill from current selection
+      for (const cid of draft.classIds) {
+        slots.push({ classId: cid, groupId: draft.classGroupMap[cid] || null });
+      }
+      // Ensure at least 5 slots
+      while (slots.length < 5) slots.push({ classId: "", groupId: null });
+
+      const body = D.el("div", { style: "min-width:400px" });
+
+      function renderSlots() {
+        body.innerHTML = "";
+        for (let i = 0; i < slots.length; i++) {
+          const slot = slots[i];
+          const row = D.el("div", { style: "display:flex;align-items:center;gap:8px;margin-bottom:6px" });
+          row.appendChild(D.el("span", { style: "font-size:12px;color:#6b7280;width:45px" }, `Class:`));
+
+          // Class dropdown
+          const classSel = D.el("select", {
+            style: "flex:1;font-size:13px;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px"
+          });
+          classSel.appendChild(D.el("option", { value: "" }, "—"));
+          for (const c of (s.classes || [])) {
+            const opt = D.el("option", { value: c.id }, c.name + (c.short ? ` (${c.short})` : ""));
+            if (c.id === slot.classId) opt.selected = true;
+            classSel.appendChild(opt);
+          }
+          classSel.addEventListener("change", (e) => {
+            slot.classId = e.target.value;
+            slot.groupId = null;
+            renderSlots();
+          });
+          row.appendChild(classSel);
+
+          // Division dropdown (if class has divisions)
+          if (slot.classId) {
+            const divGroups = getDivisionsForClass(slot.classId);
+            if (divGroups.length) {
+              const divSel = D.el("select", {
+                style: "font-size:12px;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;max-width:120px"
+              });
+              divSel.appendChild(D.el("option", { value: "" }, "Entire class"));
+              for (const g of divGroups) {
+                const opt = D.el("option", { value: g.id }, g.name);
+                if (slot.groupId === g.id) opt.selected = true;
+                divSel.appendChild(opt);
+              }
+              divSel.addEventListener("change", (e) => { slot.groupId = e.target.value || null; });
+              row.appendChild(divSel);
+            }
+          }
+          body.appendChild(row);
+        }
+        // "more..." link
+        const more = D.el("a", {
+          href: "#", style: "font-size:12px;color:#2563eb;cursor:pointer",
+          onclick: (e) => { e.preventDefault(); slots.push({ classId: "", groupId: null }); renderSlots(); }
+        }, "more...");
+        body.appendChild(more);
+      }
+      renderSlots();
+
+      // OK / Cancel
+      const btns = D.el("div", { style: "display:flex;gap:8px;justify-content:flex-end;margin-top:12px" });
+      btns.appendChild(D.el("button", {
+        type: "button",
+        style: "padding:6px 16px;border:1px solid #d1d5db;border-radius:5px;background:#fff;cursor:pointer",
+        onclick: () => D.closeSubSheet()
+      }, "Cancel"));
+      btns.appendChild(D.el("button", {
+        type: "button",
+        style: "padding:6px 16px;border:none;border-radius:5px;background:#16a34a;color:#fff;cursor:pointer;font-weight:600",
+        onclick: () => {
+          // Apply: merge slots into draft
+          classSet.clear();
+          draft.classGroupMap = {};
+          for (const slot of slots) {
+            if (slot.classId) {
+              classSet.add(slot.classId);
+              if (slot.groupId) draft.classGroupMap[slot.classId] = slot.groupId;
+            }
+          }
+          draft.classIds = Array.from(classSet);
+          renderClassList();
+          refreshRoomBlock();
+          refreshCardPreview();
+          D.closeSubSheet();
+        }
+      }, "OK"));
+      const wrap = D.el("div", null, body, btns);
+      D.openSubSheet(wrap, { title: "Joint classes" });
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
     // ── Wildcard toggles (CLASSIC "??" semantics) ─────────────────────────
-    // When checked, the teacher/room picker is disabled and the solver
-    // is free to pick ANY teacher / room that satisfies feasibility.
-    // TODO(solver): treat lesson.wildcardTeacher === true as candidate
-    // set = all teachers; same for wildcardRoom.
+    // ══════════════════════════════════════════════════════════════════════════
     function applyTeacherDisabled() {
-      fTeach.disabled = !!draft.wildcardTeacher;
-      fTeach.style.opacity = draft.wildcardTeacher ? "0.4" : "";
+      fTeachList.style.opacity = draft.wildcardTeacher ? "0.4" : "";
+      fTeachList.style.pointerEvents = draft.wildcardTeacher ? "none" : "";
+      btnMoreTeachers.style.opacity = draft.wildcardTeacher ? "0.4" : "";
+      btnMoreTeachers.disabled = !!draft.wildcardTeacher;
     }
     function applyRoomDisabled() {
       const dis = !!draft.wildcardRoom;
@@ -4780,15 +5149,42 @@ window.Inspector = (function () {
       style:"display:inline-flex;gap:6px;align-items:center;cursor:pointer",
       title:"If checked, the solver assigns any room (CLASSIC '??' pattern)" },
       fWildRoom, D.el("span", null, "Wildcard room (?)"));
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // ── 3. Periods/week + Lesson Length dropdown ──────────────────────────
+    // ══════════════════════════════════════════════════════════════════════════
     const fCount = D.el("input", { type:"number", min:"1", max:"20",
       value:draft.periodsPerWeek,
+      style: "width:60px",
       oninput:(e)=>{
         draft.periodsPerWeek = parseFloat(e.target.value) || 1;
         refreshRoomBlock();
+        refreshCardPreview();
       } });
-    const fLab = D.el("input", { type:"checkbox",
-      checked: draft.isLabDouble ? "checked" : null,
-      onchange:(e)=>draft.isLabDouble = e.target.checked });
+
+    // Lesson length: Single(1), Double(2), Triple(3), 4, 5, 6, 7, 8
+    const fLength = D.el("select", {
+      style: "padding:4px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:13px",
+      onchange: (e) => {
+        draft.lessonLength = parseInt(e.target.value, 10);
+        draft.isLabDouble = draft.lessonLength >= 2;
+        refreshCardPreview();
+      }
+    });
+    const lengthLabels = ["Single", "Double", "Triple"];
+    for (let i = 1; i <= 8; i++) {
+      const label = i <= 3 ? lengthLabels[i - 1] : String(i);
+      const opt = D.el("option", { value: String(i) }, label);
+      if (i === draft.lessonLength) opt.selected = true;
+      fLength.appendChild(opt);
+    }
+    // Wrap count + length in a row
+    const fCountRow = D.el("div", {
+      style: "display:flex;align-items:center;gap:10px"
+    });
+    fCountRow.appendChild(fCount);
+    fCountRow.appendChild(fLength);
+
     const fMaxStudents = D.el("input", { type:"number", min:"0", max:"500",
       placeholder:"unlimited", value:draft.maxstudents,
       oninput:(e)=>draft.maxstudents = e.target.value });
@@ -4936,9 +5332,28 @@ window.Inspector = (function () {
     applyTeacherDisabled();
     applyRoomDisabled();
 
+    // ══════════════════════════════════════════════════════════════════════════
+    // ── 6. Card Preview Strip ─────────────────────────────────────────────
+    // ══════════════════════════════════════════════════════════════════════════
+    const cardPreview = D.el("div", {
+      style: "display:flex;gap:6px;flex-wrap:wrap;padding:8px 0"
+    });
+    function refreshCardPreview() {
+      cardPreview.innerHTML = "";
+      const count = Math.max(1, parseInt(draft.periodsPerWeek, 10) || 1);
+      const subj = (s.subjects || []).find(x => x.id === draft.subjectId);
+      const color = subj?.color || "#94a3b8";
+      const abbr = subj?.abbr || subj?.name?.substring(0, 4) || "—";
+      for (let i = 0; i < count; i++) {
+        const card = D.el("div", {
+          style: `display:inline-flex;align-items:center;justify-content:center;min-width:48px;height:28px;padding:0 8px;border-radius:5px;background:${color};color:#fff;font-size:12px;font-weight:600;letter-spacing:0.3px;box-shadow:0 1px 3px rgba(0,0,0,.15)`
+        }, abbr);
+        cardPreview.appendChild(card);
+      }
+    }
+    refreshCardPreview();
+
     // ── Day / Week / Term dropdowns (split-schedule + multi-term support) ─
-    // These reference EntityDays/Weeks/Terms patterns; defaults are seeded
-    // by the respective ensure() calls so the lists are never empty.
     const dayPatterns  = (window.EntityDays  && window.EntityDays.ensure()  || s.days  || []);
     const weekPatterns = (window.EntityWeeks && window.EntityWeeks.ensure() || s.weeks || []);
     const termPatterns = (window.EntityTerms && window.EntityTerms.ensure() || s.terms || []);
@@ -4956,11 +5371,10 @@ window.Inspector = (function () {
       title: isNew ? "New lesson" : "Edit lesson",
       fields:[
         { label:"Subject", control:fSubj },
-        { label:"Classes (multi)", control:fClasses },
-        { label:"Teachers (multi)", control:fTeach },
+        { label:"Classes", control:fClassWrap },
+        { label:"Teachers", control:fTeachWrap },
         { label:null, control:fWildTeachLabel },
-        { label:"Periods/week",     control:fCount },
-        { label:"Double-period",    control:fLab },
+        { label:"Lessons/week",     control:fCountRow },
         { label:"Classroom",        control:roomBlock },
         { label:null, control:fWildRoomLabel },
         { label:"Day pattern",      control:fDaysDef },
@@ -4970,10 +5384,16 @@ window.Inspector = (function () {
         { label:"Activity tags",    control:fTags },
         { label:"Fixed day (0–5)",  control:fDay },
         { label:"Fixed period",     control:fPeriod },
+        { label:null, control:cardPreview },
       ],
       onSave:()=>{
         if (!draft.subjectId) { fSubj.focus(); return; }
-        if (!draft.classIds.length) { fClasses.focus(); return; }
+        if (!draft.classIds.length) { return; }
+
+        // Sync teacher/class sets to draft
+        draft.teacherIds = Array.from(teacherSet);
+        draft.classIds = Array.from(classSet);
+
         const all = s.lessons;
 
         // Materialize the room fields per draft state. Per-card and expansion
@@ -4993,6 +5413,12 @@ window.Inspector = (function () {
           roomFields.preferredRoomId = draft.preferredRoomId;
         }
 
+        // Clean classGroupMap — remove entries for classes not in classIds
+        const cleanGroupMap = {};
+        for (const cid of draft.classIds) {
+          if (draft.classGroupMap[cid]) cleanGroupMap[cid] = draft.classGroupMap[cid];
+        }
+
         if (!isNew) {
           const l = r._ref;
           const before = { ...l };
@@ -5000,7 +5426,9 @@ window.Inspector = (function () {
           l.classIds = draft.classIds.slice();
           l.teacherIds = draft.teacherIds.slice();
           l.periodsPerWeek = draft.periodsPerWeek;
-          l.isLabDouble = !!draft.isLabDouble || undefined;
+          l.lessonLength = draft.lessonLength;
+          l.isLabDouble = draft.lessonLength >= 2 || undefined;
+          l.classGroupMap = Object.keys(cleanGroupMap).length ? cleanGroupMap : undefined;
           l.preferredRoomId = roomFields.preferredRoomId;
           l.classroomIdsByCard = roomFields.classroomIdsByCard;
           l.classroomIdsExpansion = roomFields.classroomIdsExpansion;
@@ -5020,7 +5448,9 @@ window.Inspector = (function () {
             subjectId:draft.subjectId, classIds:draft.classIds.slice(),
             teacherIds:draft.teacherIds.slice(),
             periodsPerWeek:draft.periodsPerWeek,
-            isLabDouble: draft.isLabDouble || undefined,
+            lessonLength: draft.lessonLength,
+            isLabDouble: draft.lessonLength >= 2 || undefined,
+            classGroupMap: Object.keys(cleanGroupMap).length ? cleanGroupMap : undefined,
             preferredRoomId: roomFields.preferredRoomId,
             classroomIdsByCard: roomFields.classroomIdsByCard,
             classroomIdsExpansion: roomFields.classroomIdsExpansion,
