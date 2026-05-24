@@ -132,15 +132,17 @@ function buildModel(school) {
   const subjectIdx = new Map(subjectIds.map((id, i) => [id, i]));
 
   // Lessons are expanded by periodsPerWeek / periodsPerCard — one solver-
-  // lesson per SESSION. A lab-double (isLabDouble = true) consumes 2
-  // consecutive periods per session, so a lesson with periodsperweek=2 +
-  // periodspercard=2 expands to 1 session (not 2). Without this divide,
+  // lesson per SESSION. A multi-period lesson (lessonLength > 1) consumes
+  // N consecutive periods per session, so a lesson with periodsperweek=4 +
+  // lessonLength=2 expands to 2 sessions (not 4). Without this divide,
   // warm-start places the first session, applySingle marks BOTH periods
   // teacher-busy via the lab-double extension, and the second pseudo-
   // session can't place at the same teacher slot.
   const expanded = [];
   for (const l of school.lessons) {
-    const periodsPerCard = l.isLabDouble ? 2 : 1;
+    // lessonLength (1-8) replaces the old binary isLabDouble. Backward
+    // compat: if lessonLength is absent, fall back to isLabDouble.
+    const periodsPerCard = l.lessonLength ? (l.lessonLength | 0) : (l.isLabDouble ? 2 : 1);
     const totalPeriods = l.periodsPerWeek | 0;
     const reps = Math.max(1, Math.round(totalPeriods / periodsPerCard));
     for (let i = 0; i < reps; i++) {
@@ -159,16 +161,25 @@ function buildModel(school) {
       } else if (l.preferredRoomId) {
         allowedRoomIds = [l.preferredRoomId];
       }
+      // classGroupMap → groupIds translation. The UI stores
+      // classGroupMap = { classId: groupId } and the solver needs groupIds[]
+      // for the packed bitmask pipeline. If classGroupMap exists, extract
+      // groupIds from its values; otherwise fall back to existing groupIds.
+      let groupIds = l.groupIds || [];
+      if (l.classGroupMap && typeof l.classGroupMap === "object") {
+        const ids = Object.values(l.classGroupMap).filter(Boolean);
+        if (ids.length) groupIds = ids;
+      }
       expanded.push({
         id: reps === 1 ? l.id : `${l.id}#${i + 1}`,
         srcId: l.id,
         classIds: l.classIds || [],
-        teacherIds: l.teacherIds || [],
-        groupIds: l.groupIds || [],
+        teacherIds: l.wildcardTeacher ? [] : (l.teacherIds || []),
+        groupIds,
         subjectId: l.subjectId,
         requiredRoomType: l.requiredRoomType || null,
-        preferredRoomId: l.preferredRoomId || null,
-        allowedRoomIds,
+        preferredRoomId: l.wildcardRoom ? null : (l.preferredRoomId || null),
+        allowedRoomIds: l.wildcardRoom ? [] : allowedRoomIds,
         // Lesson-level lock (l.fixedDay/fixedPeriod) addresses ONE slot. For a
         // multi-session lesson (reps > 1) we cannot pin every session to that
         // same slot — only one would place; the other reps would be hard-
@@ -178,7 +189,8 @@ function buildModel(school) {
         // across every expansion.
         fixedDay:    (i === 0 && l.fixedDay    != null) ? (l.fixedDay    | 0) : null,
         fixedPeriod: (i === 0 && l.fixedPeriod != null) ? (l.fixedPeriod | 0) : null,
-        isLabDouble: !!l.isLabDouble,
+        isLabDouble: periodsPerCard >= 2,
+        periodsPerCard,
         tags: Array.isArray(l.tags) ? l.tags.slice() : [],
       });
     }
@@ -309,7 +321,9 @@ function buildModel(school) {
     const sIdx = subjectIdx.get(l.subjectId);
     if (sIdx == null) throw new Error(`Unknown subjectId in lesson ${l.id}: ${l.subjectId}`);
     lessonSubject[i] = sIdx;
-    lessonLabDouble[i] = l.isLabDouble ? 1 : 0;
+    // Store the number of EXTRA consecutive periods this lesson spans.
+    // 0 = single period, 1 = double, 2 = triple, etc.
+    lessonLabDouble[i] = (l.periodsPerCard || (l.isLabDouble ? 2 : 1)) - 1;
 
     if (l.fixedDay != null && l.fixedPeriod != null) {
       const d = (l.fixedDay | 0);
@@ -624,7 +638,9 @@ function buildModel(school) {
         if ((w & 0x3) === 0) { p += 2; w >>>= 2; }
         if ((w & 0x1) === 0) { p += 1; }
         // lab-double: need next period on the same day; skip last period.
-        if (l.isLabDouble && p + 1 >= periodsPerDay) {
+        // Multi-period lesson: skip if not enough remaining periods in the day.
+        const extraSlots = (l.periodsPerCard || (l.isLabDouble ? 2 : 1)) - 1;
+        if (extraSlots > 0 && p + extraSlots >= periodsPerDay) {
           m = (m & ~(1 << p)) >>> 0;
           continue;
         }
@@ -1279,20 +1295,23 @@ function canPlace(model, state, lessonIdx, slot, roomIdx) {
     }
   }
 
-  if (model.lessonLabDouble[lessonIdx] === 1) {
-    if (p + 1 >= model.periodsPerDay) return FAIL.LAB_DOUBLE_OOB;
-    const secondReason = canPlaceSecond(model, state, lessonIdx, slot + 1, roomIdx);
-    if (secondReason !== null) {
-      // Translate to lab-double-prefixed reason
-      switch (secondReason) {
-        case FAIL.TEACHER_CONFLICT: return FAIL.LAB_DOUBLE_TEACHER_CONFLICT;
-        case FAIL.TEACHER_UNAVAILABLE: return FAIL.LAB_DOUBLE_TEACHER_UNAVAILABLE;
-        case FAIL.TEACHER_MAX_PER_DAY: return FAIL.LAB_DOUBLE_TEACHER_MAX_PER_DAY;
-        case FAIL.CLASS_CONFLICT: return FAIL.LAB_DOUBLE_CLASS_CONFLICT;
-        case FAIL.CLASS_MAX_PER_DAY: return FAIL.LAB_DOUBLE_CLASS_MAX_PER_DAY;
-        case FAIL.SUBJECT_DAILY_LIMIT: return FAIL.LAB_DOUBLE_SUBJECT_DAILY_LIMIT;
-        case FAIL.ROOM_CONFLICT: return FAIL.LAB_DOUBLE_ROOM_CONFLICT;
-        default: return FAIL.LAB_DOUBLE_TEACHER_CONFLICT;
+  const extraPeriods = model.lessonLabDouble[lessonIdx];
+  if (extraPeriods > 0) {
+    if (p + extraPeriods >= model.periodsPerDay) return FAIL.LAB_DOUBLE_OOB;
+    for (let ep = 1; ep <= extraPeriods; ep++) {
+      const secondReason = canPlaceSecond(model, state, lessonIdx, slot + ep, roomIdx);
+      if (secondReason !== null) {
+        // Translate to lab-double-prefixed reason
+        switch (secondReason) {
+          case FAIL.TEACHER_CONFLICT: return FAIL.LAB_DOUBLE_TEACHER_CONFLICT;
+          case FAIL.TEACHER_UNAVAILABLE: return FAIL.LAB_DOUBLE_TEACHER_UNAVAILABLE;
+          case FAIL.TEACHER_MAX_PER_DAY: return FAIL.LAB_DOUBLE_TEACHER_MAX_PER_DAY;
+          case FAIL.CLASS_CONFLICT: return FAIL.LAB_DOUBLE_CLASS_CONFLICT;
+          case FAIL.CLASS_MAX_PER_DAY: return FAIL.LAB_DOUBLE_CLASS_MAX_PER_DAY;
+          case FAIL.SUBJECT_DAILY_LIMIT: return FAIL.LAB_DOUBLE_SUBJECT_DAILY_LIMIT;
+          case FAIL.ROOM_CONFLICT: return FAIL.LAB_DOUBLE_ROOM_CONFLICT;
+          default: return FAIL.LAB_DOUBLE_TEACHER_CONFLICT;
+        }
       }
     }
   }
@@ -1617,8 +1636,8 @@ function removeSingle(model, state, lessonIdx, slot, roomIdx) {
 
 function applyPlacement(model, state, lessonIdx, slot, roomIdx, undoStack) {
   applySingle(model, state, lessonIdx, slot, roomIdx);
-  if (model.lessonLabDouble[lessonIdx] === 1) {
-    applySingle(model, state, lessonIdx, slot + 1, roomIdx);
+  for (let ep = 1; ep <= model.lessonLabDouble[lessonIdx]; ep++) {
+    applySingle(model, state, lessonIdx, slot + ep, roomIdx);
   }
   state.lessonAssignedSlot[lessonIdx] = slot;
   state.lessonAssignedRoom[lessonIdx] = roomIdx;
@@ -1629,8 +1648,8 @@ function applyPlacement(model, state, lessonIdx, slot, roomIdx, undoStack) {
 
 function undoPlacement(model, state, record) {
   removeSingle(model, state, record.lessonIdx, record.slot, record.roomIdx);
-  if (model.lessonLabDouble[record.lessonIdx] === 1) {
-    removeSingle(model, state, record.lessonIdx, record.slot + 1, record.roomIdx);
+  for (let ep = 1; ep <= model.lessonLabDouble[record.lessonIdx]; ep++) {
+    removeSingle(model, state, record.lessonIdx, record.slot + ep, record.roomIdx);
   }
   state.lessonAssignedSlot[record.lessonIdx] = -1;
   state.lessonAssignedRoom[record.lessonIdx] = -1;
@@ -1786,7 +1805,7 @@ function modeBlockPairingPenalty(model, state) {
     const slot = state.lessonAssignedSlot[i];
     const p = model.slotPeriod[slot];
     // Reward even-period starts (p % 2 === 0); penalty otherwise.
-    if (model.lessonLabDouble[i] === 1) {
+    if (model.lessonLabDouble[i] > 0) {
       if (p % 2 !== 0) penalty += 2;
     } else {
       if (p % 2 !== 0) penalty += 1;
@@ -2540,8 +2559,8 @@ function materializeBestIntoState(model, state) {
     // unset slot. applySingle/removeSingle handle -1 correctly.
     if (slot < 0) continue;
     applySingle(model, state, i, slot, roomIdx);
-    if (model.lessonLabDouble[i] === 1) {
-      applySingle(model, state, i, slot + 1, roomIdx);
+    for (let ep = 1; ep <= model.lessonLabDouble[i]; ep++) {
+      applySingle(model, state, i, slot + ep, roomIdx);
     }
     state.lessonAssigned[i] = 1;
     state.lessonAssignedSlot[i] = slot;
@@ -2597,7 +2616,8 @@ function listBlockers(model, state, lessonIdx, slot, room) {
   // Fixed-slot mismatch / OOB / unavailable are non-repairable.
   const fixed = model.lessonFixedSlot[lessonIdx];
   if (fixed >= 0 && fixed !== slot) return null;
-  if (model.lessonLabDouble[lessonIdx] === 1 && p + 1 >= model.periodsPerDay) return null;
+  const extraP = model.lessonLabDouble[lessonIdx];
+  if (extraP > 0 && p + extraP >= model.periodsPerDay) return null;
 
   const blockers = [];
   const seen = new Set();
@@ -2629,27 +2649,27 @@ function listBlockers(model, state, lessonIdx, slot, room) {
     }
   }
 
-  // Lab-double: also count blockers in slot+1 (same teachers, classes, room).
-  if (model.lessonLabDouble[lessonIdx] === 1) {
-    const slot2 = slot + 1;
+  // Multi-period lesson: also count blockers in slot+1..slot+N.
+  for (let ep = 1; ep <= model.lessonLabDouble[lessonIdx]; ep++) {
+    const slotN = slot + ep;
     for (let k = 0; k < teacherCount; k++) {
       const t = model.lessonTeacherFlat[teacherStart + k];
       const td = t * model.days + d;
-      if ((model.teacherAvailabilityMask[td] & ((1 << (p + 1)) >>> 0)) === 0) return null;
-      const occ = state.teacherSlotOccupant[t * model.totalSlots + slot2];
+      if ((model.teacherAvailabilityMask[td] & ((1 << (p + ep)) >>> 0)) === 0) return null;
+      const occ = state.teacherSlotOccupant[t * model.totalSlots + slotN];
       if (occ >= 0 && occ !== lessonIdx && !seen.has(occ)) {
         seen.add(occ); blockers.push(occ);
       }
     }
     for (let k = 0; k < classCount; k++) {
       const c = model.lessonClassFlat[classStart + k];
-      const occ = state.classSlotOccupant[c * model.totalSlots + slot2];
+      const occ = state.classSlotOccupant[c * model.totalSlots + slotN];
       if (occ >= 0 && occ !== lessonIdx && !seen.has(occ)) {
         seen.add(occ); blockers.push(occ);
       }
     }
     if (room >= 0) {
-      const ro2 = state.roomSlotOccupant[room * model.totalSlots + slot2];
+      const ro2 = state.roomSlotOccupant[room * model.totalSlots + slotN];
       if (ro2 >= 0 && ro2 !== lessonIdx && !seen.has(ro2)) {
         seen.add(ro2); blockers.push(ro2);
       }
@@ -2722,8 +2742,8 @@ function tryPlaceViaRepair(model, state, lessonIdx, chainDepth, evictedThisChain
       const br = state.lessonAssignedRoom[b];
       if (bs < 0) continue;
       removeSingle(model, state, b, bs, br);
-      if (model.lessonLabDouble[b] === 1) {
-        removeSingle(model, state, b, bs + 1, br);
+      for (let ep = 1; ep <= model.lessonLabDouble[b]; ep++) {
+        removeSingle(model, state, b, bs + ep, br);
       }
       state.lessonAssignedSlot[b] = -1;
       state.lessonAssignedRoom[b] = -1;
@@ -2770,8 +2790,8 @@ function tryPlaceViaRepair(model, state, lessonIdx, chainDepth, evictedThisChain
       const ls = state.lessonAssignedSlot[lessonIdx];
       const lr = state.lessonAssignedRoom[lessonIdx];
       removeSingle(model, state, lessonIdx, ls, lr);
-      if (model.lessonLabDouble[lessonIdx] === 1) {
-        removeSingle(model, state, lessonIdx, ls + 1, lr);
+      for (let ep = 1; ep <= model.lessonLabDouble[lessonIdx]; ep++) {
+        removeSingle(model, state, lessonIdx, ls + ep, lr);
       }
       state.lessonAssignedSlot[lessonIdx] = -1;
       state.lessonAssignedRoom[lessonIdx] = -1;
@@ -2786,8 +2806,8 @@ function tryPlaceViaRepair(model, state, lessonIdx, chainDepth, evictedThisChain
         const ns = state.lessonAssignedSlot[e.idx];
         const nr = state.lessonAssignedRoom[e.idx];
         removeSingle(model, state, e.idx, ns, nr);
-        if (model.lessonLabDouble[e.idx] === 1) {
-          removeSingle(model, state, e.idx, ns + 1, nr);
+        for (let ep = 1; ep <= model.lessonLabDouble[e.idx]; ep++) {
+          removeSingle(model, state, e.idx, ns + ep, nr);
         }
         state.lessonAssignedSlot[e.idx] = -1;
         state.lessonAssignedRoom[e.idx] = -1;
@@ -3156,7 +3176,7 @@ function restoreFromSnapshot(model, state, assignedSnap, slotSnap, roomSnap) {
       const room = state.lessonAssignedRoom[i];
       if (slot >= 0) {
         removeSingle(model, state, i, slot, room);
-        if (model.lessonLabDouble[i] === 1) removeSingle(model, state, i, slot + 1, room);
+        for (let ep = 1; ep <= model.lessonLabDouble[i]; ep++) removeSingle(model, state, i, slot + ep, room);
       }
       state.lessonAssigned[i] = 0;
       state.lessonAssignedSlot[i] = -1;
@@ -3171,7 +3191,7 @@ function restoreFromSnapshot(model, state, assignedSnap, slotSnap, roomSnap) {
       const room = roomSnap[i];
       if (slot >= 0) {
         applySingle(model, state, i, slot, room);
-        if (model.lessonLabDouble[i] === 1) applySingle(model, state, i, slot + 1, room);
+        for (let ep = 1; ep <= model.lessonLabDouble[i]; ep++) applySingle(model, state, i, slot + ep, room);
         state.lessonAssigned[i] = 1;
         state.lessonAssignedSlot[i] = slot;
         state.lessonAssignedRoom[i] = room;
@@ -3201,7 +3221,7 @@ function evictByClass(model, state, K, rngState, rand) {
     const slot = state.lessonAssignedSlot[i];
     const room = state.lessonAssignedRoom[i];
     removeSingle(model, state, i, slot, room);
-    if (model.lessonLabDouble[i] === 1) removeSingle(model, state, i, slot + 1, room);
+    for (let ep = 1; ep <= model.lessonLabDouble[i]; ep++) removeSingle(model, state, i, slot + ep, room);
     state.lessonAssigned[i] = 0;
     state.lessonAssignedSlot[i] = -1;
     state.lessonAssignedRoom[i] = -1;
@@ -3225,7 +3245,7 @@ function evictByDay(model, state, K, rngState, rand) {
     if (model.slotDay[slot] !== targetDay) continue;
     const room = state.lessonAssignedRoom[i];
     removeSingle(model, state, i, slot, room);
-    if (model.lessonLabDouble[i] === 1) removeSingle(model, state, i, slot + 1, room);
+    for (let ep = 1; ep <= model.lessonLabDouble[i]; ep++) removeSingle(model, state, i, slot + ep, room);
     state.lessonAssigned[i] = 0;
     state.lessonAssignedSlot[i] = -1;
     state.lessonAssignedRoom[i] = -1;
@@ -3260,7 +3280,7 @@ function evictByTwoPeriods(model, state, K, rngState, rand) {
     if (p !== p1 && p !== p2) continue;
     const room = state.lessonAssignedRoom[i];
     removeSingle(model, state, i, slot, room);
-    if (model.lessonLabDouble[i] === 1) removeSingle(model, state, i, slot + 1, room);
+    for (let ep = 1; ep <= model.lessonLabDouble[i]; ep++) removeSingle(model, state, i, slot + ep, room);
     state.lessonAssigned[i] = 0;
     state.lessonAssignedSlot[i] = -1;
     state.lessonAssignedRoom[i] = -1;
@@ -3282,7 +3302,7 @@ function evictBySubject(model, state, K, rngState, rand) {
     const slot = state.lessonAssignedSlot[i];
     const room = state.lessonAssignedRoom[i];
     removeSingle(model, state, i, slot, room);
-    if (model.lessonLabDouble[i] === 1) removeSingle(model, state, i, slot + 1, room);
+    for (let ep = 1; ep <= model.lessonLabDouble[i]; ep++) removeSingle(model, state, i, slot + ep, room);
     state.lessonAssigned[i] = 0;
     state.lessonAssignedSlot[i] = -1;
     state.lessonAssignedRoom[i] = -1;
@@ -3329,8 +3349,8 @@ function randomEvictPlaced(model, state, K, rngState) {
     const room = state.lessonAssignedRoom[pick];
     if (slot < 0) continue; // room may be -1 (no-room) — legitimate.
     removeSingle(model, state, pick, slot, room);
-    if (model.lessonLabDouble[pick] === 1) {
-      removeSingle(model, state, pick, slot + 1, room);
+    for (let ep = 1; ep <= model.lessonLabDouble[pick]; ep++) {
+      removeSingle(model, state, pick, slot + ep, room);
     }
     state.lessonAssigned[pick] = 0;
     state.lessonAssignedSlot[pick] = -1;

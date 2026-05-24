@@ -599,36 +599,40 @@ export function checkPlacement(school, lessonId, day, period, roomId) {
     }
   }
 
-  // 7. Lab-double: needs period+1 also free (hard).
-  if (lesson.isLabDouble) {
-    const next = periods.find(p => p.index === period + 1);
-    if (!next || next.isTeaching === false) {
-      result.hard.push(`Lab-double lesson needs two consecutive teaching periods`);
-    } else {
-      const nextSlot = (school.cards || []).filter(c =>
-        c.day === day && c.period === period + 1 &&
-        !(c.lessonId === lessonId)
-      );
-      const labClassBusy = nextSlot.some(c => {
-        const other = idx.lessonById[c.lessonId];
-        if (!other) return false;
-        for (const cid of (other.classIds || [])) {
-          if (!myClasses.has(cid)) continue;
-          // Group-aware: legal to share class+slot when bitmasks are disjoint.
-          if ((_classGroupMask(school, lesson, cid) & _classGroupMask(school, other, cid)) !== 0) {
-            return true;
+  // 7. Multi-period lesson: needs period+1..period+N also free (hard).
+  const extraSlots = (lesson.lessonLength || (lesson.isLabDouble ? 2 : 1)) - 1;
+  if (extraSlots > 0) {
+    for (let ep = 1; ep <= extraSlots; ep++) {
+      const nextPeriod = period + ep;
+      const next = periods.find(p => p.index === nextPeriod);
+      if (!next || next.isTeaching === false) {
+        result.hard.push(`${extraSlots + 1}-period lesson needs ${extraSlots + 1} consecutive teaching periods`);
+        break;
+      } else {
+        const nextSlot = (school.cards || []).filter(c =>
+          c.day === day && c.period === nextPeriod &&
+          !(c.lessonId === lessonId)
+        );
+        const labClassBusy = nextSlot.some(c => {
+          const other = idx.lessonById[c.lessonId];
+          if (!other) return false;
+          for (const cid of (other.classIds || [])) {
+            if (!myClasses.has(cid)) continue;
+            if ((_classGroupMask(school, lesson, cid) & _classGroupMask(school, other, cid)) !== 0) {
+              return true;
+            }
           }
+          return false;
+        });
+        if (labClassBusy) result.hard.push(`P+${nextPeriod}: class already busy`);
+        const labTeacherBusy = nextSlot.some(c =>
+          ((idx.lessonById[c.lessonId] || {}).teacherIds || []).some(tid => myTeachers.has(tid)));
+        if (labTeacherBusy) result.hard.push(`P+${nextPeriod}: ${teacherDisplay} already busy`);
+        if (rid) {
+          const labRoomBusy = nextSlot.some(c =>
+            (c.classroomId || (idx.lessonById[c.lessonId] || {}).preferredRoomId) === rid);
+          if (labRoomBusy) result.hard.push(`P+${nextPeriod}: room ${room ? room.name : rid} already busy`);
         }
-        return false;
-      });
-      if (labClassBusy) result.hard.push(`Lab P+${period + 1}: class already busy`);
-      const labTeacherBusy = nextSlot.some(c =>
-        ((idx.lessonById[c.lessonId] || {}).teacherIds || []).some(tid => myTeachers.has(tid)));
-      if (labTeacherBusy) result.hard.push(`Lab P+${period + 1}: ${teacherDisplay} already busy`);
-      if (rid) {
-        const labRoomBusy = nextSlot.some(c =>
-          (c.classroomId || (idx.lessonById[c.lessonId] || {}).preferredRoomId) === rid);
-        if (labRoomBusy) result.hard.push(`Lab P+${period + 1}: room ${room ? room.name : rid} already busy`);
       }
     }
   }
