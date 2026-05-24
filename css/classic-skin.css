@@ -203,14 +203,12 @@ html[data-skin="classic"] .chrx-pending-resize::before {
   background: rgba(0, 0, 0, 0.28);
 }
 html[data-skin="classic"] .chrx-class-panel {
-  border-radius: 3px;
-  border-color: rgba(0, 0, 0, 0.24);
-  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.20);
+  border-radius: 0;
+  box-shadow: none;
 }
 html[data-skin="classic"] .chrx-card-panel {
-  border-radius: 3px;
-  border-color: rgba(0, 0, 0, 0.22);
-  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.18);
+  border-radius: 0;
+  box-shadow: none;
 }
 html[data-skin="classic"] .chrx-pending-toolbar {
   padding: 2px 8px;

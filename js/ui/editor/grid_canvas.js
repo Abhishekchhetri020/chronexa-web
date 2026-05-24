@@ -447,7 +447,7 @@ window.Editor = (function () {
     panel.querySelector('[data-act="lesson-grid"]').onclick = () => {
       if (window.LessonsGridMatrix && window.LessonsGridMatrix.open) window.LessonsGridMatrix.open(S);
     };
-    if (!existing) document.body.appendChild(panel);
+    attachInspectorPanel(panel);
   }
 
   function showCardPanel(lessonId, opts) {
@@ -482,7 +482,13 @@ window.Editor = (function () {
       <div class="chrx-card-panel__foot">${placed}/${need || 0} placed · ${esc(status.text)}</div>
     `;
     panel.dataset.state = status.state;
-    if (!panel.parentNode) document.body.appendChild(panel);
+    attachInspectorPanel(panel);
+  }
+
+  function attachInspectorPanel(panel) {
+    const host = document.getElementById("editor-inspector-root");
+    if (host && panel.parentNode !== host) host.appendChild(panel);
+    else if (!host && !panel.parentNode) document.body.appendChild(panel);
   }
 
   function placementStatus(lessonId, opts) {

@@ -609,7 +609,9 @@
       </dl>
       <div class="chrx-carry-panel__status" data-state="idle">Choose a slot in the matching row.</div>
     `;
-    document.body.appendChild(carryPanel);
+    const host = document.getElementById("editor-inspector-root");
+    if (host) host.appendChild(carryPanel);
+    else document.body.appendChild(carryPanel);
   }
 
   function updateCarryPanel(slot, validity) {

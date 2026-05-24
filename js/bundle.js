@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-24T10:13:43Z
+/* Chronexa bundle — generated 2026-05-24T14:41:15Z
  *      161 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -13600,7 +13600,7 @@ window.Editor = (function () {
     panel.querySelector('[data-act="lesson-grid"]').onclick = () => {
       if (window.LessonsGridMatrix && window.LessonsGridMatrix.open) window.LessonsGridMatrix.open(S);
     };
-    if (!existing) document.body.appendChild(panel);
+    attachInspectorPanel(panel);
   }
 
   function showCardPanel(lessonId, opts) {
@@ -13635,7 +13635,13 @@ window.Editor = (function () {
       <div class="chrx-card-panel__foot">${placed}/${need || 0} placed · ${esc(status.text)}</div>
     `;
     panel.dataset.state = status.state;
-    if (!panel.parentNode) document.body.appendChild(panel);
+    attachInspectorPanel(panel);
+  }
+
+  function attachInspectorPanel(panel) {
+    const host = document.getElementById("editor-inspector-root");
+    if (host && panel.parentNode !== host) host.appendChild(panel);
+    else if (!host && !panel.parentNode) document.body.appendChild(panel);
   }
 
   function placementStatus(lessonId, opts) {
@@ -15075,7 +15081,9 @@ window.PendingStrip = (function () {
       </dl>
       <div class="chrx-carry-panel__status" data-state="idle">Choose a slot in the matching row.</div>
     `;
-    document.body.appendChild(carryPanel);
+    const host = document.getElementById("editor-inspector-root");
+    if (host) host.appendChild(carryPanel);
+    else document.body.appendChild(carryPanel);
   }
 
   function updateCarryPanel(slot, validity) {

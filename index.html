@@ -181,9 +181,12 @@
     <!-- The actual editor mounts here. CSS keeps editor-root taller; pending-strip-root sticks below. -->
     <div id="editor-root" class="bg-white border border-slate-200 rounded shadow-sm overflow-x-auto" style="min-height:500px"></div>
 
-    <div class="mt-3">
-      <h3 class="text-sm font-semibold text-slate-700 mb-1">📥 Pending cards <span class="text-xs text-slate-500" id="pending-count">(— unplaced)</span></h3>
-      <div id="pending-strip-root" class="bg-slate-50 border border-slate-200 rounded p-2" style="min-height:80px"></div>
+    <div id="editor-lower" class="chrx-editor-lower mt-3">
+      <div id="editor-inspector-root" class="chrx-editor-inspector" aria-label="Editor inspector"></div>
+      <div class="chrx-pending-region">
+        <h3 class="text-sm font-semibold text-slate-700 mb-1">📥 Pending cards <span class="text-xs text-slate-500" id="pending-count">(— unplaced)</span></h3>
+        <div id="pending-strip-root" class="bg-slate-50 border border-slate-200 rounded p-2" style="min-height:80px"></div>
+      </div>
     </div>
   </section>
 
@@ -223,7 +226,7 @@
 
 <!-- ─────────────────────── SCRIPTS ─────────────────────── -->
 <!-- Bump APP_VER on every deploy so the browser refetches the JS bundle -->
-<script>window.APP_VER = "20260524-p104-tour-end-all";</script>
+<script>window.APP_VER = "20260524-p105-editor-layout-dock";</script>
 <!-- Backend URL — leave empty to force "Run on this computer". Override at deploy time. -->
 <script>window.CHRONEXA_BACKEND_URL = window.CHRONEXA_BACKEND_URL || "";</script>
 <!-- Bundle mode (default): single HTTP request for all 133 modules.
