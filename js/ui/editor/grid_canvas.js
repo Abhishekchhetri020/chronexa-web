@@ -555,57 +555,130 @@ window.Editor = (function () {
     };
   }
 
+  function handleCardClick(vk) {
+    if (vk.classList.contains("locked")) return;
+    const cardId = vk.dataset.cardId;
+    const lessonId = vk.dataset.lessonId;
+    const day = parseInt(vk.dataset.day, 10);
+    const period = parseInt(vk.dataset.period, 10);
+    const originClassroomId = vk.dataset.classroomId || undefined;
+    
+    const held = window.APP.editor.cardInHand;
+    if (held) {
+      if (held.cardId === cardId) {
+        // Clicked the selected card again: Deselect
+        window.CardInHand.cancel();
+        return;
+      }
+      window.CardInHand.cancel();
+    }
+    
+    dispatch("editor:pickup", { cardId, lessonId, day, period, originClassroomId, mode: "click" });
+  }
+
+  function startDragPickup(vk, startX, startY) {
+    const cardId = vk.dataset.cardId;
+    const lessonId = vk.dataset.lessonId;
+    const day = parseInt(vk.dataset.day, 10);
+    const period = parseInt(vk.dataset.period, 10);
+    const originClassroomId = vk.dataset.classroomId || undefined;
+    
+    const held = window.APP.editor.cardInHand;
+    if (held) {
+      placeCardOnSchool(held.lessonId, held.originDay, held.originPeriod);
+      window.APP.editor.cardInHand = null;
+      dispatch("editor:restore", { cardId: held.cardId, lessonId: held.lessonId,
+        day: held.originDay, period: held.originPeriod, reason: "second-pickup" });
+    }
+    
+    removeCardFromSchool(lessonId, day, period);
+    const slot = vk.closest(".chrx-slot");
+    if (slot) {
+      slot.classList.add("empty");
+      slot.removeAttribute("title");
+      slot.innerHTML = "";
+      slot.dataset.day = String(day);
+      slot.dataset.period = String(period);
+    }
+    window.APP.editor.cardInHand = { cardId, lessonId, originDay: day, originPeriod: period, originClassroomId, mode: "drag" };
+    syncCardInHandClass();
+    dispatch("editor:pickup", { cardId, lessonId, day, period, originClassroomId, sourceX: startX, sourceY: startY, mode: "drag" });
+    if (held) {
+      const host = vk.closest(".chrx-editor");
+      if (host) render(host);
+    }
+  }
+
   function onMouseDown(ev) {
-    // Card pickup
+    // If click-to-swap selection is active, intercept clicks on empty or occupied slots
+    if (window.APP.editor.cardInHand && window.APP.editor.cardInHand.mode === "click") {
+      const slot = ev.target.closest(".chrx-slot");
+      if (slot) {
+        ev.preventDefault();
+        const d = parseInt(slot.dataset.day, 10);
+        const p = parseInt(slot.dataset.period, 10);
+        
+        if (slot.classList.contains("chrx-slot--highlight-place") || slot.classList.contains("chrx-slot--highlight-swap")) {
+          const occupants = slot.querySelectorAll(".chrx-vkarta");
+          if (occupants.length) {
+            window.CardInHand.swap(d, p, slot);
+          } else {
+            window.CardInHand.commit(d, p, slot);
+          }
+          return;
+        } else {
+          // If they click another card in a different row, cancel selection and select the clicked one instead!
+          const targetVk = ev.target.closest(".chrx-vkarta");
+          window.CardInHand.cancel();
+          if (targetVk && targetVk.dataset.cardId !== window.APP.editor.cardInHand?.cardId) {
+            handleCardClick(targetVk);
+            return;
+          }
+        }
+      }
+    }
+
+    // Card pickup / Click-to-select duality
     const vk = ev.target.closest(".chrx-vkarta");
     if (vk) {
-      ev.preventDefault();
       if (vk.classList.contains("locked")) return;
-      const cardId = vk.dataset.cardId;
-      const lessonId = vk.dataset.lessonId;
-      const day = parseInt(vk.dataset.day, 10);
-      const period = parseInt(vk.dataset.period, 10);
-      const originClassroomId = vk.dataset.classroomId || undefined;
-      // If a card is already in hand, restore it to its origin slot before
-      // picking up the new one — matches aSc CLASSIC. Before this guard the
-      // second pickup silently overwrote cardInHand and the first card was
-      // permanently lost (already removed from S.cards by its own pickup).
-      const held = window.APP.editor.cardInHand;
-      if (held) {
-        placeCardOnSchool(held.lessonId, held.originDay, held.originPeriod);
-        window.APP.editor.cardInHand = null;
-        dispatch("editor:restore", { cardId: held.cardId, lessonId: held.lessonId,
-          day: held.originDay, period: held.originPeriod, reason: "second-pickup" });
+      ev.preventDefault();
+      
+      const startX = ev.clientX;
+      const startY = ev.clientY;
+      let dragTriggered = false;
+
+      function onMouseMove(moveEv) {
+        if (dragTriggered) return;
+        const dx = moveEv.clientX - startX;
+        const dy = moveEv.clientY - startY;
+        if (Math.sqrt(dx * dx + dy * dy) > 5) {
+          dragTriggered = true;
+          cleanup();
+          startDragPickup(vk, startX, startY);
+        }
       }
-      // Remove from data + DOM
-      removeCardFromSchool(lessonId, day, period);
-      const slot = vk.closest(".chrx-slot");
-      if (slot) {
-        slot.classList.add("empty");
-        slot.removeAttribute("title");
-        slot.innerHTML = "";
-        slot.dataset.day = String(day);
-        slot.dataset.period = String(period);
+
+      function onMouseUp(upEv) {
+        cleanup();
+        if (!dragTriggered) {
+          handleCardClick(vk);
+        }
       }
-      window.APP.editor.cardInHand = { cardId, lessonId, originDay: day, originPeriod: period, originClassroomId };
-      syncCardInHandClass();
-      dispatch("editor:pickup", { cardId, lessonId, day, period, originClassroomId, sourceX: ev.clientX, sourceY: ev.clientY });
-      // If we restored a held card above, re-render so the restored slot
-      // visibly reflects its newly-replaced occupant.
-      if (held) {
-        const host = vk.closest(".chrx-editor");
-        if (host) render(host);
+
+      function cleanup() {
+        document.removeEventListener("mousemove", onMouseMove, true);
+        document.removeEventListener("mouseup", onMouseUp, true);
       }
+
+      document.addEventListener("mousemove", onMouseMove, true);
+      document.addEventListener("mouseup", onMouseUp, true);
       return;
     }
+
     // Empty-slot place (only when we have something in hand)
     const slot = ev.target.closest(".chrx-slot.empty");
     if (slot && window.APP.editor.cardInHand) {
-      // CardInHand owns placement on mouseup so the same path handles
-      // click-to-place, drag-to-place, validation, undo, and snap-back.
-      // Mutating here on mousedown races the mouseup validator and can
-      // duplicate the moved card by restoring its origin after the target
-      // has already been filled.
       ev.preventDefault();
       return;
     }

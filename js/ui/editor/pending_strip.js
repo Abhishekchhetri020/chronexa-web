@@ -115,15 +115,59 @@ window.PendingStrip = (function () {
       const vk = ev.target.closest(".chrx-vk-pending");
       if (!vk) return;
       ev.preventDefault();
-      const cardId = vk.dataset.cardId, lessonId = vk.dataset.lessonId;
-      window.APP.editor = window.APP.editor || {};
-      window.APP.editor.cardInHand = { cardId, lessonId, fromPending: true };
-      document.body.classList.add("chrx-card-in-hand");
-      vk.classList.add("chrx-vk-taken");
-      document.dispatchEvent(new CustomEvent("editor:pickup", { detail: { cardId, lessonId, fromPending: true, sourceX: ev.clientX, sourceY: ev.clientY } }));
+      
+      const startX = ev.clientX;
+      const startY = ev.clientY;
+      let dragTriggered = false;
+
+      function onMouseMove(moveEv) {
+        if (dragTriggered) return;
+        const dx = moveEv.clientX - startX;
+        const dy = moveEv.clientY - startY;
+        if (Math.sqrt(dx * dx + dy * dy) > 5) {
+          dragTriggered = true;
+          cleanup();
+          startPendingDrag(vk, startX, startY);
+        }
+      }
+
+      function onMouseUp(upEv) {
+        cleanup();
+        if (!dragTriggered) {
+          handlePendingClick(vk);
+        }
+      }
+
+      function cleanup() {
+        document.removeEventListener("mousemove", onMouseMove, true);
+        document.removeEventListener("mouseup", onMouseUp, true);
+      }
+
+      document.addEventListener("mousemove", onMouseMove, true);
+      document.addEventListener("mouseup", onMouseUp, true);
     });
     document.addEventListener("editor:place", () => render(rootEl));
     rootEl._chrxPendingWired = true;
+  }
+
+  function startPendingDrag(vk, clientX, clientY) {
+    const cardId = vk.dataset.cardId, lessonId = vk.dataset.lessonId;
+    window.APP.editor = window.APP.editor || {};
+    window.APP.editor.cardInHand = { cardId, lessonId, fromPending: true, mode: "drag" };
+    document.body.classList.add("chrx-card-in-hand");
+    vk.classList.add("chrx-vk-taken");
+    document.dispatchEvent(new CustomEvent("editor:pickup", { detail: { cardId, lessonId, fromPending: true, sourceX: clientX, sourceY: clientY, mode: "drag" } }));
+  }
+
+  function handlePendingClick(vk) {
+    const cardId = vk.dataset.cardId, lessonId = vk.dataset.lessonId;
+    const held = window.APP.editor.cardInHand;
+    if (held) {
+      window.CardInHand.cancel();
+      if (held.cardId === cardId) return;
+    }
+    
+    document.dispatchEvent(new CustomEvent("editor:pickup", { detail: { cardId, lessonId, fromPending: true, mode: "click" } }));
   }
 
   function countPlaced(S) {
@@ -191,6 +235,7 @@ window.PendingStrip = (function () {
     const startY = ev.clientY;
     const startH = rootEl.getBoundingClientRect().height || 96;
     rootEl.classList.add("is-resizing");
+    document.body.classList.add("chrx-body--resizing");
     function move(e) {
       const next = Math.max(72, Math.min(Math.round(window.innerHeight * 0.55), startH + (startY - e.clientY)));
       rootEl.style.height = next + "px";
@@ -200,6 +245,7 @@ window.PendingStrip = (function () {
     function up(e) {
       rootEl.releasePointerCapture?.(ev.pointerId);
       rootEl.classList.remove("is-resizing");
+      document.body.classList.remove("chrx-body--resizing");
       window.removeEventListener("pointermove", move, true);
       window.removeEventListener("pointerup", up, true);
     }
