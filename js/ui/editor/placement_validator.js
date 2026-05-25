@@ -20,7 +20,7 @@
 (function () {
   "use strict";
 
-  function classify(lessonId, day, period, classroomId) {
+  function classify(lessonId, day, period, classroomId, prefilteredCards) {
     const S = window.APP && window.APP.school;
     if (!S) return { validity: "green", reasons: [] };
     const idx = S._idx;
@@ -62,7 +62,7 @@
     // Build a per-(day,period) occupancy view from S.cards. Cheap enough at
     // editor sizes (≤ ~2000 cards); avoids the cost of maintaining a live
     // index that lessons/edit dialogs would have to keep in sync.
-    const sameSlot = S.cards.filter(c => c.day === day && c.period === period);
+    const sameSlot = prefilteredCards || S.cards.filter(c => c.day === day && c.period === period);
 
     // 3. Class conflicts (hard).
     const myClasses = new Set(lesson.classIds || []);

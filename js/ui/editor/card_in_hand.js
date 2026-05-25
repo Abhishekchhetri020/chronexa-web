@@ -119,13 +119,26 @@
   // hatched and are skipped here.
   function paintAllSlots() {
     if (!inHand || !window.Placement || typeof window.Placement.classify !== "function") return;
+    const S = window.APP && window.APP.school;
+    if (!S) return;
+
+    // Pre-group school cards by slot to make check O(1) inside loop
+    const cardsBySlot = Object.create(null);
+    for (const c of (S.cards || [])) {
+      const key = c.day + "_" + c.period;
+      if (!cardsBySlot[key]) cardsBySlot[key] = [];
+      cardsBySlot[key].push(c);
+    }
+
     const slots = document.querySelectorAll(".chrx-editor .chrx-slot:not(.out-of-bell)");
     for (const slot of slots) {
       const d = parseInt(slot.dataset.day, 10);
       const p = parseInt(slot.dataset.period, 10);
       if (Number.isNaN(d) || Number.isNaN(p)) continue;
       try {
-        const v = classifySlot(slot);
+        const slotKey = d + "_" + p;
+        const prefilteredCards = cardsBySlot[slotKey] || [];
+        const v = classifySlot(slot, prefilteredCards);
         if (v && v.validity) slot.setAttribute("data-validity", v.validity);
       } catch (_e) { /* ignore */ }
     }
@@ -581,7 +594,7 @@
   function rowPlacementCheck(lessonId, slot) {
     const S = window.APP && window.APP.school;
     const perspective = (window.APP && window.APP.editor && window.APP.editor.perspective) || "class";
-    const rowKey = slot && (slot.dataset.row || slot.closest(".chrx-row")?.dataset.row);
+    const rowKey = slot && slot.dataset.row;
     const lesson = S && S._idx ? S._idx.lessonById[lessonId] : null;
     if (!lesson || !rowKey) return { ok: true };
     if (perspective === "class" && !(lesson.classIds || []).includes(rowKey)) {
@@ -599,14 +612,14 @@
     return { ok: true };
   }
 
-  function classifySlot(slot) {
+  function classifySlot(slot, prefilteredCards) {
     const d = parseInt(slot.dataset.day, 10);
     const p = parseInt(slot.dataset.period, 10);
     const rowCheck = rowPlacementCheck(inHand.lessonId, slot);
     const base = rowCheck.ok
-      ? (window.Placement ? window.Placement.classify(inHand.lessonId, d, p, classroomForSlot(inHand.lessonId, slot)) : { validity: "green", reasons: [] })
+      ? (window.Placement ? window.Placement.classify(inHand.lessonId, d, p, classroomForSlot(inHand.lessonId, slot), prefilteredCards) : { validity: "green", reasons: [] })
       : { validity: "red", reasons: [rowCheck.reason] };
-    const occupants = targetCardsForSlot(slot);
+    const occupants = targetCardsForSlot(slot, prefilteredCards);
     if (!occupants.length) return base;
     const reasons = (base.reasons || []).slice();
     const labels = occupants.map(c => cardLabel(c)).filter(Boolean);
@@ -614,16 +627,18 @@
     return { validity: "red", reasons };
   }
 
-  function targetCardsForSlot(slot) {
+  function targetCardsForSlot(slot, prefilteredCards) {
     const S = window.APP && window.APP.school;
     if (!S || !slot) return [];
     const d = parseInt(slot.dataset.day, 10);
     const p = parseInt(slot.dataset.period, 10);
     if (!Number.isFinite(d) || !Number.isFinite(p)) return [];
-    const rowKey = slot.dataset.row || slot.closest(".chrx-row")?.dataset.row;
+    const rowKey = slot.dataset.row;
     const perspective = (window.APP && window.APP.editor && window.APP.editor.perspective) || "class";
-    return (S.cards || []).filter(c => {
-      if (c.day !== d || c.period !== p) return false;
+
+    const candidates = prefilteredCards || (S.cards || []).filter(c => c.day === d && c.period === p);
+
+    return candidates.filter(c => {
       if (!rowKey || rowKey === "head") return true;
       const lesson = S._idx.lessonById[c.lessonId];
       if (!lesson) return false;
@@ -652,7 +667,7 @@
     const S = window.APP && window.APP.school;
     const lesson = S && S._idx ? S._idx.lessonById[lessonId] : null;
     const perspective = (window.APP && window.APP.editor && window.APP.editor.perspective) || "class";
-    const rowKey = slot && (slot.dataset.row || slot.closest(".chrx-row")?.dataset.row);
+    const rowKey = slot && slot.dataset.row;
     if (perspective === "room" && rowKey) return rowKey;
     return lesson ? lesson.preferredRoomId : undefined;
   }

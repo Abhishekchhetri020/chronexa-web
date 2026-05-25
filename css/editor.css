@@ -39,14 +39,14 @@ body.chrx-card-in-hand .chrx-slot[data-validity="red"]{outline-color:#ef4444;bac
    period; the underlying classify() also rejects drops here. */
 .chrx-slot.empty.out-of-bell{background:repeating-linear-gradient(45deg,rgba(148,163,184,.18) 0 4px,transparent 4px 8px);cursor:not-allowed;pointer-events:none}
 body.chrx-card-in-hand .chrx-slot.empty.out-of-bell{outline:1px solid var(--chrx-line-soft);background:repeating-linear-gradient(45deg,rgba(148,163,184,.25) 0 4px,transparent 4px 8px);cursor:not-allowed}
-.chrx-vkarta{--hue:var(--chrx-card-hue,210);position:absolute;inset:1px;border-radius:var(--chrx-radius-xs);background:hsl(var(--hue) 70% 48%);color:#fff;padding:1px 3px;display:flex;flex-direction:column;font-size:var(--chrx-font-cell-m);line-height:1.05;cursor:grab;user-select:none;overflow:hidden;box-shadow:0 1px 0 hsl(var(--hue) 50% 35%/.5),inset 0 0 0 1px hsl(var(--hue) 60% 55%/.5);transition:transform var(--chrx-duration-fast) var(--chrx-ease),box-shadow var(--chrx-duration-fast) var(--chrx-ease)}
+.chrx-vkarta{--hue:var(--chrx-card-hue,210);position:absolute;inset:1px;border-radius:var(--chrx-radius-xs);background:hsl(var(--hue) 70% 48%);color:#fff;padding:1px 3px;display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;text-align:left;font-size:var(--chrx-font-cell-m);line-height:1.05;cursor:grab;user-select:none;overflow:hidden;box-shadow:0 1px 0 hsl(var(--hue) 50% 35%/.5),inset 0 0 0 1px hsl(var(--hue) 60% 55%/.5);transition:transform var(--chrx-duration-fast) var(--chrx-ease),box-shadow var(--chrx-duration-fast) var(--chrx-ease)}
 .chrx-vkarta:hover{transform:translateY(-1px);box-shadow:0 2px 4px rgba(0,0,0,.18),inset 0 0 0 1px hsl(var(--hue) 65% 60%/.7);z-index:2}
 .chrx-vkarta:active{cursor:grabbing}
-.chrx-vk-line1{font-weight:var(--chrx-fw-bold);font-size:var(--chrx-font-cell-s)}
-.chrx-vk-line2,.chrx-vk-line3{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.88}
+.chrx-vk-line1{font-weight:var(--chrx-fw-bold);font-size:var(--chrx-font-cell-s);text-align:left;width:100%}
+.chrx-vk-line2,.chrx-vk-line3{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.88;text-align:left;width:100%}
 /* Compact card: subject-only, centered, taller font. Title tooltip still has full detail. */
-.chrx-vkarta--compact{align-items:center;justify-content:center;padding:2px 4px}
-.chrx-vkarta--compact .chrx-vk-line1{font-size:var(--chrx-font-cell-m);line-height:1.1;text-align:center;width:100%}
+.chrx-vkarta--compact{align-items:flex-start;justify-content:center;padding:2px 4px}
+.chrx-vkarta--compact .chrx-vk-line1{font-size:var(--chrx-font-cell-m);line-height:1.1;text-align:left;width:100%}
 .chrx-vkarta.locked{cursor:not-allowed;opacity:.85}
 .chrx-vkarta.locked::after{content:"🔒";position:absolute;top:0;right:2px;font-size:8px}
 /* Verification halo — painted by canvas_geometry.paintHalos() per card.

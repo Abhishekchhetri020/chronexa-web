@@ -119,6 +119,11 @@ html[data-skin="classic"] .chrx-vkarta {
   font-size: var(--edu-card-text);
   line-height: 1.06;
   inset: 0;                /* fill the whole slot — Classic does not inset */
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  justify-content: flex-start !important;
+  text-align: left !important;
 }
 html[data-skin="classic"] .chrx-vkarta:hover {
   transform: translateY(-1px);
@@ -133,11 +138,15 @@ html[data-skin="classic"] .chrx-vk-line1 {
   font-weight: 700;
   font-size: var(--edu-card-text);
   letter-spacing: 0.01em;
+  text-align: left !important;
+  width: 100% !important;
 }
 html[data-skin="classic"] .chrx-vk-line2,
 html[data-skin="classic"] .chrx-vk-line3 {
   font-size: 9.5px;
   opacity: 0.92;
+  text-align: left !important;
+  width: 100% !important;
 }
 html[data-skin="classic"] .chrx-vkarta.locked::after {
   /* Slightly tighter lock badge so it doesn't crowd the 4-px stripe. */

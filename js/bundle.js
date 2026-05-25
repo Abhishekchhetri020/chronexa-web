@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-25T08:53:04Z
+/* Chronexa bundle — generated 2026-05-25T09:25:27Z
  *      163 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -16261,7 +16261,7 @@ window.PendingStrip = (function () {
 (function () {
   "use strict";
 
-  function classify(lessonId, day, period, classroomId) {
+  function classify(lessonId, day, period, classroomId, prefilteredCards) {
     const S = window.APP && window.APP.school;
     if (!S) return { validity: "green", reasons: [] };
     const idx = S._idx;
@@ -16303,7 +16303,7 @@ window.PendingStrip = (function () {
     // Build a per-(day,period) occupancy view from S.cards. Cheap enough at
     // editor sizes (≤ ~2000 cards); avoids the cost of maintaining a live
     // index that lessons/edit dialogs would have to keep in sync.
-    const sameSlot = S.cards.filter(c => c.day === day && c.period === period);
+    const sameSlot = prefilteredCards || S.cards.filter(c => c.day === day && c.period === period);
 
     // 3. Class conflicts (hard).
     const myClasses = new Set(lesson.classIds || []);
@@ -16520,13 +16520,26 @@ window.PendingStrip = (function () {
   // hatched and are skipped here.
   function paintAllSlots() {
     if (!inHand || !window.Placement || typeof window.Placement.classify !== "function") return;
+    const S = window.APP && window.APP.school;
+    if (!S) return;
+
+    // Pre-group school cards by slot to make check O(1) inside loop
+    const cardsBySlot = Object.create(null);
+    for (const c of (S.cards || [])) {
+      const key = c.day + "_" + c.period;
+      if (!cardsBySlot[key]) cardsBySlot[key] = [];
+      cardsBySlot[key].push(c);
+    }
+
     const slots = document.querySelectorAll(".chrx-editor .chrx-slot:not(.out-of-bell)");
     for (const slot of slots) {
       const d = parseInt(slot.dataset.day, 10);
       const p = parseInt(slot.dataset.period, 10);
       if (Number.isNaN(d) || Number.isNaN(p)) continue;
       try {
-        const v = classifySlot(slot);
+        const slotKey = d + "_" + p;
+        const prefilteredCards = cardsBySlot[slotKey] || [];
+        const v = classifySlot(slot, prefilteredCards);
         if (v && v.validity) slot.setAttribute("data-validity", v.validity);
       } catch (_e) { /* ignore */ }
     }
@@ -16982,7 +16995,7 @@ window.PendingStrip = (function () {
   function rowPlacementCheck(lessonId, slot) {
     const S = window.APP && window.APP.school;
     const perspective = (window.APP && window.APP.editor && window.APP.editor.perspective) || "class";
-    const rowKey = slot && (slot.dataset.row || slot.closest(".chrx-row")?.dataset.row);
+    const rowKey = slot && slot.dataset.row;
     const lesson = S && S._idx ? S._idx.lessonById[lessonId] : null;
     if (!lesson || !rowKey) return { ok: true };
     if (perspective === "class" && !(lesson.classIds || []).includes(rowKey)) {
@@ -17000,14 +17013,14 @@ window.PendingStrip = (function () {
     return { ok: true };
   }
 
-  function classifySlot(slot) {
+  function classifySlot(slot, prefilteredCards) {
     const d = parseInt(slot.dataset.day, 10);
     const p = parseInt(slot.dataset.period, 10);
     const rowCheck = rowPlacementCheck(inHand.lessonId, slot);
     const base = rowCheck.ok
-      ? (window.Placement ? window.Placement.classify(inHand.lessonId, d, p, classroomForSlot(inHand.lessonId, slot)) : { validity: "green", reasons: [] })
+      ? (window.Placement ? window.Placement.classify(inHand.lessonId, d, p, classroomForSlot(inHand.lessonId, slot), prefilteredCards) : { validity: "green", reasons: [] })
       : { validity: "red", reasons: [rowCheck.reason] };
-    const occupants = targetCardsForSlot(slot);
+    const occupants = targetCardsForSlot(slot, prefilteredCards);
     if (!occupants.length) return base;
     const reasons = (base.reasons || []).slice();
     const labels = occupants.map(c => cardLabel(c)).filter(Boolean);
@@ -17015,16 +17028,18 @@ window.PendingStrip = (function () {
     return { validity: "red", reasons };
   }
 
-  function targetCardsForSlot(slot) {
+  function targetCardsForSlot(slot, prefilteredCards) {
     const S = window.APP && window.APP.school;
     if (!S || !slot) return [];
     const d = parseInt(slot.dataset.day, 10);
     const p = parseInt(slot.dataset.period, 10);
     if (!Number.isFinite(d) || !Number.isFinite(p)) return [];
-    const rowKey = slot.dataset.row || slot.closest(".chrx-row")?.dataset.row;
+    const rowKey = slot.dataset.row;
     const perspective = (window.APP && window.APP.editor && window.APP.editor.perspective) || "class";
-    return (S.cards || []).filter(c => {
-      if (c.day !== d || c.period !== p) return false;
+
+    const candidates = prefilteredCards || (S.cards || []).filter(c => c.day === d && c.period === p);
+
+    return candidates.filter(c => {
       if (!rowKey || rowKey === "head") return true;
       const lesson = S._idx.lessonById[c.lessonId];
       if (!lesson) return false;
@@ -17053,7 +17068,7 @@ window.PendingStrip = (function () {
     const S = window.APP && window.APP.school;
     const lesson = S && S._idx ? S._idx.lessonById[lessonId] : null;
     const perspective = (window.APP && window.APP.editor && window.APP.editor.perspective) || "class";
-    const rowKey = slot && (slot.dataset.row || slot.closest(".chrx-row")?.dataset.row);
+    const rowKey = slot && slot.dataset.row;
     if (perspective === "room" && rowKey) return rowKey;
     return lesson ? lesson.preferredRoomId : undefined;
   }
