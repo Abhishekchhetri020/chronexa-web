@@ -1,26 +1,24 @@
 /**
  * Chronexa Service Worker.
  *
- * Strategy:
- *   - Pre-cache the app shell (HTML, theme CSS, core JS) on install
- *   - Cache-first for all chronexa-web static assets (HTML/CSS/JS/icons)
- *   - Network-first for the optional backend /solve endpoint (so cloud-solver
- *     calls bypass cache; the in-browser solver is the default anyway)
- *   - Bypass cache for CDN scripts (Tailwind, SheetJS, pako) — let the
- *     browser handle their freshness
+ * Strategy (v2 — network-first for code):
+ *   - Pre-cache the app shell on install for offline support
+ *   - NETWORK-FIRST for HTML/JS files: always try the network, fall back
+ *     to cache only when offline. This ensures code updates take effect
+ *     immediately without requiring manual cache clearing.
+ *   - CACHE-FIRST for CSS/images/fonts: these change rarely and are safe
+ *     to serve from cache (versioned via query string).
+ *   - Bypass cache for CDN scripts and backend /solve endpoint.
  *
- * Result: once a user has visited the site once, the app works fully OFFLINE.
- * The solver runs on their CPU via Web Workers; no server is needed.
+ * Result: code changes deploy instantly on reload. App still works fully
+ * offline after one visit. The solver runs on the CPU via Web Workers.
  */
 
 const CACHE_PREFIX = "chronexa-";
-const APP_VER = "20260525-p116-canplacesecond-n0";
+const APP_VER = "20260525-p119-multibranch-n0";
 const CACHE_NAME = CACHE_PREFIX + APP_VER;
 
-// Minimal app shell. Critical JS (bundle + solver worker + dynamic-
-// import targets) MUST be precached — otherwise the SW registers AFTER
-// first load but offline fails when those URLs come back with
-// query-string variants the cache hasn't seen yet.
+// Minimal app shell for offline support.
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -64,6 +62,16 @@ self.addEventListener("activate", (evt) => {
   );
 });
 
+// Returns true if the URL is for code (HTML/JS) that should use network-first.
+function isCodeFile(url) {
+  const path = url.pathname;
+  return path.endsWith(".html") ||
+         path.endsWith(".js") ||
+         path.endsWith(".mjs") ||
+         path === "/" ||
+         path === "";
+}
+
 self.addEventListener("fetch", (evt) => {
   const url = new URL(evt.request.url);
 
@@ -79,24 +87,45 @@ self.addEventListener("fetch", (evt) => {
   // Only handle GETs
   if (evt.request.method !== "GET") return;
 
-  evt.respondWith(
-    caches.match(evt.request).then((cached) => {
-      if (cached) return cached;
-      return fetch(evt.request).then((resp) => {
-        // Cache successful 200s from same origin
-        if (resp && resp.status === 200) {
-          const clone = resp.clone();
-          caches.open(CACHE_NAME).then((c) => c.put(evt.request, clone));
-        }
-        return resp;
-      }).catch(() => {
-        // Total offline fallback: serve the index.html for SPA-like resilience
-        if (evt.request.mode === "navigate") {
-          return caches.match("./index.html");
-        }
-      });
-    })
-  );
+  if (isCodeFile(url)) {
+    // NETWORK-FIRST for code files: always try fresh, cache for offline.
+    evt.respondWith(
+      fetch(evt.request)
+        .then((resp) => {
+          if (resp && resp.status === 200) {
+            const clone = resp.clone();
+            caches.open(CACHE_NAME).then((c) => c.put(evt.request, clone));
+          }
+          return resp;
+        })
+        .catch(() => {
+          return caches.match(evt.request).then((cached) => {
+            if (cached) return cached;
+            if (evt.request.mode === "navigate") {
+              return caches.match("./index.html");
+            }
+          });
+        })
+    );
+  } else {
+    // CACHE-FIRST for CSS, images, fonts, etc.
+    evt.respondWith(
+      caches.match(evt.request).then((cached) => {
+        if (cached) return cached;
+        return fetch(evt.request).then((resp) => {
+          if (resp && resp.status === 200) {
+            const clone = resp.clone();
+            caches.open(CACHE_NAME).then((c) => c.put(evt.request, clone));
+          }
+          return resp;
+        }).catch(() => {
+          if (evt.request.mode === "navigate") {
+            return caches.match("./index.html");
+          }
+        });
+      })
+    );
+  }
 });
 
 // Allow the page to trigger an update via postMessage

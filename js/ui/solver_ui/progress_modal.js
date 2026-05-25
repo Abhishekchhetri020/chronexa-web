@@ -232,7 +232,12 @@
 
     // Reset DOM
     refs.title.textContent = state.mode === "test" ? "Testing timetable…" : "Generating timetable…";
-    refs.sub.textContent = "Cycle 1 · " + (opts.source && opts.source.mode === "cloud" ? "cloud (OR-Tools)" : "browser worker");
+    const modeLabel = (opts.source && opts.source.mode === "cloud")
+      ? "cloud (OR-Tools)"
+      : (opts.source && opts.source.branches)
+        ? `${opts.source.branches} branches · browser`
+        : "browser worker";
+    refs.sub.textContent = "Cycle 1 · " + modeLabel;
     refs.bar1Fill.style.width = "0%";
     refs.bar2Fill.style.width = "0%";
     refs.pauseBtn.textContent = "Pause";

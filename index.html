@@ -226,7 +226,28 @@
 
 <!-- ─────────────────────── SCRIPTS ─────────────────────── -->
 <!-- Bump APP_VER on every deploy so the browser refetches the JS bundle -->
-<script>window.APP_VER = "20260525-p116-canplacesecond-n0";</script>
+<script>window.APP_VER = "20260525-p120-autoapply-n0";</script>
+<!-- Nuclear SW migration: if an old cache-first SW is still controlling,
+     unregister it and reload to pick up the new network-first SW. -->
+<script>
+(function () {
+  if (!("serviceWorker" in navigator) || !navigator.serviceWorker.controller) return;
+  var EXPECTED = "chronexa-" + window.APP_VER;
+  caches.keys().then(function (keys) {
+    var hasExpected = keys.indexOf(EXPECTED) >= 0;
+    if (hasExpected) return;
+    console.warn("[chronexa] Stale SW detected — clearing caches and reloading…");
+    Promise.all([
+      navigator.serviceWorker.getRegistrations().then(function (regs) {
+        return Promise.all(regs.map(function (r) { return r.unregister(); }));
+      }),
+      Promise.all(keys.map(function (k) { return caches.delete(k); }))
+    ]).then(function () {
+      window.location.reload();
+    });
+  });
+})();
+</script>
 <!-- Backend URL — leave empty to force "Run on this computer". Override at deploy time. -->
 <script>window.CHRONEXA_BACKEND_URL = window.CHRONEXA_BACKEND_URL || "";</script>
 <!-- Bundle mode (default): single HTTP request for all 133 modules.
@@ -302,6 +323,7 @@
     ["solver","relation_enforcer"],
     ["ui","components/verification"],
     ["ui","solver_ui/backend_client"],
+    ["ui","solver_ui/multi_branch"],
     ["ui","solver_ui/prelaunch_dialog"],
     ["ui","solver_ui/progress_modal"],
     ["ui","solver_ui/result_panel"],

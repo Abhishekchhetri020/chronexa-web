@@ -1,5 +1,5 @@
-/* Chronexa bundle — generated 2026-05-24T22:25:47Z
- *      162 modules concatenated in document order.
+/* Chronexa bundle — generated 2026-05-25T04:29:12Z
+ *      163 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
 /* ─── FILE: js/ui/state.js ─── */
@@ -12343,16 +12343,13 @@ ${body}
   }
 
   // -------- browser worker source -----------------------------------------
-  function runBrowser(school, options) {
+  function runBrowserSingle(school, options) {
     const sub = makeSubscribable();
     let paused = false;
     let buf = [];
     let cancelled = false;
 
     // Worker path is always relative to the page (not the bundle/script).
-    // Previously used `new URL("../../solver/worker.js", SELF_URL)` which
-    // works for per-file load (SELF_URL = backend_client.js) but breaks
-    // when bundled (SELF_URL = bundle.js → wrong resolution).
     const url = "js/solver/worker.js?v=" + (window.APP_VER || "");
     const worker = new Worker(url, { type: "module" });
 
@@ -12389,6 +12386,19 @@ ${body}
         if (tail.length) sub.emit(tail[tail.length - 1]);
       },
     };
+  }
+
+  function runBrowser(school, options) {
+    // Use multi-branch parallel solving when available (loaded from
+    // multi_branch.js). Falls back to single worker for environments
+    // without multi-branch support (e.g. missing script, single-core).
+    if (global.SolverUI && global.SolverUI.runMultiBranch) {
+      const cores = (typeof navigator !== "undefined" && navigator.hardwareConcurrency) || 4;
+      const branches = Math.max(2, Math.min(cores, 8));
+      console.log(`[solver] Using multi-branch parallel solving: ${branches} branches`);
+      return global.SolverUI.runMultiBranch(school, options, branches);
+    }
+    return runBrowserSingle(school, options);
   }
 
   // -------- cloud (HTTP) source -------------------------------------------
@@ -12612,6 +12622,202 @@ ${body}
   global.SolverUI.run = run;
   global.SolverUI._runBrowser = runBrowser;   // exported for tests
   global.SolverUI._runCloud   = runCloud;
+})(typeof window !== "undefined" ? window : globalThis);
+
+/* ─── FILE: js/ui/solver_ui/multi_branch.js ─── */
+// Multi-branch solver — spawns N Web Workers with different seeds and picks
+// the best result. Races all branches in parallel; the UI shows the best
+// progress so far. When time is up, all workers are terminated and the
+// best-so-far result is returned.
+//
+// Public API (same as backend_client.js):
+//   SolverUI.runMultiBranch({ school, options, branches?, onFallback }) -> Source
+//
+// Options:
+//   branches  — number of parallel workers (default: navigator.hardwareConcurrency or 4)
+//   All other options forwarded to each worker (timeLimitSec, etc.)
+
+(function (global) {
+  "use strict";
+
+  const DEFAULT_BRANCHES = Math.max(2, Math.min(
+    (typeof navigator !== "undefined" && navigator.hardwareConcurrency) || 4,
+    8  // cap at 8 to avoid thrashing on low-memory devices
+  ));
+
+  function makeSubscribable() {
+    const listeners = new Set();
+    return {
+      subscribe(h) { listeners.add(h); return () => listeners.delete(h); },
+      emit(ev) { for (const h of listeners) { try { h(ev); } catch (e) { console.error(e); } } },
+    };
+  }
+
+  /**
+   * Spawn N workers, each with a different seed. Race them.
+   * Merge progress from all branches (show best soft score).
+   * When ALL finish or time expires, emit done with the best result.
+   */
+  function runMultiBranch(school, options, numBranches) {
+    const sub = makeSubscribable();
+    const N = numBranches || DEFAULT_BRANCHES;
+    let cancelled = false;
+    let paused = false;
+    let buf = [];
+
+    const workers = [];
+    const results = [];     // { result, softScore, placed, unplaced }
+    let doneCount = 0;
+    let bestProgress = null;
+    let bestResult = null;
+    let bestScore = Infinity; // lower is better (soft score = penalty)
+    let bestPlaced = 0;
+
+    // Aggregate progress across all branches
+    const branchProgress = new Array(N).fill(null);
+
+    function emitAggregateProgress() {
+      if (cancelled) return;
+      // Find the branch with best progress (most placed, then lowest soft score)
+      let best = null;
+      for (let i = 0; i < N; i++) {
+        const p = branchProgress[i];
+        if (!p) continue;
+        if (!best ||
+            (p.placed || 0) > (best.placed || 0) ||
+            ((p.placed || 0) === (best.placed || 0) && (p.softScore || 0) < (best.softScore || 0))) {
+          best = p;
+        }
+      }
+      if (!best) return;
+      const ev = {
+        type: "progress",
+        iter: best.iter || 0,
+        softScore: best.softScore || 0,
+        hardConflicts: best.hardConflicts || 0,
+        backtracks: best.backtracks || 0,
+        durationMs: best.durationMs || 0,
+        branch: best._branch,
+        totalBranches: N,
+        placed: best.placed || 0,
+        bestPlaced: bestPlaced,
+      };
+      if (paused) { buf.push(ev); return; }
+      sub.emit(ev);
+    }
+
+    function onWorkerDone(branchIdx, result) {
+      if (cancelled) return;
+      doneCount++;
+
+      const stats = result && result.stats;
+      const placed = stats ? (stats.placed || 0) : 0;
+      const unplaced = stats ? (stats.unplaced || 0) : 0;
+      const softScore = (result && typeof result.softScore === "number")
+        ? result.softScore : Infinity;
+
+      // Best = most placed, then lowest soft score
+      const isBetter = placed > bestPlaced ||
+        (placed === bestPlaced && softScore < bestScore);
+
+      if (isBetter || !bestResult) {
+        bestResult = result;
+        bestScore = softScore;
+        bestPlaced = placed;
+      }
+
+      console.log(`[multi-branch] Branch ${branchIdx + 1}/${N} done: placed=${placed}, unplaced=${unplaced}, softScore=${softScore}${isBetter ? " ★ NEW BEST" : ""}`);
+
+      // All branches done → emit the winner
+      if (doneCount >= N) {
+        console.log(`[multi-branch] All ${N} branches complete. Best: placed=${bestPlaced}, softScore=${bestScore}`);
+        sub.emit({ type: "done", result: bestResult });
+        cleanup();
+      }
+    }
+
+    function onWorkerError(branchIdx, message) {
+      console.error(`[multi-branch] Branch ${branchIdx + 1}/${N} error: ${message}`);
+      doneCount++;
+      if (doneCount >= N) {
+        if (bestResult) {
+          sub.emit({ type: "done", result: bestResult });
+        } else {
+          sub.emit({ type: "error", message: `All ${N} branches failed. Last: ${message}` });
+        }
+        cleanup();
+      }
+    }
+
+    function cleanup() {
+      for (const w of workers) {
+        try { w.terminate(); } catch {}
+      }
+    }
+
+    // Spawn N workers with different seeds
+    const baseSeed = (options && options.seed) || 42;
+    const url = "js/solver/worker.js?v=" + (window.APP_VER || "");
+
+    for (let i = 0; i < N; i++) {
+      const seed = baseSeed + i * 7919; // Prime spacing for diversity
+      const w = new Worker(url, { type: "module" });
+      workers.push(w);
+
+      w.onmessage = ((branchIdx) => (ev) => {
+        const m = ev.data || {};
+        if (cancelled) return;
+
+        if (m.type === "progress") {
+          // Track placed count from progress
+          branchProgress[branchIdx] = {
+            ...m,
+            _branch: branchIdx,
+            placed: m.placed || 0,
+          };
+          emitAggregateProgress();
+        } else if (m.type === "done") {
+          onWorkerDone(branchIdx, m.result);
+        } else if (m.type === "error") {
+          onWorkerError(branchIdx, m.message || "worker error");
+        }
+      })(i);
+
+      w.onerror = ((branchIdx) => (e) => {
+        onWorkerError(branchIdx, (e && e.message) || "worker error");
+      })(i);
+
+      // Each branch gets its own seed
+      w.postMessage({
+        type: "solve",
+        school,
+        options: { ...options, seed },
+      });
+    }
+
+    return {
+      mode: "browser-multi",
+      branches: N,
+      subscribe: sub.subscribe,
+      cancel() {
+        cancelled = true;
+        cleanup();
+        sub.emit({ type: "cancelled" });
+      },
+      pause() {
+        paused = true;
+      },
+      resume() {
+        paused = false;
+        const tail = buf; buf = [];
+        if (tail.length) sub.emit(tail[tail.length - 1]);
+      },
+    };
+  }
+
+  global.SolverUI = global.SolverUI || {};
+  global.SolverUI.runMultiBranch = runMultiBranch;
+  global.SolverUI._DEFAULT_BRANCHES = DEFAULT_BRANCHES;
 })(typeof window !== "undefined" ? window : globalThis);
 
 /* ─── FILE: js/ui/solver_ui/prelaunch_dialog.js ─── */
@@ -13126,7 +13332,12 @@ ${body}
 
     // Reset DOM
     refs.title.textContent = state.mode === "test" ? "Testing timetable…" : "Generating timetable…";
-    refs.sub.textContent = "Cycle 1 · " + (opts.source && opts.source.mode === "cloud" ? "cloud (OR-Tools)" : "browser worker");
+    const modeLabel = (opts.source && opts.source.mode === "cloud")
+      ? "cloud (OR-Tools)"
+      : (opts.source && opts.source.branches)
+        ? `${opts.source.branches} branches · browser`
+        : "browser worker";
+    refs.sub.textContent = "Cycle 1 · " + modeLabel;
     refs.bar1Fill.style.width = "0%";
     refs.bar2Fill.style.width = "0%";
     refs.pauseBtn.textContent = "Pause";
@@ -13439,13 +13650,23 @@ ${body}
     if (!r) return false;
     const a = r.assignment;
     if (!Array.isArray(a) || a.length === 0) return false;
-    // Refuse to silently overwrite a working timetable with an inferior
-    // run. Only auto-apply on clean, complete solutions.
-    if (r.status === "TIMEOUT" || r.status === "INFEASIBLE") return false;
+    // INFEASIBLE — never auto-apply.
+    if (r.status === "INFEASIBLE") return false;
     const hard = (r.stats && r.stats.hardConflicts) || 0;
     if (hard > 0) return false;
+    // TIMEOUT is the *normal* outcome for medium-to-large schools. The solver
+    // always uses its full time budget and returns the best result found.
+    // Auto-apply if the result placed ≥ 90% of cards — the user explicitly
+    // asked to generate a new timetable.
+    const placed = (r.stats && r.stats.placed) || a.length;
+    const unplaced = (r.stats && r.stats.unplaced) || 0;
+    const total = placed + unplaced;
+    if (r.status === "TIMEOUT" && total > 0 && placed / total < 0.90) return false;
+    // Don't silently overwrite a working timetable with a much smaller one
+    // (protect against solver regression). Threshold: result must have at
+    // least 85% of the existing card count.
     const before = (state.school && state.school.cards && state.school.cards.length) || 0;
-    if (before > 0 && a.length < before) return false;
+    if (before > 0 && a.length < before * 0.85) return false;
     return true;
   }
   function doClose() {
@@ -14616,6 +14837,16 @@ ${body}
     if (!("serviceWorker" in navigator)) return;
     // file:// (downloaded zip use case) can't register a SW — skip silently
     if (location.protocol === "file:") return;
+
+    // Auto-reload when a new SW takes control (version update).
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (refreshing) return;
+      refreshing = true;
+      console.info("[chronexa] new SW active — reloading…");
+      window.location.reload();
+    });
+
     navigator.serviceWorker
       .register("./sw.js")
       .then((reg) => {
@@ -14625,8 +14856,9 @@ ${body}
           if (!nw) return;
           nw.addEventListener("statechange", () => {
             if (nw.state === "installed" && navigator.serviceWorker.controller) {
-              // A new version is available; you could surface a "Reload to update" toast here
-              console.info("[chronexa] new version cached — reload to apply");
+              // New version is waiting — tell it to take over immediately.
+              console.info("[chronexa] new version cached — triggering SKIP_WAITING");
+              nw.postMessage("SKIP_WAITING");
             }
           });
         });

@@ -84,6 +84,16 @@
     if (!("serviceWorker" in navigator)) return;
     // file:// (downloaded zip use case) can't register a SW — skip silently
     if (location.protocol === "file:") return;
+
+    // Auto-reload when a new SW takes control (version update).
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (refreshing) return;
+      refreshing = true;
+      console.info("[chronexa] new SW active — reloading…");
+      window.location.reload();
+    });
+
     navigator.serviceWorker
       .register("./sw.js")
       .then((reg) => {
@@ -93,8 +103,9 @@
           if (!nw) return;
           nw.addEventListener("statechange", () => {
             if (nw.state === "installed" && navigator.serviceWorker.controller) {
-              // A new version is available; you could surface a "Reload to update" toast here
-              console.info("[chronexa] new version cached — reload to apply");
+              // New version is waiting — tell it to take over immediately.
+              console.info("[chronexa] new version cached — triggering SKIP_WAITING");
+              nw.postMessage("SKIP_WAITING");
             }
           });
         });

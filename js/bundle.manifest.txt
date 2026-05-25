@@ -49,6 +49,7 @@ js/ui/io/export_html.js
 js/solver/relation_enforcer.js
 js/ui/components/verification.js
 js/ui/solver_ui/backend_client.js
+js/ui/solver_ui/multi_branch.js
 js/ui/solver_ui/prelaunch_dialog.js
 js/ui/solver_ui/progress_modal.js
 js/ui/solver_ui/result_panel.js

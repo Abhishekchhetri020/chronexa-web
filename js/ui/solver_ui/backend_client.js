@@ -49,16 +49,13 @@
   }
 
   // -------- browser worker source -----------------------------------------
-  function runBrowser(school, options) {
+  function runBrowserSingle(school, options) {
     const sub = makeSubscribable();
     let paused = false;
     let buf = [];
     let cancelled = false;
 
     // Worker path is always relative to the page (not the bundle/script).
-    // Previously used `new URL("../../solver/worker.js", SELF_URL)` which
-    // works for per-file load (SELF_URL = backend_client.js) but breaks
-    // when bundled (SELF_URL = bundle.js → wrong resolution).
     const url = "js/solver/worker.js?v=" + (window.APP_VER || "");
     const worker = new Worker(url, { type: "module" });
 
@@ -95,6 +92,19 @@
         if (tail.length) sub.emit(tail[tail.length - 1]);
       },
     };
+  }
+
+  function runBrowser(school, options) {
+    // Use multi-branch parallel solving when available (loaded from
+    // multi_branch.js). Falls back to single worker for environments
+    // without multi-branch support (e.g. missing script, single-core).
+    if (global.SolverUI && global.SolverUI.runMultiBranch) {
+      const cores = (typeof navigator !== "undefined" && navigator.hardwareConcurrency) || 4;
+      const branches = Math.max(2, Math.min(cores, 8));
+      console.log(`[solver] Using multi-branch parallel solving: ${branches} branches`);
+      return global.SolverUI.runMultiBranch(school, options, branches);
+    }
+    return runBrowserSingle(school, options);
   }
 
   // -------- cloud (HTTP) source -------------------------------------------

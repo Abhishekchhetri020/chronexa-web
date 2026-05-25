@@ -244,13 +244,23 @@
     if (!r) return false;
     const a = r.assignment;
     if (!Array.isArray(a) || a.length === 0) return false;
-    // Refuse to silently overwrite a working timetable with an inferior
-    // run. Only auto-apply on clean, complete solutions.
-    if (r.status === "TIMEOUT" || r.status === "INFEASIBLE") return false;
+    // INFEASIBLE — never auto-apply.
+    if (r.status === "INFEASIBLE") return false;
     const hard = (r.stats && r.stats.hardConflicts) || 0;
     if (hard > 0) return false;
+    // TIMEOUT is the *normal* outcome for medium-to-large schools. The solver
+    // always uses its full time budget and returns the best result found.
+    // Auto-apply if the result placed ≥ 90% of cards — the user explicitly
+    // asked to generate a new timetable.
+    const placed = (r.stats && r.stats.placed) || a.length;
+    const unplaced = (r.stats && r.stats.unplaced) || 0;
+    const total = placed + unplaced;
+    if (r.status === "TIMEOUT" && total > 0 && placed / total < 0.90) return false;
+    // Don't silently overwrite a working timetable with a much smaller one
+    // (protect against solver regression). Threshold: result must have at
+    // least 85% of the existing card count.
     const before = (state.school && state.school.cards && state.school.cards.length) || 0;
-    if (before > 0 && a.length < before) return false;
+    if (before > 0 && a.length < before * 0.85) return false;
     return true;
   }
   function doClose() {
