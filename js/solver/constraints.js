@@ -50,6 +50,7 @@ export const FAIL = Object.freeze({
   RELATION_SIMULTANEOUS: 27,
   RELATION_BREAK_BETWEEN: 28,
   CLASS_BELL_PERIOD_INVALID: 29,
+  SUBJECT_DAILY_MIN_VIOLATION: 30,
 });
 
 /** Numeric ID → name string. */
@@ -84,6 +85,7 @@ export const FAIL_NAME = Object.freeze({
   27: "relation_simultaneous",
   28: "relation_break_between",
   29: "class_bell_period_invalid",
+  30: "subject_daily_min_violation",
 });
 
 /** Catalog rows (UI uses these for the violations list). */

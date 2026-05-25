@@ -686,29 +686,39 @@ function buildModel(school) {
       if (subjectDailyLimit[i] < 0) subjectDailyLimit[i] = globalSDL;
     }
   }
-  // Auto-tighten: for each (class, subject) compute the number of sessions
-  // per week and set the daily limit to ceil(sessions / days). This ensures
-  // e.g. EVS 6-ppw in 6-day week gets a daily limit of 1, not the default 2.
-  // Without this, the solver happily puts 2 EVS on the same day.
+  // Auto-tighten: for each (class, subject) compute the total number of
+  // PERIOD-LEVEL increments per week and set the daily limit to
+  // ceil(totalPeriods / days). classSubjectDayCount is incremented once per
+  // applySingle call — for lab-doubles that's 2 per session (one per slot).
+  // So we must count in period units, not session units.
   const _sessionsByClassSubject = new Int32Array(classIds.length * subjectIds.length);
+  // Max periods-per-card for each (class, subject). Lab-doubles have ppc=2;
+  // idealMax must be at least ppc, otherwise even a single placement overflows.
+  const _maxPpcByClassSubject = new Int32Array(classIds.length * subjectIds.length);
   for (const l of school.lessons) {
     const sIdx = subjectIdx.get(l.subjectId);
     if (sIdx == null) continue;
     const ppw = l.periodsPerWeek | 0;
     if (ppw <= 0) continue;
     const ppc = l.isLabDouble ? 2 : (l.lessonLength || 1);
-    const sessions = Math.max(1, Math.round(ppw / ppc));
+    // Count in PERIOD units (matching classSubjectDayCount increments).
+    // For a regular lesson with ppw=7: total=7. For lab-double ppw=2: total=2.
     for (const cid of (l.classIds || [])) {
       const cIdx = classIdx.get(cid);
       if (cIdx == null) continue;
-      _sessionsByClassSubject[cIdx * subjectIds.length + sIdx] += sessions;
+      _sessionsByClassSubject[cIdx * subjectIds.length + sIdx] += ppw;
+      if (ppc > _maxPpcByClassSubject[cIdx * subjectIds.length + sIdx]) {
+        _maxPpcByClassSubject[cIdx * subjectIds.length + sIdx] = ppc;
+      }
     }
   }
   for (let c = 0; c < classIds.length; c++) {
     for (let s = 0; s < subjectIds.length; s++) {
-      const sessions = _sessionsByClassSubject[c * subjectIds.length + s];
-      if (sessions <= 0) continue;
-      const idealMax = Math.ceil(sessions / days);
+      const totalPeriods = _sessionsByClassSubject[c * subjectIds.length + s];
+      if (totalPeriods <= 0) continue;
+      const maxPPC = _maxPpcByClassSubject[c * subjectIds.length + s] || 1;
+      // idealMax must be at least maxPPC so a single lab-double can fit.
+      const idealMax = Math.max(maxPPC, Math.ceil(totalPeriods / days));
       for (let d = 0; d < days; d++) {
         const key = ((c * subjectIds.length) + s) * days + d;
         const current = subjectDailyLimit[key];
@@ -716,6 +726,22 @@ function buildModel(school) {
           subjectDailyLimit[key] = idealMax;
         }
       }
+    }
+  }
+
+  // Subject daily MINIMUM — floor(sessions / days). Enforces even spread:
+  // e.g. ENGLISH ppw=7 in 6-day week → idealMin=1, so every day gets at
+  // least 1 session. Combined with idealMax=2 this guarantees the 5×1+1×2
+  // distribution. Without this, the solver might bunch 2+2+1+1+1+0.
+  // Only set when sessions >= days (otherwise some days must be empty).
+  const subjectDailyMin = new Int32Array(classIds.length * subjectIds.length);
+  for (let c = 0; c < classIds.length; c++) {
+    for (let s = 0; s < subjectIds.length; s++) {
+      const sessions = _sessionsByClassSubject[c * subjectIds.length + s];
+      if (sessions >= days) {
+        subjectDailyMin[c * subjectIds.length + s] = Math.floor(sessions / days);
+      }
+      // else: sessions < days → some days will be empty, min stays 0.
     }
   }
 
@@ -744,23 +770,20 @@ function buildModel(school) {
   ]);
 
   // Sibling-subject deficit target — for each (class, subject), sum of
-  // SESSIONS (not raw periods) across all lessons that include this class
-  // with that subject. classSubjectDayCount increments by 1 per session
-  // in applySingle, so the target must also count sessions. Without this,
-  // double-period subjects (periodsPerCard=2, ppw=6) would have target=6
-  // but only ever reach count=3, leaving a permanent deficit.
+  // PERIOD-LEVEL counts across all lessons that include this class with
+  // that subject. classSubjectDayCount increments by 1 per applySingle
+  // call — lab-doubles get 2 calls per session. So the target must count
+  // in period units (= ppw) to stay consistent.
   const classSubjectTarget = new Int32Array(classIds.length * subjectIds.length);
   for (const l of school.lessons) {
     const sIdx = subjectIdx.get(l.subjectId);
     if (sIdx == null) continue;
     const ppw = l.periodsPerWeek | 0;
     if (ppw <= 0) continue;
-    const ppc = l.isLabDouble ? 2 : (l.lessonLength || 1);
-    const sessions = Math.max(1, Math.round(ppw / ppc));
     for (const cid of (l.classIds || [])) {
       const cIdx = classIdx.get(cid);
       if (cIdx == null) continue;
-      classSubjectTarget[cIdx * subjectIds.length + sIdx] += sessions;
+      classSubjectTarget[cIdx * subjectIds.length + sIdx] += ppw;
     }
   }
 
@@ -993,6 +1016,8 @@ function buildModel(school) {
     supervisionCriteria,
     studentElectiveSets, lessonStudentSets,
     subjectDailyLimit,
+    subjectDailyMin,
+    _sessionsByClassSubject,
     classSubjectTarget,
     classTeacherPosMask,
     classHomeroomTeacher,
@@ -1093,6 +1118,7 @@ function makeState(model) {
     teacherDayLoad: new Int32Array(teacherCount * days),
     classDayLoad: new Int32Array(classCount * days),
     classSubjectDayCount: new Int32Array(classCount * subjectCount * days),
+    classSubjectTotalPlaced: new Int32Array(classCount * subjectCount),
     teacherLastPeriodCount: new Int32Array(teacherCount),
     teacherDistinctRooms: new Int32Array(teacherCount),
     teacherRoomUsage: new Int32Array(teacherCount * roomCount),
@@ -1200,6 +1226,31 @@ function canPlace(model, state, lessonIdx, slot, roomIdx) {
     const subjectLimit = model.subjectDailyLimit[subjectKey];
     if (subjectLimit >= 0 && state.classSubjectDayCount[subjectKey] >= subjectLimit) {
       return FAIL.SUBJECT_DAILY_LIMIT;
+    }
+    // Forward-checking for minimum daily distribution: if this (class,subject)
+    // has idealMin >= 1, block placements on already-satisfied days when the
+    // remaining unplaced sessions are just enough to fill the unsatisfied days.
+    // This prevents the solver from bunching sessions and leaving days empty.
+    const csKey = c * model.subjectCount + subject;
+    const idealMin = model.subjectDailyMin[csKey];
+    if (idealMin > 0) {
+      const countOnDay = state.classSubjectDayCount[subjectKey];
+      if (countOnDay >= idealMin) {
+        // Day D already satisfied. Check if remaining can fill all other hungry days.
+        const totalSessions = model._sessionsByClassSubject[csKey];
+        const placedTotal = state.classSubjectTotalPlaced[csKey];
+        const remaining = totalSessions - placedTotal - 1; // -1 because this placement hasn't happened yet
+        let hungryDays = 0;
+        const base = csKey * model.days;
+        for (let dd = 0; dd < model.days; dd++) {
+          if (dd !== d && state.classSubjectDayCount[base + dd] < idealMin) {
+            hungryDays++;
+          }
+        }
+        if (remaining < hungryDays) {
+          return FAIL.SUBJECT_DAILY_MIN_VIOLATION;
+        }
+      }
     }
   }
 
@@ -1551,6 +1602,7 @@ function applySingle(model, state, lessonIdx, slot, roomIdx) {
     state.classDayLoad[cd] += 1;
     const subjectKey = ((c * model.subjectCount) + subject) * model.days + d;
     state.classSubjectDayCount[subjectKey] += 1;
+    state.classSubjectTotalPlaced[c * model.subjectCount + subject] += 1;
     refreshSubjectCell(model, state, c, subject, d);
     refreshClassDay(model, state, c, d);
     if (state.classSlotOccupant) {
@@ -1633,6 +1685,7 @@ function removeSingle(model, state, lessonIdx, slot, roomIdx) {
     state.classDayLoad[cd] -= 1;
     const subjectKey = ((c * model.subjectCount) + subject) * model.days + d;
     state.classSubjectDayCount[subjectKey] -= 1;
+    state.classSubjectTotalPlaced[c * model.subjectCount + subject] -= 1;
     refreshSubjectCell(model, state, c, subject, d);
     refreshClassDay(model, state, c, d);
     if (state.classSlotOccupant) {
@@ -2541,6 +2594,7 @@ function materializeBestIntoState(model, state) {
   state.teacherDayLoad.fill(0);
   state.classDayLoad.fill(0);
   state.classSubjectDayCount.fill(0);
+  state.classSubjectTotalPlaced.fill(0);
   state.teacherLastPeriodCount.fill(0);
   state.teacherDistinctRooms.fill(0);
   state.teacherRoomUsage.fill(0);
