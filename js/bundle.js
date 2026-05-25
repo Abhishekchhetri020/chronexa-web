@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-25T04:39:11Z
+/* Chronexa bundle — generated 2026-05-25T04:48:25Z
  *      163 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -13650,18 +13650,21 @@ ${body}
     if (!r) return false;
     const a = r.assignment;
     if (!Array.isArray(a) || a.length === 0) return false;
-    // INFEASIBLE — never auto-apply.
-    if (r.status === "INFEASIBLE") return false;
-    const hard = (r.stats && r.stats.hardConflicts) || 0;
-    if (hard > 0) return false;
+    // INFEASIBLE with zero placements — never auto-apply.
+    if (r.status === "INFEASIBLE" && a.length === 0) return false;
+    // scrubbedConflicts = actual constraint violations in the placed
+    // schedule (teacher overlaps, class overlaps, etc.). If any exist,
+    // block auto-apply. Note: hardConflicts in the solver output counts
+    // UNPLACED lessons, not violations in placed cards.
+    const scrubbed = (r.stats && r.stats.scrubbedConflicts) || 0;
+    if (scrubbed > 0) return false;
     // TIMEOUT is the *normal* outcome for medium-to-large schools. The solver
     // always uses its full time budget and returns the best result found.
-    // Auto-apply if the result placed ≥ 90% of cards — the user explicitly
-    // asked to generate a new timetable.
+    // Auto-apply if the result placed ≥ 90% of cards.
     const placed = (r.stats && r.stats.placed) || a.length;
     const unplaced = (r.stats && r.stats.unplaced) || 0;
     const total = placed + unplaced;
-    if (r.status === "TIMEOUT" && total > 0 && placed / total < 0.90) return false;
+    if (total > 0 && placed / total < 0.90) return false;
     // Don't silently overwrite a working timetable with a much smaller one
     // (protect against solver regression). Threshold: result must have at
     // least 85% of the existing card count.
