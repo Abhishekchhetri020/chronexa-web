@@ -1,5 +1,5 @@
-/* Chronexa bundle — generated 2026-05-25T09:36:15Z
- *      163 modules concatenated in document order.
+/* Chronexa bundle — generated 2026-05-25T20:07:38Z
+ *      165 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
 /* ─── FILE: js/ui/state.js ─── */
@@ -9900,7 +9900,12 @@ window.Inspector = (function () {
  *
  * Centralized place for school-wide settings: name, year, country/region,
  * days/week, periods/day, multi-term toggle, default time-zone, and the
- * 23 `globals.settings` fields documented in legacy-research
+ * 23 `globals.settings` fields documented in legacy-research.
+ *
+ * Now mirrors the aSc "Settings" dialog layout:
+ *   - "Bell times" link → EntityBells
+ *   - "Rename days" link → EntityDays
+ *   - "Define terms" / "Define weeks" shown when multi-term is checked
  *
  * Backs the "school" route in entity_router (replacing the previous stub).
  * Settings persist on `school.settings = {...}`.
@@ -9912,6 +9917,13 @@ window.Inspector = (function () {
 
   const COUNTRIES = ["India", "USA", "UK", "Slovakia", "Australia", "Singapore", "UAE", "Other"];
   const TIMEZONES = ["Asia/Kolkata", "Asia/Dubai", "Europe/Bratislava", "America/New_York", "America/Los_Angeles", "Europe/London", "Australia/Sydney", "Asia/Singapore", "UTC"];
+  const WEEKENDS = [
+    "Saturday - Sunday",
+    "Sunday",
+    "Friday - Saturday",
+    "Saturday",
+    "None",
+  ];
 
   function open() {
     const school = window.APP.school;
@@ -9928,6 +9940,9 @@ window.Inspector = (function () {
       periodsPerDay:  s.periodsPerDay || (school.bell && school.bell.periods ? school.bell.periods.length : 8),
       multiTerm:      !!s.multiTerm,
       multiWeek:      !!s.multiWeek,
+      zeroPeriods:    !!s.zeroPeriods,
+      showDayNumbers: !!s.showDayNumbers,
+      weekend:        s.weekend || "Saturday - Sunday",
       maxCardsPerCell: s.maxCardsPerCell || 1,
       defaultLessonDuration: s.defaultLessonDuration || 40,
       transferTimePeriods: s.transferTimePeriods || 0,
@@ -9963,37 +9978,98 @@ window.Inspector = (function () {
       }
       return sel;
     }
+    function link(label, onClick) {
+      const a = D.el("a", { href: "#", style: "color:#3b82f6;font-size:12px;cursor:pointer;text-decoration:underline" }, label);
+      a.addEventListener("click", (e) => { e.preventDefault(); onClick(); });
+      return a;
+    }
+    function actionBtn(label, onClick) {
+      const btn = D.el("button", {
+        type: "button",
+        style: "padding:4px 14px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px;cursor:pointer;background:#f8fafc;color:#334155",
+      }, label);
+      btn.addEventListener("click", onClick);
+      return btn;
+    }
+
+    // Multi-term conditional fields — these will be shown/hidden dynamically
+    const termsRow = field("", D.el("div", { style: "display:flex;gap:8px" },
+      actionBtn("Define terms", () => { if (window.EntityTerms) window.EntityTerms.open(); }),
+      actionBtn("Define weeks", () => { if (window.EntityWeeks) window.EntityWeeks.open(); }),
+    ));
 
     D.buildEditSheet({
-      title: `School settings — ${draft.schoolName || "Untitled"}`,
+      title: `Settings — ${draft.schoolName || "Untitled"}`,
       fields: [
-        field("Section: School identity"),
-        field("School name",   text(draft.schoolName, 120, v => draft.schoolName = v)),
-        field("Academic year", text(draft.year, 12, v => draft.year = v)),
-        field("Country",       select(draft.country, COUNTRIES, v => draft.country = v)),
-        field("Region / state", text(draft.region, 80, v => draft.region = v)),
-        field("Time zone",     select(draft.timezone, TIMEZONES, v => draft.timezone = v)),
+        // ── School identity ──
+        field("Name of the school:", text(draft.schoolName, 120, v => draft.schoolName = v)),
+        field("School year:", select(draft.year,
+          [`${new Date().getFullYear()}/${(new Date().getFullYear() + 1) % 100}`,
+           `${new Date().getFullYear() - 1}/${new Date().getFullYear() % 100}`],
+          v => draft.year = v)),
 
-        field("Section: Bell shape"),
-        field("Days per week",   num(draft.daysPerWeek, 1, 7, 1, v => draft.daysPerWeek = v)),
-        field("Periods per day", num(draft.periodsPerDay, 1, 20, 1, v => draft.periodsPerDay = v)),
-        field("Default period duration (minutes)", num(draft.defaultLessonDuration, 20, 90, 5, v => draft.defaultLessonDuration = v)),
-        field("Multi-term timetable",  bool(draft.multiTerm, v => draft.multiTerm = v)),
-        field("Multi-week timetable",  bool(draft.multiWeek, v => draft.multiWeek = v)),
+        field("Section: "),
+
+        // ── Bell shape ──
+        field("Periods per day:", (() => {
+          const wrap = D.el("span", { style: "display:flex;align-items:center;gap:8px" });
+          wrap.appendChild(num(draft.periodsPerDay, 1, 20, 1, v => draft.periodsPerDay = v));
+          wrap.appendChild(link("Bell times", () => {
+            if (window.EntityBells) window.EntityBells.open();
+          }));
+          return wrap;
+        })()),
+        field("Work with zero periods", bool(draft.zeroPeriods, v => draft.zeroPeriods = v)),
+
+        field("Section: "),
+
+        field("Number of days:", (() => {
+          const wrap = D.el("span", { style: "display:flex;align-items:center;gap:8px" });
+          wrap.appendChild(num(draft.daysPerWeek, 1, 7, 1, v => draft.daysPerWeek = v));
+          wrap.appendChild(link("Rename days", () => {
+            if (window.EntityDays) window.EntityDays.open();
+          }));
+          return wrap;
+        })()),
+        field("Weekend:", select(draft.weekend, WEEKENDS, v => draft.weekend = v)),
+
+        field("Section: "),
+
+        field("Show day number instead of day name", bool(draft.showDayNumbers, v => draft.showDayNumbers = v)),
+
+        field("Section: "),
+
+        // ── Multi-term/week ──
+        field("I want to create multi term or multi-week timetable", (() => {
+          const cb = bool(draft.multiTerm, v => {
+            draft.multiTerm = v;
+            // Toggle visibility of Define terms/weeks buttons
+            const btnsRow = document.querySelector("[data-settings-terms]");
+            if (btnsRow) btnsRow.style.display = v ? "flex" : "none";
+          });
+          return cb;
+        })()),
+        // Conditional buttons
+        (() => {
+          const r = field("", D.el("div", {
+            "data-settings-terms": "1",
+            style: `display:${draft.multiTerm ? "flex" : "none"};gap:8px`,
+          },
+            actionBtn("Define terms", () => { if (window.EntityTerms) window.EntityTerms.open(); }),
+            actionBtn("Define weeks", () => { if (window.EntityWeeks) window.EntityWeeks.open(); }),
+          ));
+          return r;
+        })(),
 
         field("Section: Solver hints"),
-        field("Max cards per slot",    num(draft.maxCardsPerCell, 1, 10, 1, v => draft.maxCardsPerCell = v)),
-        field("Building transfer periods (min between blocks)", num(draft.transferTimePeriods, 0, 5, 1, v => draft.transferTimePeriods = v)),
+        field("Max cards per slot", num(draft.maxCardsPerCell, 1, 10, 1, v => draft.maxCardsPerCell = v)),
+        field("Building transfer periods", num(draft.transferTimePeriods, 0, 5, 1, v => draft.transferTimePeriods = v)),
         field("Class in one building per day", bool(draft.classInOneBuildingPerDay, v => draft.classInOneBuildingPerDay = v)),
 
-        field("Section: School mode (FET port)"),
-        field("Mode",  select(draft.mode, ["", "morning-afternoon", "block-planning"], v => draft.mode = v)),
-        field("Afternoon starts at period", num(draft.afternoonStartsAt, 1, 12, 1, v => draft.afternoonStartsAt = v)),
-
         field("Section: Print defaults"),
-        field("Show bell times",       bool(draft.printShowBellTimes, v => draft.printShowBellTimes = v)),
-        field("Show teacher names",    bool(draft.printShowTeacherNames, v => draft.printShowTeacherNames = v)),
-        field("Show classroom names",  bool(draft.printShowClassroomNames, v => draft.printShowClassroomNames = v)),
+        field("Show bell times", bool(draft.printShowBellTimes, v => draft.printShowBellTimes = v)),
+        field("Show teacher names", bool(draft.printShowTeacherNames, v => draft.printShowTeacherNames = v)),
+        field("Show classroom names", bool(draft.printShowClassroomNames, v => draft.printShowClassroomNames = v)),
       ],
       onSave: () => {
         if (!draft.schoolName.trim()) {
@@ -10010,6 +10086,8 @@ window.Inspector = (function () {
         // Refresh title bar
         const title = document.querySelector("#school-title, [data-school-name]");
         if (title) title.textContent = school.schoolName;
+        // Fire entity:changed so School Hub refreshes
+        document.dispatchEvent(new CustomEvent("entity:changed", { detail: { source: "school-settings-dialog" } }));
       },
     });
   }
@@ -11123,6 +11201,24 @@ window.Inspector = (function () {
       ),
     ));
 
+    // Per-day override matrix (shown when bellPerDay toggle is on)
+    if (s.bellPerDay && periods.length) {
+      const matrixHost = el("div", { class: "chrx-hub-matrix-host" });
+      wrap.appendChild(section("Per-day bell time overrides",
+        el("p", { class: "chrx-hub-help" },
+          "Click any cell to set different bell times for a period on a specific day."),
+        matrixHost,
+      ));
+      // Defer render so the host is in the DOM
+      setTimeout(() => {
+        if (window.PeriodOverrideMatrix && window.PeriodOverrideMatrix.render) {
+          window.PeriodOverrideMatrix.render(matrixHost);
+        } else {
+          matrixHost.innerHTML = '<div style="font-size:12px;color:#94a3b8;padding:8px">Per-day override matrix is loading…</div>';
+        }
+      }, 0);
+    }
+
     return wrap;
   }
 
@@ -11531,6 +11627,316 @@ window.Inspector = (function () {
   }
 
   global.SchoolHub = { render };
+})(window);
+
+/* ─── FILE: js/ui/components/school_toolbar.js ─── */
+/* Entity icon toolbar — aSc-style horizontal strip.
+ * window.SchoolToolbar.render(host) mounts above the timetable grid.
+ *
+ * Each button fires `app:open-entity` (for entity CRUD) or a dedicated
+ * event for utility actions (solver test, generate, verify, print).
+ */
+(function (global) {
+  "use strict";
+
+  const ENTITY_BUTTONS = [
+    { icon: "🏛", label: "School",      kind: "school" },
+    { icon: "📚", label: "Subjects",    kind: "subjects" },
+    { icon: "👥", label: "Classes",     kind: "classes" },
+    { icon: "🚪", label: "Classrooms",  kind: "classrooms" },
+    { icon: "👨‍🏫", label: "Teachers",   kind: "teachers" },
+    { icon: "📝", label: "Lessons",     kind: "lessons" },
+    { icon: "👤", label: "Students /\nSeminars", kind: "students" },
+    { icon: "🔗", label: "Relations",   kind: "relations" },
+  ];
+
+  const UTILITY_BUTTONS = [
+    { icon: "🧪", label: "Test",           event: "app:solver-test" },
+    { icon: "⚙",  label: "Generate",       event: "app:solver-generate" },
+    { icon: "☁",  label: "Generate in\ncloud", event: "app:solver-cloud" },
+    { icon: "✓",  label: "Verification",   event: "app:open-verification" },
+    { icon: "🖨", label: "Print\npreview", event: "app:print-preview" },
+  ];
+
+  function fire(name, detail) {
+    window.dispatchEvent(new CustomEvent(name, { detail: detail || {} }));
+  }
+
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      const v = attrs[k];
+      if (v == null) continue;
+      if (k === "class") n.className = v;
+      else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v);
+    }
+    for (const c of kids) if (c != null) {
+      n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    }
+    return n;
+  }
+
+  function makeBtn(icon, label, onClick) {
+    const btn = el("button", {
+      type: "button",
+      class: "chrx-entity-toolbar__btn",
+      title: label.replace(/\n/g, " "),
+      onclick: onClick,
+    },
+      el("span", { class: "chrx-entity-toolbar__icon" }, icon),
+      el("span", { class: "chrx-entity-toolbar__label" }, label.replace(/\n/g, " ")),
+    );
+    return btn;
+  }
+
+  function render(host) {
+    if (!host) return;
+    if (!window.APP.school) { host.innerHTML = ""; return; }
+
+    host.innerHTML = "";
+    const bar = el("div", { class: "chrx-entity-toolbar", role: "toolbar", "aria-label": "Entity toolbar" });
+
+    // Entity buttons
+    ENTITY_BUTTONS.forEach(b => {
+      bar.appendChild(makeBtn(b.icon, b.label, () => {
+        fire("app:open-entity", { kind: b.kind });
+      }));
+    });
+
+    // Separator
+    bar.appendChild(el("div", { class: "chrx-entity-toolbar__sep" }));
+
+    // Utility buttons
+    UTILITY_BUTTONS.forEach(b => {
+      bar.appendChild(makeBtn(b.icon, b.label, () => {
+        fire(b.event);
+      }));
+    });
+
+    // Close button (far right)
+    bar.appendChild(el("div", { class: "chrx-entity-toolbar__spacer" }));
+    bar.appendChild(makeBtn("✕", "Close", () => {
+      document.dispatchEvent(new CustomEvent("nav:goto-step", { detail: { step: 1 } }));
+    }));
+
+    host.appendChild(bar);
+  }
+
+  // Listen for school-loaded to auto-render if a mount point exists
+  document.addEventListener("app:school-loaded", () => {
+    const mount = document.getElementById("entity-toolbar-mount");
+    if (mount) render(mount);
+  });
+
+  global.SchoolToolbar = { render };
+})(window);
+
+/* ─── FILE: js/ui/components/period_override_matrix.js ─── */
+/* Per-day period override matrix — window.PeriodOverrideMatrix.render(host).
+ *
+ * Shows a Days × Periods grid. Each cell displays the start/end time for that
+ * period on that day. Overridden cells are highlighted. Click to edit.
+ * Uses period.perDayOverrides = { dayIdx: { startMin, endMin } }.
+ */
+(function (global) {
+  "use strict";
+
+  const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+  function fmtTime(min) {
+    if (min == null) return "—";
+    const h = Math.floor(min / 60), m = min % 60;
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  }
+  function parseTime(str) {
+    const parts = (str || "").split(":");
+    if (parts.length !== 2) return null;
+    const h = parseInt(parts[0], 10), m = parseInt(parts[1], 10);
+    if (isNaN(h) || isNaN(m)) return null;
+    return h * 60 + m;
+  }
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      const v = attrs[k];
+      if (v == null) continue;
+      if (k === "class") n.className = v;
+      else if (k === "html") n.innerHTML = v;
+      else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v);
+    }
+    for (const c of kids) if (c != null && c !== false) {
+      n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    }
+    return n;
+  }
+
+  let activeEditor = null; // track open editor for cleanup
+
+  function closeEditor() {
+    if (activeEditor && activeEditor.parentNode) {
+      activeEditor.parentNode.removeChild(activeEditor);
+    }
+    activeEditor = null;
+  }
+
+  function openCellEditor(cell, period, dayIdx, onDone) {
+    closeEditor();
+    const overrides = period.perDayOverrides || {};
+    const ov = overrides[dayIdx];
+    const startVal = ov ? ov.startMin : period.startMin;
+    const endVal = ov ? ov.endMin : period.endMin;
+
+    const editor = el("div", { class: "chrx-override-matrix__editor" });
+
+    const startInp = el("input", {
+      type: "time",
+      value: fmtTime(startVal),
+      class: "chrx-override-matrix__time-input",
+    });
+    const endInp = el("input", {
+      type: "time",
+      value: fmtTime(endVal),
+      class: "chrx-override-matrix__time-input",
+    });
+
+    const saveBtn = el("button", {
+      type: "button",
+      class: "chrx-override-matrix__btn chrx-override-matrix__btn--save",
+      onclick: () => {
+        const s = parseTime(startInp.value);
+        const e = parseTime(endInp.value);
+        if (s == null || e == null || e <= s) {
+          startInp.style.borderColor = "#f87171";
+          endInp.style.borderColor = "#f87171";
+          return;
+        }
+        period.perDayOverrides = period.perDayOverrides || {};
+        period.perDayOverrides[dayIdx] = { startMin: s, endMin: e };
+        document.dispatchEvent(new CustomEvent("entity:changed", { detail: { source: "override-matrix" } }));
+        closeEditor();
+        onDone();
+      },
+    }, "Save");
+
+    const clearBtn = el("button", {
+      type: "button",
+      class: "chrx-override-matrix__btn chrx-override-matrix__btn--clear",
+      onclick: () => {
+        if (period.perDayOverrides) {
+          delete period.perDayOverrides[dayIdx];
+          if (Object.keys(period.perDayOverrides).length === 0) {
+            delete period.perDayOverrides;
+          }
+        }
+        document.dispatchEvent(new CustomEvent("entity:changed", { detail: { source: "override-matrix" } }));
+        closeEditor();
+        onDone();
+      },
+    }, "Reset");
+
+    const cancelBtn = el("button", {
+      type: "button",
+      class: "chrx-override-matrix__btn",
+      onclick: closeEditor,
+    }, "Cancel");
+
+    editor.appendChild(el("div", { class: "chrx-override-matrix__editor-row" },
+      el("label", null, "Start:"), startInp,
+    ));
+    editor.appendChild(el("div", { class: "chrx-override-matrix__editor-row" },
+      el("label", null, "End:"), endInp,
+    ));
+    editor.appendChild(el("div", { class: "chrx-override-matrix__editor-actions" },
+      saveBtn, clearBtn, cancelBtn,
+    ));
+
+    // Position relative to cell
+    cell.style.position = "relative";
+    cell.appendChild(editor);
+    activeEditor = editor;
+    startInp.focus();
+  }
+
+  function render(host) {
+    if (!host) return;
+    const school = window.APP.school;
+    if (!school || !school.bell || !school.bell.periods || !school.bell.periods.length) {
+      host.innerHTML = '<div style="font-size:12px;color:#94a3b8">No periods defined.</div>';
+      return;
+    }
+
+    host.innerHTML = "";
+    const periods = school.bell.periods;
+    const daysPerWeek = (school.settings && school.settings.daysPerWeek) || 6;
+    const days = DAY_LABELS.slice(0, daysPerWeek);
+
+    // Header info
+    const info = el("p", {
+      class: "chrx-override-matrix__info",
+    }, "Click any cell to set different bell times for that period on a specific day. Overridden cells are highlighted in blue.");
+    host.appendChild(info);
+
+    const table = el("table", { class: "chrx-override-matrix" });
+
+    // Header row
+    const thead = el("thead");
+    const headRow = el("tr");
+    headRow.appendChild(el("th", { class: "chrx-override-matrix__cell chrx-override-matrix__cell--header" }, "Period"));
+    days.forEach(d => {
+      headRow.appendChild(el("th", { class: "chrx-override-matrix__cell chrx-override-matrix__cell--header" }, d));
+    });
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    // Body rows
+    const tbody = el("tbody");
+    periods.forEach((period, pIdx) => {
+      // Skip breaks (they have type "break" sometimes)
+      const row = el("tr");
+      const labelCell = el("td", {
+        class: "chrx-override-matrix__cell chrx-override-matrix__cell--label",
+      }, period.label || period.short || `P${pIdx + 1}`);
+      row.appendChild(labelCell);
+
+      for (let dIdx = 0; dIdx < daysPerWeek; dIdx++) {
+        const ov = period.perDayOverrides && period.perDayOverrides[dIdx];
+        const startMin = ov ? ov.startMin : period.startMin;
+        const endMin = ov ? ov.endMin : period.endMin;
+        const isOverride = !!ov;
+
+        const cellClass = "chrx-override-matrix__cell" +
+          (isOverride ? " chrx-override-matrix__cell--override" : "");
+
+        const cell = el("td", {
+          class: cellClass,
+          title: `${period.label || ""} — ${days[dIdx]}: ${fmtTime(startMin)} – ${fmtTime(endMin)}${isOverride ? " (custom)" : ""}`,
+          onclick: () => {
+            openCellEditor(cell, period, dIdx, () => render(host));
+          },
+        });
+
+        cell.innerHTML = `<span class="chrx-override-matrix__time">${fmtTime(startMin)}</span><span class="chrx-override-matrix__dash">–</span><span class="chrx-override-matrix__time">${fmtTime(endMin)}</span>`;
+        row.appendChild(cell);
+      }
+      tbody.appendChild(row);
+    });
+    table.appendChild(tbody);
+    host.appendChild(table);
+  }
+
+  // Cleanup editor on outside click
+  document.addEventListener("click", (e) => {
+    if (activeEditor && !activeEditor.contains(e.target)) {
+      const cell = activeEditor.closest(".chrx-override-matrix__cell");
+      if (!cell || !cell.contains(e.target)) {
+        closeEditor();
+      }
+    }
+  });
+
+  global.PeriodOverrideMatrix = { render };
 })(window);
 
 /* ─── FILE: js/ui/components/ai_actions.js ─── */
@@ -18795,6 +19201,11 @@ window.StartScreen = (function () {
       case 5: RoomGrid.render(document.getElementById("step-5-body")); break;
       // case 6 is handled by EditorActivator listening to step:changed
     }
+    // Entity toolbar: render when the editor is shown (or refresh if already mounted)
+    const tbMount = document.getElementById("entity-toolbar-mount");
+    if (tbMount && window.SchoolToolbar && window.SchoolToolbar.render) {
+      window.SchoolToolbar.render(tbMount);
+    }
   }
 
   // ----- Search ------------------------------------------------------------
@@ -23926,7 +24337,7 @@ window.StartScreen = (function () {
     // Classroom report: page title = classroom → hide Classroom
     "classroom": { subject:false, teacher:true,  class:true,  group:true,  classroom:false, count:false, bellTimes:false },
     // Subject report: page title = subject → hide Subject
-    "subject":   { subject:false, teacher:true,  class:true,  group:false, classroom:false, count:false, bellTimes:false },
+    "subject":   { subject:false, teacher:true,  class:true,  group:false, classroom:false, count:true,  bellTimes:false },
     // Summary / no specific entity: show subject + teacher + class
     "summary":   { subject:true,  teacher:true,  class:true,  group:false, classroom:false, count:false, bellTimes:false },
     // Wall poster: subject + teacher (compact)
@@ -23945,7 +24356,7 @@ window.StartScreen = (function () {
     "class":     { subject:"top-center",  teacher:"bottom-left",  class:"middle-center", group:"middle-center", classroom:"top-right",  count:"middle-center", bellTimes:"middle-center" },
     "teacher":   { subject:"top-left",    teacher:"middle-center", class:"bottom-center", group:"middle-center", classroom:"top-right",  count:"middle-center", bellTimes:"middle-center" },
     "classroom": { subject:"middle-center", teacher:"top-left",   class:"bottom-center", group:"middle-center", classroom:"middle-center", count:"middle-center", bellTimes:"middle-center" },
-    "subject":   { subject:"middle-center", teacher:"top-left",   class:"bottom-left",   group:"middle-center", classroom:"middle-center", count:"middle-center", bellTimes:"middle-center" },
+    "subject":   { subject:"middle-center", teacher:"top-left",   class:"bottom-left",   group:"middle-center", classroom:"middle-center", count:"top-right", bellTimes:"middle-center" },
     "summary":   { subject:"top-center",  teacher:"bottom-center", class:"middle-center", group:"middle-center", classroom:"middle-center", count:"middle-center", bellTimes:"middle-center" },
     "poster":    { subject:"top-center",  teacher:"bottom-center", class:"middle-center", group:"middle-center", classroom:"middle-center", count:"middle-center", bellTimes:"middle-center" },
     "day":       { subject:"top-center",  teacher:"bottom-center", class:"middle-center", group:"middle-center", classroom:"middle-center", count:"middle-center", bellTimes:"middle-center" },
@@ -24196,6 +24607,9 @@ window.StartScreen = (function () {
         : out.join(" / ");
     }
     if (key === "class") {
+      if (style.conditional?.printGroupInsteadOfClass) {
+        return joinElementLabels(cards, "group", school, style);
+      }
       // Per-card class lists join with slashes (multi-class activity),
       // then card-to-card joins with commas (multi-card-per-cell).
       const parts = [];
@@ -24220,8 +24634,8 @@ window.StartScreen = (function () {
           // Skip if this is the home classroom of any class on the card
           const classRooms = (c.classIds || []).map(cid => {
             const cls = (school.classes || []).find(cc => cc.id === cid);
-            return cls?.homeRoomId;
-          });
+            return [cls?.homeRoomId, cls?.classroomId].concat(cls?._classroomIds || []);
+          }).flat().filter(Boolean);
           if (classRooms.includes(rid)) continue;
         }
         out.push(r);
@@ -24269,7 +24683,14 @@ window.StartScreen = (function () {
     if (!bell || !bell.periods) return "";
     const p = bell.periods[period - 1];
     if (!p) return "";
-    return (p.start || "") + (p.end ? "–" + p.end : "");
+    const start = p.start || fmtMin(p.startMin);
+    const end = p.end || fmtMin(p.endMin);
+    return start + (end ? "–" + end : "");
+  }
+
+  function fmtMin(min) {
+    if (min == null || min < 0) return "";
+    return Math.floor(min / 60) + ":" + String(min % 60).padStart(2, "0");
   }
 
   function renderElement(text, style) {
@@ -24295,6 +24716,83 @@ window.StartScreen = (function () {
     }, text);
   }
 
+  function uniqueLabels(cards, key, school) {
+    const out = [];
+    const seen = new Set();
+    function add(v) {
+      if (!v || seen.has(v)) return;
+      seen.add(v);
+      out.push(v);
+    }
+    for (const c of cards || []) {
+      if (key === "class") {
+        for (const id of (c.classIds || [])) add(entityName(school, "class", id, "abbreviation"));
+      } else if (key === "teacher") {
+        for (const id of (c.teacherIds || [])) add(entityName(school, "teacher", id, "abbreviation"));
+      } else if (key === "subject") {
+        add(entityName(school, "subject", c.subjectId, "abbreviation"));
+      } else if (key === "classroom") {
+        const rid = c.roomId || (c.roomIds || [])[0];
+        add(entityName(school, "classroom", rid, "abbreviation"));
+      }
+    }
+    return out;
+  }
+
+  function renderAggregateCell(cards, report, school) {
+    cards = cards || [];
+    const layout = report?._layout || {};
+    const minHeight = Math.max(18, layout.cellMinHeightPx || 48);
+    const cell = el("div", {
+      class: "chrx-pivot-cell chrx-pivot-cell--aggregate",
+      style: "width:100%;height:100%;min-height:" + minHeight + "px;position:relative;container-type:inline-size;padding:2px 4px;box-sizing:border-box",
+    });
+    if (!cards.length) return cell;
+
+    const kind = report?.cells || "draw-lessons";
+    const count = cards.length;
+    const lessons = uniqueLabels(cards, "subject", school);
+    const teachers = uniqueLabels(cards, "teacher", school);
+    const classes = uniqueLabels(cards, "class", school);
+    const rooms = uniqueLabels(cards, "classroom", school);
+
+    if (kind === "count-placed") {
+      cell.appendChild(el("div", {
+        style: "position:absolute;right:3px;top:2px;font-size:clamp(7px,22cqi,13px);font-weight:700;line-height:1",
+      }, String(count)));
+      const lines = [];
+      if (teachers.length) lines.push(teachers.join(", "));
+      if (classes.length) lines.push(classes.join(", "));
+      if (rooms.length) lines.push(rooms.join(", "));
+      if (lines.length) {
+        cell.appendChild(el("div", {
+          style: "position:absolute;left:3px;right:3px;bottom:2px;text-align:center;font-size:clamp(5px,11cqi,8px);line-height:1.12;color:#333;overflow-wrap:anywhere",
+        }, lines.join(" / ")));
+      }
+      return cell;
+    }
+
+    if (kind === "count-lessons") {
+      cell.appendChild(el("div", {
+        style: "display:flex;width:100%;height:100%;align-items:center;justify-content:center;font-weight:700;font-size:clamp(8px,24cqi,14px)",
+      }, String(count)));
+      return cell;
+    }
+
+    if (kind === "teacher-list-with-count") {
+      const title = teachers.length ? teachers.join(", ") : lessons.join(", ");
+      cell.appendChild(el("div", {
+        style: "font-weight:700;font-size:clamp(7px,18cqi,11px);line-height:1.12;overflow-wrap:anywhere",
+      }, title || String(count)));
+      cell.appendChild(el("div", {
+        style: "position:absolute;right:3px;bottom:2px;font-size:clamp(6px,13cqi,9px);color:#555",
+      }, String(count)));
+      return cell;
+    }
+
+    return renderCell(cards, report, school);
+  }
+
   function getCardBgColor(cards, report, school) {
     if (!report.colors?.cardOn) return null;
     const key = report.colors.cardKey || "subject";
@@ -24311,9 +24809,11 @@ window.StartScreen = (function () {
 
   function renderCell(cards, report, school) {
     cards = cards || [];
+    const layout = report?._layout || {};
+    const minHeight = Math.max(18, layout.cellMinHeightPx || 48);
     const cell = el("div", {
       class: "chrx-pivot-cell",
-      style: "width:100%;height:100%;min-height:48px;position:relative;container-type:inline-size",
+      style: "width:100%;height:100%;min-height:" + minHeight + "px;position:relative;container-type:inline-size",
     });
     if (cards.length === 0) return cell;
 
@@ -24354,6 +24854,7 @@ window.StartScreen = (function () {
   }
 
   APP.PrintCellRenderer = { renderCell, joinElementLabels };
+  APP.PrintCellRenderer.renderAggregateCell = renderAggregateCell;
 })();
 
 /* ─── FILE: js/ui/print_preview/pivot_engine.js ─── */
@@ -24612,9 +25113,24 @@ window.StartScreen = (function () {
       });
     }
 
+    const denseCols = visibleCols.length;
+    const denseRows = visibleRows.length;
+    const compactLevel = denseCols > 34 || denseRows > 22 ? 2 : (denseCols > 16 || denseRows > 10 ? 1 : 0);
+    const orientation = report.pageSetup?.orientation || (denseCols > 10 ? "landscape" : "portrait");
+    const pageWidth = orientation === "portrait" ? "210mm" : "297mm";
+    const pageHeight = orientation === "portrait" ? "297mm" : "210mm";
+    report._layout = {
+      compactLevel,
+      cellMinHeightPx: compactLevel === 2 ? 22 : compactLevel === 1 ? 34 : 54,
+      rowHeaderWidthPx: compactLevel === 2 ? 46 : compactLevel === 1 ? 58 : 80,
+      bodyFontPx: compactLevel === 2 ? 8 : compactLevel === 1 ? 9.5 : 11,
+      headerFontPx: compactLevel === 2 ? 8 : compactLevel === 1 ? 9.5 : 11,
+      rowFontPx: compactLevel === 2 ? 10 : compactLevel === 1 ? 12 : 14,
+    };
+
     const page = el("div", {
-      class: "chrx-print-page chrx-pivot-page",
-      style: "background:#fff;color:#111;width:100%;min-height:100%;padding:18mm 14mm;box-sizing:border-box;display:flex;flex-direction:column;gap:8px;font-family:system-ui",
+      class: "chrx-preview-page chrx-print-page chrx-pivot-page",
+      style: "background:#fff;color:#111;width:" + pageWidth + ";min-height:" + pageHeight + ";padding:14mm 12mm;box-sizing:border-box;display:flex;flex-direction:column;gap:6px;font-family:system-ui",
     });
 
     const schoolName = (school.schoolName || school.name || "");
@@ -24635,11 +25151,17 @@ window.StartScreen = (function () {
       const tid = cls && (cls._teacherId || cls.teacherId || cls.classTeacherId);
       const tObj = tid && (school.teachers || []).find(t => t.id === tid);
       const ctName = tObj ? (tObj.name || tObj.abbreviation || "") : "";
+      const rid = cls && (cls.homeRoomId || cls.classroomId || (cls._classroomIds || [])[0]);
+      const rObj = rid && (school.classrooms || []).find(r => r.id === rid);
+      const roomName = rObj ? (rObj.name || rObj.abbreviation || "") : "";
       const sub = el("div", {
         style: "display:flex;justify-content:space-between;font-size:9.5px;color:#555;border-bottom:1px solid #bbb;padding-bottom:4px;margin-bottom:2px",
       });
       sub.appendChild(el("span", null, schoolName));
-      if (ctName) sub.appendChild(el("span", null, "Class teacher: " + ctName));
+      const meta = [];
+      if (roomName) meta.push("Home classroom: " + roomName);
+      if (ctName) meta.push("Class teacher: " + ctName);
+      if (meta.length) sub.appendChild(el("span", null, meta.join(" · ")));
       page.appendChild(sub);
     }
     if (totalPages > 1) {
@@ -24651,13 +25173,13 @@ window.StartScreen = (function () {
     const tableWrap = el("div", { style: "flex:1;overflow:visible;display:flex;gap:6px" });
     const table = el("table", {
       class: "chrx-pivot-grid",
-      style: "border-collapse:collapse;width:100%;table-layout:fixed;font-size:11px",
+      style: "border-collapse:collapse;width:100%;table-layout:fixed;font-size:" + report._layout.bodyFontPx + "px",
     });
 
     const thead = el("thead");
     const headerRow = el("tr");
     headerRow.appendChild(el("th", {
-      style: "border:1px solid #999;padding:4px;background:#fafafa;width:80px",
+      style: "border:1px solid #999;padding:3px;background:#fafafa;width:" + report._layout.rowHeaderWidthPx + "px",
     }, ""));
     for (let ci = 0; ci < visibleCols.length; ci++) {
       const cc = visibleCols[ci];
@@ -24669,7 +25191,7 @@ window.StartScreen = (function () {
         if (ent._endMin   != null) endMin   = ent._endMin;
       }
       const th = el("th", {
-        style: "border:1px solid #999;padding:4px 2px;background:#fafafa;font-weight:700;font-size:11px;text-align:center;font-family:system-ui",
+        style: "border:1px solid #999;padding:3px 2px;background:#fafafa;font-weight:700;font-size:" + report._layout.headerFontPx + "px;text-align:center;font-family:system-ui",
       });
       th.appendChild(el("div", { style: "font-weight:700" }, labels.join(" · ")));
       if (startMin != null && endMin != null) {
@@ -24694,17 +25216,21 @@ window.StartScreen = (function () {
       const rowLabels = [];
       for (const [, ent] of rc.entries()) rowLabels.push(ent.name || ent.abbr);
       tr.appendChild(el("td", {
-        style: "border:1px solid #999;padding:6px 8px;background:#fafafa;font-weight:600;text-align:center;font-family:'Fraunces',serif;font-size:14px",
+        style: "border:1px solid #999;padding:4px 5px;background:#fafafa;font-weight:600;text-align:center;font-family:'Fraunces',serif;font-size:" + report._layout.rowFontPx + "px",
       }, rowLabels.join(" · ")));
       for (let ci = 0; ci < visibleCols.length; ci++) {
         const cc = visibleCols[ci];
         const combined = new Map([...pageBindings, ...rc, ...cc]);
         const cellCards = cardsMatching(pageCards, combined);
         const cellNode = el("td", {
-          style: "border:1px solid #ccc;padding:0;vertical-align:top;height:48px",
+          style: "border:1px solid #ccc;padding:0;vertical-align:top;height:" + report._layout.cellMinHeightPx + "px",
         });
         if (APP.PrintCellRenderer && typeof APP.PrintCellRenderer.renderCell === "function") {
-          cellNode.appendChild(APP.PrintCellRenderer.renderCell(cellCards, report, school));
+          const kind = report.cells || "draw-lessons";
+          const renderer = kind === "draw-lessons"
+            ? APP.PrintCellRenderer.renderCell
+            : (APP.PrintCellRenderer.renderAggregateCell || APP.PrintCellRenderer.renderCell);
+          cellNode.appendChild(renderer(cellCards, report, school));
         } else if (cellCards.length > 0) {
           const subj = cellCards[0]?.subjectId;
           const text = (school.subjects || []).find(s => s.id === subj)?.abbreviation || subj || "?";
@@ -24731,15 +25257,16 @@ window.StartScreen = (function () {
     tableWrap.appendChild(table);
 
     if (report.extraCols && report.extraCols.length > 0) {
+      const extraWidth = report.extraCols.reduce((sum, ec) => sum + ((ec.width || 10) * 5), 0);
       const extraPanel = el("table", {
         class: "chrx-pivot-extras",
-        style: "border-collapse:collapse;width:" + (report.extraCols.length * 100) + "px;table-layout:fixed;font-size:11px",
+        style: "border-collapse:collapse;width:" + extraWidth + "px;table-layout:fixed;font-size:11px",
       });
       const extHead = el("thead");
       const extHeadRow = el("tr");
       for (const ec of report.extraCols) {
         extHeadRow.appendChild(el("th", {
-          style: "border:1px solid #999;padding:4px;background:#fafafa;font-weight:700",
+          style: "border:1px solid #999;padding:4px;background:#fafafa;font-weight:700;width:" + ((ec.width || 10) * 5) + "px",
         }, ec.header || ec.type));
       }
       extHead.appendChild(extHeadRow);
@@ -27743,6 +28270,7 @@ window.StartScreen = (function () {
       context: "teacher",
       pages: ["teacher"], rows: ["day"], cols: ["period"],
       cells: "draw-lessons", fitWidth: true, fitHeight: true,
+      render: renderTeacherExtra,
       extraCols: [
         { type: "subjects-count", header: "Subjects", width: 16 },
         { type: "sum-of-lessons", header: "Total",    width: 7 },
@@ -27794,7 +28322,7 @@ window.StartScreen = (function () {
       name: "Summary timetable of subjects",
       context: "summary",
       pages: [], rows: ["subject"], cols: ["day","period"],
-      cells: "draw-lessons", fitWidth: true, fitHeight: true,
+      cells: "count-placed", fitWidth: true, fitHeight: true,
     },
     {
       id: "summary_of_students",
@@ -27818,6 +28346,7 @@ window.StartScreen = (function () {
       context: "poster",
       pages: ["day"], rows: ["classroom"], cols: ["period"],
       cells: "draw-lessons", fitWidth: true, fitHeight: true,
+      render: renderWallPosterClassrooms,
     },
 
     // ── Lesson grid: Class × Subject matrix ──────────────────────────────
@@ -27826,7 +28355,8 @@ window.StartScreen = (function () {
       name: "Lesson grid",
       context: "summary",
       pages: [], rows: ["class"], cols: ["subject"],
-      cells: "teacher-list-with-count", fitWidth: true, fitHeight: true,
+      cells: "count-lessons", fitWidth: true, fitHeight: true,
+      render: renderLessonGrid,
     },
 
     // ── Lists (no grid; just enumerate) ──────────────────────────────────
@@ -27836,6 +28366,7 @@ window.StartScreen = (function () {
       context: "summary",
       pages: [], rows: ["teacher"], cols: ["subject"],
       cells: "count-lessons", fitWidth: true, fitHeight: true,
+      render: renderTeacherList,
     },
     {
       id: "list_of_classes",
@@ -27843,6 +28374,7 @@ window.StartScreen = (function () {
       context: "summary",
       pages: [], rows: ["class"], cols: ["subject"],
       cells: "count-lessons", fitWidth: true, fitHeight: true,
+      render: renderClassList,
     },
 
     // ── Daily attendance / contract overview ─────────────────────────────
@@ -27852,6 +28384,7 @@ window.StartScreen = (function () {
       context: "summary",
       pages: ["day"], rows: ["class"], cols: ["period"],
       cells: "draw-lessons", fitWidth: true, fitHeight: true,
+      render: renderDailyAttendance,
     },
     {
       id: "contract_overview",
@@ -27859,6 +28392,7 @@ window.StartScreen = (function () {
       context: "summary",
       pages: [], rows: ["teacher"], cols: ["subject"],
       cells: "count-lessons", fitWidth: true, fitHeight: true,
+      render: renderContractOverview,
     },
 
     // ── Wait-points reports (Phase 9 — uses "count-placed" cell for gap analysis) ─
@@ -27927,6 +28461,665 @@ window.StartScreen = (function () {
     return PRESETS.find(p => p.id === id) || null;
   }
 
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      const v = attrs[k]; if (v == null) continue;
+      if (k === "class") n.className = v;
+      else n.setAttribute(k, v);
+    }
+    for (const c of kids) if (c != null && c !== false) {
+      n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    }
+    return n;
+  }
+
+  function pickTeacherName(school, classRow) {
+    const tid = classRow?._teacherId || classRow?.teacherId || classRow?.classTeacherId;
+    if (!tid) return "";
+    const t = (school.teachers || []).find(x => x.id === tid);
+    return t?.name || t?.abbreviation || t?.shortName || "";
+  }
+
+  function pickHomeRoomName(school, classRow) {
+    const rid = classRow?.homeRoomId || classRow?.classroomId || (classRow?._classroomIds || [])[0];
+    if (!rid) return "";
+    const r = (school.classrooms || []).find(x => x.id === rid);
+    return r?.name || r?.abbreviation || r?.shortName || "";
+  }
+
+  function renderClassList(school) {
+    const classes = school?.classes || [];
+    const perPage = 28;
+    const pages = [];
+    for (let start = 0; start < Math.max(classes.length, 1); start += perPage) {
+      const chunk = classes.slice(start, start + perPage);
+      const p = el("div", {
+        class: "chrx-preview-page chrx-print-page chrx-pivot-page",
+        style: "background:#fff;color:#111;width:210mm;min-height:297mm;padding:16mm 14mm;box-sizing:border-box;font-family:system-ui",
+      });
+      const schoolName = school?.schoolName || school?.name || "";
+      if (schoolName) p.appendChild(el("div", {
+        style: "text-align:center;font-weight:600;font-size:13px;margin-bottom:3px",
+      }, schoolName));
+      p.appendChild(el("div", {
+        style: "text-align:center;font-weight:700;font-size:22px;font-family:'Fraunces',serif;font-style:italic;margin-bottom:2px",
+      }, "List of classes"));
+      p.appendChild(el("div", {
+        style: "font-size:10px;color:#555;border-bottom:1px solid #bbb;padding-bottom:5px;margin-bottom:8px",
+      }, schoolName));
+
+      const tbl = el("table", {
+        class: "chrx-pivot-grid",
+        style: "width:100%;border-collapse:collapse;table-layout:fixed;font-size:11px",
+      });
+      const head = el("tr");
+      ["Class", "Class teacher", "Home classroom"].forEach((h, i) => {
+        head.appendChild(el("th", {
+          style: "border:1px solid #999;background:#fafafa;padding:7px 8px;text-align:" + (i === 0 ? "left" : "center") + ";font-size:17px;font-weight:500",
+        }, h));
+      });
+      tbl.appendChild(el("thead", null, head));
+      const body = el("tbody");
+      if (!chunk.length) {
+        const tr = el("tr");
+        tr.appendChild(el("td", { colspan: "3", style: "border:1px solid #ccc;padding:8px;color:#777;text-align:center" }, "No classes"));
+        body.appendChild(tr);
+      }
+      chunk.forEach(cls => {
+        const tr = el("tr");
+        tr.appendChild(el("td", { style: "border:1px solid #ccc;padding:6px 8px;font-weight:600" }, cls.name || cls.id || ""));
+        tr.appendChild(el("td", { style: "border:1px solid #ccc;padding:6px 8px" }, pickTeacherName(school, cls)));
+        tr.appendChild(el("td", { style: "border:1px solid #ccc;padding:6px 8px" }, pickHomeRoomName(school, cls)));
+        body.appendChild(tr);
+      });
+      tbl.appendChild(body);
+      p.appendChild(tbl);
+      p.appendChild(el("div", {
+        style: "display:flex;justify-content:space-between;font-size:10px;color:#666;font-family:'JetBrains Mono',ui-monospace,monospace;border-top:1px solid #eee;padding-top:6px;margin-top:8px",
+      }, el("span", null, "Timetable generated: " + new Date().toLocaleDateString("en-GB")),
+         el("span", null, "Chronexa Web")));
+      pages.push(p);
+    }
+    return pages;
+  }
+
+  function classesForTeacher(school, teacherId) {
+    const out = [];
+    for (const cls of (school.classes || [])) {
+      const tid = cls?._teacherId || cls?.teacherId || cls?.classTeacherId;
+      if (tid === teacherId) out.push(cls.name || cls.abbreviation || cls.shortName || cls.id);
+    }
+    return out;
+  }
+
+  function renderTeacherList(school) {
+    const teachers = (school?.teachers || []).slice().sort((a, b) =>
+      (a.name || a.abbreviation || "").localeCompare(b.name || b.abbreviation || ""));
+    const perPage = 30;
+    const pages = [];
+    for (let start = 0; start < Math.max(teachers.length, 1); start += perPage) {
+      const chunk = teachers.slice(start, start + perPage);
+      const p = el("div", {
+        class: "chrx-preview-page chrx-print-page chrx-pivot-page",
+        style: "background:#fff;color:#111;width:210mm;min-height:297mm;padding:16mm 14mm;box-sizing:border-box;font-family:system-ui",
+      });
+      const schoolName = school?.schoolName || school?.name || "";
+      if (schoolName) p.appendChild(el("div", {
+        style: "text-align:center;font-weight:600;font-size:13px;margin-bottom:3px",
+      }, schoolName));
+      p.appendChild(el("div", {
+        style: "text-align:center;font-weight:700;font-size:22px;font-family:'Fraunces',serif;font-style:italic;margin-bottom:2px",
+      }, "List of teachers"));
+      p.appendChild(el("div", {
+        style: "font-size:10px;color:#555;border-bottom:1px solid #bbb;padding-bottom:5px;margin-bottom:8px",
+      }, schoolName));
+
+      const tbl = el("table", {
+        class: "chrx-pivot-grid",
+        style: "width:100%;border-collapse:collapse;table-layout:fixed;font-size:11px",
+      });
+      const head = el("tr");
+      ["Teacher", "Class teacher for the class"].forEach((h, i) => {
+        head.appendChild(el("th", {
+          style: "border:1px solid #999;background:#fafafa;padding:7px 8px;text-align:" + (i === 0 ? "left" : "center") + ";font-size:17px;font-weight:500",
+        }, h));
+      });
+      tbl.appendChild(el("thead", null, head));
+      const body = el("tbody");
+      if (!chunk.length) {
+        const tr = el("tr");
+        tr.appendChild(el("td", { colspan: "2", style: "border:1px solid #ccc;padding:8px;color:#777;text-align:center" }, "No teachers"));
+        body.appendChild(tr);
+      }
+      chunk.forEach(t => {
+        const classes = classesForTeacher(school, t.id);
+        const tr = el("tr");
+        tr.appendChild(el("td", { style: "border:1px solid #ccc;padding:6px 8px;font-weight:600" }, t.name || t.abbreviation || t.shortName || t.id || ""));
+        tr.appendChild(el("td", { style: "border:1px solid #ccc;padding:6px 8px" }, classes.join(", ")));
+        body.appendChild(tr);
+      });
+      tbl.appendChild(body);
+      p.appendChild(tbl);
+      p.appendChild(el("div", {
+        style: "display:flex;justify-content:space-between;font-size:10px;color:#666;font-family:'JetBrains Mono',ui-monospace,monospace;border-top:1px solid #eee;padding-top:6px;margin-top:8px",
+      }, el("span", null, "Timetable generated: " + new Date().toLocaleDateString("en-GB")),
+         el("span", null, "Chronexa Web")));
+      pages.push(p);
+    }
+    return pages;
+  }
+
+  function lessonWeeklyCount(lesson) {
+    const raw = lesson?.periodsPerWeek ?? lesson?.lessonsPerWeek ?? lesson?.weeklyCount ?? lesson?.count ?? 0;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  function lessonCountForClassSubject(school, classId, subjectId) {
+    let total = 0;
+    for (const lesson of (school.lessons || [])) {
+      if (lesson.subjectId !== subjectId) continue;
+      if (!(lesson.classIds || []).includes(classId)) continue;
+      total += lessonWeeklyCount(lesson);
+    }
+    return total;
+  }
+
+  function renderLessonGrid(school) {
+    const classes = school?.classes || [];
+    const subjects = school?.subjects || [];
+    const perPage = 10;
+    const pages = [];
+    for (let start = 0; start < Math.max(classes.length, 1); start += perPage) {
+      const chunk = classes.slice(start, start + perPage);
+      const p = el("div", {
+        class: "chrx-preview-page chrx-print-page chrx-pivot-page",
+        style: "background:#fff;color:#111;width:297mm;min-height:210mm;padding:12mm;box-sizing:border-box;font-family:system-ui;display:flex;flex-direction:column;gap:6px",
+      });
+      const schoolName = school?.schoolName || school?.name || "";
+      if (schoolName) p.appendChild(el("div", {
+        style: "text-align:center;font-weight:600;font-size:12px",
+      }, schoolName));
+      p.appendChild(el("div", {
+        style: "text-align:center;font-weight:700;font-size:18px;font-family:'Fraunces',serif;font-style:italic",
+      }, "Lesson grid"));
+      p.appendChild(el("div", {
+        style: "font-size:10px;color:#555;border-bottom:1px solid #bbb;padding-bottom:4px",
+      }, schoolName));
+
+      const tbl = el("table", {
+        class: "chrx-pivot-grid",
+        style: "width:100%;border-collapse:collapse;table-layout:fixed;font-size:12px;flex:1",
+      });
+      const head = el("tr");
+      head.appendChild(el("th", {
+        style: "border:1px solid #999;background:#fafafa;width:78px;padding:4px;text-align:center",
+      }, ""));
+      for (const subj of subjects) {
+        head.appendChild(el("th", {
+          style: "border:1px solid #999;background:#fafafa;padding:4px 2px;text-align:center;font-size:17px;font-weight:500;overflow-wrap:anywhere",
+        }, subj.abbreviation || subj.shortName || subj.name || subj.id || ""));
+      }
+      tbl.appendChild(el("thead", null, head));
+
+      const body = el("tbody");
+      if (!chunk.length) {
+        const tr = el("tr");
+        tr.appendChild(el("td", { colspan: String(subjects.length + 1), style: "border:1px solid #ccc;padding:8px;color:#777;text-align:center" }, "No classes"));
+        body.appendChild(tr);
+      }
+      for (const cls of chunk) {
+        const tr = el("tr");
+        tr.appendChild(el("th", {
+          style: "border:1px solid #999;background:#fafafa;padding:4px 6px;text-align:center;font-size:16px;font-weight:500",
+        }, cls.abbreviation || cls.shortName || cls.name || cls.id || ""));
+        for (const subj of subjects) {
+          const count = lessonCountForClassSubject(school, cls.id, subj.id);
+          tr.appendChild(el("td", {
+            style: "border:1px solid #bbb;padding:4px;text-align:right;vertical-align:middle;font-size:20px;line-height:1.15;color:" + (count > 0 ? "#111" : "#bbb"),
+          }, count > 0 ? String(count) : ""));
+        }
+        body.appendChild(tr);
+      }
+      tbl.appendChild(body);
+      p.appendChild(tbl);
+      p.appendChild(el("div", {
+        style: "display:flex;justify-content:space-between;font-size:10px;color:#666;font-family:'JetBrains Mono',ui-monospace,monospace;border-top:1px solid #eee;padding-top:6px",
+      }, el("span", null, "Timetable generated: " + new Date().toLocaleDateString("en-GB")),
+         el("span", null, "Chronexa Web")));
+      pages.push(p);
+    }
+    return pages;
+  }
+
+  function lessonCardsForClassroomSlot(school, roomId, day, period) {
+    return (school.cards || []).map(card => {
+      const roomIds = [card.classroomId, card.roomId].concat(card.roomIds || []).filter(Boolean);
+      if (!roomIds.includes(roomId) || card.day !== day || card.period !== period) return null;
+      const lesson = lessonForCard(school, card);
+      const subj = (school.subjects || []).find(s => s.id === lesson?.subjectId);
+      const teacher = teacherNameForLesson(school, lesson);
+      return {
+        subject: subj?.abbreviation || subj?.shortName || subj?.name || lesson?.subjectId || "",
+        teacher,
+      };
+    }).filter(Boolean);
+  }
+
+  function dayPeriodSlots(school, periods) {
+    const dayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const days = Math.max(1, Math.min(6, school?.daysPerWeek || 6));
+    const slots = [];
+    for (let day = 0; day < days; day++) {
+      for (const per of periods) {
+        slots.push({ day, dayName: dayNames[day] || ("Day " + (day + 1)), period: per });
+      }
+    }
+    return slots;
+  }
+
+  function renderPosterLessonCell(cards) {
+    const cell = el("td", {
+      style: "border:1px solid #bbb;padding:3px 2px;height:13mm;vertical-align:top;text-align:center;overflow:hidden",
+    });
+    if (!cards.length) return cell;
+    const subjectText = cards.map(c => c.subject).filter(Boolean).join(", ");
+    const teacherText = cards.map(c => c.teacher).filter(Boolean).join(", ");
+    if (subjectText) cell.appendChild(el("div", {
+      style: "font-size:10px;font-weight:700;line-height:1.05;overflow-wrap:anywhere",
+    }, subjectText));
+    if (teacherText) cell.appendChild(el("div", {
+      style: "font-size:7px;line-height:1.05;margin-top:2px;overflow-wrap:anywhere",
+    }, teacherText));
+    return cell;
+  }
+
+  function renderWallPosterClassrooms(school, periodsArg) {
+    const rooms = school?.classrooms || [];
+    const periods = periodsArg || school?.bell?.periods || [];
+    const slots = dayPeriodSlots(school, periods);
+    const colsPerPage = 8;
+    const pages = [];
+    for (let start = 0; start < Math.max(slots.length, 1); start += colsPerPage) {
+      const chunk = slots.slice(start, start + colsPerPage);
+      const p = el("div", {
+        class: "chrx-preview-page chrx-print-page chrx-pivot-page",
+        style: "background:#fff;color:#111;width:297mm;min-height:210mm;padding:12mm;box-sizing:border-box;font-family:system-ui;display:flex;flex-direction:column;gap:6px",
+      });
+      const schoolName = school?.schoolName || school?.name || "";
+      if (schoolName) p.appendChild(el("div", {
+        style: "text-align:center;font-weight:600;font-size:12px",
+      }, schoolName));
+      p.appendChild(el("div", {
+        style: "text-align:center;font-weight:700;font-size:18px;font-family:'Fraunces',serif;font-style:italic",
+      }, "Wall poster of classrooms"));
+      p.appendChild(el("div", {
+        style: "font-size:10px;color:#555;border-bottom:1px solid #bbb;padding-bottom:4px",
+      }, schoolName));
+
+      const tbl = el("table", {
+        class: "chrx-pivot-grid",
+        style: "width:100%;border-collapse:collapse;table-layout:fixed;font-size:9px;flex:1",
+      });
+      const dayRow = el("tr");
+      dayRow.appendChild(el("th", {
+        rowspan: "2",
+        style: "border:1px solid #999;background:#fafafa;width:78px;padding:4px;text-align:center",
+      }, ""));
+      for (let i = 0; i < chunk.length;) {
+        const dayName = chunk[i].dayName;
+        let span = 1;
+        while (i + span < chunk.length && chunk[i + span].dayName === dayName) span++;
+        dayRow.appendChild(el("th", {
+          colspan: String(span),
+          style: "border:1px solid #999;background:#fafafa;padding:3px;text-align:center;font-size:17px;font-weight:500",
+        }, dayName));
+        i += span;
+      }
+      const periodRow = el("tr");
+      for (const slot of chunk) {
+        const per = slot.period;
+        const h = el("th", {
+          style: "border:1px solid #999;background:#fafafa;padding:2px;text-align:center;font-size:13px;font-weight:500",
+        });
+        h.appendChild(el("div", null, String(per.label || per.index)));
+        if (per.startMin != null && per.endMin != null) {
+          h.appendChild(el("div", { style: "font-size:7px;font-weight:400;color:#555" }, fmtMin(per.startMin) + "-" + fmtMin(per.endMin)));
+        }
+        periodRow.appendChild(h);
+      }
+      tbl.appendChild(el("thead", null, dayRow, periodRow));
+
+      const body = el("tbody");
+      if (!rooms.length) {
+        const tr = el("tr");
+        tr.appendChild(el("td", { colspan: String(chunk.length + 1), style: "border:1px solid #ccc;padding:8px;color:#777;text-align:center" }, "No classrooms"));
+        body.appendChild(tr);
+      }
+      for (const room of rooms) {
+        const tr = el("tr");
+        tr.appendChild(el("th", {
+          style: "border:1px solid #999;background:#fafafa;padding:4px;text-align:center;font-size:13px;font-weight:500;overflow-wrap:anywhere",
+        }, room.abbreviation || room.shortName || room.name || room.id || ""));
+        for (const slot of chunk) {
+          const cards = lessonCardsForClassroomSlot(school, room.id, slot.day, slot.period.index);
+          tr.appendChild(renderPosterLessonCell(cards));
+        }
+        body.appendChild(tr);
+      }
+      tbl.appendChild(body);
+      p.appendChild(tbl);
+      p.appendChild(el("div", {
+        style: "display:flex;justify-content:space-between;font-size:10px;color:#666;font-family:'JetBrains Mono',ui-monospace,monospace;border-top:1px solid #eee;padding-top:6px",
+      }, el("span", null, "Timetable generated: " + new Date().toLocaleDateString("en-GB")),
+         el("span", null, "Chronexa Web")));
+      pages.push(p);
+    }
+    return pages;
+  }
+
+  function teacherNameForLesson(school, lesson) {
+    const names = [];
+    for (const tid of (lesson?.teacherIds || [])) {
+      const t = (school.teachers || []).find(x => x.id === tid);
+      if (t) names.push(t.abbreviation || t.shortName || t.name || tid);
+    }
+    return names.join(", ");
+  }
+
+  function lessonForCard(school, card) {
+    return (school.lessons || []).find(l => l.id === card?.lessonId) || null;
+  }
+
+  function cardsForClassDay(school, classId, day) {
+    return (school.cards || []).map(card => {
+      const lesson = lessonForCard(school, card);
+      if (!lesson || !(lesson.classIds || []).includes(classId) || card.day !== day) return null;
+      const subj = (school.subjects || []).find(s => s.id === lesson.subjectId);
+      return {
+        period: card.period,
+        subject: subj?.abbreviation || subj?.shortName || subj?.name || lesson.subjectId || "",
+        teacher: teacherNameForLesson(school, lesson),
+      };
+    }).filter(Boolean);
+  }
+
+  function classLabelsForLesson(school, lesson) {
+    const labels = [];
+    for (const cid of (lesson?.classIds || [])) {
+      const cls = (school.classes || []).find(c => c.id === cid);
+      labels.push(cls?.abbreviation || cls?.shortName || cls?.name || cid);
+    }
+    return labels.join(", ");
+  }
+
+  function cardsForTeacherDay(school, teacherId, day) {
+    return (school.cards || []).map(card => {
+      const lesson = lessonForCard(school, card);
+      if (!lesson || !(lesson.teacherIds || []).includes(teacherId) || card.day !== day) return null;
+      const subj = (school.subjects || []).find(s => s.id === lesson.subjectId);
+      return {
+        period: card.period,
+        subject: subj?.abbreviation || subj?.shortName || subj?.name || lesson.subjectId || "",
+        classes: classLabelsForLesson(school, lesson),
+      };
+    }).filter(Boolean);
+  }
+
+  function renderDailySlip(school, cls, day, periods) {
+    const dayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const slip = el("div", {
+      style: "border:1px solid #999;display:flex;flex-direction:column;min-height:86mm;background:#fff;page-break-inside:avoid",
+    });
+    slip.appendChild(el("div", {
+      style: "text-align:center;font-weight:600;font-size:11px;padding-top:4px",
+    }, school?.schoolName || school?.name || ""));
+    slip.appendChild(el("div", {
+      style: "text-align:center;font-weight:700;font-size:22px;font-family:'Fraunces',serif;font-style:italic;line-height:1.1;padding-bottom:4px",
+    }, (dayNames[day] || "Day") + " - " + (cls.name || cls.id || "")));
+
+    const tbl = el("table", {
+      class: "chrx-pivot-grid",
+      style: "width:100%;border-collapse:collapse;table-layout:fixed;font-size:9px;flex:1",
+    });
+    const head = el("tr");
+    head.appendChild(el("th", { style: "border:1px solid #999;background:#fafafa;width:34px;padding:2px" }, ""));
+    for (const per of periods) {
+      const h = el("th", {
+        style: "border:1px solid #999;background:#fafafa;padding:2px;text-align:center;font-weight:700",
+      });
+      h.appendChild(el("div", null, String(per.label || per.index)));
+      if (per.startMin != null && per.endMin != null) {
+        h.appendChild(el("div", { style: "font-size:6.5px;font-weight:400;color:#555" }, fmtMin(per.startMin) + "-" + fmtMin(per.endMin)));
+      }
+      head.appendChild(h);
+    }
+    tbl.appendChild(el("thead", null, head));
+
+    const body = el("tbody");
+    const byPeriod = new Map(cardsForClassDay(school, cls.id, day).map(c => [c.period, c]));
+    const lessonRow = el("tr");
+    lessonRow.appendChild(el("td", {
+      style: "border:1px solid #999;background:#fafafa;width:34px;padding:2px;text-align:center;font-weight:600;writing-mode:vertical-rl;transform:rotate(180deg)",
+    }, "Timetable"));
+    for (const per of periods) {
+      const card = byPeriod.get(per.index);
+      const cell = el("td", {
+        style: "border:1px solid #bbb;padding:3px 2px;height:30mm;vertical-align:top;text-align:center;overflow:hidden",
+      });
+      if (card) {
+        cell.appendChild(el("div", { style: "font-size:15px;font-weight:700;line-height:1.05;overflow-wrap:anywhere" }, card.subject));
+        if (card.teacher) cell.appendChild(el("div", { style: "font-size:9px;line-height:1.1;margin-top:3px;overflow-wrap:anywhere" }, card.teacher));
+      }
+      lessonRow.appendChild(cell);
+    }
+    body.appendChild(lessonRow);
+    const signRow = el("tr");
+    signRow.appendChild(el("td", { style: "border:1px solid #999;background:#fafafa;padding:2px;text-align:center;font-size:8px" }, "Sign"));
+    for (const per of periods) {
+      signRow.appendChild(el("td", { style: "border:1px solid #bbb;height:12mm;padding:2px" }, ""));
+    }
+    body.appendChild(signRow);
+    tbl.appendChild(body);
+    slip.appendChild(tbl);
+    slip.appendChild(el("div", { style: "display:flex;justify-content:space-between;font-size:8px;color:#666;padding:3px 5px" },
+      el("span", null, "Timetable generated: " + new Date().toLocaleDateString("en-GB")),
+      el("span", null, "Chronexa Web")));
+    return slip;
+  }
+
+  function renderTeacherSlip(school, teacher, periods, days) {
+    const dayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const slip = el("div", {
+      style: "border:1px solid #999;display:flex;flex-direction:column;min-height:86mm;background:#fff;page-break-inside:avoid",
+    });
+    slip.appendChild(el("div", {
+      style: "text-align:center;font-weight:600;font-size:11px;padding-top:4px",
+    }, school?.schoolName || school?.name || ""));
+    slip.appendChild(el("div", {
+      style: "text-align:center;font-weight:700;font-size:22px;font-family:'Fraunces',serif;font-style:italic;line-height:1.1;padding-bottom:4px",
+    }, teacher.name || teacher.abbreviation || teacher.shortName || teacher.id || ""));
+
+    const tbl = el("table", {
+      class: "chrx-pivot-grid",
+      style: "width:100%;border-collapse:collapse;table-layout:fixed;font-size:9px;flex:1",
+    });
+    const head = el("tr");
+    head.appendChild(el("th", { style: "border:1px solid #999;background:#fafafa;width:52px;padding:2px" }, ""));
+    for (const per of periods) {
+      const h = el("th", {
+        style: "border:1px solid #999;background:#fafafa;padding:2px;text-align:center;font-weight:700",
+      });
+      h.appendChild(el("div", null, String(per.label || per.index)));
+      if (per.startMin != null && per.endMin != null) {
+        h.appendChild(el("div", { style: "font-size:6.5px;font-weight:400;color:#555" }, fmtMin(per.startMin) + "-" + fmtMin(per.endMin)));
+      }
+      head.appendChild(h);
+    }
+    tbl.appendChild(el("thead", null, head));
+
+    const body = el("tbody");
+    for (let day = 0; day < days; day++) {
+      const byPeriod = new Map(cardsForTeacherDay(school, teacher.id, day).map(c => [c.period, c]));
+      const tr = el("tr");
+      tr.appendChild(el("th", {
+        style: "border:1px solid #999;background:#fafafa;padding:2px 4px;text-align:left;font-size:8px;font-weight:600",
+      }, dayNames[day] || ("Day " + (day + 1))));
+      for (const per of periods) {
+        const card = byPeriod.get(per.index);
+        const cell = el("td", {
+          style: "border:1px solid #bbb;padding:3px 2px;height:12mm;vertical-align:top;text-align:center;overflow:hidden",
+        });
+        if (card) {
+          cell.appendChild(el("div", { style: "font-size:12px;font-weight:700;line-height:1.05;overflow-wrap:anywhere" }, card.subject));
+          if (card.classes) cell.appendChild(el("div", { style: "font-size:8px;line-height:1.1;margin-top:2px;overflow-wrap:anywhere" }, card.classes));
+        }
+        tr.appendChild(cell);
+      }
+      body.appendChild(tr);
+    }
+    tbl.appendChild(body);
+    slip.appendChild(tbl);
+    slip.appendChild(el("div", { style: "display:flex;justify-content:space-between;font-size:8px;color:#666;padding:3px 5px" },
+      el("span", null, "Timetable generated: " + new Date().toLocaleDateString("en-GB")),
+      el("span", null, "Chronexa Web")));
+    return slip;
+  }
+
+  function renderTeacherExtra(school, periodsArg) {
+    const teachers = (school?.teachers || []).slice().sort((a, b) =>
+      (a.name || a.abbreviation || "").localeCompare(b.name || b.abbreviation || ""));
+    const periods = periodsArg || school?.bell?.periods || [];
+    const days = Math.max(1, Math.min(6, school?.daysPerWeek || 6));
+    const pages = [];
+    for (let i = 0; i < Math.max(teachers.length, 1); i += 2) {
+      const p = el("div", {
+        class: "chrx-preview-page chrx-print-page chrx-pivot-page",
+        style: "background:#fff;color:#111;width:297mm;min-height:210mm;padding:12mm;box-sizing:border-box;font-family:system-ui;display:grid;grid-template-columns:1fr;gap:8mm;align-content:start",
+      });
+      const chunk = teachers.slice(i, i + 2);
+      if (!chunk.length) {
+        p.appendChild(el("div", { style: "text-align:center;color:#777" }, "No teachers"));
+      }
+      for (const teacher of chunk) p.appendChild(renderTeacherSlip(school, teacher, periods, days));
+      pages.push(p);
+    }
+    return pages;
+  }
+
+  function fmtMin(min) {
+    if (min == null || min < 0) return "";
+    return Math.floor(min / 60) + ":" + String(min % 60).padStart(2, "0");
+  }
+
+  function renderDailyAttendance(school) {
+    const classes = school?.classes || [];
+    const periods = school?.bell?.periods || [];
+    const days = Math.max(1, Math.min(6, school?.daysPerWeek || 6));
+    const pages = [];
+    for (let day = 0; day < days; day++) {
+      for (let i = 0; i < Math.max(classes.length, 1); i += 2) {
+        const p = el("div", {
+          class: "chrx-preview-page chrx-print-page chrx-pivot-page",
+          style: "background:#fff;color:#111;width:297mm;min-height:210mm;padding:12mm;box-sizing:border-box;font-family:system-ui;display:grid;grid-template-columns:1fr 1fr;gap:10mm;align-content:start",
+        });
+        const chunk = classes.slice(i, i + 2);
+        if (!chunk.length) {
+          p.appendChild(el("div", { style: "grid-column:1 / -1;text-align:center;color:#777" }, "No classes"));
+        }
+        for (const cls of chunk) p.appendChild(renderDailySlip(school, cls, day, periods));
+        pages.push(p);
+      }
+    }
+    return pages;
+  }
+
+  function classLabelsForTeacherSubject(school, teacherId, subjectId) {
+    const labels = [];
+    const seen = new Set();
+    function add(id) {
+      if (!id || seen.has(id)) return;
+      seen.add(id);
+      const cls = (school.classes || []).find(c => c.id === id);
+      labels.push(cls?.abbreviation || cls?.shortName || cls?.name || id);
+    }
+    for (const lesson of (school.lessons || [])) {
+      if (lesson.subjectId !== subjectId) continue;
+      if (!(lesson.teacherIds || []).includes(teacherId)) continue;
+      for (const cid of (lesson.classIds || [])) add(cid);
+    }
+    return labels;
+  }
+
+  function renderContractOverview(school) {
+    const teachers = (school?.teachers || []).slice().sort((a, b) =>
+      (a.name || a.abbreviation || "").localeCompare(b.name || b.abbreviation || ""));
+    const subjects = school?.subjects || [];
+    const perPage = 10;
+    const pages = [];
+    for (let start = 0; start < Math.max(teachers.length, 1); start += perPage) {
+      const chunk = teachers.slice(start, start + perPage);
+      const p = el("div", {
+        class: "chrx-preview-page chrx-print-page chrx-pivot-page",
+        style: "background:#fff;color:#111;width:297mm;min-height:210mm;padding:12mm;box-sizing:border-box;font-family:system-ui;display:flex;flex-direction:column;gap:6px",
+      });
+      const schoolName = school?.schoolName || school?.name || "";
+      if (schoolName) p.appendChild(el("div", {
+        style: "text-align:center;font-weight:600;font-size:12px",
+      }, schoolName));
+      p.appendChild(el("div", {
+        style: "text-align:center;font-weight:700;font-size:18px;font-family:'Fraunces',serif;font-style:italic",
+      }, "Contract overview"));
+      p.appendChild(el("div", {
+        style: "font-size:10px;color:#555;border-bottom:1px solid #bbb;padding-bottom:4px",
+      }, schoolName));
+
+      const tbl = el("table", {
+        class: "chrx-pivot-grid",
+        style: "width:100%;border-collapse:collapse;table-layout:fixed;font-size:10px;flex:1",
+      });
+      const head = el("tr");
+      head.appendChild(el("th", {
+        style: "border:1px solid #999;background:#fafafa;width:86px;padding:4px;text-align:left",
+      }, ""));
+      for (const subj of subjects) {
+        head.appendChild(el("th", {
+          style: "border:1px solid #999;background:#fafafa;padding:4px 2px;text-align:center;font-weight:600;overflow-wrap:anywhere",
+        }, subj.abbreviation || subj.shortName || subj.name || subj.id || ""));
+      }
+      tbl.appendChild(el("thead", null, head));
+
+      const body = el("tbody");
+      if (!chunk.length) {
+        const tr = el("tr");
+        tr.appendChild(el("td", { colspan: String(subjects.length + 1), style: "border:1px solid #ccc;padding:8px;color:#777;text-align:center" }, "No teachers"));
+        body.appendChild(tr);
+      }
+      for (const teacher of chunk) {
+        const tr = el("tr");
+        tr.appendChild(el("th", {
+          style: "border:1px solid #999;background:#fafafa;padding:4px 6px;text-align:left;font-size:14px;font-weight:500",
+        }, teacher.name || teacher.abbreviation || teacher.shortName || teacher.id || ""));
+        for (const subj of subjects) {
+          const labels = classLabelsForTeacherSubject(school, teacher.id, subj.id);
+          tr.appendChild(el("td", {
+            style: "border:1px solid #bbb;padding:3px 4px;height:15mm;text-align:center;vertical-align:middle;font-size:8px;line-height:1.12;overflow-wrap:anywhere;color:" + (labels.length ? "#111" : "#bbb"),
+          }, labels.length ? labels.join(", ") : ""));
+        }
+        body.appendChild(tr);
+      }
+      tbl.appendChild(body);
+      p.appendChild(tbl);
+      p.appendChild(el("div", {
+        style: "display:flex;justify-content:space-between;font-size:10px;color:#666;font-family:'JetBrains Mono',ui-monospace,monospace;border-top:1px solid #eee;padding-top:6px",
+      }, el("span", null, "Timetable generated: " + new Date().toLocaleDateString("en-GB")),
+         el("span", null, "Chronexa Web")));
+      pages.push(p);
+    }
+    return pages;
+  }
+
   function registerAll() {
     if (!APP.printTemplates || typeof APP.printTemplates.register !== "function") return;
     if (!APP.PrintPivot || typeof APP.PrintPivot.renderPreset !== "function") {
@@ -27936,6 +29129,7 @@ window.StartScreen = (function () {
       APP.printTemplates.register(preset.id, {
         name: preset.name,
         render: (school, periods) => {
+          if (typeof preset.render === "function") return preset.render(school, periods);
           // If an active PrintReport exists for this preset (because the
           // user opened Modify-Structure and saved), render from it. Else
           // fall back to the static preset.

@@ -253,9 +253,24 @@
       });
     }
 
+    const denseCols = visibleCols.length;
+    const denseRows = visibleRows.length;
+    const compactLevel = denseCols > 34 || denseRows > 22 ? 2 : (denseCols > 16 || denseRows > 10 ? 1 : 0);
+    const orientation = report.pageSetup?.orientation || (denseCols > 10 ? "landscape" : "portrait");
+    const pageWidth = orientation === "portrait" ? "210mm" : "297mm";
+    const pageHeight = orientation === "portrait" ? "297mm" : "210mm";
+    report._layout = {
+      compactLevel,
+      cellMinHeightPx: compactLevel === 2 ? 22 : compactLevel === 1 ? 34 : 54,
+      rowHeaderWidthPx: compactLevel === 2 ? 46 : compactLevel === 1 ? 58 : 80,
+      bodyFontPx: compactLevel === 2 ? 8 : compactLevel === 1 ? 9.5 : 11,
+      headerFontPx: compactLevel === 2 ? 8 : compactLevel === 1 ? 9.5 : 11,
+      rowFontPx: compactLevel === 2 ? 10 : compactLevel === 1 ? 12 : 14,
+    };
+
     const page = el("div", {
-      class: "chrx-print-page chrx-pivot-page",
-      style: "background:#fff;color:#111;width:100%;min-height:100%;padding:18mm 14mm;box-sizing:border-box;display:flex;flex-direction:column;gap:8px;font-family:system-ui",
+      class: "chrx-preview-page chrx-print-page chrx-pivot-page",
+      style: "background:#fff;color:#111;width:" + pageWidth + ";min-height:" + pageHeight + ";padding:14mm 12mm;box-sizing:border-box;display:flex;flex-direction:column;gap:6px;font-family:system-ui",
     });
 
     const schoolName = (school.schoolName || school.name || "");
@@ -276,11 +291,17 @@
       const tid = cls && (cls._teacherId || cls.teacherId || cls.classTeacherId);
       const tObj = tid && (school.teachers || []).find(t => t.id === tid);
       const ctName = tObj ? (tObj.name || tObj.abbreviation || "") : "";
+      const rid = cls && (cls.homeRoomId || cls.classroomId || (cls._classroomIds || [])[0]);
+      const rObj = rid && (school.classrooms || []).find(r => r.id === rid);
+      const roomName = rObj ? (rObj.name || rObj.abbreviation || "") : "";
       const sub = el("div", {
         style: "display:flex;justify-content:space-between;font-size:9.5px;color:#555;border-bottom:1px solid #bbb;padding-bottom:4px;margin-bottom:2px",
       });
       sub.appendChild(el("span", null, schoolName));
-      if (ctName) sub.appendChild(el("span", null, "Class teacher: " + ctName));
+      const meta = [];
+      if (roomName) meta.push("Home classroom: " + roomName);
+      if (ctName) meta.push("Class teacher: " + ctName);
+      if (meta.length) sub.appendChild(el("span", null, meta.join(" · ")));
       page.appendChild(sub);
     }
     if (totalPages > 1) {
@@ -292,13 +313,13 @@
     const tableWrap = el("div", { style: "flex:1;overflow:visible;display:flex;gap:6px" });
     const table = el("table", {
       class: "chrx-pivot-grid",
-      style: "border-collapse:collapse;width:100%;table-layout:fixed;font-size:11px",
+      style: "border-collapse:collapse;width:100%;table-layout:fixed;font-size:" + report._layout.bodyFontPx + "px",
     });
 
     const thead = el("thead");
     const headerRow = el("tr");
     headerRow.appendChild(el("th", {
-      style: "border:1px solid #999;padding:4px;background:#fafafa;width:80px",
+      style: "border:1px solid #999;padding:3px;background:#fafafa;width:" + report._layout.rowHeaderWidthPx + "px",
     }, ""));
     for (let ci = 0; ci < visibleCols.length; ci++) {
       const cc = visibleCols[ci];
@@ -310,7 +331,7 @@
         if (ent._endMin   != null) endMin   = ent._endMin;
       }
       const th = el("th", {
-        style: "border:1px solid #999;padding:4px 2px;background:#fafafa;font-weight:700;font-size:11px;text-align:center;font-family:system-ui",
+        style: "border:1px solid #999;padding:3px 2px;background:#fafafa;font-weight:700;font-size:" + report._layout.headerFontPx + "px;text-align:center;font-family:system-ui",
       });
       th.appendChild(el("div", { style: "font-weight:700" }, labels.join(" · ")));
       if (startMin != null && endMin != null) {
@@ -335,17 +356,21 @@
       const rowLabels = [];
       for (const [, ent] of rc.entries()) rowLabels.push(ent.name || ent.abbr);
       tr.appendChild(el("td", {
-        style: "border:1px solid #999;padding:6px 8px;background:#fafafa;font-weight:600;text-align:center;font-family:'Fraunces',serif;font-size:14px",
+        style: "border:1px solid #999;padding:4px 5px;background:#fafafa;font-weight:600;text-align:center;font-family:'Fraunces',serif;font-size:" + report._layout.rowFontPx + "px",
       }, rowLabels.join(" · ")));
       for (let ci = 0; ci < visibleCols.length; ci++) {
         const cc = visibleCols[ci];
         const combined = new Map([...pageBindings, ...rc, ...cc]);
         const cellCards = cardsMatching(pageCards, combined);
         const cellNode = el("td", {
-          style: "border:1px solid #ccc;padding:0;vertical-align:top;height:48px",
+          style: "border:1px solid #ccc;padding:0;vertical-align:top;height:" + report._layout.cellMinHeightPx + "px",
         });
         if (APP.PrintCellRenderer && typeof APP.PrintCellRenderer.renderCell === "function") {
-          cellNode.appendChild(APP.PrintCellRenderer.renderCell(cellCards, report, school));
+          const kind = report.cells || "draw-lessons";
+          const renderer = kind === "draw-lessons"
+            ? APP.PrintCellRenderer.renderCell
+            : (APP.PrintCellRenderer.renderAggregateCell || APP.PrintCellRenderer.renderCell);
+          cellNode.appendChild(renderer(cellCards, report, school));
         } else if (cellCards.length > 0) {
           const subj = cellCards[0]?.subjectId;
           const text = (school.subjects || []).find(s => s.id === subj)?.abbreviation || subj || "?";
@@ -372,15 +397,16 @@
     tableWrap.appendChild(table);
 
     if (report.extraCols && report.extraCols.length > 0) {
+      const extraWidth = report.extraCols.reduce((sum, ec) => sum + ((ec.width || 10) * 5), 0);
       const extraPanel = el("table", {
         class: "chrx-pivot-extras",
-        style: "border-collapse:collapse;width:" + (report.extraCols.length * 100) + "px;table-layout:fixed;font-size:11px",
+        style: "border-collapse:collapse;width:" + extraWidth + "px;table-layout:fixed;font-size:11px",
       });
       const extHead = el("thead");
       const extHeadRow = el("tr");
       for (const ec of report.extraCols) {
         extHeadRow.appendChild(el("th", {
-          style: "border:1px solid #999;padding:4px;background:#fafafa;font-weight:700",
+          style: "border:1px solid #999;padding:4px;background:#fafafa;font-weight:700;width:" + ((ec.width || 10) * 5) + "px",
         }, ec.header || ec.type));
       }
       extHead.appendChild(extHeadRow);

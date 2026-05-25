@@ -44,6 +44,8 @@ js/ui/components/tag_caps_dialog.js
 js/ui/entities/students.js
 js/ui/entities/studentsubjects.js
 js/ui/components/school_hub.js
+js/ui/components/school_toolbar.js
+js/ui/components/period_override_matrix.js
 js/ui/components/ai_actions.js
 js/ui/io/export_html.js
 js/solver/relation_enforcer.js

@@ -103,6 +103,9 @@
         : out.join(" / ");
     }
     if (key === "class") {
+      if (style.conditional?.printGroupInsteadOfClass) {
+        return joinElementLabels(cards, "group", school, style);
+      }
       // Per-card class lists join with slashes (multi-class activity),
       // then card-to-card joins with commas (multi-card-per-cell).
       const parts = [];
@@ -127,8 +130,8 @@
           // Skip if this is the home classroom of any class on the card
           const classRooms = (c.classIds || []).map(cid => {
             const cls = (school.classes || []).find(cc => cc.id === cid);
-            return cls?.homeRoomId;
-          });
+            return [cls?.homeRoomId, cls?.classroomId].concat(cls?._classroomIds || []);
+          }).flat().filter(Boolean);
           if (classRooms.includes(rid)) continue;
         }
         out.push(r);
@@ -176,7 +179,14 @@
     if (!bell || !bell.periods) return "";
     const p = bell.periods[period - 1];
     if (!p) return "";
-    return (p.start || "") + (p.end ? "–" + p.end : "");
+    const start = p.start || fmtMin(p.startMin);
+    const end = p.end || fmtMin(p.endMin);
+    return start + (end ? "–" + end : "");
+  }
+
+  function fmtMin(min) {
+    if (min == null || min < 0) return "";
+    return Math.floor(min / 60) + ":" + String(min % 60).padStart(2, "0");
   }
 
   function renderElement(text, style) {
@@ -202,6 +212,83 @@
     }, text);
   }
 
+  function uniqueLabels(cards, key, school) {
+    const out = [];
+    const seen = new Set();
+    function add(v) {
+      if (!v || seen.has(v)) return;
+      seen.add(v);
+      out.push(v);
+    }
+    for (const c of cards || []) {
+      if (key === "class") {
+        for (const id of (c.classIds || [])) add(entityName(school, "class", id, "abbreviation"));
+      } else if (key === "teacher") {
+        for (const id of (c.teacherIds || [])) add(entityName(school, "teacher", id, "abbreviation"));
+      } else if (key === "subject") {
+        add(entityName(school, "subject", c.subjectId, "abbreviation"));
+      } else if (key === "classroom") {
+        const rid = c.roomId || (c.roomIds || [])[0];
+        add(entityName(school, "classroom", rid, "abbreviation"));
+      }
+    }
+    return out;
+  }
+
+  function renderAggregateCell(cards, report, school) {
+    cards = cards || [];
+    const layout = report?._layout || {};
+    const minHeight = Math.max(18, layout.cellMinHeightPx || 48);
+    const cell = el("div", {
+      class: "chrx-pivot-cell chrx-pivot-cell--aggregate",
+      style: "width:100%;height:100%;min-height:" + minHeight + "px;position:relative;container-type:inline-size;padding:2px 4px;box-sizing:border-box",
+    });
+    if (!cards.length) return cell;
+
+    const kind = report?.cells || "draw-lessons";
+    const count = cards.length;
+    const lessons = uniqueLabels(cards, "subject", school);
+    const teachers = uniqueLabels(cards, "teacher", school);
+    const classes = uniqueLabels(cards, "class", school);
+    const rooms = uniqueLabels(cards, "classroom", school);
+
+    if (kind === "count-placed") {
+      cell.appendChild(el("div", {
+        style: "position:absolute;right:3px;top:2px;font-size:clamp(7px,22cqi,13px);font-weight:700;line-height:1",
+      }, String(count)));
+      const lines = [];
+      if (teachers.length) lines.push(teachers.join(", "));
+      if (classes.length) lines.push(classes.join(", "));
+      if (rooms.length) lines.push(rooms.join(", "));
+      if (lines.length) {
+        cell.appendChild(el("div", {
+          style: "position:absolute;left:3px;right:3px;bottom:2px;text-align:center;font-size:clamp(5px,11cqi,8px);line-height:1.12;color:#333;overflow-wrap:anywhere",
+        }, lines.join(" / ")));
+      }
+      return cell;
+    }
+
+    if (kind === "count-lessons") {
+      cell.appendChild(el("div", {
+        style: "display:flex;width:100%;height:100%;align-items:center;justify-content:center;font-weight:700;font-size:clamp(8px,24cqi,14px)",
+      }, String(count)));
+      return cell;
+    }
+
+    if (kind === "teacher-list-with-count") {
+      const title = teachers.length ? teachers.join(", ") : lessons.join(", ");
+      cell.appendChild(el("div", {
+        style: "font-weight:700;font-size:clamp(7px,18cqi,11px);line-height:1.12;overflow-wrap:anywhere",
+      }, title || String(count)));
+      cell.appendChild(el("div", {
+        style: "position:absolute;right:3px;bottom:2px;font-size:clamp(6px,13cqi,9px);color:#555",
+      }, String(count)));
+      return cell;
+    }
+
+    return renderCell(cards, report, school);
+  }
+
   function getCardBgColor(cards, report, school) {
     if (!report.colors?.cardOn) return null;
     const key = report.colors.cardKey || "subject";
@@ -218,9 +305,11 @@
 
   function renderCell(cards, report, school) {
     cards = cards || [];
+    const layout = report?._layout || {};
+    const minHeight = Math.max(18, layout.cellMinHeightPx || 48);
     const cell = el("div", {
       class: "chrx-pivot-cell",
-      style: "width:100%;height:100%;min-height:48px;position:relative;container-type:inline-size",
+      style: "width:100%;height:100%;min-height:" + minHeight + "px;position:relative;container-type:inline-size",
     });
     if (cards.length === 0) return cell;
 
@@ -261,4 +350,5 @@
   }
 
   APP.PrintCellRenderer = { renderCell, joinElementLabels };
+  APP.PrintCellRenderer.renderAggregateCell = renderAggregateCell;
 })();

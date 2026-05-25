@@ -46,7 +46,7 @@
     // Classroom report: page title = classroom → hide Classroom
     "classroom": { subject:false, teacher:true,  class:true,  group:true,  classroom:false, count:false, bellTimes:false },
     // Subject report: page title = subject → hide Subject
-    "subject":   { subject:false, teacher:true,  class:true,  group:false, classroom:false, count:false, bellTimes:false },
+    "subject":   { subject:false, teacher:true,  class:true,  group:false, classroom:false, count:true,  bellTimes:false },
     // Summary / no specific entity: show subject + teacher + class
     "summary":   { subject:true,  teacher:true,  class:true,  group:false, classroom:false, count:false, bellTimes:false },
     // Wall poster: subject + teacher (compact)
@@ -65,7 +65,7 @@
     "class":     { subject:"top-center",  teacher:"bottom-left",  class:"middle-center", group:"middle-center", classroom:"top-right",  count:"middle-center", bellTimes:"middle-center" },
     "teacher":   { subject:"top-left",    teacher:"middle-center", class:"bottom-center", group:"middle-center", classroom:"top-right",  count:"middle-center", bellTimes:"middle-center" },
     "classroom": { subject:"middle-center", teacher:"top-left",   class:"bottom-center", group:"middle-center", classroom:"middle-center", count:"middle-center", bellTimes:"middle-center" },
-    "subject":   { subject:"middle-center", teacher:"top-left",   class:"bottom-left",   group:"middle-center", classroom:"middle-center", count:"middle-center", bellTimes:"middle-center" },
+    "subject":   { subject:"middle-center", teacher:"top-left",   class:"bottom-left",   group:"middle-center", classroom:"middle-center", count:"top-right", bellTimes:"middle-center" },
     "summary":   { subject:"top-center",  teacher:"bottom-center", class:"middle-center", group:"middle-center", classroom:"middle-center", count:"middle-center", bellTimes:"middle-center" },
     "poster":    { subject:"top-center",  teacher:"bottom-center", class:"middle-center", group:"middle-center", classroom:"middle-center", count:"middle-center", bellTimes:"middle-center" },
     "day":       { subject:"top-center",  teacher:"bottom-center", class:"middle-center", group:"middle-center", classroom:"middle-center", count:"middle-center", bellTimes:"middle-center" },
