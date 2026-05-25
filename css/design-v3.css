@@ -356,13 +356,13 @@ body::before{
 /* Editor grid — print-card aesthetic */
 .chrx-vkarta{
   --hue:var(--chrx-card-hue,210);
-  position:absolute; inset:2px;
-  background:linear-gradient(135deg, hsl(var(--hue) 84% 53%) 0%, hsl(var(--hue) 75% 45%) 100%) !important;
-  border:1px solid hsl(var(--hue) 72% 38%) !important;
-  border-left: 4.5px solid hsl(var(--hue) 80% 30%) !important;
+  position:absolute; inset:1px !important;
+  background:linear-gradient(180deg, hsl(var(--hue) 82% 51%) 0%, hsl(var(--hue) 74% 43%) 100%) !important;
+  border:1px solid hsl(var(--hue) 75% 32%) !important;
+  border-left: 4px solid hsl(var(--hue) 85% 24%) !important;
   color:#ffffff !important;
-  border-radius:6px !important;
-  padding:4px 8px !important;
+  border-radius:1.5px !important;
+  padding:2px 5px !important;
   display:flex !important;
   flex-direction:column !important;
   align-items:flex-start !important;
@@ -372,7 +372,7 @@ body::before{
   letter-spacing:-.005em;
   font-size:var(--chrx-font-small);
   cursor:grab; user-select:none; overflow:hidden;
-  box-shadow:0 1px 0 hsl(var(--hue) 55% 32%/.45), 0 2px 6px rgba(26,23,20,.12);
+  box-shadow:0 1px 0 hsl(var(--hue) 55% 32%/.45), 0 1px 3px rgba(26,23,20,.12);
   transition:transform var(--chrx-duration-fast) var(--chrx-ease),
              box-shadow var(--chrx-duration-fast) var(--chrx-ease);
   will-change:transform, box-shadow;
