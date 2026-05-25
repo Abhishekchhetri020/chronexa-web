@@ -232,11 +232,17 @@
 <script>
 (function () {
   if (!("serviceWorker" in navigator) || !navigator.serviceWorker.controller) return;
+  // Guard: only attempt migration once per session to avoid reload loops.
+  var GUARD = "chronexa-sw-migrated-" + window.APP_VER;
+  if (sessionStorage.getItem(GUARD)) return;
   var EXPECTED = "chronexa-" + window.APP_VER;
   caches.keys().then(function (keys) {
     var hasExpected = keys.indexOf(EXPECTED) >= 0;
     if (hasExpected) return;
+    // No stale caches at all means the SW hasn't cached anything yet — skip.
+    if (keys.length === 0) return;
     console.warn("[chronexa] Stale SW detected — clearing caches and reloading…");
+    sessionStorage.setItem(GUARD, "1");
     Promise.all([
       navigator.serviceWorker.getRegistrations().then(function (regs) {
         return Promise.all(regs.map(function (r) { return r.unregister(); }));
