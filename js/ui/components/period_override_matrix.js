@@ -1,0 +1,205 @@
+/* Per-day period override matrix — window.PeriodOverrideMatrix.render(host).
+ *
+ * Shows a Days × Periods grid. Each cell displays the start/end time for that
+ * period on that day. Overridden cells are highlighted. Click to edit.
+ * Uses period.perDayOverrides = { dayIdx: { startMin, endMin } }.
+ */
+(function (global) {
+  "use strict";
+
+  const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+  function fmtTime(min) {
+    if (min == null) return "—";
+    const h = Math.floor(min / 60), m = min % 60;
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  }
+  function parseTime(str) {
+    const parts = (str || "").split(":");
+    if (parts.length !== 2) return null;
+    const h = parseInt(parts[0], 10), m = parseInt(parts[1], 10);
+    if (isNaN(h) || isNaN(m)) return null;
+    return h * 60 + m;
+  }
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      const v = attrs[k];
+      if (v == null) continue;
+      if (k === "class") n.className = v;
+      else if (k === "html") n.innerHTML = v;
+      else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v);
+    }
+    for (const c of kids) if (c != null && c !== false) {
+      n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    }
+    return n;
+  }
+
+  let activeEditor = null; // track open editor for cleanup
+
+  function closeEditor() {
+    if (activeEditor && activeEditor.parentNode) {
+      activeEditor.parentNode.removeChild(activeEditor);
+    }
+    activeEditor = null;
+  }
+
+  function openCellEditor(cell, period, dayIdx, onDone) {
+    closeEditor();
+    const overrides = period.perDayOverrides || {};
+    const ov = overrides[dayIdx];
+    const startVal = ov ? ov.startMin : period.startMin;
+    const endVal = ov ? ov.endMin : period.endMin;
+
+    const editor = el("div", { class: "chrx-override-matrix__editor" });
+
+    const startInp = el("input", {
+      type: "time",
+      value: fmtTime(startVal),
+      class: "chrx-override-matrix__time-input",
+    });
+    const endInp = el("input", {
+      type: "time",
+      value: fmtTime(endVal),
+      class: "chrx-override-matrix__time-input",
+    });
+
+    const saveBtn = el("button", {
+      type: "button",
+      class: "chrx-override-matrix__btn chrx-override-matrix__btn--save",
+      onclick: () => {
+        const s = parseTime(startInp.value);
+        const e = parseTime(endInp.value);
+        if (s == null || e == null || e <= s) {
+          startInp.style.borderColor = "#f87171";
+          endInp.style.borderColor = "#f87171";
+          return;
+        }
+        period.perDayOverrides = period.perDayOverrides || {};
+        period.perDayOverrides[dayIdx] = { startMin: s, endMin: e };
+        document.dispatchEvent(new CustomEvent("entity:changed", { detail: { source: "override-matrix" } }));
+        closeEditor();
+        onDone();
+      },
+    }, "Save");
+
+    const clearBtn = el("button", {
+      type: "button",
+      class: "chrx-override-matrix__btn chrx-override-matrix__btn--clear",
+      onclick: () => {
+        if (period.perDayOverrides) {
+          delete period.perDayOverrides[dayIdx];
+          if (Object.keys(period.perDayOverrides).length === 0) {
+            delete period.perDayOverrides;
+          }
+        }
+        document.dispatchEvent(new CustomEvent("entity:changed", { detail: { source: "override-matrix" } }));
+        closeEditor();
+        onDone();
+      },
+    }, "Reset");
+
+    const cancelBtn = el("button", {
+      type: "button",
+      class: "chrx-override-matrix__btn",
+      onclick: closeEditor,
+    }, "Cancel");
+
+    editor.appendChild(el("div", { class: "chrx-override-matrix__editor-row" },
+      el("label", null, "Start:"), startInp,
+    ));
+    editor.appendChild(el("div", { class: "chrx-override-matrix__editor-row" },
+      el("label", null, "End:"), endInp,
+    ));
+    editor.appendChild(el("div", { class: "chrx-override-matrix__editor-actions" },
+      saveBtn, clearBtn, cancelBtn,
+    ));
+
+    // Position relative to cell
+    cell.style.position = "relative";
+    cell.appendChild(editor);
+    activeEditor = editor;
+    startInp.focus();
+  }
+
+  function render(host) {
+    if (!host) return;
+    const school = window.APP.school;
+    if (!school || !school.bell || !school.bell.periods || !school.bell.periods.length) {
+      host.innerHTML = '<div style="font-size:12px;color:#94a3b8">No periods defined.</div>';
+      return;
+    }
+
+    host.innerHTML = "";
+    const periods = school.bell.periods;
+    const daysPerWeek = (school.settings && school.settings.daysPerWeek) || 6;
+    const days = DAY_LABELS.slice(0, daysPerWeek);
+
+    // Header info
+    const info = el("p", {
+      class: "chrx-override-matrix__info",
+    }, "Click any cell to set different bell times for that period on a specific day. Overridden cells are highlighted in blue.");
+    host.appendChild(info);
+
+    const table = el("table", { class: "chrx-override-matrix" });
+
+    // Header row
+    const thead = el("thead");
+    const headRow = el("tr");
+    headRow.appendChild(el("th", { class: "chrx-override-matrix__cell chrx-override-matrix__cell--header" }, "Period"));
+    days.forEach(d => {
+      headRow.appendChild(el("th", { class: "chrx-override-matrix__cell chrx-override-matrix__cell--header" }, d));
+    });
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    // Body rows
+    const tbody = el("tbody");
+    periods.forEach((period, pIdx) => {
+      // Skip breaks (they have type "break" sometimes)
+      const row = el("tr");
+      const labelCell = el("td", {
+        class: "chrx-override-matrix__cell chrx-override-matrix__cell--label",
+      }, period.label || period.short || `P${pIdx + 1}`);
+      row.appendChild(labelCell);
+
+      for (let dIdx = 0; dIdx < daysPerWeek; dIdx++) {
+        const ov = period.perDayOverrides && period.perDayOverrides[dIdx];
+        const startMin = ov ? ov.startMin : period.startMin;
+        const endMin = ov ? ov.endMin : period.endMin;
+        const isOverride = !!ov;
+
+        const cellClass = "chrx-override-matrix__cell" +
+          (isOverride ? " chrx-override-matrix__cell--override" : "");
+
+        const cell = el("td", {
+          class: cellClass,
+          title: `${period.label || ""} — ${days[dIdx]}: ${fmtTime(startMin)} – ${fmtTime(endMin)}${isOverride ? " (custom)" : ""}`,
+          onclick: () => {
+            openCellEditor(cell, period, dIdx, () => render(host));
+          },
+        });
+
+        cell.innerHTML = `<span class="chrx-override-matrix__time">${fmtTime(startMin)}</span><span class="chrx-override-matrix__dash">–</span><span class="chrx-override-matrix__time">${fmtTime(endMin)}</span>`;
+        row.appendChild(cell);
+      }
+      tbody.appendChild(row);
+    });
+    table.appendChild(tbody);
+    host.appendChild(table);
+  }
+
+  // Cleanup editor on outside click
+  document.addEventListener("click", (e) => {
+    if (activeEditor && !activeEditor.contains(e.target)) {
+      const cell = activeEditor.closest(".chrx-override-matrix__cell");
+      if (!cell || !cell.contains(e.target)) {
+        closeEditor();
+      }
+    }
+  });
+
+  global.PeriodOverrideMatrix = { render };
+})(window);

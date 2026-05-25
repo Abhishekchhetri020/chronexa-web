@@ -376,6 +376,24 @@
       ),
     ));
 
+    // Per-day override matrix (shown when bellPerDay toggle is on)
+    if (s.bellPerDay && periods.length) {
+      const matrixHost = el("div", { class: "chrx-hub-matrix-host" });
+      wrap.appendChild(section("Per-day bell time overrides",
+        el("p", { class: "chrx-hub-help" },
+          "Click any cell to set different bell times for a period on a specific day."),
+        matrixHost,
+      ));
+      // Defer render so the host is in the DOM
+      setTimeout(() => {
+        if (window.PeriodOverrideMatrix && window.PeriodOverrideMatrix.render) {
+          window.PeriodOverrideMatrix.render(matrixHost);
+        } else {
+          matrixHost.innerHTML = '<div style="font-size:12px;color:#94a3b8;padding:8px">Per-day override matrix is loading…</div>';
+        }
+      }, 0);
+    }
+
     return wrap;
   }
 

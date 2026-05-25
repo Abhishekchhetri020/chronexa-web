@@ -1,0 +1,101 @@
+/* Entity icon toolbar — aSc-style horizontal strip.
+ * window.SchoolToolbar.render(host) mounts above the timetable grid.
+ *
+ * Each button fires `app:open-entity` (for entity CRUD) or a dedicated
+ * event for utility actions (solver test, generate, verify, print).
+ */
+(function (global) {
+  "use strict";
+
+  const ENTITY_BUTTONS = [
+    { icon: "🏛", label: "School",      kind: "school" },
+    { icon: "📚", label: "Subjects",    kind: "subjects" },
+    { icon: "👥", label: "Classes",     kind: "classes" },
+    { icon: "🚪", label: "Classrooms",  kind: "classrooms" },
+    { icon: "👨‍🏫", label: "Teachers",   kind: "teachers" },
+    { icon: "📝", label: "Lessons",     kind: "lessons" },
+    { icon: "👤", label: "Students /\nSeminars", kind: "students" },
+    { icon: "🔗", label: "Relations",   kind: "relations" },
+  ];
+
+  const UTILITY_BUTTONS = [
+    { icon: "🧪", label: "Test",           event: "app:solver-test" },
+    { icon: "⚙",  label: "Generate",       event: "app:solver-generate" },
+    { icon: "☁",  label: "Generate in\ncloud", event: "app:solver-cloud" },
+    { icon: "✓",  label: "Verification",   event: "app:open-verification" },
+    { icon: "🖨", label: "Print\npreview", event: "app:print-preview" },
+  ];
+
+  function fire(name, detail) {
+    window.dispatchEvent(new CustomEvent(name, { detail: detail || {} }));
+  }
+
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const k in attrs) {
+      const v = attrs[k];
+      if (v == null) continue;
+      if (k === "class") n.className = v;
+      else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v);
+    }
+    for (const c of kids) if (c != null) {
+      n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    }
+    return n;
+  }
+
+  function makeBtn(icon, label, onClick) {
+    const btn = el("button", {
+      type: "button",
+      class: "chrx-entity-toolbar__btn",
+      title: label.replace(/\n/g, " "),
+      onclick: onClick,
+    },
+      el("span", { class: "chrx-entity-toolbar__icon" }, icon),
+      el("span", { class: "chrx-entity-toolbar__label" }, label.replace(/\n/g, " ")),
+    );
+    return btn;
+  }
+
+  function render(host) {
+    if (!host) return;
+    if (!window.APP.school) { host.innerHTML = ""; return; }
+
+    host.innerHTML = "";
+    const bar = el("div", { class: "chrx-entity-toolbar", role: "toolbar", "aria-label": "Entity toolbar" });
+
+    // Entity buttons
+    ENTITY_BUTTONS.forEach(b => {
+      bar.appendChild(makeBtn(b.icon, b.label, () => {
+        fire("app:open-entity", { kind: b.kind });
+      }));
+    });
+
+    // Separator
+    bar.appendChild(el("div", { class: "chrx-entity-toolbar__sep" }));
+
+    // Utility buttons
+    UTILITY_BUTTONS.forEach(b => {
+      bar.appendChild(makeBtn(b.icon, b.label, () => {
+        fire(b.event);
+      }));
+    });
+
+    // Close button (far right)
+    bar.appendChild(el("div", { class: "chrx-entity-toolbar__spacer" }));
+    bar.appendChild(makeBtn("✕", "Close", () => {
+      document.dispatchEvent(new CustomEvent("nav:goto-step", { detail: { step: 1 } }));
+    }));
+
+    host.appendChild(bar);
+  }
+
+  // Listen for school-loaded to auto-render if a mount point exists
+  document.addEventListener("app:school-loaded", () => {
+    const mount = document.getElementById("entity-toolbar-mount");
+    if (mount) render(mount);
+  });
+
+  global.SchoolToolbar = { render };
+})(window);

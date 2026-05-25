@@ -62,6 +62,11 @@
       case 5: RoomGrid.render(document.getElementById("step-5-body")); break;
       // case 6 is handled by EditorActivator listening to step:changed
     }
+    // Entity toolbar: render when the editor is shown (or refresh if already mounted)
+    const tbMount = document.getElementById("entity-toolbar-mount");
+    if (tbMount && window.SchoolToolbar && window.SchoolToolbar.render) {
+      window.SchoolToolbar.render(tbMount);
+    }
   }
 
   // ----- Search ------------------------------------------------------------

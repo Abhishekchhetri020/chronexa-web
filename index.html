@@ -160,6 +160,9 @@
 
   <!-- STEP 6 — Editor (drag-drop main grid) -->
   <section id="step-6" class="step-panel hidden">
+    <!-- Entity toolbar: aSc-style icon strip -->
+    <div id="entity-toolbar-mount"></div>
+
     <div class="flex items-center justify-between mb-2">
       <div>
         <h2 class="text-xl sm:text-2xl font-bold text-blue-900">🪄 Timetable Editor</h2>
@@ -323,6 +326,8 @@
     ["ui","entities/students"],
     ["ui","entities/studentsubjects"],
     ["ui","components/school_hub"],
+    ["ui","components/school_toolbar"],
+    ["ui","components/period_override_matrix"],
     ["ui","components/ai_actions"],
     ["ui","io/export_html"],
     // ─── Relation enforcer — wires the 15 n_* constraints into the solver ──
