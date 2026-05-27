@@ -1191,6 +1191,13 @@ function makeState(model) {
     subjectDayOverflow: new Int32Array(classCount * subjectCount * days),
     teacherRoomPenalty: new Int32Array(teacherCount),
     teacherLastOverflow: new Int32Array(teacherCount),
+    // WASM sync versioning (Phase 3): bumped on every applySingle/removeSingle
+    // so wasmSyncState can skip redundant copies when state is stable between
+    // consecutive canPlace calls.
+    _wasmVersion: 0,
+    _lastWasmSyncVersion: -1,
+    _wasmSkipCount: 0,
+    _wasmSyncCount: 0,
   };
 }
 
@@ -1412,8 +1419,16 @@ function wasmBind(model, state) {
 // Re-serialize mutable state arrays back into the wasm memory after a
 // placement/undo so the next wasmCanPlace sees fresh values. Called from
 // applyPlacement / undoPlacement. Cheap because it copies exact typed arrays.
+// Optimization (Phase 3): early-return when state._wasmVersion hasn't changed
+// since the last sync — avoids copying ~15KB on every consecutive canPlace
+// call during candidate iteration when state is stable.
 function wasmSyncState(model, state) {
   if (!wasmBind._P) return;
+  if (state._lastWasmSyncVersion === state._wasmVersion) {
+    wasmSyncState._skips = (wasmSyncState._skips || 0) + 1;
+    return;
+  }
+  wasmSyncState._copies = (wasmSyncState._copies || 0) + 1;
   try {
     const mem = wasmBind._mem.buffer;
     const P = wasmBind._P;
@@ -1426,6 +1441,8 @@ function wasmSyncState(model, state) {
     new Int32Array(mem, P.classSubjTotalPlaced, state.classSubjectTotalPlaced.length).set(state.classSubjectTotalPlaced);
     new Uint8Array(mem, P.lAssigned, state.lessonAssigned.length).set(state.lessonAssigned);
     new Int32Array(mem, P.lAssignedSlot, state.lessonAssignedSlot.length).set(state.lessonAssignedSlot);
+    state._lastWasmSyncVersion = state._wasmVersion;
+    if (state._wasmSyncCount !== undefined) state._wasmSyncCount++;
   } catch (e) {
     // Non-fatal; wasm will just use slightly stale data and JS canPlace will catch mismatches.
   }
@@ -1444,9 +1461,18 @@ function canPlace(model, state, lessonIdx, slot, roomIdx) {
   // logs divergences. Off by default (slow).
   if (model._wasmEnabled) {
     try {
+      const syncT0 = typeof performance !== "undefined" ? performance.now() : 0;
       wasmSyncState(model, state);
+      if (typeof performance !== "undefined") {
+        canPlace._syncCalls = (canPlace._syncCalls || 0) + 1;
+        canPlace._syncMs = (canPlace._syncMs || 0) + (performance.now() - syncT0);
+      }
       const w = globalThis.__chronexaWasmExports;
+      const callT0 = typeof performance !== "undefined" ? performance.now() : 0;
       const ret = w.canPlace(lessonIdx, slot, roomIdx);
+      if (typeof performance !== "undefined") {
+        canPlace._wasmMs = (canPlace._wasmMs || 0) + (performance.now() - callT0);
+      }
       if (model._wasmValidate) {
         const jsResult = _canPlaceJS(model, state, lessonIdx, slot, roomIdx);
         const wasmFail = ret === 0 ? null : ret;
@@ -1841,6 +1867,8 @@ function refreshPeriodLoad(model, state) {
 }
 
 function applySingle(model, state, lessonIdx, slot, roomIdx) {
+  // Bump wasm sync version so wasmSyncState knows state is dirty.
+  state._wasmVersion++;
   const d = model.slotDay[slot];
   const p = model.slotPeriod[slot];
   const bit = (1 << p) >>> 0;
@@ -1920,6 +1948,8 @@ function applySingle(model, state, lessonIdx, slot, roomIdx) {
 }
 
 function removeSingle(model, state, lessonIdx, slot, roomIdx) {
+  // Bump wasm sync version so wasmSyncState knows state is dirty.
+  state._wasmVersion++;
   const d = model.slotDay[slot];
   const p = model.slotPeriod[slot];
   const bit = (1 << p) >>> 0;
@@ -4833,7 +4863,7 @@ function maxCandidatesPerLesson(model) {
 // production code. Keeps `tools/test_*.mjs` from having to vm-load the
 // whole module to reach private functions.
 export const __test_internals = {
-  buildModel, makeState, applySingle, removeSingle, canPlace,
+  buildModel, makeState, applySingle, removeSingle, canPlace, wasmSyncState,
 };
 
 // In Web Worker context, setInterval is global; in unusual hosts it might not
