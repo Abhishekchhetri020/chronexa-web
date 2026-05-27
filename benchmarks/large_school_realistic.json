@@ -1,0 +1,3461 @@
+{
+  "version": "2.0",
+  "metadata": {
+    "name": "Large School Realistic Benchmark",
+    "description": "18 classes, 35 teachers, 12 subjects, 216 lessons",
+    "classes": 18,
+    "teachers": 35,
+    "subjects": 12,
+    "days": 6,
+    "periodsPerDay": 8,
+    "slotsPerWeek": 48
+  },
+  "teachers": [
+    {
+      "id": "t1",
+      "name": "Teacher 1",
+      "maxHoursPerWeek": 28,
+      "subjects": [
+        "s1"
+      ]
+    },
+    {
+      "id": "t2",
+      "name": "Teacher 2",
+      "maxHoursPerWeek": 28,
+      "subjects": [
+        "s1"
+      ]
+    },
+    {
+      "id": "t3",
+      "name": "Teacher 3",
+      "maxHoursPerWeek": 28,
+      "subjects": [
+        "s1"
+      ]
+    },
+    {
+      "id": "t4",
+      "name": "Teacher 4",
+      "maxHoursPerWeek": 28,
+      "subjects": [
+        "s1"
+      ]
+    },
+    {
+      "id": "t5",
+      "name": "Teacher 5",
+      "maxHoursPerWeek": 28,
+      "subjects": [
+        "s2"
+      ]
+    },
+    {
+      "id": "t6",
+      "name": "Teacher 6",
+      "maxHoursPerWeek": 28,
+      "subjects": [
+        "s2"
+      ]
+    },
+    {
+      "id": "t7",
+      "name": "Teacher 7",
+      "maxHoursPerWeek": 28,
+      "subjects": [
+        "s2"
+      ]
+    },
+    {
+      "id": "t8",
+      "name": "Teacher 8",
+      "maxHoursPerWeek": 28,
+      "subjects": [
+        "s2"
+      ]
+    },
+    {
+      "id": "t9",
+      "name": "Teacher 9",
+      "maxHoursPerWeek": 28,
+      "subjects": [
+        "s3"
+      ]
+    },
+    {
+      "id": "t10",
+      "name": "Teacher 10",
+      "maxHoursPerWeek": 28,
+      "subjects": [
+        "s3"
+      ]
+    },
+    {
+      "id": "t11",
+      "name": "Teacher 11",
+      "maxHoursPerWeek": 28,
+      "subjects": [
+        "s3"
+      ]
+    },
+    {
+      "id": "t12",
+      "name": "Teacher 12",
+      "maxHoursPerWeek": 28,
+      "subjects": [
+        "s4"
+      ]
+    },
+    {
+      "id": "t13",
+      "name": "Teacher 13",
+      "maxHoursPerWeek": 28,
+      "subjects": [
+        "s4"
+      ]
+    },
+    {
+      "id": "t14",
+      "name": "Teacher 14",
+      "maxHoursPerWeek": 28,
+      "subjects": [
+        "s4"
+      ]
+    },
+    {
+      "id": "t15",
+      "name": "Teacher 15",
+      "maxHoursPerWeek": 28,
+      "subjects": [
+        "s5"
+      ]
+    },
+    {
+      "id": "t16",
+      "name": "Teacher 16",
+      "maxHoursPerWeek": 28,
+      "subjects": [
+        "s5"
+      ]
+    },
+    {
+      "id": "t17",
+      "name": "Teacher 17",
+      "maxHoursPerWeek": 28,
+      "subjects": [
+        "s6"
+      ]
+    },
+    {
+      "id": "t18",
+      "name": "Teacher 18",
+      "maxHoursPerWeek": 28,
+      "subjects": [
+        "s6"
+      ]
+    },
+    {
+      "id": "t19",
+      "name": "Teacher 19",
+      "maxHoursPerWeek": 28,
+      "subjects": [
+        "s7"
+      ]
+    },
+    {
+      "id": "t20",
+      "name": "Teacher 20",
+      "maxHoursPerWeek": 28,
+      "subjects": [
+        "s7"
+      ]
+    },
+    {
+      "id": "t21",
+      "name": "Teacher 21",
+      "maxHoursPerWeek": 28,
+      "subjects": [
+        "s8"
+      ]
+    },
+    {
+      "id": "t22",
+      "name": "Teacher 22",
+      "maxHoursPerWeek": 28,
+      "subjects": [
+        "s8"
+      ]
+    },
+    {
+      "id": "t23",
+      "name": "Teacher 23",
+      "maxHoursPerWeek": 28,
+      "subjects": [
+        "s9"
+      ]
+    },
+    {
+      "id": "t24",
+      "name": "Teacher 24",
+      "maxHoursPerWeek": 28,
+      "subjects": [
+        "s9"
+      ]
+    },
+    {
+      "id": "t25",
+      "name": "Teacher 25",
+      "maxHoursPerWeek": 28,
+      "subjects": [
+        "s10"
+      ]
+    },
+    {
+      "id": "t26",
+      "name": "Teacher 26",
+      "maxHoursPerWeek": 28,
+      "subjects": [
+        "s10"
+      ]
+    },
+    {
+      "id": "t27",
+      "name": "Teacher 27",
+      "maxHoursPerWeek": 28,
+      "subjects": [
+        "s11"
+      ]
+    },
+    {
+      "id": "t28",
+      "name": "Teacher 28",
+      "maxHoursPerWeek": 28,
+      "subjects": [
+        "s11"
+      ]
+    },
+    {
+      "id": "t29",
+      "name": "Teacher 29",
+      "maxHoursPerWeek": 28,
+      "subjects": [
+        "s12"
+      ]
+    },
+    {
+      "id": "t30",
+      "name": "Teacher 30",
+      "maxHoursPerWeek": 28,
+      "subjects": [
+        "s12"
+      ]
+    },
+    {
+      "id": "t31",
+      "name": "Teacher 31",
+      "maxHoursPerWeek": 28,
+      "subjects": []
+    },
+    {
+      "id": "t32",
+      "name": "Teacher 32",
+      "maxHoursPerWeek": 28,
+      "subjects": []
+    },
+    {
+      "id": "t33",
+      "name": "Teacher 33",
+      "maxHoursPerWeek": 28,
+      "subjects": []
+    },
+    {
+      "id": "t34",
+      "name": "Teacher 34",
+      "maxHoursPerWeek": 28,
+      "subjects": []
+    },
+    {
+      "id": "t35",
+      "name": "Teacher 35",
+      "maxHoursPerWeek": 28,
+      "subjects": []
+    }
+  ],
+  "subjects": [
+    {
+      "id": "s1",
+      "name": "Math",
+      "periodsPerWeek": 5
+    },
+    {
+      "id": "s2",
+      "name": "English",
+      "periodsPerWeek": 5
+    },
+    {
+      "id": "s3",
+      "name": "Science",
+      "periodsPerWeek": 4
+    },
+    {
+      "id": "s4",
+      "name": "Physics",
+      "periodsPerWeek": 4
+    },
+    {
+      "id": "s5",
+      "name": "History",
+      "periodsPerWeek": 3
+    },
+    {
+      "id": "s6",
+      "name": "Geography",
+      "periodsPerWeek": 3
+    },
+    {
+      "id": "s7",
+      "name": "Foreign Lang",
+      "periodsPerWeek": 3
+    },
+    {
+      "id": "s8",
+      "name": "Economics",
+      "periodsPerWeek": 3
+    },
+    {
+      "id": "s9",
+      "name": "Art",
+      "periodsPerWeek": 2
+    },
+    {
+      "id": "s10",
+      "name": "Music",
+      "periodsPerWeek": 2
+    },
+    {
+      "id": "s11",
+      "name": "PE",
+      "periodsPerWeek": 2
+    },
+    {
+      "id": "s12",
+      "name": "Computer",
+      "periodsPerWeek": 2
+    }
+  ],
+  "classes": [
+    {
+      "id": "c1",
+      "name": "Grade 1A"
+    },
+    {
+      "id": "c2",
+      "name": "Grade 1B"
+    },
+    {
+      "id": "c3",
+      "name": "Grade 1C"
+    },
+    {
+      "id": "c4",
+      "name": "Grade 1D"
+    },
+    {
+      "id": "c5",
+      "name": "Grade 2A"
+    },
+    {
+      "id": "c6",
+      "name": "Grade 2B"
+    },
+    {
+      "id": "c7",
+      "name": "Grade 2C"
+    },
+    {
+      "id": "c8",
+      "name": "Grade 2D"
+    },
+    {
+      "id": "c9",
+      "name": "Grade 3A"
+    },
+    {
+      "id": "c10",
+      "name": "Grade 3B"
+    },
+    {
+      "id": "c11",
+      "name": "Grade 3C"
+    },
+    {
+      "id": "c12",
+      "name": "Grade 3D"
+    },
+    {
+      "id": "c13",
+      "name": "Grade 4A"
+    },
+    {
+      "id": "c14",
+      "name": "Grade 4B"
+    },
+    {
+      "id": "c15",
+      "name": "Grade 4C"
+    },
+    {
+      "id": "c16",
+      "name": "Grade 4D"
+    },
+    {
+      "id": "c17",
+      "name": "Grade 5A"
+    },
+    {
+      "id": "c18",
+      "name": "Grade 5B"
+    }
+  ],
+  "rooms": [
+    {
+      "id": "r1",
+      "name": "Room 101"
+    },
+    {
+      "id": "r2",
+      "name": "Room 102"
+    },
+    {
+      "id": "r3",
+      "name": "Room 103"
+    },
+    {
+      "id": "r4",
+      "name": "Room 104"
+    },
+    {
+      "id": "r5",
+      "name": "Room 105"
+    },
+    {
+      "id": "r6",
+      "name": "Room 106"
+    },
+    {
+      "id": "r7",
+      "name": "Room 107"
+    },
+    {
+      "id": "r8",
+      "name": "Room 108"
+    },
+    {
+      "id": "r9",
+      "name": "Room 109"
+    },
+    {
+      "id": "r10",
+      "name": "Room 110"
+    },
+    {
+      "id": "r11",
+      "name": "Room 111"
+    },
+    {
+      "id": "r12",
+      "name": "Room 112"
+    },
+    {
+      "id": "r13",
+      "name": "Room 113"
+    },
+    {
+      "id": "r14",
+      "name": "Room 114"
+    },
+    {
+      "id": "r15",
+      "name": "Room 115"
+    },
+    {
+      "id": "r16",
+      "name": "Room 116"
+    },
+    {
+      "id": "r17",
+      "name": "Room 117"
+    },
+    {
+      "id": "r18",
+      "name": "Room 118"
+    },
+    {
+      "id": "r19",
+      "name": "Room 119"
+    },
+    {
+      "id": "r20",
+      "name": "Room 120"
+    },
+    {
+      "id": "r21",
+      "name": "Lab 1"
+    },
+    {
+      "id": "r22",
+      "name": "Lab 2"
+    },
+    {
+      "id": "r23",
+      "name": "Lab 3"
+    },
+    {
+      "id": "r24",
+      "name": "Gym 1"
+    },
+    {
+      "id": "r25",
+      "name": "Gym 2"
+    }
+  ],
+  "lessons": [
+    {
+      "id": "l1",
+      "classIds": [
+        "c1"
+      ],
+      "teacherIds": [
+        "t1"
+      ],
+      "subjectId": "s1",
+      "periodsPerWeek": 5,
+      "periodLength": 1,
+      "roomId": "r17"
+    },
+    {
+      "id": "l2",
+      "classIds": [
+        "c2"
+      ],
+      "teacherIds": [
+        "t2"
+      ],
+      "subjectId": "s1",
+      "periodsPerWeek": 5,
+      "periodLength": 1,
+      "roomId": "r8"
+    },
+    {
+      "id": "l3",
+      "classIds": [
+        "c3"
+      ],
+      "teacherIds": [
+        "t3"
+      ],
+      "subjectId": "s1",
+      "periodsPerWeek": 5,
+      "periodLength": 1,
+      "roomId": "r16"
+    },
+    {
+      "id": "l4",
+      "classIds": [
+        "c4"
+      ],
+      "teacherIds": [
+        "t4"
+      ],
+      "subjectId": "s1",
+      "periodsPerWeek": 5,
+      "periodLength": 1,
+      "roomId": "r25"
+    },
+    {
+      "id": "l5",
+      "classIds": [
+        "c5"
+      ],
+      "teacherIds": [
+        "t1"
+      ],
+      "subjectId": "s1",
+      "periodsPerWeek": 5,
+      "periodLength": 1,
+      "roomId": "r17"
+    },
+    {
+      "id": "l6",
+      "classIds": [
+        "c6"
+      ],
+      "teacherIds": [
+        "t2"
+      ],
+      "subjectId": "s1",
+      "periodsPerWeek": 5,
+      "periodLength": 1,
+      "roomId": "r17"
+    },
+    {
+      "id": "l7",
+      "classIds": [
+        "c7"
+      ],
+      "teacherIds": [
+        "t3"
+      ],
+      "subjectId": "s1",
+      "periodsPerWeek": 5,
+      "periodLength": 1,
+      "roomId": "r5"
+    },
+    {
+      "id": "l8",
+      "classIds": [
+        "c8"
+      ],
+      "teacherIds": [
+        "t4"
+      ],
+      "subjectId": "s1",
+      "periodsPerWeek": 5,
+      "periodLength": 1,
+      "roomId": "r23"
+    },
+    {
+      "id": "l9",
+      "classIds": [
+        "c9"
+      ],
+      "teacherIds": [
+        "t1"
+      ],
+      "subjectId": "s1",
+      "periodsPerWeek": 5,
+      "periodLength": 1,
+      "roomId": "r18"
+    },
+    {
+      "id": "l10",
+      "classIds": [
+        "c10"
+      ],
+      "teacherIds": [
+        "t2"
+      ],
+      "subjectId": "s1",
+      "periodsPerWeek": 5,
+      "periodLength": 1,
+      "roomId": "r21"
+    },
+    {
+      "id": "l11",
+      "classIds": [
+        "c11"
+      ],
+      "teacherIds": [
+        "t3"
+      ],
+      "subjectId": "s1",
+      "periodsPerWeek": 5,
+      "periodLength": 1,
+      "roomId": "r19"
+    },
+    {
+      "id": "l12",
+      "classIds": [
+        "c12"
+      ],
+      "teacherIds": [
+        "t4"
+      ],
+      "subjectId": "s1",
+      "periodsPerWeek": 5,
+      "periodLength": 1,
+      "roomId": "r9"
+    },
+    {
+      "id": "l13",
+      "classIds": [
+        "c13"
+      ],
+      "teacherIds": [
+        "t1"
+      ],
+      "subjectId": "s1",
+      "periodsPerWeek": 5,
+      "periodLength": 1,
+      "roomId": "r20"
+    },
+    {
+      "id": "l14",
+      "classIds": [
+        "c14"
+      ],
+      "teacherIds": [
+        "t2"
+      ],
+      "subjectId": "s1",
+      "periodsPerWeek": 5,
+      "periodLength": 1,
+      "roomId": "r5"
+    },
+    {
+      "id": "l15",
+      "classIds": [
+        "c15"
+      ],
+      "teacherIds": [
+        "t3"
+      ],
+      "subjectId": "s1",
+      "periodsPerWeek": 5,
+      "periodLength": 1,
+      "roomId": "r15"
+    },
+    {
+      "id": "l16",
+      "classIds": [
+        "c16"
+      ],
+      "teacherIds": [
+        "t4"
+      ],
+      "subjectId": "s1",
+      "periodsPerWeek": 5,
+      "periodLength": 1,
+      "roomId": "r6"
+    },
+    {
+      "id": "l17",
+      "classIds": [
+        "c17"
+      ],
+      "teacherIds": [
+        "t1"
+      ],
+      "subjectId": "s1",
+      "periodsPerWeek": 5,
+      "periodLength": 1,
+      "roomId": "r6"
+    },
+    {
+      "id": "l18",
+      "classIds": [
+        "c18"
+      ],
+      "teacherIds": [
+        "t2"
+      ],
+      "subjectId": "s1",
+      "periodsPerWeek": 5,
+      "periodLength": 1,
+      "roomId": "r20"
+    },
+    {
+      "id": "l19",
+      "classIds": [
+        "c1"
+      ],
+      "teacherIds": [
+        "t5"
+      ],
+      "subjectId": "s2",
+      "periodsPerWeek": 5,
+      "periodLength": 1,
+      "roomId": "r22"
+    },
+    {
+      "id": "l20",
+      "classIds": [
+        "c2"
+      ],
+      "teacherIds": [
+        "t6"
+      ],
+      "subjectId": "s2",
+      "periodsPerWeek": 5,
+      "periodLength": 1,
+      "roomId": "r22"
+    },
+    {
+      "id": "l21",
+      "classIds": [
+        "c3"
+      ],
+      "teacherIds": [
+        "t7"
+      ],
+      "subjectId": "s2",
+      "periodsPerWeek": 5,
+      "periodLength": 1,
+      "roomId": "r3"
+    },
+    {
+      "id": "l22",
+      "classIds": [
+        "c4"
+      ],
+      "teacherIds": [
+        "t8"
+      ],
+      "subjectId": "s2",
+      "periodsPerWeek": 5,
+      "periodLength": 1,
+      "roomId": "r12"
+    },
+    {
+      "id": "l23",
+      "classIds": [
+        "c5"
+      ],
+      "teacherIds": [
+        "t5"
+      ],
+      "subjectId": "s2",
+      "periodsPerWeek": 5,
+      "periodLength": 1,
+      "roomId": "r19"
+    },
+    {
+      "id": "l24",
+      "classIds": [
+        "c6"
+      ],
+      "teacherIds": [
+        "t6"
+      ],
+      "subjectId": "s2",
+      "periodsPerWeek": 5,
+      "periodLength": 1,
+      "roomId": "r10"
+    },
+    {
+      "id": "l25",
+      "classIds": [
+        "c7"
+      ],
+      "teacherIds": [
+        "t7"
+      ],
+      "subjectId": "s2",
+      "periodsPerWeek": 5,
+      "periodLength": 1,
+      "roomId": "r7"
+    },
+    {
+      "id": "l26",
+      "classIds": [
+        "c8"
+      ],
+      "teacherIds": [
+        "t8"
+      ],
+      "subjectId": "s2",
+      "periodsPerWeek": 5,
+      "periodLength": 1,
+      "roomId": "r10"
+    },
+    {
+      "id": "l27",
+      "classIds": [
+        "c9"
+      ],
+      "teacherIds": [
+        "t5"
+      ],
+      "subjectId": "s2",
+      "periodsPerWeek": 5,
+      "periodLength": 1,
+      "roomId": "r23"
+    },
+    {
+      "id": "l28",
+      "classIds": [
+        "c10"
+      ],
+      "teacherIds": [
+        "t6"
+      ],
+      "subjectId": "s2",
+      "periodsPerWeek": 5,
+      "periodLength": 1,
+      "roomId": "r22"
+    },
+    {
+      "id": "l29",
+      "classIds": [
+        "c11"
+      ],
+      "teacherIds": [
+        "t7"
+      ],
+      "subjectId": "s2",
+      "periodsPerWeek": 5,
+      "periodLength": 1,
+      "roomId": "r11"
+    },
+    {
+      "id": "l30",
+      "classIds": [
+        "c12"
+      ],
+      "teacherIds": [
+        "t8"
+      ],
+      "subjectId": "s2",
+      "periodsPerWeek": 5,
+      "periodLength": 1,
+      "roomId": "r11"
+    },
+    {
+      "id": "l31",
+      "classIds": [
+        "c13"
+      ],
+      "teacherIds": [
+        "t5"
+      ],
+      "subjectId": "s2",
+      "periodsPerWeek": 5,
+      "periodLength": 1,
+      "roomId": "r21"
+    },
+    {
+      "id": "l32",
+      "classIds": [
+        "c14"
+      ],
+      "teacherIds": [
+        "t6"
+      ],
+      "subjectId": "s2",
+      "periodsPerWeek": 5,
+      "periodLength": 1,
+      "roomId": "r5"
+    },
+    {
+      "id": "l33",
+      "classIds": [
+        "c15"
+      ],
+      "teacherIds": [
+        "t7"
+      ],
+      "subjectId": "s2",
+      "periodsPerWeek": 5,
+      "periodLength": 1,
+      "roomId": "r4"
+    },
+    {
+      "id": "l34",
+      "classIds": [
+        "c16"
+      ],
+      "teacherIds": [
+        "t8"
+      ],
+      "subjectId": "s2",
+      "periodsPerWeek": 5,
+      "periodLength": 1,
+      "roomId": "r8"
+    },
+    {
+      "id": "l35",
+      "classIds": [
+        "c17"
+      ],
+      "teacherIds": [
+        "t5"
+      ],
+      "subjectId": "s2",
+      "periodsPerWeek": 5,
+      "periodLength": 1,
+      "roomId": "r10"
+    },
+    {
+      "id": "l36",
+      "classIds": [
+        "c18"
+      ],
+      "teacherIds": [
+        "t6"
+      ],
+      "subjectId": "s2",
+      "periodsPerWeek": 5,
+      "periodLength": 1,
+      "roomId": "r13"
+    },
+    {
+      "id": "l37",
+      "classIds": [
+        "c1"
+      ],
+      "teacherIds": [
+        "t9"
+      ],
+      "subjectId": "s3",
+      "periodsPerWeek": 4,
+      "periodLength": 1,
+      "roomId": "r25"
+    },
+    {
+      "id": "l38",
+      "classIds": [
+        "c2"
+      ],
+      "teacherIds": [
+        "t10"
+      ],
+      "subjectId": "s3",
+      "periodsPerWeek": 4,
+      "periodLength": 1,
+      "roomId": "r12"
+    },
+    {
+      "id": "l39",
+      "classIds": [
+        "c3"
+      ],
+      "teacherIds": [
+        "t11"
+      ],
+      "subjectId": "s3",
+      "periodsPerWeek": 4,
+      "periodLength": 1,
+      "roomId": "r19"
+    },
+    {
+      "id": "l40",
+      "classIds": [
+        "c4"
+      ],
+      "teacherIds": [
+        "t9"
+      ],
+      "subjectId": "s3",
+      "periodsPerWeek": 4,
+      "periodLength": 1,
+      "roomId": "r6"
+    },
+    {
+      "id": "l41",
+      "classIds": [
+        "c5"
+      ],
+      "teacherIds": [
+        "t10"
+      ],
+      "subjectId": "s3",
+      "periodsPerWeek": 4,
+      "periodLength": 1,
+      "roomId": "r11"
+    },
+    {
+      "id": "l42",
+      "classIds": [
+        "c6"
+      ],
+      "teacherIds": [
+        "t11"
+      ],
+      "subjectId": "s3",
+      "periodsPerWeek": 4,
+      "periodLength": 1,
+      "roomId": "r22"
+    },
+    {
+      "id": "l43",
+      "classIds": [
+        "c7"
+      ],
+      "teacherIds": [
+        "t9"
+      ],
+      "subjectId": "s3",
+      "periodsPerWeek": 4,
+      "periodLength": 1,
+      "roomId": "r21"
+    },
+    {
+      "id": "l44",
+      "classIds": [
+        "c8"
+      ],
+      "teacherIds": [
+        "t10"
+      ],
+      "subjectId": "s3",
+      "periodsPerWeek": 4,
+      "periodLength": 1,
+      "roomId": "r8"
+    },
+    {
+      "id": "l45",
+      "classIds": [
+        "c9"
+      ],
+      "teacherIds": [
+        "t11"
+      ],
+      "subjectId": "s3",
+      "periodsPerWeek": 4,
+      "periodLength": 1,
+      "roomId": "r14"
+    },
+    {
+      "id": "l46",
+      "classIds": [
+        "c10"
+      ],
+      "teacherIds": [
+        "t9"
+      ],
+      "subjectId": "s3",
+      "periodsPerWeek": 4,
+      "periodLength": 1,
+      "roomId": "r22"
+    },
+    {
+      "id": "l47",
+      "classIds": [
+        "c11"
+      ],
+      "teacherIds": [
+        "t10"
+      ],
+      "subjectId": "s3",
+      "periodsPerWeek": 4,
+      "periodLength": 1,
+      "roomId": "r18"
+    },
+    {
+      "id": "l48",
+      "classIds": [
+        "c12"
+      ],
+      "teacherIds": [
+        "t11"
+      ],
+      "subjectId": "s3",
+      "periodsPerWeek": 4,
+      "periodLength": 1,
+      "roomId": "r3"
+    },
+    {
+      "id": "l49",
+      "classIds": [
+        "c13"
+      ],
+      "teacherIds": [
+        "t9"
+      ],
+      "subjectId": "s3",
+      "periodsPerWeek": 4,
+      "periodLength": 1,
+      "roomId": "r15"
+    },
+    {
+      "id": "l50",
+      "classIds": [
+        "c14"
+      ],
+      "teacherIds": [
+        "t10"
+      ],
+      "subjectId": "s3",
+      "periodsPerWeek": 4,
+      "periodLength": 1,
+      "roomId": "r3"
+    },
+    {
+      "id": "l51",
+      "classIds": [
+        "c15"
+      ],
+      "teacherIds": [
+        "t11"
+      ],
+      "subjectId": "s3",
+      "periodsPerWeek": 4,
+      "periodLength": 1,
+      "roomId": "r18"
+    },
+    {
+      "id": "l52",
+      "classIds": [
+        "c16"
+      ],
+      "teacherIds": [
+        "t9"
+      ],
+      "subjectId": "s3",
+      "periodsPerWeek": 4,
+      "periodLength": 1,
+      "roomId": "r10"
+    },
+    {
+      "id": "l53",
+      "classIds": [
+        "c17"
+      ],
+      "teacherIds": [
+        "t10"
+      ],
+      "subjectId": "s3",
+      "periodsPerWeek": 4,
+      "periodLength": 1,
+      "roomId": "r18"
+    },
+    {
+      "id": "l54",
+      "classIds": [
+        "c18"
+      ],
+      "teacherIds": [
+        "t11"
+      ],
+      "subjectId": "s3",
+      "periodsPerWeek": 4,
+      "periodLength": 1,
+      "roomId": "r7"
+    },
+    {
+      "id": "l55",
+      "classIds": [
+        "c1"
+      ],
+      "teacherIds": [
+        "t12"
+      ],
+      "subjectId": "s4",
+      "periodsPerWeek": 4,
+      "periodLength": 1,
+      "roomId": "r10"
+    },
+    {
+      "id": "l56",
+      "classIds": [
+        "c2"
+      ],
+      "teacherIds": [
+        "t13"
+      ],
+      "subjectId": "s4",
+      "periodsPerWeek": 4,
+      "periodLength": 1,
+      "roomId": "r11"
+    },
+    {
+      "id": "l57",
+      "classIds": [
+        "c3"
+      ],
+      "teacherIds": [
+        "t14"
+      ],
+      "subjectId": "s4",
+      "periodsPerWeek": 4,
+      "periodLength": 1,
+      "roomId": "r11"
+    },
+    {
+      "id": "l58",
+      "classIds": [
+        "c4"
+      ],
+      "teacherIds": [
+        "t12"
+      ],
+      "subjectId": "s4",
+      "periodsPerWeek": 4,
+      "periodLength": 1,
+      "roomId": "r24"
+    },
+    {
+      "id": "l59",
+      "classIds": [
+        "c5"
+      ],
+      "teacherIds": [
+        "t13"
+      ],
+      "subjectId": "s4",
+      "periodsPerWeek": 4,
+      "periodLength": 1,
+      "roomId": "r11"
+    },
+    {
+      "id": "l60",
+      "classIds": [
+        "c6"
+      ],
+      "teacherIds": [
+        "t14"
+      ],
+      "subjectId": "s4",
+      "periodsPerWeek": 4,
+      "periodLength": 1,
+      "roomId": "r1"
+    },
+    {
+      "id": "l61",
+      "classIds": [
+        "c7"
+      ],
+      "teacherIds": [
+        "t12"
+      ],
+      "subjectId": "s4",
+      "periodsPerWeek": 4,
+      "periodLength": 1,
+      "roomId": "r7"
+    },
+    {
+      "id": "l62",
+      "classIds": [
+        "c8"
+      ],
+      "teacherIds": [
+        "t13"
+      ],
+      "subjectId": "s4",
+      "periodsPerWeek": 4,
+      "periodLength": 1,
+      "roomId": "r4"
+    },
+    {
+      "id": "l63",
+      "classIds": [
+        "c9"
+      ],
+      "teacherIds": [
+        "t14"
+      ],
+      "subjectId": "s4",
+      "periodsPerWeek": 4,
+      "periodLength": 1,
+      "roomId": "r17"
+    },
+    {
+      "id": "l64",
+      "classIds": [
+        "c10"
+      ],
+      "teacherIds": [
+        "t12"
+      ],
+      "subjectId": "s4",
+      "periodsPerWeek": 4,
+      "periodLength": 1,
+      "roomId": "r1"
+    },
+    {
+      "id": "l65",
+      "classIds": [
+        "c11"
+      ],
+      "teacherIds": [
+        "t13"
+      ],
+      "subjectId": "s4",
+      "periodsPerWeek": 4,
+      "periodLength": 1,
+      "roomId": "r8"
+    },
+    {
+      "id": "l66",
+      "classIds": [
+        "c12"
+      ],
+      "teacherIds": [
+        "t14"
+      ],
+      "subjectId": "s4",
+      "periodsPerWeek": 4,
+      "periodLength": 1,
+      "roomId": "r8"
+    },
+    {
+      "id": "l67",
+      "classIds": [
+        "c13"
+      ],
+      "teacherIds": [
+        "t12"
+      ],
+      "subjectId": "s4",
+      "periodsPerWeek": 4,
+      "periodLength": 1,
+      "roomId": "r11"
+    },
+    {
+      "id": "l68",
+      "classIds": [
+        "c14"
+      ],
+      "teacherIds": [
+        "t13"
+      ],
+      "subjectId": "s4",
+      "periodsPerWeek": 4,
+      "periodLength": 1,
+      "roomId": "r6"
+    },
+    {
+      "id": "l69",
+      "classIds": [
+        "c15"
+      ],
+      "teacherIds": [
+        "t14"
+      ],
+      "subjectId": "s4",
+      "periodsPerWeek": 4,
+      "periodLength": 1,
+      "roomId": "r21"
+    },
+    {
+      "id": "l70",
+      "classIds": [
+        "c16"
+      ],
+      "teacherIds": [
+        "t12"
+      ],
+      "subjectId": "s4",
+      "periodsPerWeek": 4,
+      "periodLength": 1,
+      "roomId": "r12"
+    },
+    {
+      "id": "l71",
+      "classIds": [
+        "c17"
+      ],
+      "teacherIds": [
+        "t13"
+      ],
+      "subjectId": "s4",
+      "periodsPerWeek": 4,
+      "periodLength": 1,
+      "roomId": "r14"
+    },
+    {
+      "id": "l72",
+      "classIds": [
+        "c18"
+      ],
+      "teacherIds": [
+        "t14"
+      ],
+      "subjectId": "s4",
+      "periodsPerWeek": 4,
+      "periodLength": 1,
+      "roomId": "r22"
+    },
+    {
+      "id": "l73",
+      "classIds": [
+        "c1"
+      ],
+      "teacherIds": [
+        "t15"
+      ],
+      "subjectId": "s5",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r16"
+    },
+    {
+      "id": "l74",
+      "classIds": [
+        "c2"
+      ],
+      "teacherIds": [
+        "t16"
+      ],
+      "subjectId": "s5",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r18"
+    },
+    {
+      "id": "l75",
+      "classIds": [
+        "c3"
+      ],
+      "teacherIds": [
+        "t15"
+      ],
+      "subjectId": "s5",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r1"
+    },
+    {
+      "id": "l76",
+      "classIds": [
+        "c4"
+      ],
+      "teacherIds": [
+        "t16"
+      ],
+      "subjectId": "s5",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r14"
+    },
+    {
+      "id": "l77",
+      "classIds": [
+        "c5"
+      ],
+      "teacherIds": [
+        "t15"
+      ],
+      "subjectId": "s5",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r12"
+    },
+    {
+      "id": "l78",
+      "classIds": [
+        "c6"
+      ],
+      "teacherIds": [
+        "t16"
+      ],
+      "subjectId": "s5",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r13"
+    },
+    {
+      "id": "l79",
+      "classIds": [
+        "c7"
+      ],
+      "teacherIds": [
+        "t15"
+      ],
+      "subjectId": "s5",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r17"
+    },
+    {
+      "id": "l80",
+      "classIds": [
+        "c8"
+      ],
+      "teacherIds": [
+        "t16"
+      ],
+      "subjectId": "s5",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r8"
+    },
+    {
+      "id": "l81",
+      "classIds": [
+        "c9"
+      ],
+      "teacherIds": [
+        "t15"
+      ],
+      "subjectId": "s5",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r13"
+    },
+    {
+      "id": "l82",
+      "classIds": [
+        "c10"
+      ],
+      "teacherIds": [
+        "t16"
+      ],
+      "subjectId": "s5",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r24"
+    },
+    {
+      "id": "l83",
+      "classIds": [
+        "c11"
+      ],
+      "teacherIds": [
+        "t15"
+      ],
+      "subjectId": "s5",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r6"
+    },
+    {
+      "id": "l84",
+      "classIds": [
+        "c12"
+      ],
+      "teacherIds": [
+        "t16"
+      ],
+      "subjectId": "s5",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r13"
+    },
+    {
+      "id": "l85",
+      "classIds": [
+        "c13"
+      ],
+      "teacherIds": [
+        "t15"
+      ],
+      "subjectId": "s5",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r23"
+    },
+    {
+      "id": "l86",
+      "classIds": [
+        "c14"
+      ],
+      "teacherIds": [
+        "t16"
+      ],
+      "subjectId": "s5",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r16"
+    },
+    {
+      "id": "l87",
+      "classIds": [
+        "c15"
+      ],
+      "teacherIds": [
+        "t15"
+      ],
+      "subjectId": "s5",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r1"
+    },
+    {
+      "id": "l88",
+      "classIds": [
+        "c16"
+      ],
+      "teacherIds": [
+        "t16"
+      ],
+      "subjectId": "s5",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r16"
+    },
+    {
+      "id": "l89",
+      "classIds": [
+        "c17"
+      ],
+      "teacherIds": [
+        "t15"
+      ],
+      "subjectId": "s5",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r17"
+    },
+    {
+      "id": "l90",
+      "classIds": [
+        "c18"
+      ],
+      "teacherIds": [
+        "t16"
+      ],
+      "subjectId": "s5",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r10"
+    },
+    {
+      "id": "l91",
+      "classIds": [
+        "c1"
+      ],
+      "teacherIds": [
+        "t17"
+      ],
+      "subjectId": "s6",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r21"
+    },
+    {
+      "id": "l92",
+      "classIds": [
+        "c2"
+      ],
+      "teacherIds": [
+        "t18"
+      ],
+      "subjectId": "s6",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r18"
+    },
+    {
+      "id": "l93",
+      "classIds": [
+        "c3"
+      ],
+      "teacherIds": [
+        "t17"
+      ],
+      "subjectId": "s6",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r8"
+    },
+    {
+      "id": "l94",
+      "classIds": [
+        "c4"
+      ],
+      "teacherIds": [
+        "t18"
+      ],
+      "subjectId": "s6",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r20"
+    },
+    {
+      "id": "l95",
+      "classIds": [
+        "c5"
+      ],
+      "teacherIds": [
+        "t17"
+      ],
+      "subjectId": "s6",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r25"
+    },
+    {
+      "id": "l96",
+      "classIds": [
+        "c6"
+      ],
+      "teacherIds": [
+        "t18"
+      ],
+      "subjectId": "s6",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r13"
+    },
+    {
+      "id": "l97",
+      "classIds": [
+        "c7"
+      ],
+      "teacherIds": [
+        "t17"
+      ],
+      "subjectId": "s6",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r5"
+    },
+    {
+      "id": "l98",
+      "classIds": [
+        "c8"
+      ],
+      "teacherIds": [
+        "t18"
+      ],
+      "subjectId": "s6",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r15"
+    },
+    {
+      "id": "l99",
+      "classIds": [
+        "c9"
+      ],
+      "teacherIds": [
+        "t17"
+      ],
+      "subjectId": "s6",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r17"
+    },
+    {
+      "id": "l100",
+      "classIds": [
+        "c10"
+      ],
+      "teacherIds": [
+        "t18"
+      ],
+      "subjectId": "s6",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r22"
+    },
+    {
+      "id": "l101",
+      "classIds": [
+        "c11"
+      ],
+      "teacherIds": [
+        "t17"
+      ],
+      "subjectId": "s6",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r15"
+    },
+    {
+      "id": "l102",
+      "classIds": [
+        "c12"
+      ],
+      "teacherIds": [
+        "t18"
+      ],
+      "subjectId": "s6",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r18"
+    },
+    {
+      "id": "l103",
+      "classIds": [
+        "c13"
+      ],
+      "teacherIds": [
+        "t17"
+      ],
+      "subjectId": "s6",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r3"
+    },
+    {
+      "id": "l104",
+      "classIds": [
+        "c14"
+      ],
+      "teacherIds": [
+        "t18"
+      ],
+      "subjectId": "s6",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r24"
+    },
+    {
+      "id": "l105",
+      "classIds": [
+        "c15"
+      ],
+      "teacherIds": [
+        "t17"
+      ],
+      "subjectId": "s6",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r3"
+    },
+    {
+      "id": "l106",
+      "classIds": [
+        "c16"
+      ],
+      "teacherIds": [
+        "t18"
+      ],
+      "subjectId": "s6",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r7"
+    },
+    {
+      "id": "l107",
+      "classIds": [
+        "c17"
+      ],
+      "teacherIds": [
+        "t17"
+      ],
+      "subjectId": "s6",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r12"
+    },
+    {
+      "id": "l108",
+      "classIds": [
+        "c18"
+      ],
+      "teacherIds": [
+        "t18"
+      ],
+      "subjectId": "s6",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r21"
+    },
+    {
+      "id": "l109",
+      "classIds": [
+        "c1"
+      ],
+      "teacherIds": [
+        "t19"
+      ],
+      "subjectId": "s7",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r8"
+    },
+    {
+      "id": "l110",
+      "classIds": [
+        "c2"
+      ],
+      "teacherIds": [
+        "t20"
+      ],
+      "subjectId": "s7",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r22"
+    },
+    {
+      "id": "l111",
+      "classIds": [
+        "c3"
+      ],
+      "teacherIds": [
+        "t19"
+      ],
+      "subjectId": "s7",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r6"
+    },
+    {
+      "id": "l112",
+      "classIds": [
+        "c4"
+      ],
+      "teacherIds": [
+        "t20"
+      ],
+      "subjectId": "s7",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r21"
+    },
+    {
+      "id": "l113",
+      "classIds": [
+        "c5"
+      ],
+      "teacherIds": [
+        "t19"
+      ],
+      "subjectId": "s7",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r11"
+    },
+    {
+      "id": "l114",
+      "classIds": [
+        "c6"
+      ],
+      "teacherIds": [
+        "t20"
+      ],
+      "subjectId": "s7",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r11"
+    },
+    {
+      "id": "l115",
+      "classIds": [
+        "c7"
+      ],
+      "teacherIds": [
+        "t19"
+      ],
+      "subjectId": "s7",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r1"
+    },
+    {
+      "id": "l116",
+      "classIds": [
+        "c8"
+      ],
+      "teacherIds": [
+        "t20"
+      ],
+      "subjectId": "s7",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r9"
+    },
+    {
+      "id": "l117",
+      "classIds": [
+        "c9"
+      ],
+      "teacherIds": [
+        "t19"
+      ],
+      "subjectId": "s7",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r18"
+    },
+    {
+      "id": "l118",
+      "classIds": [
+        "c10"
+      ],
+      "teacherIds": [
+        "t20"
+      ],
+      "subjectId": "s7",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r21"
+    },
+    {
+      "id": "l119",
+      "classIds": [
+        "c11"
+      ],
+      "teacherIds": [
+        "t19"
+      ],
+      "subjectId": "s7",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r20"
+    },
+    {
+      "id": "l120",
+      "classIds": [
+        "c12"
+      ],
+      "teacherIds": [
+        "t20"
+      ],
+      "subjectId": "s7",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r25"
+    },
+    {
+      "id": "l121",
+      "classIds": [
+        "c13"
+      ],
+      "teacherIds": [
+        "t19"
+      ],
+      "subjectId": "s7",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r15"
+    },
+    {
+      "id": "l122",
+      "classIds": [
+        "c14"
+      ],
+      "teacherIds": [
+        "t20"
+      ],
+      "subjectId": "s7",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r22"
+    },
+    {
+      "id": "l123",
+      "classIds": [
+        "c15"
+      ],
+      "teacherIds": [
+        "t19"
+      ],
+      "subjectId": "s7",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r8"
+    },
+    {
+      "id": "l124",
+      "classIds": [
+        "c16"
+      ],
+      "teacherIds": [
+        "t20"
+      ],
+      "subjectId": "s7",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r1"
+    },
+    {
+      "id": "l125",
+      "classIds": [
+        "c17"
+      ],
+      "teacherIds": [
+        "t19"
+      ],
+      "subjectId": "s7",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r7"
+    },
+    {
+      "id": "l126",
+      "classIds": [
+        "c18"
+      ],
+      "teacherIds": [
+        "t20"
+      ],
+      "subjectId": "s7",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r14"
+    },
+    {
+      "id": "l127",
+      "classIds": [
+        "c1"
+      ],
+      "teacherIds": [
+        "t21"
+      ],
+      "subjectId": "s8",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r17"
+    },
+    {
+      "id": "l128",
+      "classIds": [
+        "c2"
+      ],
+      "teacherIds": [
+        "t22"
+      ],
+      "subjectId": "s8",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r18"
+    },
+    {
+      "id": "l129",
+      "classIds": [
+        "c3"
+      ],
+      "teacherIds": [
+        "t21"
+      ],
+      "subjectId": "s8",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r17"
+    },
+    {
+      "id": "l130",
+      "classIds": [
+        "c4"
+      ],
+      "teacherIds": [
+        "t22"
+      ],
+      "subjectId": "s8",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r13"
+    },
+    {
+      "id": "l131",
+      "classIds": [
+        "c5"
+      ],
+      "teacherIds": [
+        "t21"
+      ],
+      "subjectId": "s8",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r17"
+    },
+    {
+      "id": "l132",
+      "classIds": [
+        "c6"
+      ],
+      "teacherIds": [
+        "t22"
+      ],
+      "subjectId": "s8",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r23"
+    },
+    {
+      "id": "l133",
+      "classIds": [
+        "c7"
+      ],
+      "teacherIds": [
+        "t21"
+      ],
+      "subjectId": "s8",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r18"
+    },
+    {
+      "id": "l134",
+      "classIds": [
+        "c8"
+      ],
+      "teacherIds": [
+        "t22"
+      ],
+      "subjectId": "s8",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r4"
+    },
+    {
+      "id": "l135",
+      "classIds": [
+        "c9"
+      ],
+      "teacherIds": [
+        "t21"
+      ],
+      "subjectId": "s8",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r15"
+    },
+    {
+      "id": "l136",
+      "classIds": [
+        "c10"
+      ],
+      "teacherIds": [
+        "t22"
+      ],
+      "subjectId": "s8",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r6"
+    },
+    {
+      "id": "l137",
+      "classIds": [
+        "c11"
+      ],
+      "teacherIds": [
+        "t21"
+      ],
+      "subjectId": "s8",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r17"
+    },
+    {
+      "id": "l138",
+      "classIds": [
+        "c12"
+      ],
+      "teacherIds": [
+        "t22"
+      ],
+      "subjectId": "s8",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r12"
+    },
+    {
+      "id": "l139",
+      "classIds": [
+        "c13"
+      ],
+      "teacherIds": [
+        "t21"
+      ],
+      "subjectId": "s8",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r9"
+    },
+    {
+      "id": "l140",
+      "classIds": [
+        "c14"
+      ],
+      "teacherIds": [
+        "t22"
+      ],
+      "subjectId": "s8",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r18"
+    },
+    {
+      "id": "l141",
+      "classIds": [
+        "c15"
+      ],
+      "teacherIds": [
+        "t21"
+      ],
+      "subjectId": "s8",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r9"
+    },
+    {
+      "id": "l142",
+      "classIds": [
+        "c16"
+      ],
+      "teacherIds": [
+        "t22"
+      ],
+      "subjectId": "s8",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r10"
+    },
+    {
+      "id": "l143",
+      "classIds": [
+        "c17"
+      ],
+      "teacherIds": [
+        "t21"
+      ],
+      "subjectId": "s8",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r7"
+    },
+    {
+      "id": "l144",
+      "classIds": [
+        "c18"
+      ],
+      "teacherIds": [
+        "t22"
+      ],
+      "subjectId": "s8",
+      "periodsPerWeek": 3,
+      "periodLength": 1,
+      "roomId": "r9"
+    },
+    {
+      "id": "l145",
+      "classIds": [
+        "c1"
+      ],
+      "teacherIds": [
+        "t23"
+      ],
+      "subjectId": "s9",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r3"
+    },
+    {
+      "id": "l146",
+      "classIds": [
+        "c2"
+      ],
+      "teacherIds": [
+        "t24"
+      ],
+      "subjectId": "s9",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r14"
+    },
+    {
+      "id": "l147",
+      "classIds": [
+        "c3"
+      ],
+      "teacherIds": [
+        "t23"
+      ],
+      "subjectId": "s9",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r25"
+    },
+    {
+      "id": "l148",
+      "classIds": [
+        "c4"
+      ],
+      "teacherIds": [
+        "t24"
+      ],
+      "subjectId": "s9",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r18"
+    },
+    {
+      "id": "l149",
+      "classIds": [
+        "c5"
+      ],
+      "teacherIds": [
+        "t23"
+      ],
+      "subjectId": "s9",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r13"
+    },
+    {
+      "id": "l150",
+      "classIds": [
+        "c6"
+      ],
+      "teacherIds": [
+        "t24"
+      ],
+      "subjectId": "s9",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r21"
+    },
+    {
+      "id": "l151",
+      "classIds": [
+        "c7"
+      ],
+      "teacherIds": [
+        "t23"
+      ],
+      "subjectId": "s9",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r21"
+    },
+    {
+      "id": "l152",
+      "classIds": [
+        "c8"
+      ],
+      "teacherIds": [
+        "t24"
+      ],
+      "subjectId": "s9",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r8"
+    },
+    {
+      "id": "l153",
+      "classIds": [
+        "c9"
+      ],
+      "teacherIds": [
+        "t23"
+      ],
+      "subjectId": "s9",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r12"
+    },
+    {
+      "id": "l154",
+      "classIds": [
+        "c10"
+      ],
+      "teacherIds": [
+        "t24"
+      ],
+      "subjectId": "s9",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r12"
+    },
+    {
+      "id": "l155",
+      "classIds": [
+        "c11"
+      ],
+      "teacherIds": [
+        "t23"
+      ],
+      "subjectId": "s9",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r4"
+    },
+    {
+      "id": "l156",
+      "classIds": [
+        "c12"
+      ],
+      "teacherIds": [
+        "t24"
+      ],
+      "subjectId": "s9",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r23"
+    },
+    {
+      "id": "l157",
+      "classIds": [
+        "c13"
+      ],
+      "teacherIds": [
+        "t23"
+      ],
+      "subjectId": "s9",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r9"
+    },
+    {
+      "id": "l158",
+      "classIds": [
+        "c14"
+      ],
+      "teacherIds": [
+        "t24"
+      ],
+      "subjectId": "s9",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r1"
+    },
+    {
+      "id": "l159",
+      "classIds": [
+        "c15"
+      ],
+      "teacherIds": [
+        "t23"
+      ],
+      "subjectId": "s9",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r16"
+    },
+    {
+      "id": "l160",
+      "classIds": [
+        "c16"
+      ],
+      "teacherIds": [
+        "t24"
+      ],
+      "subjectId": "s9",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r10"
+    },
+    {
+      "id": "l161",
+      "classIds": [
+        "c17"
+      ],
+      "teacherIds": [
+        "t23"
+      ],
+      "subjectId": "s9",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r3"
+    },
+    {
+      "id": "l162",
+      "classIds": [
+        "c18"
+      ],
+      "teacherIds": [
+        "t24"
+      ],
+      "subjectId": "s9",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r4"
+    },
+    {
+      "id": "l163",
+      "classIds": [
+        "c1"
+      ],
+      "teacherIds": [
+        "t25"
+      ],
+      "subjectId": "s10",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r4"
+    },
+    {
+      "id": "l164",
+      "classIds": [
+        "c2"
+      ],
+      "teacherIds": [
+        "t26"
+      ],
+      "subjectId": "s10",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r4"
+    },
+    {
+      "id": "l165",
+      "classIds": [
+        "c3"
+      ],
+      "teacherIds": [
+        "t25"
+      ],
+      "subjectId": "s10",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r20"
+    },
+    {
+      "id": "l166",
+      "classIds": [
+        "c4"
+      ],
+      "teacherIds": [
+        "t26"
+      ],
+      "subjectId": "s10",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r18"
+    },
+    {
+      "id": "l167",
+      "classIds": [
+        "c5"
+      ],
+      "teacherIds": [
+        "t25"
+      ],
+      "subjectId": "s10",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r18"
+    },
+    {
+      "id": "l168",
+      "classIds": [
+        "c6"
+      ],
+      "teacherIds": [
+        "t26"
+      ],
+      "subjectId": "s10",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r9"
+    },
+    {
+      "id": "l169",
+      "classIds": [
+        "c7"
+      ],
+      "teacherIds": [
+        "t25"
+      ],
+      "subjectId": "s10",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r6"
+    },
+    {
+      "id": "l170",
+      "classIds": [
+        "c8"
+      ],
+      "teacherIds": [
+        "t26"
+      ],
+      "subjectId": "s10",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r12"
+    },
+    {
+      "id": "l171",
+      "classIds": [
+        "c9"
+      ],
+      "teacherIds": [
+        "t25"
+      ],
+      "subjectId": "s10",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r24"
+    },
+    {
+      "id": "l172",
+      "classIds": [
+        "c10"
+      ],
+      "teacherIds": [
+        "t26"
+      ],
+      "subjectId": "s10",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r8"
+    },
+    {
+      "id": "l173",
+      "classIds": [
+        "c11"
+      ],
+      "teacherIds": [
+        "t25"
+      ],
+      "subjectId": "s10",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r3"
+    },
+    {
+      "id": "l174",
+      "classIds": [
+        "c12"
+      ],
+      "teacherIds": [
+        "t26"
+      ],
+      "subjectId": "s10",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r23"
+    },
+    {
+      "id": "l175",
+      "classIds": [
+        "c13"
+      ],
+      "teacherIds": [
+        "t25"
+      ],
+      "subjectId": "s10",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r9"
+    },
+    {
+      "id": "l176",
+      "classIds": [
+        "c14"
+      ],
+      "teacherIds": [
+        "t26"
+      ],
+      "subjectId": "s10",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r25"
+    },
+    {
+      "id": "l177",
+      "classIds": [
+        "c15"
+      ],
+      "teacherIds": [
+        "t25"
+      ],
+      "subjectId": "s10",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r6"
+    },
+    {
+      "id": "l178",
+      "classIds": [
+        "c16"
+      ],
+      "teacherIds": [
+        "t26"
+      ],
+      "subjectId": "s10",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r7"
+    },
+    {
+      "id": "l179",
+      "classIds": [
+        "c17"
+      ],
+      "teacherIds": [
+        "t25"
+      ],
+      "subjectId": "s10",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r15"
+    },
+    {
+      "id": "l180",
+      "classIds": [
+        "c18"
+      ],
+      "teacherIds": [
+        "t26"
+      ],
+      "subjectId": "s10",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r25"
+    },
+    {
+      "id": "l181",
+      "classIds": [
+        "c1"
+      ],
+      "teacherIds": [
+        "t27"
+      ],
+      "subjectId": "s11",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r7"
+    },
+    {
+      "id": "l182",
+      "classIds": [
+        "c2"
+      ],
+      "teacherIds": [
+        "t28"
+      ],
+      "subjectId": "s11",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r19"
+    },
+    {
+      "id": "l183",
+      "classIds": [
+        "c3"
+      ],
+      "teacherIds": [
+        "t27"
+      ],
+      "subjectId": "s11",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r8"
+    },
+    {
+      "id": "l184",
+      "classIds": [
+        "c4"
+      ],
+      "teacherIds": [
+        "t28"
+      ],
+      "subjectId": "s11",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r21"
+    },
+    {
+      "id": "l185",
+      "classIds": [
+        "c5"
+      ],
+      "teacherIds": [
+        "t27"
+      ],
+      "subjectId": "s11",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r8"
+    },
+    {
+      "id": "l186",
+      "classIds": [
+        "c6"
+      ],
+      "teacherIds": [
+        "t28"
+      ],
+      "subjectId": "s11",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r14"
+    },
+    {
+      "id": "l187",
+      "classIds": [
+        "c7"
+      ],
+      "teacherIds": [
+        "t27"
+      ],
+      "subjectId": "s11",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r19"
+    },
+    {
+      "id": "l188",
+      "classIds": [
+        "c8"
+      ],
+      "teacherIds": [
+        "t28"
+      ],
+      "subjectId": "s11",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r14"
+    },
+    {
+      "id": "l189",
+      "classIds": [
+        "c9"
+      ],
+      "teacherIds": [
+        "t27"
+      ],
+      "subjectId": "s11",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r18"
+    },
+    {
+      "id": "l190",
+      "classIds": [
+        "c10"
+      ],
+      "teacherIds": [
+        "t28"
+      ],
+      "subjectId": "s11",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r18"
+    },
+    {
+      "id": "l191",
+      "classIds": [
+        "c11"
+      ],
+      "teacherIds": [
+        "t27"
+      ],
+      "subjectId": "s11",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r7"
+    },
+    {
+      "id": "l192",
+      "classIds": [
+        "c12"
+      ],
+      "teacherIds": [
+        "t28"
+      ],
+      "subjectId": "s11",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r4"
+    },
+    {
+      "id": "l193",
+      "classIds": [
+        "c13"
+      ],
+      "teacherIds": [
+        "t27"
+      ],
+      "subjectId": "s11",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r20"
+    },
+    {
+      "id": "l194",
+      "classIds": [
+        "c14"
+      ],
+      "teacherIds": [
+        "t28"
+      ],
+      "subjectId": "s11",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r1"
+    },
+    {
+      "id": "l195",
+      "classIds": [
+        "c15"
+      ],
+      "teacherIds": [
+        "t27"
+      ],
+      "subjectId": "s11",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r4"
+    },
+    {
+      "id": "l196",
+      "classIds": [
+        "c16"
+      ],
+      "teacherIds": [
+        "t28"
+      ],
+      "subjectId": "s11",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r13"
+    },
+    {
+      "id": "l197",
+      "classIds": [
+        "c17"
+      ],
+      "teacherIds": [
+        "t27"
+      ],
+      "subjectId": "s11",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r12"
+    },
+    {
+      "id": "l198",
+      "classIds": [
+        "c18"
+      ],
+      "teacherIds": [
+        "t28"
+      ],
+      "subjectId": "s11",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r10"
+    },
+    {
+      "id": "l199",
+      "classIds": [
+        "c1"
+      ],
+      "teacherIds": [
+        "t29"
+      ],
+      "subjectId": "s12",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r18"
+    },
+    {
+      "id": "l200",
+      "classIds": [
+        "c2"
+      ],
+      "teacherIds": [
+        "t30"
+      ],
+      "subjectId": "s12",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r16"
+    },
+    {
+      "id": "l201",
+      "classIds": [
+        "c3"
+      ],
+      "teacherIds": [
+        "t29"
+      ],
+      "subjectId": "s12",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r15"
+    },
+    {
+      "id": "l202",
+      "classIds": [
+        "c4"
+      ],
+      "teacherIds": [
+        "t30"
+      ],
+      "subjectId": "s12",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r9"
+    },
+    {
+      "id": "l203",
+      "classIds": [
+        "c5"
+      ],
+      "teacherIds": [
+        "t29"
+      ],
+      "subjectId": "s12",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r11"
+    },
+    {
+      "id": "l204",
+      "classIds": [
+        "c6"
+      ],
+      "teacherIds": [
+        "t30"
+      ],
+      "subjectId": "s12",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r11"
+    },
+    {
+      "id": "l205",
+      "classIds": [
+        "c7"
+      ],
+      "teacherIds": [
+        "t29"
+      ],
+      "subjectId": "s12",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r15"
+    },
+    {
+      "id": "l206",
+      "classIds": [
+        "c8"
+      ],
+      "teacherIds": [
+        "t30"
+      ],
+      "subjectId": "s12",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r8"
+    },
+    {
+      "id": "l207",
+      "classIds": [
+        "c9"
+      ],
+      "teacherIds": [
+        "t29"
+      ],
+      "subjectId": "s12",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r24"
+    },
+    {
+      "id": "l208",
+      "classIds": [
+        "c10"
+      ],
+      "teacherIds": [
+        "t30"
+      ],
+      "subjectId": "s12",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r24"
+    },
+    {
+      "id": "l209",
+      "classIds": [
+        "c11"
+      ],
+      "teacherIds": [
+        "t29"
+      ],
+      "subjectId": "s12",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r16"
+    },
+    {
+      "id": "l210",
+      "classIds": [
+        "c12"
+      ],
+      "teacherIds": [
+        "t30"
+      ],
+      "subjectId": "s12",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r11"
+    },
+    {
+      "id": "l211",
+      "classIds": [
+        "c13"
+      ],
+      "teacherIds": [
+        "t29"
+      ],
+      "subjectId": "s12",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r23"
+    },
+    {
+      "id": "l212",
+      "classIds": [
+        "c14"
+      ],
+      "teacherIds": [
+        "t30"
+      ],
+      "subjectId": "s12",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r7"
+    },
+    {
+      "id": "l213",
+      "classIds": [
+        "c15"
+      ],
+      "teacherIds": [
+        "t29"
+      ],
+      "subjectId": "s12",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r2"
+    },
+    {
+      "id": "l214",
+      "classIds": [
+        "c16"
+      ],
+      "teacherIds": [
+        "t30"
+      ],
+      "subjectId": "s12",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r11"
+    },
+    {
+      "id": "l215",
+      "classIds": [
+        "c17"
+      ],
+      "teacherIds": [
+        "t29"
+      ],
+      "subjectId": "s12",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r10"
+    },
+    {
+      "id": "l216",
+      "classIds": [
+        "c18"
+      ],
+      "teacherIds": [
+        "t30"
+      ],
+      "subjectId": "s12",
+      "periodsPerWeek": 2,
+      "periodLength": 1,
+      "roomId": "r24"
+    }
+  ],
+  "hardConstraints": [
+    {
+      "type": "teacherMaxHoursPerWeek",
+      "description": "No teacher can teach more than their maxHoursPerWeek",
+      "enforcement": "hard"
+    }
+  ],
+  "softConstraints": [
+    {
+      "type": "minimizeTeacherGaps",
+      "weight": 10,
+      "description": "Minimize gaps in teacher schedules"
+    },
+    {
+      "type": "preferConsecutive",
+      "weight": 5,
+      "description": "Prefer consecutive periods for same subject"
+    },
+    {
+      "type": "distributeEvenly",
+      "weight": 5,
+      "description": "Distribute lessons evenly across week"
+    }
+  ],
+  "classrooms": [
+    {
+      "id": "r1",
+      "name": "Room 101"
+    },
+    {
+      "id": "r2",
+      "name": "Room 102"
+    },
+    {
+      "id": "r3",
+      "name": "Room 103"
+    },
+    {
+      "id": "r4",
+      "name": "Room 104"
+    },
+    {
+      "id": "r5",
+      "name": "Room 105"
+    },
+    {
+      "id": "r6",
+      "name": "Room 106"
+    },
+    {
+      "id": "r7",
+      "name": "Room 107"
+    },
+    {
+      "id": "r8",
+      "name": "Room 108"
+    },
+    {
+      "id": "r9",
+      "name": "Room 109"
+    },
+    {
+      "id": "r10",
+      "name": "Room 110"
+    },
+    {
+      "id": "r11",
+      "name": "Room 111"
+    },
+    {
+      "id": "r12",
+      "name": "Room 112"
+    },
+    {
+      "id": "r13",
+      "name": "Room 113"
+    },
+    {
+      "id": "r14",
+      "name": "Room 114"
+    },
+    {
+      "id": "r15",
+      "name": "Room 115"
+    },
+    {
+      "id": "r16",
+      "name": "Room 116"
+    },
+    {
+      "id": "r17",
+      "name": "Room 117"
+    },
+    {
+      "id": "r18",
+      "name": "Room 118"
+    },
+    {
+      "id": "r19",
+      "name": "Room 119"
+    },
+    {
+      "id": "r20",
+      "name": "Room 120"
+    },
+    {
+      "id": "r21",
+      "name": "Lab 1"
+    },
+    {
+      "id": "r22",
+      "name": "Lab 2"
+    },
+    {
+      "id": "r23",
+      "name": "Lab 3"
+    },
+    {
+      "id": "r24",
+      "name": "Gym 1"
+    },
+    {
+      "id": "r25",
+      "name": "Gym 2"
+    }
+  ],
+  "daysPerWeek": 6,
+  "periodsPerDay": 8
+}

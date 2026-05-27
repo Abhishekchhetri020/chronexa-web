@@ -636,2403 +636,3363 @@
   "lessons": [
     {
       "id": "l1",
-      "classId": "c1",
       "subjectId": "s1",
-      "teacherId": "t4",
       "periodsPerWeek": 6,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c1"
+      ],
+      "teacherIds": [
+        "t4"
+      ]
     },
     {
       "id": "l2",
-      "classId": "c1",
       "subjectId": "s2",
-      "teacherId": "t19",
       "periodsPerWeek": 5,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c1"
+      ],
+      "teacherIds": [
+        "t19"
+      ]
     },
     {
       "id": "l3",
-      "classId": "c1",
       "subjectId": "s3",
-      "teacherId": "t13",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": true,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c1"
+      ],
+      "teacherIds": [
+        "t13"
+      ]
     },
     {
       "id": "l4",
-      "classId": "c1",
       "subjectId": "s4",
-      "teacherId": "t3",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c1"
+      ],
+      "teacherIds": [
+        "t3"
+      ]
     },
     {
       "id": "l5",
-      "classId": "c1",
       "subjectId": "s5",
-      "teacherId": "t13",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c1"
+      ],
+      "teacherIds": [
+        "t13"
+      ]
     },
     {
       "id": "l6",
-      "classId": "c1",
       "subjectId": "s6",
-      "teacherId": "t21",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c1"
+      ],
+      "teacherIds": [
+        "t21"
+      ]
     },
     {
       "id": "l7",
-      "classId": "c1",
       "subjectId": "s7",
-      "teacherId": "t28",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c1"
+      ],
+      "teacherIds": [
+        "t28"
+      ]
     },
     {
       "id": "l8",
-      "classId": "c1",
       "subjectId": "s8",
-      "teacherId": "t8",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c1"
+      ],
+      "teacherIds": [
+        "t8"
+      ]
     },
     {
       "id": "l9",
-      "classId": "c1",
       "subjectId": "s9",
-      "teacherId": "t16",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c1"
+      ],
+      "teacherIds": [
+        "t16"
+      ]
     },
     {
       "id": "l10",
-      "classId": "c1",
       "subjectId": "s10",
-      "teacherId": "t9",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c1"
+      ],
+      "teacherIds": [
+        "t9"
+      ]
     },
     {
       "id": "l11",
-      "classId": "c1",
       "subjectId": "s11",
-      "teacherId": "t10",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c1"
+      ],
+      "teacherIds": [
+        "t10"
+      ]
     },
     {
       "id": "l12",
-      "classId": "c1",
       "subjectId": "s12",
-      "teacherId": "t18",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c1"
+      ],
+      "teacherIds": [
+        "t18"
+      ]
     },
     {
       "id": "l13",
-      "classId": "c2",
       "subjectId": "s1",
-      "teacherId": "t18",
       "periodsPerWeek": 6,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c2"
+      ],
+      "teacherIds": [
+        "t18"
+      ]
     },
     {
       "id": "l14",
-      "classId": "c2",
       "subjectId": "s2",
-      "teacherId": "t19",
       "periodsPerWeek": 5,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c2"
+      ],
+      "teacherIds": [
+        "t19"
+      ]
     },
     {
       "id": "l15",
-      "classId": "c2",
       "subjectId": "s3",
-      "teacherId": "t13",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": true,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c2"
+      ],
+      "teacherIds": [
+        "t13"
+      ]
     },
     {
       "id": "l16",
-      "classId": "c2",
       "subjectId": "s4",
-      "teacherId": "t3",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c2"
+      ],
+      "teacherIds": [
+        "t3"
+      ]
     },
     {
       "id": "l17",
-      "classId": "c2",
       "subjectId": "s5",
-      "teacherId": "t13",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c2"
+      ],
+      "teacherIds": [
+        "t13"
+      ]
     },
     {
       "id": "l18",
-      "classId": "c2",
       "subjectId": "s6",
-      "teacherId": "t21",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c2"
+      ],
+      "teacherIds": [
+        "t21"
+      ]
     },
     {
       "id": "l19",
-      "classId": "c2",
       "subjectId": "s7",
-      "teacherId": "t28",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c2"
+      ],
+      "teacherIds": [
+        "t28"
+      ]
     },
     {
       "id": "l20",
-      "classId": "c2",
       "subjectId": "s8",
-      "teacherId": "t8",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c2"
+      ],
+      "teacherIds": [
+        "t8"
+      ]
     },
     {
       "id": "l21",
-      "classId": "c2",
       "subjectId": "s9",
-      "teacherId": "t16",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c2"
+      ],
+      "teacherIds": [
+        "t16"
+      ]
     },
     {
       "id": "l22",
-      "classId": "c2",
       "subjectId": "s10",
-      "teacherId": "t17",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c2"
+      ],
+      "teacherIds": [
+        "t17"
+      ]
     },
     {
       "id": "l23",
-      "classId": "c2",
       "subjectId": "s11",
-      "teacherId": "t24",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c2"
+      ],
+      "teacherIds": [
+        "t24"
+      ]
     },
     {
       "id": "l24",
-      "classId": "c2",
       "subjectId": "s12",
-      "teacherId": "t28",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c2"
+      ],
+      "teacherIds": [
+        "t28"
+      ]
     },
     {
       "id": "l25",
-      "classId": "c3",
       "subjectId": "s1",
-      "teacherId": "t1",
       "periodsPerWeek": 6,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c3"
+      ],
+      "teacherIds": [
+        "t1"
+      ]
     },
     {
       "id": "l26",
-      "classId": "c3",
       "subjectId": "s2",
-      "teacherId": "t19",
       "periodsPerWeek": 5,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c3"
+      ],
+      "teacherIds": [
+        "t19"
+      ]
     },
     {
       "id": "l27",
-      "classId": "c3",
       "subjectId": "s3",
-      "teacherId": "t13",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": true,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c3"
+      ],
+      "teacherIds": [
+        "t13"
+      ]
     },
     {
       "id": "l28",
-      "classId": "c3",
       "subjectId": "s4",
-      "teacherId": "t3",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c3"
+      ],
+      "teacherIds": [
+        "t3"
+      ]
     },
     {
       "id": "l29",
-      "classId": "c3",
       "subjectId": "s5",
-      "teacherId": "t13",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c3"
+      ],
+      "teacherIds": [
+        "t13"
+      ]
     },
     {
       "id": "l30",
-      "classId": "c3",
       "subjectId": "s6",
-      "teacherId": "t21",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c3"
+      ],
+      "teacherIds": [
+        "t21"
+      ]
     },
     {
       "id": "l31",
-      "classId": "c3",
       "subjectId": "s7",
-      "teacherId": "t28",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c3"
+      ],
+      "teacherIds": [
+        "t28"
+      ]
     },
     {
       "id": "l32",
-      "classId": "c3",
       "subjectId": "s8",
-      "teacherId": "t8",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c3"
+      ],
+      "teacherIds": [
+        "t8"
+      ]
     },
     {
       "id": "l33",
-      "classId": "c3",
       "subjectId": "s9",
-      "teacherId": "t16",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c3"
+      ],
+      "teacherIds": [
+        "t16"
+      ]
     },
     {
       "id": "l34",
-      "classId": "c3",
       "subjectId": "s10",
-      "teacherId": "t29",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c3"
+      ],
+      "teacherIds": [
+        "t29"
+      ]
     },
     {
       "id": "l35",
-      "classId": "c3",
       "subjectId": "s11",
-      "teacherId": "t2",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c3"
+      ],
+      "teacherIds": [
+        "t2"
+      ]
     },
     {
       "id": "l36",
-      "classId": "c3",
       "subjectId": "s12",
-      "teacherId": "t14",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c3"
+      ],
+      "teacherIds": [
+        "t14"
+      ]
     },
     {
       "id": "l37",
-      "classId": "c4",
       "subjectId": "s1",
-      "teacherId": "t11",
       "periodsPerWeek": 6,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c4"
+      ],
+      "teacherIds": [
+        "t11"
+      ]
     },
     {
       "id": "l38",
-      "classId": "c4",
       "subjectId": "s2",
-      "teacherId": "t19",
       "periodsPerWeek": 5,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c4"
+      ],
+      "teacherIds": [
+        "t19"
+      ]
     },
     {
       "id": "l39",
-      "classId": "c4",
       "subjectId": "s3",
-      "teacherId": "t13",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": true,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c4"
+      ],
+      "teacherIds": [
+        "t13"
+      ]
     },
     {
       "id": "l40",
-      "classId": "c4",
       "subjectId": "s4",
-      "teacherId": "t3",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c4"
+      ],
+      "teacherIds": [
+        "t3"
+      ]
     },
     {
       "id": "l41",
-      "classId": "c4",
       "subjectId": "s5",
-      "teacherId": "t13",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c4"
+      ],
+      "teacherIds": [
+        "t13"
+      ]
     },
     {
       "id": "l42",
-      "classId": "c4",
       "subjectId": "s6",
-      "teacherId": "t21",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c4"
+      ],
+      "teacherIds": [
+        "t21"
+      ]
     },
     {
       "id": "l43",
-      "classId": "c4",
       "subjectId": "s7",
-      "teacherId": "t28",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c4"
+      ],
+      "teacherIds": [
+        "t28"
+      ]
     },
     {
       "id": "l44",
-      "classId": "c4",
       "subjectId": "s8",
-      "teacherId": "t8",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c4"
+      ],
+      "teacherIds": [
+        "t8"
+      ]
     },
     {
       "id": "l45",
-      "classId": "c4",
       "subjectId": "s9",
-      "teacherId": "t16",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c4"
+      ],
+      "teacherIds": [
+        "t16"
+      ]
     },
     {
       "id": "l46",
-      "classId": "c4",
       "subjectId": "s10",
-      "teacherId": "t10",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c4"
+      ],
+      "teacherIds": [
+        "t10"
+      ]
     },
     {
       "id": "l47",
-      "classId": "c4",
       "subjectId": "s11",
-      "teacherId": "t17",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c4"
+      ],
+      "teacherIds": [
+        "t17"
+      ]
     },
     {
       "id": "l48",
-      "classId": "c4",
       "subjectId": "s12",
-      "teacherId": "t23",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c4"
+      ],
+      "teacherIds": [
+        "t23"
+      ]
     },
     {
       "id": "l49",
-      "classId": "c5",
       "subjectId": "s1",
-      "teacherId": "t25",
       "periodsPerWeek": 6,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c5"
+      ],
+      "teacherIds": [
+        "t25"
+      ]
     },
     {
       "id": "l50",
-      "classId": "c5",
       "subjectId": "s2",
-      "teacherId": "t19",
       "periodsPerWeek": 5,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c5"
+      ],
+      "teacherIds": [
+        "t19"
+      ]
     },
     {
       "id": "l51",
-      "classId": "c5",
       "subjectId": "s3",
-      "teacherId": "t13",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": true,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c5"
+      ],
+      "teacherIds": [
+        "t13"
+      ]
     },
     {
       "id": "l52",
-      "classId": "c5",
       "subjectId": "s4",
-      "teacherId": "t3",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c5"
+      ],
+      "teacherIds": [
+        "t3"
+      ]
     },
     {
       "id": "l53",
-      "classId": "c5",
       "subjectId": "s5",
-      "teacherId": "t13",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c5"
+      ],
+      "teacherIds": [
+        "t13"
+      ]
     },
     {
       "id": "l54",
-      "classId": "c5",
       "subjectId": "s6",
-      "teacherId": "t21",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c5"
+      ],
+      "teacherIds": [
+        "t21"
+      ]
     },
     {
       "id": "l55",
-      "classId": "c5",
       "subjectId": "s7",
-      "teacherId": "t28",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c5"
+      ],
+      "teacherIds": [
+        "t28"
+      ]
     },
     {
       "id": "l56",
-      "classId": "c5",
       "subjectId": "s8",
-      "teacherId": "t8",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c5"
+      ],
+      "teacherIds": [
+        "t8"
+      ]
     },
     {
       "id": "l57",
-      "classId": "c5",
       "subjectId": "s9",
-      "teacherId": "t16",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c5"
+      ],
+      "teacherIds": [
+        "t16"
+      ]
     },
     {
       "id": "l58",
-      "classId": "c5",
       "subjectId": "s10",
-      "teacherId": "t23",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c5"
+      ],
+      "teacherIds": [
+        "t23"
+      ]
     },
     {
       "id": "l59",
-      "classId": "c5",
       "subjectId": "s11",
-      "teacherId": "t27",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c5"
+      ],
+      "teacherIds": [
+        "t27"
+      ]
     },
     {
       "id": "l60",
-      "classId": "c5",
       "subjectId": "s12",
-      "teacherId": "t4",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c5"
+      ],
+      "teacherIds": [
+        "t4"
+      ]
     },
     {
       "id": "l61",
-      "classId": "c6",
       "subjectId": "s1",
-      "teacherId": "t4",
       "periodsPerWeek": 6,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c6"
+      ],
+      "teacherIds": [
+        "t4"
+      ]
     },
     {
       "id": "l62",
-      "classId": "c6",
       "subjectId": "s2",
-      "teacherId": "t19",
       "periodsPerWeek": 5,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c6"
+      ],
+      "teacherIds": [
+        "t19"
+      ]
     },
     {
       "id": "l63",
-      "classId": "c6",
       "subjectId": "s3",
-      "teacherId": "t13",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": true,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c6"
+      ],
+      "teacherIds": [
+        "t13"
+      ]
     },
     {
       "id": "l64",
-      "classId": "c6",
       "subjectId": "s4",
-      "teacherId": "t3",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c6"
+      ],
+      "teacherIds": [
+        "t3"
+      ]
     },
     {
       "id": "l65",
-      "classId": "c6",
       "subjectId": "s5",
-      "teacherId": "t13",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c6"
+      ],
+      "teacherIds": [
+        "t13"
+      ]
     },
     {
       "id": "l66",
-      "classId": "c6",
       "subjectId": "s6",
-      "teacherId": "t21",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c6"
+      ],
+      "teacherIds": [
+        "t21"
+      ]
     },
     {
       "id": "l67",
-      "classId": "c6",
       "subjectId": "s7",
-      "teacherId": "t28",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c6"
+      ],
+      "teacherIds": [
+        "t28"
+      ]
     },
     {
       "id": "l68",
-      "classId": "c6",
       "subjectId": "s8",
-      "teacherId": "t8",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c6"
+      ],
+      "teacherIds": [
+        "t8"
+      ]
     },
     {
       "id": "l69",
-      "classId": "c6",
       "subjectId": "s9",
-      "teacherId": "t16",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c6"
+      ],
+      "teacherIds": [
+        "t16"
+      ]
     },
     {
       "id": "l70",
-      "classId": "c6",
       "subjectId": "s10",
-      "teacherId": "t9",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c6"
+      ],
+      "teacherIds": [
+        "t9"
+      ]
     },
     {
       "id": "l71",
-      "classId": "c6",
       "subjectId": "s11",
-      "teacherId": "t10",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c6"
+      ],
+      "teacherIds": [
+        "t10"
+      ]
     },
     {
       "id": "l72",
-      "classId": "c6",
       "subjectId": "s12",
-      "teacherId": "t18",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c6"
+      ],
+      "teacherIds": [
+        "t18"
+      ]
     },
     {
       "id": "l73",
-      "classId": "c7",
       "subjectId": "s1",
-      "teacherId": "t18",
       "periodsPerWeek": 6,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c7"
+      ],
+      "teacherIds": [
+        "t18"
+      ]
     },
     {
       "id": "l74",
-      "classId": "c7",
       "subjectId": "s2",
-      "teacherId": "t19",
       "periodsPerWeek": 5,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c7"
+      ],
+      "teacherIds": [
+        "t19"
+      ]
     },
     {
       "id": "l75",
-      "classId": "c7",
       "subjectId": "s3",
-      "teacherId": "t13",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": true,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c7"
+      ],
+      "teacherIds": [
+        "t13"
+      ]
     },
     {
       "id": "l76",
-      "classId": "c7",
       "subjectId": "s4",
-      "teacherId": "t3",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c7"
+      ],
+      "teacherIds": [
+        "t3"
+      ]
     },
     {
       "id": "l77",
-      "classId": "c7",
       "subjectId": "s5",
-      "teacherId": "t13",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c7"
+      ],
+      "teacherIds": [
+        "t13"
+      ]
     },
     {
       "id": "l78",
-      "classId": "c7",
       "subjectId": "s6",
-      "teacherId": "t21",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c7"
+      ],
+      "teacherIds": [
+        "t21"
+      ]
     },
     {
       "id": "l79",
-      "classId": "c7",
       "subjectId": "s7",
-      "teacherId": "t28",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c7"
+      ],
+      "teacherIds": [
+        "t28"
+      ]
     },
     {
       "id": "l80",
-      "classId": "c7",
       "subjectId": "s8",
-      "teacherId": "t8",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c7"
+      ],
+      "teacherIds": [
+        "t8"
+      ]
     },
     {
       "id": "l81",
-      "classId": "c7",
       "subjectId": "s9",
-      "teacherId": "t16",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c7"
+      ],
+      "teacherIds": [
+        "t16"
+      ]
     },
     {
       "id": "l82",
-      "classId": "c7",
       "subjectId": "s10",
-      "teacherId": "t17",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c7"
+      ],
+      "teacherIds": [
+        "t17"
+      ]
     },
     {
       "id": "l83",
-      "classId": "c7",
       "subjectId": "s11",
-      "teacherId": "t24",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c7"
+      ],
+      "teacherIds": [
+        "t24"
+      ]
     },
     {
       "id": "l84",
-      "classId": "c7",
       "subjectId": "s12",
-      "teacherId": "t28",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c7"
+      ],
+      "teacherIds": [
+        "t28"
+      ]
     },
     {
       "id": "l85",
-      "classId": "c8",
       "subjectId": "s1",
-      "teacherId": "t1",
       "periodsPerWeek": 6,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c8"
+      ],
+      "teacherIds": [
+        "t1"
+      ]
     },
     {
       "id": "l86",
-      "classId": "c8",
       "subjectId": "s2",
-      "teacherId": "t19",
       "periodsPerWeek": 5,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c8"
+      ],
+      "teacherIds": [
+        "t19"
+      ]
     },
     {
       "id": "l87",
-      "classId": "c8",
       "subjectId": "s3",
-      "teacherId": "t13",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": true,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c8"
+      ],
+      "teacherIds": [
+        "t13"
+      ]
     },
     {
       "id": "l88",
-      "classId": "c8",
       "subjectId": "s4",
-      "teacherId": "t3",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c8"
+      ],
+      "teacherIds": [
+        "t3"
+      ]
     },
     {
       "id": "l89",
-      "classId": "c8",
       "subjectId": "s5",
-      "teacherId": "t13",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c8"
+      ],
+      "teacherIds": [
+        "t13"
+      ]
     },
     {
       "id": "l90",
-      "classId": "c8",
       "subjectId": "s6",
-      "teacherId": "t21",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c8"
+      ],
+      "teacherIds": [
+        "t21"
+      ]
     },
     {
       "id": "l91",
-      "classId": "c8",
       "subjectId": "s7",
-      "teacherId": "t28",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c8"
+      ],
+      "teacherIds": [
+        "t28"
+      ]
     },
     {
       "id": "l92",
-      "classId": "c8",
       "subjectId": "s8",
-      "teacherId": "t8",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c8"
+      ],
+      "teacherIds": [
+        "t8"
+      ]
     },
     {
       "id": "l93",
-      "classId": "c8",
       "subjectId": "s9",
-      "teacherId": "t16",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c8"
+      ],
+      "teacherIds": [
+        "t16"
+      ]
     },
     {
       "id": "l94",
-      "classId": "c8",
       "subjectId": "s10",
-      "teacherId": "t29",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c8"
+      ],
+      "teacherIds": [
+        "t29"
+      ]
     },
     {
       "id": "l95",
-      "classId": "c8",
       "subjectId": "s11",
-      "teacherId": "t2",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c8"
+      ],
+      "teacherIds": [
+        "t2"
+      ]
     },
     {
       "id": "l96",
-      "classId": "c8",
       "subjectId": "s12",
-      "teacherId": "t14",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c8"
+      ],
+      "teacherIds": [
+        "t14"
+      ]
     },
     {
       "id": "l97",
-      "classId": "c9",
       "subjectId": "s1",
-      "teacherId": "t11",
       "periodsPerWeek": 6,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c9"
+      ],
+      "teacherIds": [
+        "t11"
+      ]
     },
     {
       "id": "l98",
-      "classId": "c9",
       "subjectId": "s2",
-      "teacherId": "t19",
       "periodsPerWeek": 5,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c9"
+      ],
+      "teacherIds": [
+        "t19"
+      ]
     },
     {
       "id": "l99",
-      "classId": "c9",
       "subjectId": "s3",
-      "teacherId": "t13",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": true,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c9"
+      ],
+      "teacherIds": [
+        "t13"
+      ]
     },
     {
       "id": "l100",
-      "classId": "c9",
       "subjectId": "s4",
-      "teacherId": "t3",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c9"
+      ],
+      "teacherIds": [
+        "t3"
+      ]
     },
     {
       "id": "l101",
-      "classId": "c9",
       "subjectId": "s5",
-      "teacherId": "t13",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c9"
+      ],
+      "teacherIds": [
+        "t13"
+      ]
     },
     {
       "id": "l102",
-      "classId": "c9",
       "subjectId": "s6",
-      "teacherId": "t21",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c9"
+      ],
+      "teacherIds": [
+        "t21"
+      ]
     },
     {
       "id": "l103",
-      "classId": "c9",
       "subjectId": "s7",
-      "teacherId": "t28",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c9"
+      ],
+      "teacherIds": [
+        "t28"
+      ]
     },
     {
       "id": "l104",
-      "classId": "c9",
       "subjectId": "s8",
-      "teacherId": "t8",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c9"
+      ],
+      "teacherIds": [
+        "t8"
+      ]
     },
     {
       "id": "l105",
-      "classId": "c9",
       "subjectId": "s9",
-      "teacherId": "t16",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c9"
+      ],
+      "teacherIds": [
+        "t16"
+      ]
     },
     {
       "id": "l106",
-      "classId": "c9",
       "subjectId": "s10",
-      "teacherId": "t10",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c9"
+      ],
+      "teacherIds": [
+        "t10"
+      ]
     },
     {
       "id": "l107",
-      "classId": "c9",
       "subjectId": "s11",
-      "teacherId": "t17",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c9"
+      ],
+      "teacherIds": [
+        "t17"
+      ]
     },
     {
       "id": "l108",
-      "classId": "c9",
       "subjectId": "s12",
-      "teacherId": "t23",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c9"
+      ],
+      "teacherIds": [
+        "t23"
+      ]
     },
     {
       "id": "l109",
-      "classId": "c10",
       "subjectId": "s1",
-      "teacherId": "t25",
       "periodsPerWeek": 6,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c10"
+      ],
+      "teacherIds": [
+        "t25"
+      ]
     },
     {
       "id": "l110",
-      "classId": "c10",
       "subjectId": "s2",
-      "teacherId": "t19",
       "periodsPerWeek": 5,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c10"
+      ],
+      "teacherIds": [
+        "t19"
+      ]
     },
     {
       "id": "l111",
-      "classId": "c10",
       "subjectId": "s3",
-      "teacherId": "t13",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": true,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c10"
+      ],
+      "teacherIds": [
+        "t13"
+      ]
     },
     {
       "id": "l112",
-      "classId": "c10",
       "subjectId": "s4",
-      "teacherId": "t3",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c10"
+      ],
+      "teacherIds": [
+        "t3"
+      ]
     },
     {
       "id": "l113",
-      "classId": "c10",
       "subjectId": "s5",
-      "teacherId": "t13",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c10"
+      ],
+      "teacherIds": [
+        "t13"
+      ]
     },
     {
       "id": "l114",
-      "classId": "c10",
       "subjectId": "s6",
-      "teacherId": "t21",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c10"
+      ],
+      "teacherIds": [
+        "t21"
+      ]
     },
     {
       "id": "l115",
-      "classId": "c10",
       "subjectId": "s7",
-      "teacherId": "t28",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c10"
+      ],
+      "teacherIds": [
+        "t28"
+      ]
     },
     {
       "id": "l116",
-      "classId": "c10",
       "subjectId": "s8",
-      "teacherId": "t8",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c10"
+      ],
+      "teacherIds": [
+        "t8"
+      ]
     },
     {
       "id": "l117",
-      "classId": "c10",
       "subjectId": "s9",
-      "teacherId": "t16",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c10"
+      ],
+      "teacherIds": [
+        "t16"
+      ]
     },
     {
       "id": "l118",
-      "classId": "c10",
       "subjectId": "s10",
-      "teacherId": "t23",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c10"
+      ],
+      "teacherIds": [
+        "t23"
+      ]
     },
     {
       "id": "l119",
-      "classId": "c10",
       "subjectId": "s11",
-      "teacherId": "t27",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c10"
+      ],
+      "teacherIds": [
+        "t27"
+      ]
     },
     {
       "id": "l120",
-      "classId": "c10",
       "subjectId": "s12",
-      "teacherId": "t4",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c10"
+      ],
+      "teacherIds": [
+        "t4"
+      ]
     },
     {
       "id": "l121",
-      "classId": "c11",
       "subjectId": "s1",
-      "teacherId": "t4",
       "periodsPerWeek": 6,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c11"
+      ],
+      "teacherIds": [
+        "t4"
+      ]
     },
     {
       "id": "l122",
-      "classId": "c11",
       "subjectId": "s2",
-      "teacherId": "t19",
       "periodsPerWeek": 5,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c11"
+      ],
+      "teacherIds": [
+        "t19"
+      ]
     },
     {
       "id": "l123",
-      "classId": "c11",
       "subjectId": "s3",
-      "teacherId": "t13",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": true,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c11"
+      ],
+      "teacherIds": [
+        "t13"
+      ]
     },
     {
       "id": "l124",
-      "classId": "c11",
       "subjectId": "s4",
-      "teacherId": "t3",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c11"
+      ],
+      "teacherIds": [
+        "t3"
+      ]
     },
     {
       "id": "l125",
-      "classId": "c11",
       "subjectId": "s5",
-      "teacherId": "t13",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c11"
+      ],
+      "teacherIds": [
+        "t13"
+      ]
     },
     {
       "id": "l126",
-      "classId": "c11",
       "subjectId": "s6",
-      "teacherId": "t21",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c11"
+      ],
+      "teacherIds": [
+        "t21"
+      ]
     },
     {
       "id": "l127",
-      "classId": "c11",
       "subjectId": "s7",
-      "teacherId": "t28",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c11"
+      ],
+      "teacherIds": [
+        "t28"
+      ]
     },
     {
       "id": "l128",
-      "classId": "c11",
       "subjectId": "s8",
-      "teacherId": "t8",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c11"
+      ],
+      "teacherIds": [
+        "t8"
+      ]
     },
     {
       "id": "l129",
-      "classId": "c11",
       "subjectId": "s9",
-      "teacherId": "t16",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c11"
+      ],
+      "teacherIds": [
+        "t16"
+      ]
     },
     {
       "id": "l130",
-      "classId": "c11",
       "subjectId": "s10",
-      "teacherId": "t9",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c11"
+      ],
+      "teacherIds": [
+        "t9"
+      ]
     },
     {
       "id": "l131",
-      "classId": "c11",
       "subjectId": "s11",
-      "teacherId": "t10",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c11"
+      ],
+      "teacherIds": [
+        "t10"
+      ]
     },
     {
       "id": "l132",
-      "classId": "c11",
       "subjectId": "s12",
-      "teacherId": "t18",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c11"
+      ],
+      "teacherIds": [
+        "t18"
+      ]
     },
     {
       "id": "l133",
-      "classId": "c12",
       "subjectId": "s1",
-      "teacherId": "t18",
       "periodsPerWeek": 6,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c12"
+      ],
+      "teacherIds": [
+        "t18"
+      ]
     },
     {
       "id": "l134",
-      "classId": "c12",
       "subjectId": "s2",
-      "teacherId": "t19",
       "periodsPerWeek": 5,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c12"
+      ],
+      "teacherIds": [
+        "t19"
+      ]
     },
     {
       "id": "l135",
-      "classId": "c12",
       "subjectId": "s3",
-      "teacherId": "t13",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": true,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c12"
+      ],
+      "teacherIds": [
+        "t13"
+      ]
     },
     {
       "id": "l136",
-      "classId": "c12",
       "subjectId": "s4",
-      "teacherId": "t3",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c12"
+      ],
+      "teacherIds": [
+        "t3"
+      ]
     },
     {
       "id": "l137",
-      "classId": "c12",
       "subjectId": "s5",
-      "teacherId": "t13",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c12"
+      ],
+      "teacherIds": [
+        "t13"
+      ]
     },
     {
       "id": "l138",
-      "classId": "c12",
       "subjectId": "s6",
-      "teacherId": "t21",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c12"
+      ],
+      "teacherIds": [
+        "t21"
+      ]
     },
     {
       "id": "l139",
-      "classId": "c12",
       "subjectId": "s7",
-      "teacherId": "t28",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c12"
+      ],
+      "teacherIds": [
+        "t28"
+      ]
     },
     {
       "id": "l140",
-      "classId": "c12",
       "subjectId": "s8",
-      "teacherId": "t8",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c12"
+      ],
+      "teacherIds": [
+        "t8"
+      ]
     },
     {
       "id": "l141",
-      "classId": "c12",
       "subjectId": "s9",
-      "teacherId": "t16",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c12"
+      ],
+      "teacherIds": [
+        "t16"
+      ]
     },
     {
       "id": "l142",
-      "classId": "c12",
       "subjectId": "s10",
-      "teacherId": "t17",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c12"
+      ],
+      "teacherIds": [
+        "t17"
+      ]
     },
     {
       "id": "l143",
-      "classId": "c12",
       "subjectId": "s11",
-      "teacherId": "t24",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c12"
+      ],
+      "teacherIds": [
+        "t24"
+      ]
     },
     {
       "id": "l144",
-      "classId": "c12",
       "subjectId": "s12",
-      "teacherId": "t28",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c12"
+      ],
+      "teacherIds": [
+        "t28"
+      ]
     },
     {
       "id": "l145",
-      "classId": "c13",
       "subjectId": "s1",
-      "teacherId": "t1",
       "periodsPerWeek": 6,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c13"
+      ],
+      "teacherIds": [
+        "t1"
+      ]
     },
     {
       "id": "l146",
-      "classId": "c13",
       "subjectId": "s2",
-      "teacherId": "t19",
       "periodsPerWeek": 5,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c13"
+      ],
+      "teacherIds": [
+        "t19"
+      ]
     },
     {
       "id": "l147",
-      "classId": "c13",
       "subjectId": "s3",
-      "teacherId": "t13",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": true,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c13"
+      ],
+      "teacherIds": [
+        "t13"
+      ]
     },
     {
       "id": "l148",
-      "classId": "c13",
       "subjectId": "s4",
-      "teacherId": "t3",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c13"
+      ],
+      "teacherIds": [
+        "t3"
+      ]
     },
     {
       "id": "l149",
-      "classId": "c13",
       "subjectId": "s5",
-      "teacherId": "t13",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c13"
+      ],
+      "teacherIds": [
+        "t13"
+      ]
     },
     {
       "id": "l150",
-      "classId": "c13",
       "subjectId": "s6",
-      "teacherId": "t21",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c13"
+      ],
+      "teacherIds": [
+        "t21"
+      ]
     },
     {
       "id": "l151",
-      "classId": "c13",
       "subjectId": "s7",
-      "teacherId": "t28",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c13"
+      ],
+      "teacherIds": [
+        "t28"
+      ]
     },
     {
       "id": "l152",
-      "classId": "c13",
       "subjectId": "s8",
-      "teacherId": "t8",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c13"
+      ],
+      "teacherIds": [
+        "t8"
+      ]
     },
     {
       "id": "l153",
-      "classId": "c13",
       "subjectId": "s9",
-      "teacherId": "t16",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c13"
+      ],
+      "teacherIds": [
+        "t16"
+      ]
     },
     {
       "id": "l154",
-      "classId": "c13",
       "subjectId": "s10",
-      "teacherId": "t29",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c13"
+      ],
+      "teacherIds": [
+        "t29"
+      ]
     },
     {
       "id": "l155",
-      "classId": "c13",
       "subjectId": "s11",
-      "teacherId": "t2",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c13"
+      ],
+      "teacherIds": [
+        "t2"
+      ]
     },
     {
       "id": "l156",
-      "classId": "c13",
       "subjectId": "s12",
-      "teacherId": "t14",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c13"
+      ],
+      "teacherIds": [
+        "t14"
+      ]
     },
     {
       "id": "l157",
-      "classId": "c14",
       "subjectId": "s1",
-      "teacherId": "t11",
       "periodsPerWeek": 6,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c14"
+      ],
+      "teacherIds": [
+        "t11"
+      ]
     },
     {
       "id": "l158",
-      "classId": "c14",
       "subjectId": "s2",
-      "teacherId": "t19",
       "periodsPerWeek": 5,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c14"
+      ],
+      "teacherIds": [
+        "t19"
+      ]
     },
     {
       "id": "l159",
-      "classId": "c14",
       "subjectId": "s3",
-      "teacherId": "t13",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": true,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c14"
+      ],
+      "teacherIds": [
+        "t13"
+      ]
     },
     {
       "id": "l160",
-      "classId": "c14",
       "subjectId": "s4",
-      "teacherId": "t3",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c14"
+      ],
+      "teacherIds": [
+        "t3"
+      ]
     },
     {
       "id": "l161",
-      "classId": "c14",
       "subjectId": "s5",
-      "teacherId": "t13",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c14"
+      ],
+      "teacherIds": [
+        "t13"
+      ]
     },
     {
       "id": "l162",
-      "classId": "c14",
       "subjectId": "s6",
-      "teacherId": "t21",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c14"
+      ],
+      "teacherIds": [
+        "t21"
+      ]
     },
     {
       "id": "l163",
-      "classId": "c14",
       "subjectId": "s7",
-      "teacherId": "t28",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c14"
+      ],
+      "teacherIds": [
+        "t28"
+      ]
     },
     {
       "id": "l164",
-      "classId": "c14",
       "subjectId": "s8",
-      "teacherId": "t8",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c14"
+      ],
+      "teacherIds": [
+        "t8"
+      ]
     },
     {
       "id": "l165",
-      "classId": "c14",
       "subjectId": "s9",
-      "teacherId": "t16",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c14"
+      ],
+      "teacherIds": [
+        "t16"
+      ]
     },
     {
       "id": "l166",
-      "classId": "c14",
       "subjectId": "s10",
-      "teacherId": "t10",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c14"
+      ],
+      "teacherIds": [
+        "t10"
+      ]
     },
     {
       "id": "l167",
-      "classId": "c14",
       "subjectId": "s11",
-      "teacherId": "t17",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c14"
+      ],
+      "teacherIds": [
+        "t17"
+      ]
     },
     {
       "id": "l168",
-      "classId": "c14",
       "subjectId": "s12",
-      "teacherId": "t23",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c14"
+      ],
+      "teacherIds": [
+        "t23"
+      ]
     },
     {
       "id": "l169",
-      "classId": "c15",
       "subjectId": "s1",
-      "teacherId": "t25",
       "periodsPerWeek": 6,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c15"
+      ],
+      "teacherIds": [
+        "t25"
+      ]
     },
     {
       "id": "l170",
-      "classId": "c15",
       "subjectId": "s2",
-      "teacherId": "t19",
       "periodsPerWeek": 5,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c15"
+      ],
+      "teacherIds": [
+        "t19"
+      ]
     },
     {
       "id": "l171",
-      "classId": "c15",
       "subjectId": "s3",
-      "teacherId": "t13",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": true,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c15"
+      ],
+      "teacherIds": [
+        "t13"
+      ]
     },
     {
       "id": "l172",
-      "classId": "c15",
       "subjectId": "s4",
-      "teacherId": "t3",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c15"
+      ],
+      "teacherIds": [
+        "t3"
+      ]
     },
     {
       "id": "l173",
-      "classId": "c15",
       "subjectId": "s5",
-      "teacherId": "t13",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c15"
+      ],
+      "teacherIds": [
+        "t13"
+      ]
     },
     {
       "id": "l174",
-      "classId": "c15",
       "subjectId": "s6",
-      "teacherId": "t21",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c15"
+      ],
+      "teacherIds": [
+        "t21"
+      ]
     },
     {
       "id": "l175",
-      "classId": "c15",
       "subjectId": "s7",
-      "teacherId": "t28",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c15"
+      ],
+      "teacherIds": [
+        "t28"
+      ]
     },
     {
       "id": "l176",
-      "classId": "c15",
       "subjectId": "s8",
-      "teacherId": "t8",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c15"
+      ],
+      "teacherIds": [
+        "t8"
+      ]
     },
     {
       "id": "l177",
-      "classId": "c15",
       "subjectId": "s9",
-      "teacherId": "t16",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c15"
+      ],
+      "teacherIds": [
+        "t16"
+      ]
     },
     {
       "id": "l178",
-      "classId": "c15",
       "subjectId": "s10",
-      "teacherId": "t23",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c15"
+      ],
+      "teacherIds": [
+        "t23"
+      ]
     },
     {
       "id": "l179",
-      "classId": "c15",
       "subjectId": "s11",
-      "teacherId": "t27",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c15"
+      ],
+      "teacherIds": [
+        "t27"
+      ]
     },
     {
       "id": "l180",
-      "classId": "c15",
       "subjectId": "s12",
-      "teacherId": "t4",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c15"
+      ],
+      "teacherIds": [
+        "t4"
+      ]
     },
     {
       "id": "l181",
-      "classId": "c16",
       "subjectId": "s1",
-      "teacherId": "t4",
       "periodsPerWeek": 6,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c16"
+      ],
+      "teacherIds": [
+        "t4"
+      ]
     },
     {
       "id": "l182",
-      "classId": "c16",
       "subjectId": "s2",
-      "teacherId": "t19",
       "periodsPerWeek": 5,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c16"
+      ],
+      "teacherIds": [
+        "t19"
+      ]
     },
     {
       "id": "l183",
-      "classId": "c16",
       "subjectId": "s3",
-      "teacherId": "t13",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": true,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c16"
+      ],
+      "teacherIds": [
+        "t13"
+      ]
     },
     {
       "id": "l184",
-      "classId": "c16",
       "subjectId": "s4",
-      "teacherId": "t3",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c16"
+      ],
+      "teacherIds": [
+        "t3"
+      ]
     },
     {
       "id": "l185",
-      "classId": "c16",
       "subjectId": "s5",
-      "teacherId": "t13",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c16"
+      ],
+      "teacherIds": [
+        "t13"
+      ]
     },
     {
       "id": "l186",
-      "classId": "c16",
       "subjectId": "s6",
-      "teacherId": "t21",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c16"
+      ],
+      "teacherIds": [
+        "t21"
+      ]
     },
     {
       "id": "l187",
-      "classId": "c16",
       "subjectId": "s7",
-      "teacherId": "t28",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c16"
+      ],
+      "teacherIds": [
+        "t28"
+      ]
     },
     {
       "id": "l188",
-      "classId": "c16",
       "subjectId": "s8",
-      "teacherId": "t8",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c16"
+      ],
+      "teacherIds": [
+        "t8"
+      ]
     },
     {
       "id": "l189",
-      "classId": "c16",
       "subjectId": "s9",
-      "teacherId": "t16",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c16"
+      ],
+      "teacherIds": [
+        "t16"
+      ]
     },
     {
       "id": "l190",
-      "classId": "c16",
       "subjectId": "s10",
-      "teacherId": "t9",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c16"
+      ],
+      "teacherIds": [
+        "t9"
+      ]
     },
     {
       "id": "l191",
-      "classId": "c16",
       "subjectId": "s11",
-      "teacherId": "t10",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c16"
+      ],
+      "teacherIds": [
+        "t10"
+      ]
     },
     {
       "id": "l192",
-      "classId": "c16",
       "subjectId": "s12",
-      "teacherId": "t18",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c16"
+      ],
+      "teacherIds": [
+        "t18"
+      ]
     },
     {
       "id": "l193",
-      "classId": "c17",
       "subjectId": "s1",
-      "teacherId": "t18",
       "periodsPerWeek": 6,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c17"
+      ],
+      "teacherIds": [
+        "t18"
+      ]
     },
     {
       "id": "l194",
-      "classId": "c17",
       "subjectId": "s2",
-      "teacherId": "t19",
       "periodsPerWeek": 5,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c17"
+      ],
+      "teacherIds": [
+        "t19"
+      ]
     },
     {
       "id": "l195",
-      "classId": "c17",
       "subjectId": "s3",
-      "teacherId": "t13",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": true,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c17"
+      ],
+      "teacherIds": [
+        "t13"
+      ]
     },
     {
       "id": "l196",
-      "classId": "c17",
       "subjectId": "s4",
-      "teacherId": "t3",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c17"
+      ],
+      "teacherIds": [
+        "t3"
+      ]
     },
     {
       "id": "l197",
-      "classId": "c17",
       "subjectId": "s5",
-      "teacherId": "t13",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c17"
+      ],
+      "teacherIds": [
+        "t13"
+      ]
     },
     {
       "id": "l198",
-      "classId": "c17",
       "subjectId": "s6",
-      "teacherId": "t21",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c17"
+      ],
+      "teacherIds": [
+        "t21"
+      ]
     },
     {
       "id": "l199",
-      "classId": "c17",
       "subjectId": "s7",
-      "teacherId": "t28",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c17"
+      ],
+      "teacherIds": [
+        "t28"
+      ]
     },
     {
       "id": "l200",
-      "classId": "c17",
       "subjectId": "s8",
-      "teacherId": "t8",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c17"
+      ],
+      "teacherIds": [
+        "t8"
+      ]
     },
     {
       "id": "l201",
-      "classId": "c17",
       "subjectId": "s9",
-      "teacherId": "t16",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c17"
+      ],
+      "teacherIds": [
+        "t16"
+      ]
     },
     {
       "id": "l202",
-      "classId": "c17",
       "subjectId": "s10",
-      "teacherId": "t17",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c17"
+      ],
+      "teacherIds": [
+        "t17"
+      ]
     },
     {
       "id": "l203",
-      "classId": "c17",
       "subjectId": "s11",
-      "teacherId": "t24",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c17"
+      ],
+      "teacherIds": [
+        "t24"
+      ]
     },
     {
       "id": "l204",
-      "classId": "c17",
       "subjectId": "s12",
-      "teacherId": "t28",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c17"
+      ],
+      "teacherIds": [
+        "t28"
+      ]
     },
     {
       "id": "l205",
-      "classId": "c18",
       "subjectId": "s1",
-      "teacherId": "t1",
       "periodsPerWeek": 6,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c18"
+      ],
+      "teacherIds": [
+        "t1"
+      ]
     },
     {
       "id": "l206",
-      "classId": "c18",
       "subjectId": "s2",
-      "teacherId": "t19",
       "periodsPerWeek": 5,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c18"
+      ],
+      "teacherIds": [
+        "t19"
+      ]
     },
     {
       "id": "l207",
-      "classId": "c18",
       "subjectId": "s3",
-      "teacherId": "t13",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": true,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c18"
+      ],
+      "teacherIds": [
+        "t13"
+      ]
     },
     {
       "id": "l208",
-      "classId": "c18",
       "subjectId": "s4",
-      "teacherId": "t3",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c18"
+      ],
+      "teacherIds": [
+        "t3"
+      ]
     },
     {
       "id": "l209",
-      "classId": "c18",
       "subjectId": "s5",
-      "teacherId": "t13",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c18"
+      ],
+      "teacherIds": [
+        "t13"
+      ]
     },
     {
       "id": "l210",
-      "classId": "c18",
       "subjectId": "s6",
-      "teacherId": "t21",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c18"
+      ],
+      "teacherIds": [
+        "t21"
+      ]
     },
     {
       "id": "l211",
-      "classId": "c18",
       "subjectId": "s7",
-      "teacherId": "t28",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c18"
+      ],
+      "teacherIds": [
+        "t28"
+      ]
     },
     {
       "id": "l212",
-      "classId": "c18",
       "subjectId": "s8",
-      "teacherId": "t8",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c18"
+      ],
+      "teacherIds": [
+        "t8"
+      ]
     },
     {
       "id": "l213",
-      "classId": "c18",
       "subjectId": "s9",
-      "teacherId": "t16",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c18"
+      ],
+      "teacherIds": [
+        "t16"
+      ]
     },
     {
       "id": "l214",
-      "classId": "c18",
       "subjectId": "s10",
-      "teacherId": "t29",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c18"
+      ],
+      "teacherIds": [
+        "t29"
+      ]
     },
     {
       "id": "l215",
-      "classId": "c18",
       "subjectId": "s11",
-      "teacherId": "t2",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c18"
+      ],
+      "teacherIds": [
+        "t2"
+      ]
     },
     {
       "id": "l216",
-      "classId": "c18",
       "subjectId": "s12",
-      "teacherId": "t14",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c18"
+      ],
+      "teacherIds": [
+        "t14"
+      ]
     },
     {
       "id": "l217",
-      "classId": "c19",
       "subjectId": "s1",
-      "teacherId": "t11",
       "periodsPerWeek": 6,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c19"
+      ],
+      "teacherIds": [
+        "t11"
+      ]
     },
     {
       "id": "l218",
-      "classId": "c19",
       "subjectId": "s2",
-      "teacherId": "t19",
       "periodsPerWeek": 5,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c19"
+      ],
+      "teacherIds": [
+        "t19"
+      ]
     },
     {
       "id": "l219",
-      "classId": "c19",
       "subjectId": "s3",
-      "teacherId": "t13",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": true,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c19"
+      ],
+      "teacherIds": [
+        "t13"
+      ]
     },
     {
       "id": "l220",
-      "classId": "c19",
       "subjectId": "s4",
-      "teacherId": "t3",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c19"
+      ],
+      "teacherIds": [
+        "t3"
+      ]
     },
     {
       "id": "l221",
-      "classId": "c19",
       "subjectId": "s5",
-      "teacherId": "t13",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c19"
+      ],
+      "teacherIds": [
+        "t13"
+      ]
     },
     {
       "id": "l222",
-      "classId": "c19",
       "subjectId": "s6",
-      "teacherId": "t21",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c19"
+      ],
+      "teacherIds": [
+        "t21"
+      ]
     },
     {
       "id": "l223",
-      "classId": "c19",
       "subjectId": "s7",
-      "teacherId": "t28",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c19"
+      ],
+      "teacherIds": [
+        "t28"
+      ]
     },
     {
       "id": "l224",
-      "classId": "c19",
       "subjectId": "s8",
-      "teacherId": "t8",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c19"
+      ],
+      "teacherIds": [
+        "t8"
+      ]
     },
     {
       "id": "l225",
-      "classId": "c19",
       "subjectId": "s9",
-      "teacherId": "t16",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c19"
+      ],
+      "teacherIds": [
+        "t16"
+      ]
     },
     {
       "id": "l226",
-      "classId": "c19",
       "subjectId": "s10",
-      "teacherId": "t10",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c19"
+      ],
+      "teacherIds": [
+        "t10"
+      ]
     },
     {
       "id": "l227",
-      "classId": "c19",
       "subjectId": "s11",
-      "teacherId": "t17",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c19"
+      ],
+      "teacherIds": [
+        "t17"
+      ]
     },
     {
       "id": "l228",
-      "classId": "c19",
       "subjectId": "s12",
-      "teacherId": "t23",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c19"
+      ],
+      "teacherIds": [
+        "t23"
+      ]
     },
     {
       "id": "l229",
-      "classId": "c20",
       "subjectId": "s1",
-      "teacherId": "t25",
       "periodsPerWeek": 6,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c20"
+      ],
+      "teacherIds": [
+        "t25"
+      ]
     },
     {
       "id": "l230",
-      "classId": "c20",
       "subjectId": "s2",
-      "teacherId": "t19",
       "periodsPerWeek": 5,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c20"
+      ],
+      "teacherIds": [
+        "t19"
+      ]
     },
     {
       "id": "l231",
-      "classId": "c20",
       "subjectId": "s3",
-      "teacherId": "t13",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": true,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c20"
+      ],
+      "teacherIds": [
+        "t13"
+      ]
     },
     {
       "id": "l232",
-      "classId": "c20",
       "subjectId": "s4",
-      "teacherId": "t3",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c20"
+      ],
+      "teacherIds": [
+        "t3"
+      ]
     },
     {
       "id": "l233",
-      "classId": "c20",
       "subjectId": "s5",
-      "teacherId": "t13",
       "periodsPerWeek": 4,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c20"
+      ],
+      "teacherIds": [
+        "t13"
+      ]
     },
     {
       "id": "l234",
-      "classId": "c20",
       "subjectId": "s6",
-      "teacherId": "t21",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": true
+      "roomRequired": true,
+      "classIds": [
+        "c20"
+      ],
+      "teacherIds": [
+        "t21"
+      ]
     },
     {
       "id": "l235",
-      "classId": "c20",
       "subjectId": "s7",
-      "teacherId": "t28",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c20"
+      ],
+      "teacherIds": [
+        "t28"
+      ]
     },
     {
       "id": "l236",
-      "classId": "c20",
       "subjectId": "s8",
-      "teacherId": "t8",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c20"
+      ],
+      "teacherIds": [
+        "t8"
+      ]
     },
     {
       "id": "l237",
-      "classId": "c20",
       "subjectId": "s9",
-      "teacherId": "t16",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c20"
+      ],
+      "teacherIds": [
+        "t16"
+      ]
     },
     {
       "id": "l238",
-      "classId": "c20",
       "subjectId": "s10",
-      "teacherId": "t23",
       "periodsPerWeek": 3,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c20"
+      ],
+      "teacherIds": [
+        "t23"
+      ]
     },
     {
       "id": "l239",
-      "classId": "c20",
       "subjectId": "s11",
-      "teacherId": "t27",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c20"
+      ],
+      "teacherIds": [
+        "t27"
+      ]
     },
     {
       "id": "l240",
-      "classId": "c20",
       "subjectId": "s12",
-      "teacherId": "t4",
       "periodsPerWeek": 2,
       "periodsPerDay": 1,
       "doubleLesson": false,
-      "roomRequired": false
+      "roomRequired": false,
+      "classIds": [
+        "c20"
+      ],
+      "teacherIds": [
+        "t4"
+      ]
     }
   ],
   "settings": {
