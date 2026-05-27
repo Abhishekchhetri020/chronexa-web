@@ -2635,14 +2635,15 @@ function backtrack(model, state, unassigned, unassignedCount, ctx) {
     const mark = ctx.undoStack.length;
     applyPlacement(model, state, selected, slot, room, ctx.undoStack);
 
-    // MAC: after placement, check if any neighbor's domain is wiped out.
-    // If so, this placement is futile — undo immediately and try next value.
-    const macFailure = macPropagate(model, state, selected);
-    if (macFailure !== null) {
-      undoToMark(model, state, ctx.undoStack, mark);
-      ctx.macPruneCount = (ctx.macPruneCount || 0) + 1;
-      continue;  // skip dead subtree
-    }
+    // MAC DISABLED: Mac propagation proved too aggressive for the multi-phase
+    // solver architecture. It prevented placements that the iterative repair
+    // phase would have resolved later. Re-enable with smarter heuristics if needed.
+    // const macFailure = macPropagate(model, state, selected);
+    // if (macFailure !== null) {
+    //   undoToMark(model, state, ctx.undoStack, mark);
+    //   ctx.macPruneCount = (ctx.macPruneCount || 0) + 1;
+    //   continue;
+    // }
 
     ctx.depth += 1;
     backtrack(model, state, unassigned, reducedCount, ctx);
@@ -3723,27 +3724,35 @@ export function solve(school, options = {}) {
     console.log('[SolverLearning] Loaded', learning.getStats());
   }
 
-  // Luby restart sequence — replaces fixed branch count with adaptive restarts.
-  // Base unit scales with school size: small schools need fewer nodes per restart,
-  // large schools need more to make progress before restarting.
+  // Adaptive restart strategy:
+  // - Small schools (≤100): Luby restarts — short explorations find good solutions fast
+  // - Medium schools (101-400): Luby with higher base unit
+  // - Large schools (400+): Traditional multi-branch — each run needs full budget to make progress
+  //   (Luby restarts throw away large partial solutions on dense instances)
+  const useLubyRestarts = model.lessonCount <= 400;
+  const fixedBranches = model.lessonCount <= 6 ? 1 :
+                        model.lessonCount >= 1000 ? 8 :
+                        model.lessonCount >= 500 ? 6 : 4;
+
   const lubyBaseUnit = model.lessonCount <= 50 ? 2000 :
-                       model.lessonCount <= 200 ? 5000 :
-                       model.lessonCount <= 500 ? 10000 : 20000;
-  // Max restarts: cap so we don't waste time on too many micro-restarts.
-  // After the 8th Luby value (8192 nodes), remaining budget goes to the last run.
-  const maxRestarts = 16;
-  const remainingBtMs = Math.max(0, deadlineMs - performance.now());
+                       model.lessonCount <= 200 ? 5000 : 10000;
+  const maxRestarts = useLubyRestarts ? 16 : fixedBranches;
 
   for (let run = 0; run < maxRestarts; run++) {
     if (performance.now() >= deadlineMs) { anyTimedOut = true; break; }
     // Stop early if we already have a full solution with zero hard conflicts
     if (globalBest && globalBest.assignedEntries === unassignedCount0 && globalBest.softScore > -1) break;
 
-    const lubyVal = lubySequence(run);
-    const restartBudget = lubyVal * lubyBaseUnit;
-    // Last restart: use all remaining time budget (no restart limit)
+    let runBudget;
     const isLastRun = (run === maxRestarts - 1) || (performance.now() > deadlineMs - 3000);
-    const runBudget = isLastRun ? -1 : restartBudget;  // -1 = unlimited
+    if (useLubyRestarts) {
+      const lubyVal = lubySequence(run);
+      const restartBudget = lubyVal * lubyBaseUnit;
+      runBudget = isLastRun ? -1 : restartBudget;
+    } else {
+      // Traditional branches: no node budget, each run gets full time
+      runBudget = -1;
+    }
 
     const state = makeState(model);
     state.bestSoftScore = -Number.MAX_SAFE_INTEGER;
