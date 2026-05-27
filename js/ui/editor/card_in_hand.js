@@ -49,47 +49,53 @@
     const classShort = (lesson.classIds || []).map(c => S._idx.classById[c])
       .filter(Boolean).map(c => c.name).join(", ");
       
+    // Always build the ghost!
+    const hue = subjectHue(subj);
+    ghost = document.createElement("div");
+    ghost.className = "chrx-card-ghost";
+    ghost.setAttribute("aria-hidden", "true");
+    ghost.innerHTML = `<div class="chrx-vkarta" style="--chrx-card-hue:${hue}">
+      <div class="chrx-vk-line1">${esc(subjShort)}</div>
+      <div class="chrx-vk-line2">${esc(classShort)}</div>
+      <div class="chrx-vk-line3">${esc(teacherShort)}</div></div>`;
+    document.body.appendChild(ghost);
+    document.body.classList.add("chrx-card-in-hand");
+    showCarryPanel(S, lesson, subjShort, classShort, teacherShort);
+
+    // Sticky banner so users see they're carrying a card.
+    let banner = document.getElementById("chrx-carry-banner");
+    if (!banner) {
+      banner = document.createElement("div");
+      banner.id = "chrx-carry-banner";
+      banner.style.cssText = "position:fixed;top:8px;left:50%;transform:translateX(-50%);background:rgba(15,23,42,.92);color:#fff;padding:8px 18px;border-radius:999px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;font-weight:500;box-shadow:0 8px 24px rgba(15,23,42,.35);z-index:10001;pointer-events:none;display:flex;align-items:center;gap:8px;";
+      document.body.appendChild(banner);
+    }
+    banner.innerHTML = `<span style="font-size:16px;line-height:1">✋</span><span><strong>${esc(subjShort)}</strong>${teacherShort ? ' · ' + esc(teacherShort) : ''}${classShort ? ' · ' + esc(classShort) : ''}</span><span style="opacity:.7;font-size:11px;margin-left:6px">click empty slot to place · Esc to cancel</span>`;
+
+    // Pulse the origin card briefly so the user sees "lifted".
+    if (!d.fromPending && d.day != null && d.period != null) {
+      const origin = document.querySelector(`.chrx-editor .chrx-slot[data-day="${d.day}"][data-period="${d.period}"]`);
+      if (origin) {
+        origin.classList.add("chrx-slot-pickup-pulse");
+        setTimeout(() => origin.classList.remove("chrx-slot-pickup-pulse"), 600);
+      }
+    }
+
+    const w = ghost.offsetWidth || 96, h = ghost.offsetHeight || 48;
+    dx = (w / 2) | 0; dy = (h / 2) | 0;
+    px = (typeof d.sourceX === "number") ? d.sourceX : (window.event ? window.event.clientX : 0);
+    py = (typeof d.sourceY === "number") ? d.sourceY : (window.event ? window.event.clientY : 0);
+    apply();
+    paintAllSlots();
+    
+    // Always listen to keydown and mousemove
+    document.addEventListener("mousemove", onMove, true);
+    document.addEventListener("keydown", onKey, true);
+    // Listen to touchmove for touchscreen support
+    document.addEventListener("touchmove", onTouchMove, { passive: true });
+
     if (mode === "drag") {
-      const hue = subjectHue(subj);
-      ghost = document.createElement("div");
-      ghost.className = "chrx-card-ghost";
-      ghost.setAttribute("aria-hidden", "true");
-      ghost.innerHTML = `<div class="chrx-vkarta" style="--chrx-card-hue:${hue}">
-        <div class="chrx-vk-line1">${esc(subjShort)}</div>
-        <div class="chrx-vk-line2">${esc(classShort)}</div>
-        <div class="chrx-vk-line3">${esc(teacherShort)}</div></div>`;
-      document.body.appendChild(ghost);
-      document.body.classList.add("chrx-card-in-hand");
-      showCarryPanel(S, lesson, subjShort, classShort, teacherShort);
-
-      // Sticky banner so users see they're carrying a card.
-      let banner = document.getElementById("chrx-carry-banner");
-      if (!banner) {
-        banner = document.createElement("div");
-        banner.id = "chrx-carry-banner";
-        banner.style.cssText = "position:fixed;top:8px;left:50%;transform:translateX(-50%);background:rgba(15,23,42,.92);color:#fff;padding:8px 18px;border-radius:999px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;font-weight:500;box-shadow:0 8px 24px rgba(15,23,42,.35);z-index:10001;pointer-events:none;display:flex;align-items:center;gap:8px;";
-        document.body.appendChild(banner);
-      }
-      banner.innerHTML = `<span style="font-size:16px;line-height:1">✋</span><span><strong>${esc(subjShort)}</strong>${teacherShort ? ' · ' + esc(teacherShort) : ''}${classShort ? ' · ' + esc(classShort) : ''}</span><span style="opacity:.7;font-size:11px;margin-left:6px">click empty slot to place · Esc to cancel</span>`;
-
-      // Pulse the origin card briefly so the user sees "I picked it up".
-      if (!d.fromPending && d.day != null && d.period != null) {
-        const origin = document.querySelector(`.chrx-editor .chrx-slot[data-day="${d.day}"][data-period="${d.period}"]`);
-        if (origin) {
-          origin.classList.add("chrx-slot-pickup-pulse");
-          setTimeout(() => origin.classList.remove("chrx-slot-pickup-pulse"), 600);
-        }
-      }
-
-      const w = ghost.offsetWidth || 60, h = ghost.offsetHeight || 24;
-      dx = (w / 2) | 0; dy = (h / 2) | 0;
-      px = (typeof d.sourceX === "number") ? d.sourceX : (window.event ? window.event.clientX : 0);
-      py = (typeof d.sourceY === "number") ? d.sourceY : (window.event ? window.event.clientY : 0);
-      apply();
-      paintAllSlots();
-      document.addEventListener("mousemove", onMove, true);
       document.addEventListener("mouseup", onUp, true);
-      document.addEventListener("keydown", onKey, true);
     } else {
       // Click mode!
       // Add selection style to the card element
@@ -106,8 +112,6 @@
       
       // Paint highlights instantly!
       paintHighlightsForClickMode();
-      
-      document.addEventListener("keydown", onKey, true);
     }
   }
 
@@ -229,6 +233,16 @@
     px = e.clientX; py = e.clientY;
     if (dragTooltipEl && dragTooltipEl.style.display !== "none") {
       positionDragTooltip(e.clientX, e.clientY);
+    }
+    if (!rafId) rafId = requestAnimationFrame(flush);
+  }
+  
+  function onTouchMove(e) {
+    if (!ghost || !e.touches || !e.touches[0]) return;
+    const t = e.touches[0];
+    px = t.clientX; py = t.clientY;
+    if (dragTooltipEl && dragTooltipEl.style.display !== "none") {
+      positionDragTooltip(t.clientX, t.clientY);
     }
     if (!rafId) rafId = requestAnimationFrame(flush);
   }
@@ -548,6 +562,7 @@
   function cleanup() {
     document.removeEventListener("mousemove", onMove, true);
     document.removeEventListener("mouseup", onUp, true);
+    document.removeEventListener("touchmove", onTouchMove, { passive: true });
     document.removeEventListener("keydown", onKey, true);
     if (lastSlot) { lastSlot.removeAttribute("data-validity"); lastSlot.removeAttribute("title"); }
     lastSlot = null;

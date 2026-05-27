@@ -92,9 +92,12 @@
   }
 
   function buildTopbar() {
+    const hamburgerSvg = el("span", { style: "display:inline-flex; align-items:center; justify-content:center; width:16px; height:16px;" });
+    hamburgerSvg.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>';
+
     const sideBtn = el("button", { class: "chrx-shell-toggle", "data-toggle": "side",
       title: "Toggle sidebar  [", "aria-label": "Toggle sidebar",
-      onclick: () => togglePanel("side") }, "[");
+      onclick: () => togglePanel("side") }, hamburgerSvg);
 
     const crumbs = el("div", { class: "chrx-crumbs", id: "chrx-crumbs" });
     crumbs.appendChild(el("span", null, "Untitled"));
@@ -123,18 +126,13 @@
       title: "Fullscreen editor  F (Esc to exit)", "aria-label": "Toggle fullscreen editor",
       onclick: () => togglePanel("fs") }, "⛶");
 
-    const railBtn = el("button", { class: "chrx-shell-toggle", "data-toggle": "rail",
-      title: "Toggle right rail  ]", "aria-label": "Toggle right rail",
-      onclick: () => togglePanel("rail") }, "]");
-
     return el("header", { class: "chrx-topbar" },
       sideBtn,
       crumbs,
       el("div", { class: "chrx-topbar__spacer" }),
       search,
       actions,
-      fsBtn,
-      railBtn);
+      fsBtn);
   }
 
   function buildRail() {
@@ -396,7 +394,6 @@
     shell.appendChild(buildSidebar());
     const main = el("main", { class: "chrx-main", id: "chrx-main" });
     shell.appendChild(main);
-    shell.appendChild(buildRail());
     shell.appendChild(buildStatus());
 
     body.insertBefore(shell, body.firstChild);

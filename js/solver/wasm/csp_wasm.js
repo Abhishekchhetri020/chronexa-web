@@ -22,13 +22,15 @@ async function loadWasm() {
     const url = new URL("./canplace.wasm", import.meta.url);
     // Node-side: read the .wasm directly. Browser-side: fetch().
     let buf;
-    if (typeof fetch === "function") {
+    const isNode = typeof process !== "undefined" && process.versions && process.versions.node;
+    if (isNode) {
+      const fs = await import("node:fs/promises");
+      const { fileURLToPath } = await import("node:url");
+      buf = (await fs.readFile(fileURLToPath(url))).buffer;
+    } else {
       const resp = await fetch(url);
       if (!resp.ok) throw new Error("canplace.wasm not found");
       buf = await resp.arrayBuffer();
-    } else {
-      const fs = await import("node:fs/promises");
-      buf = (await fs.readFile(url.pathname)).buffer;
     }
     const mod  = await WebAssembly.instantiate(buf, { 
       env: {

@@ -105,26 +105,23 @@ body::before{
 /* ───── Studio shell layout ───────────────────────────────── */
 .chrx-shell{
   position:relative; z-index:2; display:grid;
-  grid-template-columns:216px 1fr 280px;
+  grid-template-columns:216px 1fr;
   grid-template-rows:56px 1fr 36px;
   grid-template-areas:
-    "logo  topbar topbar"
-    "side  main   rail"
-    "side  status status";
+    "logo  topbar"
+    "side  main"
+    "side  status";
   height:100vh;
 }
 .chrx-shell--no-rail{grid-template-columns:216px 1fr}
 .chrx-shell--no-rail{grid-template-areas:"logo topbar" "side main" "side status"}
 
-/* [ and ] keys toggle these to claw back editor width on small viewports */
-.chrx-shell.is-side-hidden{grid-template-columns:0 1fr 280px}
+/* Key toggle to claw back editor width on small viewports */
+.chrx-shell.is-side-hidden{grid-template-columns:0 1fr}
 .chrx-shell.is-side-hidden .chrx-sidebar,
 .chrx-shell.is-side-hidden .chrx-wordmark{display:none}
-.chrx-shell.is-side-hidden{grid-template-areas:"topbar topbar topbar" "main main rail" "status status status"}
-.chrx-shell.is-rail-hidden{grid-template-columns:216px 1fr 0}
-.chrx-shell.is-rail-hidden .chrx-rail{display:none}
-.chrx-shell.is-side-hidden.is-rail-hidden{grid-template-columns:0 1fr 0}
-.chrx-shell.is-side-hidden.is-rail-hidden{grid-template-areas:"topbar topbar topbar" "main main main" "status status status"}
+.chrx-shell.is-side-hidden{grid-template-areas:"topbar topbar" "main main" "status status"}
+.chrx-rail{display:none !important}
 
 /* Hide the legacy dark-navy header — its Test/Generate buttons duplicate the
    topbar; data-search + lang-toggle migration to the new shell is TODO. */

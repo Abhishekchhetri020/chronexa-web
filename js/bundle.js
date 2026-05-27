@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-27T12:20:21Z
+/* Chronexa bundle — generated 2026-05-27T15:04:30Z
  *      164 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -9234,9 +9234,12 @@ window.Inspector = (function () {
   }
 
   function buildTopbar() {
+    const hamburgerSvg = el("span", { style: "display:inline-flex; align-items:center; justify-content:center; width:16px; height:16px;" });
+    hamburgerSvg.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>';
+
     const sideBtn = el("button", { class: "chrx-shell-toggle", "data-toggle": "side",
       title: "Toggle sidebar  [", "aria-label": "Toggle sidebar",
-      onclick: () => togglePanel("side") }, "[");
+      onclick: () => togglePanel("side") }, hamburgerSvg);
 
     const crumbs = el("div", { class: "chrx-crumbs", id: "chrx-crumbs" });
     crumbs.appendChild(el("span", null, "Untitled"));
@@ -9265,18 +9268,13 @@ window.Inspector = (function () {
       title: "Fullscreen editor  F (Esc to exit)", "aria-label": "Toggle fullscreen editor",
       onclick: () => togglePanel("fs") }, "⛶");
 
-    const railBtn = el("button", { class: "chrx-shell-toggle", "data-toggle": "rail",
-      title: "Toggle right rail  ]", "aria-label": "Toggle right rail",
-      onclick: () => togglePanel("rail") }, "]");
-
     return el("header", { class: "chrx-topbar" },
       sideBtn,
       crumbs,
       el("div", { class: "chrx-topbar__spacer" }),
       search,
       actions,
-      fsBtn,
-      railBtn);
+      fsBtn);
   }
 
   function buildRail() {
@@ -9538,7 +9536,6 @@ window.Inspector = (function () {
     shell.appendChild(buildSidebar());
     const main = el("main", { class: "chrx-main", id: "chrx-main" });
     shell.appendChild(main);
-    shell.appendChild(buildRail());
     shell.appendChild(buildStatus());
 
     body.insertBefore(shell, body.firstChild);
@@ -16652,47 +16649,53 @@ window.PendingStrip = (function () {
     const classShort = (lesson.classIds || []).map(c => S._idx.classById[c])
       .filter(Boolean).map(c => c.name).join(", ");
       
+    // Always build the ghost!
+    const hue = subjectHue(subj);
+    ghost = document.createElement("div");
+    ghost.className = "chrx-card-ghost";
+    ghost.setAttribute("aria-hidden", "true");
+    ghost.innerHTML = `<div class="chrx-vkarta" style="--chrx-card-hue:${hue}">
+      <div class="chrx-vk-line1">${esc(subjShort)}</div>
+      <div class="chrx-vk-line2">${esc(classShort)}</div>
+      <div class="chrx-vk-line3">${esc(teacherShort)}</div></div>`;
+    document.body.appendChild(ghost);
+    document.body.classList.add("chrx-card-in-hand");
+    showCarryPanel(S, lesson, subjShort, classShort, teacherShort);
+
+    // Sticky banner so users see they're carrying a card.
+    let banner = document.getElementById("chrx-carry-banner");
+    if (!banner) {
+      banner = document.createElement("div");
+      banner.id = "chrx-carry-banner";
+      banner.style.cssText = "position:fixed;top:8px;left:50%;transform:translateX(-50%);background:rgba(15,23,42,.92);color:#fff;padding:8px 18px;border-radius:999px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;font-weight:500;box-shadow:0 8px 24px rgba(15,23,42,.35);z-index:10001;pointer-events:none;display:flex;align-items:center;gap:8px;";
+      document.body.appendChild(banner);
+    }
+    banner.innerHTML = `<span style="font-size:16px;line-height:1">✋</span><span><strong>${esc(subjShort)}</strong>${teacherShort ? ' · ' + esc(teacherShort) : ''}${classShort ? ' · ' + esc(classShort) : ''}</span><span style="opacity:.7;font-size:11px;margin-left:6px">click empty slot to place · Esc to cancel</span>`;
+
+    // Pulse the origin card briefly so the user sees "lifted".
+    if (!d.fromPending && d.day != null && d.period != null) {
+      const origin = document.querySelector(`.chrx-editor .chrx-slot[data-day="${d.day}"][data-period="${d.period}"]`);
+      if (origin) {
+        origin.classList.add("chrx-slot-pickup-pulse");
+        setTimeout(() => origin.classList.remove("chrx-slot-pickup-pulse"), 600);
+      }
+    }
+
+    const w = ghost.offsetWidth || 96, h = ghost.offsetHeight || 48;
+    dx = (w / 2) | 0; dy = (h / 2) | 0;
+    px = (typeof d.sourceX === "number") ? d.sourceX : (window.event ? window.event.clientX : 0);
+    py = (typeof d.sourceY === "number") ? d.sourceY : (window.event ? window.event.clientY : 0);
+    apply();
+    paintAllSlots();
+    
+    // Always listen to keydown and mousemove
+    document.addEventListener("mousemove", onMove, true);
+    document.addEventListener("keydown", onKey, true);
+    // Listen to touchmove for touchscreen support
+    document.addEventListener("touchmove", onTouchMove, { passive: true });
+
     if (mode === "drag") {
-      const hue = subjectHue(subj);
-      ghost = document.createElement("div");
-      ghost.className = "chrx-card-ghost";
-      ghost.setAttribute("aria-hidden", "true");
-      ghost.innerHTML = `<div class="chrx-vkarta" style="--chrx-card-hue:${hue}">
-        <div class="chrx-vk-line1">${esc(subjShort)}</div>
-        <div class="chrx-vk-line2">${esc(classShort)}</div>
-        <div class="chrx-vk-line3">${esc(teacherShort)}</div></div>`;
-      document.body.appendChild(ghost);
-      document.body.classList.add("chrx-card-in-hand");
-      showCarryPanel(S, lesson, subjShort, classShort, teacherShort);
-
-      // Sticky banner so users see they're carrying a card.
-      let banner = document.getElementById("chrx-carry-banner");
-      if (!banner) {
-        banner = document.createElement("div");
-        banner.id = "chrx-carry-banner";
-        banner.style.cssText = "position:fixed;top:8px;left:50%;transform:translateX(-50%);background:rgba(15,23,42,.92);color:#fff;padding:8px 18px;border-radius:999px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;font-weight:500;box-shadow:0 8px 24px rgba(15,23,42,.35);z-index:10001;pointer-events:none;display:flex;align-items:center;gap:8px;";
-        document.body.appendChild(banner);
-      }
-      banner.innerHTML = `<span style="font-size:16px;line-height:1">✋</span><span><strong>${esc(subjShort)}</strong>${teacherShort ? ' · ' + esc(teacherShort) : ''}${classShort ? ' · ' + esc(classShort) : ''}</span><span style="opacity:.7;font-size:11px;margin-left:6px">click empty slot to place · Esc to cancel</span>`;
-
-      // Pulse the origin card briefly so the user sees "I picked it up".
-      if (!d.fromPending && d.day != null && d.period != null) {
-        const origin = document.querySelector(`.chrx-editor .chrx-slot[data-day="${d.day}"][data-period="${d.period}"]`);
-        if (origin) {
-          origin.classList.add("chrx-slot-pickup-pulse");
-          setTimeout(() => origin.classList.remove("chrx-slot-pickup-pulse"), 600);
-        }
-      }
-
-      const w = ghost.offsetWidth || 60, h = ghost.offsetHeight || 24;
-      dx = (w / 2) | 0; dy = (h / 2) | 0;
-      px = (typeof d.sourceX === "number") ? d.sourceX : (window.event ? window.event.clientX : 0);
-      py = (typeof d.sourceY === "number") ? d.sourceY : (window.event ? window.event.clientY : 0);
-      apply();
-      paintAllSlots();
-      document.addEventListener("mousemove", onMove, true);
       document.addEventListener("mouseup", onUp, true);
-      document.addEventListener("keydown", onKey, true);
     } else {
       // Click mode!
       // Add selection style to the card element
@@ -16709,8 +16712,6 @@ window.PendingStrip = (function () {
       
       // Paint highlights instantly!
       paintHighlightsForClickMode();
-      
-      document.addEventListener("keydown", onKey, true);
     }
   }
 
@@ -16832,6 +16833,16 @@ window.PendingStrip = (function () {
     px = e.clientX; py = e.clientY;
     if (dragTooltipEl && dragTooltipEl.style.display !== "none") {
       positionDragTooltip(e.clientX, e.clientY);
+    }
+    if (!rafId) rafId = requestAnimationFrame(flush);
+  }
+  
+  function onTouchMove(e) {
+    if (!ghost || !e.touches || !e.touches[0]) return;
+    const t = e.touches[0];
+    px = t.clientX; py = t.clientY;
+    if (dragTooltipEl && dragTooltipEl.style.display !== "none") {
+      positionDragTooltip(t.clientX, t.clientY);
     }
     if (!rafId) rafId = requestAnimationFrame(flush);
   }
@@ -17151,6 +17162,7 @@ window.PendingStrip = (function () {
   function cleanup() {
     document.removeEventListener("mousemove", onMove, true);
     document.removeEventListener("mouseup", onUp, true);
+    document.removeEventListener("touchmove", onTouchMove, { passive: true });
     document.removeEventListener("keydown", onKey, true);
     if (lastSlot) { lastSlot.removeAttribute("data-validity"); lastSlot.removeAttribute("title"); }
     lastSlot = null;
@@ -18543,6 +18555,7 @@ window.ConstraintExplainer = (function () {
   }
 
   function onMouseOver(ev) {
+    if (window.APP && window.APP.editor && window.APP.editor.cardInHand) return;
     const vk = ev.target.closest && ev.target.closest(".chrx-vkarta");
     if (!vk) return;
     currentTarget = vk;
@@ -18552,6 +18565,10 @@ window.ConstraintExplainer = (function () {
   }
 
   function onMouseMove(ev) {
+    if (window.APP && window.APP.editor && window.APP.editor.cardInHand) {
+      hideTooltip();
+      return;
+    }
     if (!tooltipEl || tooltipEl.style.display === "none") return;
     const vk = ev.target.closest && ev.target.closest(".chrx-vkarta");
     if (vk && vk === currentTarget) {

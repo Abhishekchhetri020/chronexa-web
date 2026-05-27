@@ -99,6 +99,17 @@ async function main() {
   console.log(`Platform: ${process.platform} ${process.arch}`);
   console.log(`Node: ${process.version}`);
   
+  // Load WASM exports
+  const cspWasmUrl = pathToFileURL(join(rootDir, "js", "solver", "wasm", "csp_wasm.js")).href;
+  const { wasmExports } = await import(cspWasmUrl);
+  const exports = await wasmExports();
+  if (exports) {
+    globalThis.__chronexaWasmExports = exports;
+    console.log("✓ Loaded __chronexaWasmExports successfully for benchmark.");
+  } else {
+    console.warn("⚠️ WASM exports not available; benchmarks will fall back to JS.");
+  }
+
   const benchmarks = [
     { name: "Small School (50 cards)", file: "small_school.json", timeLimit: 10000 },
     { name: "Medium School (300 cards)", file: "medium_school.json", timeLimit: 30000 },
@@ -110,26 +121,44 @@ async function main() {
   for (const bench of benchmarks) {
     console.log(`\nLoading ${bench.file}...`);
     const school = loadBenchmark(bench.file);
-    const result = await runBenchmark(bench.name, school, { timeLimit: bench.timeLimit });
-    results.push(result);
+    
+    console.log(`--- Running JS Baseline for ${bench.name} ---`);
+    const resJS = await runBenchmark(`${bench.name} [JS]`, school, { timeLimit: bench.timeLimit, useWasm: false });
+    
+    console.log(`--- Running WASM Zero-Copy for ${bench.name} ---`);
+    const resWasm = await runBenchmark(`${bench.name} [WASM]`, school, { timeLimit: bench.timeLimit, useWasm: true });
+    
+    results.push({
+      name: bench.name,
+      js: resJS,
+      wasm: resWasm
+    });
   }
   
   // Summary table
-  console.log(`\n${"=".repeat(80)}`);
-  console.log("SUMMARY");
-  console.log(`${"=".repeat(80)}\n`);
-  console.log("Test Case".padEnd(35) + "Time".padEnd(10) + "Placed".padEnd(15) + "Score".padEnd(12) + "Status");
-  console.log("-".repeat(80));
+  console.log(`\n${"=".repeat(95)}`);
+  console.log("SUMMARY: JS vs WASM ZERO-COPY");
+  console.log(`${"=".repeat(95)}\n`);
+  console.log("Test Case".padEnd(30) + "JS Time".padEnd(12) + "WASM Time".padEnd(12) + "Speedup".padEnd(10) + "JS Placed".padEnd(12) + "WASM Placed".padEnd(12) + "Status");
+  console.log("-".repeat(95));
   
   for (const r of results) {
-    if (r.error) {
-      console.log(`${r.name.padEnd(35)}ERROR: ${r.error}`);
+    if (r.js.error || r.wasm.error) {
+      console.log(`${r.name.padEnd(30)}ERROR: ${r.js.error || r.wasm.error}`);
     } else {
-      const time = (r.durationMs / 1000).toFixed(2) + "s";
-      const placed = `${r.placed}/${r.expected}`;
-      const score = r.softScore.toFixed(0);
-      const status = r.status + (r.hardConflicts ? ` (${r.hardConflicts}HC)` : "");
-      console.log(`${r.name.padEnd(35)}${time.padEnd(10)}${placed.padEnd(15)}${score.padEnd(12)}${status}`);
+      const jsTimeVal = r.js.durationMs / 1000;
+      const wasmTimeVal = r.wasm.durationMs / 1000;
+      const jsTime = jsTimeVal.toFixed(2) + "s";
+      const wasmTime = wasmTimeVal.toFixed(2) + "s";
+      
+      const speedupVal = wasmTimeVal > 0 ? (jsTimeVal / wasmTimeVal) : 1;
+      const speedup = speedupVal.toFixed(2) + "x";
+      
+      const jsPlaced = `${r.js.placed}/${r.js.expected}`;
+      const wasmPlaced = `${r.wasm.placed}/${r.wasm.expected}`;
+      
+      const status = r.wasm.status + (r.wasm.hardConflicts ? ` (${r.wasm.hardConflicts}HC)` : "");
+      console.log(`${r.name.padEnd(30)}${jsTime.padEnd(12)}${wasmTime.padEnd(12)}${speedup.padEnd(10)}${jsPlaced.padEnd(12)}${wasmPlaced.padEnd(12)}${status}`);
     }
   }
   

@@ -1,0 +1,49 @@
+uid=5_0 RootWebArea "Chronexa — Open Timetable Viewer" url="https://abhishekchhetri020.github.io/chronexa-web/?nocache=p92"
+  uid=5_1 banner
+    uid=5_2 button "Toggle sidebar" description="Toggle sidebar ["
+    uid=5_3 StaticText "Untitled"
+    uid=5_4 StaticText "/"
+    uid=5_5 StaticText "Editor"
+    uid=5_6 StaticText "Q"
+    uid=5_7 StaticText "Search anything…"
+    uid=5_8 StaticText "⌘K"
+    uid=5_9 button "Test"
+    uid=5_10 button "Generate"
+    uid=5_11 button "Toggle fullscreen editor" description="Fullscreen editor F (Esc to exit)"
+    uid=5_12 button "Toggle right rail" description="Toggle right rail ]"
+  uid=5_13 main
+    uid=5_14 navigation
+      uid=5_15 button "1. Start"
+      uid=5_16 button "🪄 Editor (drag-drop)" disableable disabled
+      uid=5_17 button "School Info" disableable disabled
+      uid=5_18 button "Class Grid" disableable disabled
+      uid=5_19 button "Teacher Grid" disableable disabled
+      uid=5_20 button "Room Grid" disableable disabled
+    uid=5_21 main
+      uid=5_22 heading "Chronexa" level="2"
+      uid=5_23 StaticText "Plan timetables in your browser."
+      uid=5_24 button "New Build fresh"
+      uid=5_25 button "Open XML or HAR file"
+        uid=5_26 button "Open XML or HAR file" value="No file chosen"
+      uid=5_27 region "Recent timetables"
+        uid=5_28 heading "Recent" level="3"
+        uid=5_29 button "Blank — I'll set up everything 21 min ago"
+      uid=5_30 navigation "Start links"
+        uid=5_31 button "Demo"
+        uid=5_32 button "Sample school"
+        uid=5_33 link "Docs" url="https://github.com/Abhishekchhetri020/chronexa-web/blob/main/README.md"
+          uid=5_34 StaticText "Docs"
+    uid=5_35 StaticText "Runs entirely in your browser — no upload, no tracking."
+  uid=5_36 contentinfo
+    uid=5_37 StaticText "Ready"
+    uid=5_38 StaticText "·"
+    uid=5_39 StaticText "v 20260523-p92-generate-honors-mode"
+    uid=5_40 StaticText "·"
+    uid=5_41 StaticText "WASM ready"
+    uid=5_42 StaticText "Studio"
+    uid=5_43 StaticText "·"
+    uid=5_44 StaticText "Abhishek"
+  uid=5_45 StaticText "💾 Restore previous session?"
+  uid=5_46 StaticText ""Blank — I'll set up everything" · 0 cards · saved 21m ago"
+  uid=5_47 button "Discard"
+  uid=5_48 button "Restore"

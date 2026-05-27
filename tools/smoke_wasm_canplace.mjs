@@ -9,7 +9,14 @@ import path from "node:path";
 
 const wasmPath = path.resolve("js/solver/wasm/canplace.wasm");
 const buf = fs.readFileSync(wasmPath);
-const mod = await WebAssembly.instantiate(buf, { env: {} });
+const mod = await WebAssembly.instantiate(buf, {
+  env: {
+    abort: (msg, file, line, col) => {
+      console.error(`[wasm] abort at ${file}:${line}:${col}`);
+      throw new Error("wasm abort");
+    }
+  }
+});
 const W = mod.instance.exports;
 
 console.log("Module exports:", Object.keys(W).filter(k => typeof W[k] === "function"));

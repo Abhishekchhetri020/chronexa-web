@@ -168,6 +168,7 @@ window.ConstraintExplainer = (function () {
   }
 
   function onMouseOver(ev) {
+    if (window.APP && window.APP.editor && window.APP.editor.cardInHand) return;
     const vk = ev.target.closest && ev.target.closest(".chrx-vkarta");
     if (!vk) return;
     currentTarget = vk;
@@ -177,6 +178,10 @@ window.ConstraintExplainer = (function () {
   }
 
   function onMouseMove(ev) {
+    if (window.APP && window.APP.editor && window.APP.editor.cardInHand) {
+      hideTooltip();
+      return;
+    }
     if (!tooltipEl || tooltipEl.style.display === "none") return;
     const vk = ev.target.closest && ev.target.closest(".chrx-vkarta");
     if (vk && vk === currentTarget) {

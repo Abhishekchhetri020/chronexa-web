@@ -1332,6 +1332,10 @@ function flattenAllRelations(model) {
 // Safe to call multiple times; last bind wins. The wasm module is loaded
 // asynchronously by csp_wasm.js; if not ready this returns false and the
 // JS canPlace fallback runs.
+// Bind model + state into WASM after buildModel. Returns true if successful.
+// Safe to call multiple times; last bind wins. The wasm module is loaded
+// asynchronously by csp_wasm.js; if not ready this returns false and the
+// JS canPlace fallback runs.
 function wasmBind(model, state) {
   const w = globalThis.__chronexaWasmExports;
   if (!w || !w.setShape || !w.bindArrays || !w.canPlace) return false;
@@ -1420,6 +1424,19 @@ function wasmBind(model, state) {
       sessionsByCS:         copyI32(model._sessionsByClassSubject),
     };
 
+    // --- Path A (Shared Memory Zero-Copy) ---
+    // Point state's mutable TypedArrays directly inside WASM memory heap views.
+    // Any future mutations inside the backtrack loop will modify WASM memory directly and instantly.
+    state.teacherOcc = new Uint32Array(w.memory.buffer, P.teacherOcc, state.teacherOcc.length);
+    state.classGroupOcc = new Uint32Array(w.memory.buffer, P.classGroupOcc, state.classGroupOcc.length);
+    state.roomOcc = new Uint32Array(w.memory.buffer, P.roomOcc, state.roomOcc.length);
+    state.teacherDayLoad = new Int32Array(w.memory.buffer, P.teacherDayLoad, state.teacherDayLoad.length);
+    state.classDayLoad = new Int32Array(w.memory.buffer, P.classDayLoad, state.classDayLoad.length);
+    state.classSubjectDayCount = new Int32Array(w.memory.buffer, P.classSubjectDayCt, state.classSubjectDayCount.length);
+    state.classSubjectTotalPlaced = new Int32Array(w.memory.buffer, P.classSubjTotalPlaced, state.classSubjectTotalPlaced.length);
+    state.lessonAssigned = new Uint8Array(w.memory.buffer, P.lAssigned, state.lessonAssigned.length);
+    state.lessonAssignedSlot = new Int32Array(w.memory.buffer, P.lAssignedSlot, state.lessonAssignedSlot.length);
+
     w.bindArrays(
       P.teacherOcc, P.teacherAvail,
       P.classGroupOcc, P.roomOcc,
@@ -1477,29 +1494,9 @@ function wasmBind(model, state) {
 // since the last sync — avoids copying ~15KB on every consecutive canPlace
 // call during candidate iteration when state is stable.
 function wasmSyncState(model, state) {
-  if (!wasmBind._P) return;
-  if (state._lastWasmSyncVersion === state._wasmVersion) {
-    wasmSyncState._skips = (wasmSyncState._skips || 0) + 1;
-    return;
-  }
-  wasmSyncState._copies = (wasmSyncState._copies || 0) + 1;
-  try {
-    const mem = wasmBind._mem.buffer;
-    const P = wasmBind._P;
-    new Uint32Array(mem, P.teacherOcc, state.teacherOcc.length).set(state.teacherOcc);
-    new Uint32Array(mem, P.classGroupOcc, state.classGroupOcc.length).set(state.classGroupOcc);
-    new Uint32Array(mem, P.roomOcc, roomOccArr(model, state).length).set(roomOccArr(model, state));
-    new Int32Array(mem, P.teacherDayLoad, state.teacherDayLoad.length).set(state.teacherDayLoad);
-    new Int32Array(mem, P.classDayLoad, state.classDayLoad.length).set(state.classDayLoad);
-    new Int32Array(mem, P.classSubjectDayCt, state.classSubjectDayCount.length).set(state.classSubjectDayCount);
-    new Int32Array(mem, P.classSubjTotalPlaced, state.classSubjectTotalPlaced.length).set(state.classSubjectTotalPlaced);
-    new Uint8Array(mem, P.lAssigned, state.lessonAssigned.length).set(state.lessonAssigned);
-    new Int32Array(mem, P.lAssignedSlot, state.lessonAssignedSlot.length).set(state.lessonAssignedSlot);
-    state._lastWasmSyncVersion = state._wasmVersion;
-    if (state._wasmSyncCount !== undefined) state._wasmSyncCount++;
-  } catch (e) {
-    // Non-fatal; wasm will just use slightly stale data and JS canPlace will catch mismatches.
-  }
+  // Path A Zero-Copy: state is now shared directly inside w.memory.buffer,
+  // so no sync copies are needed.
+  if (state._wasmSyncCount !== undefined) state._wasmSyncCount++;
 }
 
 // Small helper: state doesn't keep roomOcc as Uint32Array-of-days; it's already Uint32Array
@@ -1515,18 +1512,9 @@ function canPlace(model, state, lessonIdx, slot, roomIdx) {
   // logs divergences. Off by default (slow).
   if (model._wasmEnabled) {
     try {
-      const syncT0 = typeof performance !== "undefined" ? performance.now() : 0;
       wasmSyncState(model, state);
-      if (typeof performance !== "undefined") {
-        canPlace._syncCalls = (canPlace._syncCalls || 0) + 1;
-        canPlace._syncMs = (canPlace._syncMs || 0) + (performance.now() - syncT0);
-      }
       const w = globalThis.__chronexaWasmExports;
-      const callT0 = typeof performance !== "undefined" ? performance.now() : 0;
       const ret = w.canPlace(lessonIdx, slot, roomIdx);
-      if (typeof performance !== "undefined") {
-        canPlace._wasmMs = (canPlace._wasmMs || 0) + (performance.now() - callT0);
-      }
       if (model._wasmValidate) {
         const jsResult = _canPlaceJS(model, state, lessonIdx, slot, roomIdx);
         const wasmFail = ret === 0 ? null : ret;

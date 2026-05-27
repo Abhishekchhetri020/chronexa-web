@@ -1,40 +1,82 @@
 {
-  "timestamp": "2026-05-27T04:17:35.711Z",
+  "timestamp": "2026-05-27T14:11:11.116Z",
   "platform": "darwin arm64",
   "nodeVersion": "v26.0.0",
   "results": [
     {
       "name": "Small School (50 cards)",
-      "duration": 0.020326916999999993,
-      "status": "FEASIBLE",
-      "placed": 39,
-      "expected": 39,
-      "softScore": 0,
-      "hardConflicts": 0,
-      "durationMs": 18,
-      "violations": 0
+      "js": {
+        "name": "Small School (50 cards) [JS]",
+        "duration": 0.05464770800000001,
+        "status": "FEASIBLE",
+        "placed": 39,
+        "expected": 39,
+        "softScore": -300,
+        "hardConflicts": 0,
+        "durationMs": 54,
+        "violations": 0
+      },
+      "wasm": {
+        "name": "Small School (50 cards) [WASM]",
+        "duration": 0.036020584000000015,
+        "status": "FEASIBLE",
+        "placed": 39,
+        "expected": 39,
+        "softScore": -300,
+        "hardConflicts": 0,
+        "durationMs": 36,
+        "violations": 0
+      }
     },
     {
       "name": "Medium School (300 cards)",
-      "duration": 0.332719709,
-      "status": "FEASIBLE",
-      "placed": 300,
-      "expected": 300,
-      "softScore": 0,
-      "hardConflicts": 0,
-      "durationMs": 333,
-      "violations": 0
+      "js": {
+        "name": "Medium School (300 cards) [JS]",
+        "duration": 3.721571792,
+        "status": "FEASIBLE",
+        "placed": 300,
+        "expected": 300,
+        "softScore": -4530,
+        "hardConflicts": 0,
+        "durationMs": 3722,
+        "violations": 0
+      },
+      "wasm": {
+        "name": "Medium School (300 cards) [WASM]",
+        "duration": 3.0231818749999997,
+        "status": "FEASIBLE",
+        "placed": 300,
+        "expected": 300,
+        "softScore": -4530,
+        "hardConflicts": 0,
+        "durationMs": 3023,
+        "violations": 0
+      }
     },
     {
       "name": "Large School (800 cards)",
-      "duration": 3.812756291,
-      "status": "FEASIBLE",
-      "placed": 800,
-      "expected": 800,
-      "softScore": 0,
-      "hardConflicts": 0,
-      "durationMs": 3813,
-      "violations": 0
+      "js": {
+        "name": "Large School (800 cards) [JS]",
+        "duration": 30.004048874999995,
+        "status": "TIMEOUT",
+        "placed": 565,
+        "expected": 800,
+        "softScore": -11975,
+        "hardConflicts": 235,
+        "durationMs": 30004,
+        "violations": 235
+      },
+      "wasm": {
+        "name": "Large School (800 cards) [WASM]",
+        "duration": 30.003057791,
+        "status": "TIMEOUT",
+        "placed": 565,
+        "expected": 800,
+        "softScore": -11975,
+        "hardConflicts": 235,
+        "durationMs": 30003,
+        "violations": 235
+      }
     }
   ]
 }

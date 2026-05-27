@@ -1,0 +1,42 @@
+uid=6_0 RootWebArea "Chronexa — Open Timetable Viewer" url="https://abhishekchhetri020.github.io/chronexa-web/?nocache=p93"
+  uid=6_1 banner
+    uid=6_2 button "Toggle sidebar" description="Toggle sidebar ["
+    uid=6_3 StaticText "Untitled"
+    uid=6_4 StaticText "/"
+    uid=6_5 StaticText "Editor"
+    uid=6_6 StaticText "Q"
+    uid=6_7 StaticText "Search anything…"
+    uid=6_8 StaticText "⌘K"
+    uid=6_9 button "Test"
+    uid=6_10 button "Generate"
+    uid=6_11 button "Toggle fullscreen editor" description="Fullscreen editor F (Esc to exit)"
+    uid=6_12 button "Toggle right rail" description="Toggle right rail ]"
+  uid=6_13 main
+    uid=6_14 navigation
+      uid=6_15 button "1. Start"
+      uid=6_16 button "🪄 Editor (drag-drop)" disableable disabled
+      uid=6_17 button "School Info" disableable disabled
+      uid=6_18 button "Class Grid" disableable disabled
+      uid=6_19 button "Teacher Grid" disableable disabled
+      uid=6_20 button "Room Grid" disableable disabled
+    uid=6_21 main
+      uid=6_22 heading "Chronexa" level="2"
+      uid=6_23 StaticText "Plan timetables in your browser."
+      uid=6_24 button "New Build fresh"
+      uid=6_25 button "Open XML or HAR file"
+        uid=6_26 button "Open XML or HAR file" value="No file chosen"
+      uid=6_27 navigation "Start links"
+        uid=6_28 button "Demo"
+        uid=6_29 button "Sample school"
+        uid=6_30 link "Docs" url="https://github.com/Abhishekchhetri020/chronexa-web/blob/main/README.md"
+          uid=6_31 StaticText "Docs"
+    uid=6_32 StaticText "Runs entirely in your browser — no upload, no tracking."
+  uid=6_33 contentinfo
+    uid=6_34 StaticText "Ready"
+    uid=6_35 StaticText "·"
+    uid=6_36 StaticText "v 20260523-p93-repair-rollback-canplace"
+    uid=6_37 StaticText "·"
+    uid=6_38 StaticText "WASM ready"
+    uid=6_39 StaticText "Studio"
+    uid=6_40 StaticText "·"
+    uid=6_41 StaticText "Abhishek"
