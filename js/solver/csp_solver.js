@@ -644,18 +644,28 @@ function buildModel(school) {
   const candidateRoomArr = Int32Array.from(candidateRoom);
 
   // Lesson adjacency degree — # of OTHER lessons sharing a teacher or class.
+  // Also build flat neighbor lists for MAC (Maintaining Arc Consistency) propagation.
   const lessonAdjacencyDegree = new Int32Array(lessonCount);
+  const _neighborList = [];
+  const _lessonNeighborStart = new Int32Array(lessonCount);
+  const _lessonNeighborCount = new Int32Array(lessonCount);
   for (let i = 0; i < lessonCount; i++) {
+    _lessonNeighborStart[i] = _neighborList.length;
     let degree = 0;
     for (let j = 0; j < lessonCount; j++) {
       if (i === j) continue;
       if (sharesTeacher(i, j, lessonTeacherStart, lessonTeacherCount, lessonTeacherFlat) ||
           sharesClass(i, j, lessonClassStart, lessonClassCount, lessonClassFlat)) {
         degree++;
+        _neighborList.push(j);
       }
     }
     lessonAdjacencyDegree[i] = degree;
+    _lessonNeighborCount[i] = _neighborList.length - _lessonNeighborStart[i];
   }
+  const lessonNeighborStart = _lessonNeighborStart;
+  const lessonNeighborCount = _lessonNeighborCount;
+  const lessonNeighborFlat = Int32Array.from(_neighborList);
 
   // slotDay / slotPeriod lookup
   const slotDay = new Int32Array(totalSlots);
@@ -1023,6 +1033,7 @@ function buildModel(school) {
     classTeacherPosMask,
     classHomeroomTeacher,
     lessonAdjacencyDegree,
+    lessonNeighborStart, lessonNeighborCount, lessonNeighborFlat,
     slotDay, slotPeriod, periodPref,
     weights,
     teacherLastPeriodCap: teacherMaxLastPeriod,
@@ -2417,6 +2428,43 @@ function fillFeasibleCandidates(model, state, lessonIdx, out) {
   return k;
 }
 
+// ---------------------------------------------------------------------------
+// MAC (Maintaining Arc Consistency) — Phase 2 enhancement
+//
+// After each placement, check if any unassigned neighbor lesson (sharing a
+// teacher or class) has its domain reduced to zero. If so, the placement is
+// futile — bail out immediately instead of exploring the entire dead subtree.
+//
+// This is lighter than full AC-3 (which would propagate transitively through
+// all binary constraints). For timetable CSPs, most pruning is direct:
+// placing lesson X at slot S blocks neighbors sharing the same resource.
+// Checking only direct neighbors catches the vast majority of dead-ends early.
+//
+// Returns: null if propagation succeeds, or the lesson index whose domain
+// was wiped out (the "failure lesson" for conflict-directed backjumping).
+// ---------------------------------------------------------------------------
+
+function macPropagate(model, state, placedLessonIdx) {
+  const nStart = model.lessonNeighborStart[placedLessonIdx];
+  const nCount = model.lessonNeighborCount[placedLessonIdx];
+  for (let n = nStart; n < nStart + nCount; n++) {
+    const neighbor = model.lessonNeighborFlat[n];
+    if (state.lessonAssigned[neighbor]) continue;
+    // Count remaining feasible candidates for this neighbor
+    const cStart = model.lessonCandidateStart[neighbor];
+    const cCount = model.lessonCandidateCount[neighbor];
+    let feasible = 0;
+    for (let i = cStart; i < cStart + cCount; i++) {
+      if (canPlace(model, state, neighbor, model.candidateSlot[i], model.candidateRoom[i]) === null) {
+        feasible++;
+        if (feasible > 1) break;  // early exit: we only care if it's 0 or >0
+      }
+    }
+    if (feasible === 0) return neighbor;  // domain wipe-out
+  }
+  return null;  // all neighbors still have feasible candidates
+}
+
 function removeFromUnassigned(arr, count, value) {
   for (let i = 0; i < count; i++) {
     if (arr[i] === value) { arr[i] = arr[count - 1]; return count - 1; }
@@ -2486,6 +2534,12 @@ function maybeEmitProgress(ctx, state, unassignedCount0, initiallyInfeasibleCoun
 function backtrack(model, state, unassigned, unassignedCount, ctx) {
   if (ctx.timedOut) return;
   if (performance.now() >= ctx.deadlineMs) { ctx.timedOut = true; return; }
+  // Luby restart: if this run's node budget is exhausted, bail out so the
+  // outer loop can start a fresh run with a new seed and longer budget.
+  if (ctx.restartNodeBudget >= 0 && ctx.nodesVisited >= ctx.restartNodeBudget) {
+    ctx.timedOut = true;
+    return;
+  }
   ctx.nodesVisited += 1;
   // Emit progress every 500 iterations or every 500ms (whichever first).
   maybeEmitProgress(ctx, state, ctx.unassignedCount0, ctx.initiallyInfeasibleCount, ctx.t0);
@@ -2580,6 +2634,15 @@ function backtrack(model, state, unassigned, unassignedCount, ctx) {
 
     const mark = ctx.undoStack.length;
     applyPlacement(model, state, selected, slot, room, ctx.undoStack);
+
+    // MAC: after placement, check if any neighbor's domain is wiped out.
+    // If so, this placement is futile — undo immediately and try next value.
+    const macFailure = macPropagate(model, state, selected);
+    if (macFailure !== null) {
+      undoToMark(model, state, ctx.undoStack, mark);
+      ctx.macPruneCount = (ctx.macPruneCount || 0) + 1;
+      continue;  // skip dead subtree
+    }
 
     ctx.depth += 1;
     backtrack(model, state, unassigned, reducedCount, ctx);
@@ -3488,6 +3551,16 @@ function randomEvictPlaced(model, state, K, rngState) {
  *                               useIterativeRepair=true }
  * @returns {object} SolveResponse per DATA_SHAPES.md
  */
+
+// Luby restart sequence: 1, 1, 2, 1, 1, 2, 4, 1, 1, 2, 1, 1, 2, 4, 8, ...
+// Returns the i-th value (0-indexed) of the universal Luby sequence.
+// Optimal for unknown heavy-tailed runtime distributions.
+function lubySequence(i) {
+  let k = 0;
+  while ((1 << (k + 1)) - 1 <= i) k++;
+  if (i === (1 << (k + 1)) - 2) return 1 << k;
+  return lubySequence(i - (1 << k) + 1);
+}
 export function solve(school, options = {}) {
   // Top 30 #16 — Improve solver mode. Alias for "warm-start the current
   // schedule + use LNS to search outward for improvements". Locked lessons
@@ -3626,15 +3699,12 @@ export function solve(school, options = {}) {
     }
   }
 
-  // The driver: sequential root-shuffle branches; keep the best.
-  // More branches = more diverse initial orderings → better chance of escaping
-  // local dead-ends. Scaled with school size; capped by the per-branch
-  // time budget downstream (each branch shares the total backtracking budget).
-  let branches = 4;
-  if (model.lessonCount <= 6) branches = 1;
-  else if (model.lessonCount >= 1000) branches = 8;
-  else if (model.lessonCount >= 500) branches = 6;
+  // The driver: Luby restart sequence — adaptive restarts with increasing budgets.
+  // Replaces fixed branch count; early runs are short explorations, later runs
+  // get exponentially more nodes. Escapes heavy-tailed dead-ends efficiently.
+  // branches variable kept for backward compat with comments but unused.
   let globalBest = null;
+  let totalMacPrunes = 0;
 
   const unassigned0 = new Int32Array(model.lessonCount);
   let unassignedCount0 = 0;
@@ -3653,8 +3723,28 @@ export function solve(school, options = {}) {
     console.log('[SolverLearning] Loaded', learning.getStats());
   }
 
-  for (let b = 0; b < branches; b++) {
+  // Luby restart sequence — replaces fixed branch count with adaptive restarts.
+  // Base unit scales with school size: small schools need fewer nodes per restart,
+  // large schools need more to make progress before restarting.
+  const lubyBaseUnit = model.lessonCount <= 50 ? 2000 :
+                       model.lessonCount <= 200 ? 5000 :
+                       model.lessonCount <= 500 ? 10000 : 20000;
+  // Max restarts: cap so we don't waste time on too many micro-restarts.
+  // After the 8th Luby value (8192 nodes), remaining budget goes to the last run.
+  const maxRestarts = 16;
+  const remainingBtMs = Math.max(0, deadlineMs - performance.now());
+
+  for (let run = 0; run < maxRestarts; run++) {
     if (performance.now() >= deadlineMs) { anyTimedOut = true; break; }
+    // Stop early if we already have a full solution with zero hard conflicts
+    if (globalBest && globalBest.assignedEntries === unassignedCount0 && globalBest.softScore > -1) break;
+
+    const lubyVal = lubySequence(run);
+    const restartBudget = lubyVal * lubyBaseUnit;
+    // Last restart: use all remaining time budget (no restart limit)
+    const isLastRun = (run === maxRestarts - 1) || (performance.now() > deadlineMs - 3000);
+    const runBudget = isLastRun ? -1 : restartBudget;  // -1 = unlimited
+
     const state = makeState(model);
     state.bestSoftScore = -Number.MAX_SAFE_INTEGER;
     state.bestHardCount = Number.MAX_SAFE_INTEGER;
@@ -3690,7 +3780,7 @@ export function solve(school, options = {}) {
       }
     }
     const ctx = {
-      branchSeed: seed + b * 17,
+      branchSeed: seed + run * 17 + run * run * 3,  // more diverse seeds for restarts
       depth: 0,
       undoStack: [],
       candidateScratch: new Int32Array(maxCandidatesPerLesson(model)),
@@ -3698,6 +3788,9 @@ export function solve(school, options = {}) {
       backtracks: 0,
       deadlineMs,
       timedOut: false,
+      // Luby restart: per-run node budget (-1 = unlimited for last run)
+      restartNodeBudget: runBudget,
+      macPruneCount: 0,
       // Progress emission state — inline in the search loop. See backtrack().
       onProgress,
       progressLastIter: 0,
@@ -3736,13 +3829,20 @@ export function solve(school, options = {}) {
           hardConflicts: (state.bestHardCount === Number.MAX_SAFE_INTEGER ? unassignedCount0 : state.bestHardCount) + initiallyInfeasible.length,
           backtracks: ctx.backtracks,
           durationMs: Math.round(performance.now() - t0),
+          macPrunes: ctx.macPruneCount,
+          restartRun: run,
         });
       } catch {}
     }
 
     totalNodes += ctx.nodesVisited;
     totalBacktracks += ctx.backtracks;
-    if (ctx.timedOut) anyTimedOut = true;
+    totalMacPrunes += ctx.macPruneCount || 0;
+    if (ctx.timedOut && !isLastRun) {
+      // Luby restart: this run hit its node budget — continue to next run
+    } else if (ctx.timedOut) {
+      anyTimedOut = true;
+    }
 
     if (globalBest === null ||
         state.bestAssignedEntries > globalBest.assignedEntries ||
