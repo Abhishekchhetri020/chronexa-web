@@ -645,10 +645,36 @@
     const d = parseInt(slot.dataset.day, 10);
     const p = parseInt(slot.dataset.period, 10);
     const rowCheck = rowPlacementCheck(inHand.lessonId, slot);
-    const base = rowCheck.ok
-      ? (window.Placement ? window.Placement.classify(inHand.lessonId, d, p, classroomForSlot(inHand.lessonId, slot), prefilteredCards) : { validity: "green", reasons: [] })
-      : { validity: "red", reasons: [rowCheck.reason] };
+    if (!rowCheck.ok) return { validity: "red", reasons: [rowCheck.reason] };
+
+    const S = window.APP && window.APP.school;
     const occupants = targetCardsForSlot(slot, prefilteredCards);
+    
+    let originalCards = null;
+    if (S && S.cards) {
+      originalCards = S.cards;
+      S.cards = S.cards.filter(c => {
+        // Exclude carried card at its origin slot
+        if (!inHand.fromPending && c.lessonId === inHand.lessonId && c.day === inHand.originDay && c.period === inHand.originPeriod) {
+          return false;
+        }
+        // Exclude occupant cards at the target slot
+        if (c.day === d && c.period === p) {
+          return false;
+        }
+        return true;
+      });
+    }
+
+    let base = { validity: "green", reasons: [] };
+    try {
+      base = window.Placement ? window.Placement.classify(inHand.lessonId, d, p, classroomForSlot(inHand.lessonId, slot), prefilteredCards) : { validity: "green", reasons: [] };
+    } catch (_e) {}
+    
+    if (S && originalCards) {
+      S.cards = originalCards;
+    }
+
     if (!occupants.length) return base;
     const reasons = (base.reasons || []).slice();
     const labels = occupants.map(c => cardLabel(c)).filter(Boolean);
