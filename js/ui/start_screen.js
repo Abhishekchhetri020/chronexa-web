@@ -230,5 +230,5 @@ window.StartScreen = (function () {
       ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   }
 
-  return { render, collectRecent };
+  return { render, collectRecent, openSampleInfo };
 })();

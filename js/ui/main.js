@@ -5,6 +5,117 @@
   "use strict";
   const t = (k) => I18N.t(k);
 
+  // ─── Event Delegation for CTA Buttons (P129 Load-Order / DOM Re-render fixes) ───
+  document.addEventListener("click", async (e) => {
+    const demoBtn = e.target.closest("#cta-load-demo");
+    const buildBtn = e.target.closest("#cta-build-new");
+    const infoBtn = e.target.closest("#start-sample-info");
+
+    if (demoBtn) {
+      e.preventDefault();
+      if (window.Tour && window.Tour.end) window.Tour.end();
+      const status = document.getElementById("xml-status");
+      if (status) status.innerHTML = `<span class="text-slate-500">Loading bundled sample…</span>`;
+      try {
+        const r = await fetch("./sample-school.xml");
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        const xmlText = await r.text();
+        const blob = new Blob([xmlText], { type: "application/xml" });
+        const file = new File([blob], "sample-school.xml", { type: "application/xml" });
+        const school = await parseTimetableXml.parseFile(file);
+        window.APP.school = school;
+        if (window.CreateNew && window.CreateNew.ensureColors) window.CreateNew.ensureColors();
+        const c = school._meta.counts;
+        if (status) status.innerHTML = `<span class="text-emerald-700 font-semibold">Loaded.</span> <span class="text-slate-600">${c.teachers} teachers · ${c.classes} classes · ${c.subjects} subjects · ${c.classrooms} rooms · ${c.lessons} lessons · ${c.cards} cards</span>`;
+        document.querySelectorAll(".needs-school").forEach(b => b.disabled = false);
+        document.dispatchEvent(new CustomEvent("app:school-loaded", { detail: { source: "demo-xml" } }));
+        setTimeout(() => showStep(6), 250);
+      } catch (err) {
+        console.warn("[demo] bundled XML fetch failed, falling back to 22-card seed:", err);
+        if (status) status.innerHTML = `<span class="text-amber-700">Bundled file unavailable, using 22-card demo instead.</span>`;
+        if (window.CreateNew && window.CreateNew.createDemoSeed) {
+          window.CreateNew.createDemoSeed();
+          document.querySelectorAll(".needs-school").forEach(b => b.disabled = false);
+          showStep(6);
+        }
+      }
+    } else if (buildBtn) {
+      e.preventDefault();
+      if (window.SchoolTemplates && window.SchoolTemplates.showPicker) {
+        try {
+          const S = window.APP && window.APP.school;
+          const hasData = S && ((S.teachers && S.teachers.length) || (S.cards && S.cards.length));
+          if (hasData && !confirm("A timetable is already loaded. Replace it with a fresh start?")) return;
+        } catch (err) {}
+        window.SchoolTemplates.showPicker((id, result) => {
+          if (window.OnboardingWiring && window.OnboardingWiring.onTemplatePicked) {
+            window.OnboardingWiring.onTemplatePicked(id, result);
+          } else {
+            document.querySelectorAll(".needs-school").forEach(b => b.disabled = false);
+            if (window.WizardWalkthrough && window.WizardWalkthrough.start) {
+              window.WizardWalkthrough.start();
+            } else {
+              showStep(6);
+            }
+          }
+        });
+        return;
+      }
+      
+      // Fallback build-new handler
+      if (window.Tour && window.Tour.end) window.Tour.end();
+      if (window.APP.school && (window.APP.school.teachers.length || window.APP.school.cards.length)) {
+        if (!confirm("A timetable is already loaded. Replace it with a new one?")) return;
+      }
+      if (window.CreateNew && window.CreateNew.createBlank) {
+        window.CreateNew.createBlank();
+        document.querySelectorAll(".needs-school").forEach(b => b.disabled = false);
+        if (window.WizardWalkthrough && window.WizardWalkthrough.start) {
+          window.WizardWalkthrough.start();
+        } else {
+          showStep(6);
+        }
+      }
+    } else if (infoBtn) {
+      e.preventDefault();
+      if (window.StartScreen && window.StartScreen.openSampleInfo) {
+        window.StartScreen.openSampleInfo();
+      } else {
+        openSampleInfoFallback();
+      }
+    }
+  });
+
+  function openSampleInfoFallback() {
+    const title = "Sample school";
+    const paragraphs = [
+      "The bundled demo contains a realistic school setup with teachers, classes, rooms, subjects, lessons, bell periods, and placed timetable cards.",
+      "It loads locally from this app, can be edited like any timetable, and is useful for trying the editor before opening your own file.",
+    ];
+    const D = window.EntityDialog;
+    if (D && D.openSheet && D.el) {
+      try {
+        D.openSheet(D.el("div", { class: "chrx-start-info" },
+          ...paragraphs.map((text) => D.el("p", null, text))
+        ), { title });
+        return;
+      } catch (e) {}
+    }
+    const modal = document.createElement("div");
+    modal.className = "chrx-start-modal";
+    modal.innerHTML = `
+      <div class="chrx-start-modal__panel" role="dialog" aria-modal="true" aria-label="Sample school">
+        <h3>Sample school</h3>
+        <p>${escapeHtml(paragraphs[0])}</p>
+        <p>${escapeHtml(paragraphs[1])}</p>
+        <button type="button" class="chrx-btn chrx-btn--primary">Done</button>
+      </div>
+    `;
+    modal.addEventListener("click", (e) => { if (e.target === modal) modal.remove(); });
+    modal.querySelector("button").addEventListener("click", () => modal.remove());
+    document.body.appendChild(modal);
+  }
+
   // ----- Error banner (red on-page, copy of sitting-planner pattern) --------
   function showError(where, err) {
     const msg = (err && err.message) ? err.message : String(err);
@@ -170,6 +281,12 @@
 
   // ----- Boot --------------------------------------------------------------
   function boot() {
+    console.log("--> [main.js] boot() is executing!");
+    const demoBtnCheck = document.getElementById("cta-load-demo");
+    const buildBtnCheck = document.getElementById("cta-build-new");
+    console.log("--> [main.js] cta-load-demo element exists:", !!demoBtnCheck);
+    console.log("--> [main.js] cta-build-new element exists:", !!buildBtnCheck);
+
     document.querySelectorAll(".step-btn").forEach(b => {
       b.onclick = () => {
         const n = parseInt(b.dataset.step, 10);

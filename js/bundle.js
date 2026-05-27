@@ -1,5 +1,5 @@
-/* Chronexa bundle — generated 2026-05-27T07:17:57Z
- *      165 modules concatenated in document order.
+/* Chronexa bundle — generated 2026-05-27T12:20:21Z
+ *      164 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
 /* ─── FILE: js/ui/state.js ─── */
@@ -12222,306 +12222,6 @@ ${body}
   APP.io.buildHtmlExport = buildHTML;
 })();
 
-/* ─── FILE: js/solver/relation_enforcer.js ─── */
-/* Relation Enforcer — closes the #1 audit gap.
- *
- * The Classic audit identified the "30% done" trap: dialogs persist data
- * the solver ignores. All 18 n_* relations have a 3-step wizard at
- * /js/ui/entities/relations.js. This module exports:
- *
- *   TYPS — canonical relation type metadata (label, binary, hard, scope)
- *   check(school, lessonId, day, period) → { hard: [msg...], soft: [msg...] }
- *   explain(school, lessonId, day, period) → ["🚫 msg", "⚠️ msg", ...]
- *
- * Import by csp_solver.js for partner-set construction; imported by UI
- * for the constraint-explainer tooltip.
- *
- * Sourced from:
- *   /Users/abhishekchhetri/Downloads/Cloning CLASSIC/docs/ASC_CARDRELATIONSHIPS_DECODING_2026-04-20.md
- * Verbatim labels match Classic's wire.
- */
-
-const TYPS = Object.freeze({
-    n_0:  { label: "cannot follow",                                  binary: false, hard: true,  scope: "consecutive" },
-    n_1:  { label: "cannot be the same day",                         binary: false, hard: true,  scope: "sameDay" },
-    // §4.7 — n_2, n_3, n_15 typs are not documented in Classic source.
-    // Adopting reasonable interpretations based on adjacency to the
-    // documented typs and Slovak/EU timetable convention. These can be
-    // tightened once a Classic XML with these typs is sighted in the wild.
-    n_2:  { label: "must not be at the same time (same period)",     binary: false, hard: true,  scope: "sameTime" },
-    n_3:  { label: "must alternate days (no two same-day)",          binary: false, hard: false, scope: "alternateDay" },
-    n_4:  { label: "Card distribution over the week",                binary: false, hard: false, scope: "distribution" },
-    n_5:  { label: "Two subjects must follow (arbitrary order)",     binary: true,  hard: true,  scope: "consecutive" },
-    n_6:  { label: "Two subjects must follow",                       binary: true,  hard: true,  scope: "consecutiveOrdered" },
-    n_7:  { label: "Break cannot be between group of lessons",       binary: false, hard: true,  scope: "betweenBreaks" },
-    n_8:  { label: "Two subjects must be in one day (arbitrary)",    binary: true,  hard: true,  scope: "sameDay" },
-    n_9:  { label: "Two subjects must be in one day (in order)",     binary: true,  hard: true,  scope: "sameDayOrdered" },
-    n_10: { label: "Group of cards from different classes must be in one day", binary: false, hard: true, scope: "sameDay" },
-    n_11: { label: "Divided cards from one subject must be in one day", binary: false, hard: false, scope: "sameDay" },
-    n_12: { label: "These subjects for the groups of listed classes must start at the same time", binary: false, hard: true, scope: "simultaneous" },
-    n_13: { label: "The selected subjects have to be at the same time in all selected classes", binary: false, hard: true, scope: "simultaneous" },
-    n_14: { label: "This subject must be on the same period each day", binary: false, hard: false, scope: "samePeriodEachDay" },
-    n_15: { label: "Cards must be evenly spaced across the week",    binary: false, hard: false, scope: "evenSpacing" },
-    n_16: { label: "Subject must be first or last",                  binary: false, hard: true,  scope: "position" },
-    n_17: { label: "The selected subjects can be in the afternoon",  binary: false, hard: false, scope: "afternoon" },
-  });
-
-  function namesOf(school, kind, ids) {
-    if (!school || !ids) return [];
-    const list = (kind === "subjects") ? school.subjects
-              : (kind === "classes")   ? school.classes
-              : (kind === "teachers")  ? school.teachers
-              : [];
-    const out = [];
-    for (const id of (ids || [])) {
-      const r = list.find(x => x.id === id);
-      if (r) out.push(r.name || r.short || id);
-    }
-    return out;
-  }
-
-  function lessonMatches(lesson, rel) {
-    if (!lesson || !rel) return false;
-    const ss = rel.subjectids || [];
-    if (ss.length && !ss.includes(lesson.subjectId)) return false;
-    const cs = rel.classids || [];
-    if (cs.length && !(lesson.classIds || []).some(c => cs.includes(c))) return false;
-    return true;
-  }
-
-  function lessonMatchesSecond(lesson, rel) {
-    if (!lesson || !rel) return false;
-    const s2 = rel.subject2ids || [];
-    if (s2.length && !s2.includes(lesson.subjectId)) return false;
-    return true;
-  }
-
-  /** Find existing placements of any lesson matching this relation's primary scope */
-  function placedMatching(school, rel, matcher) {
-    matcher = matcher || lessonMatches;
-    const lessonById = (school._idx && school._idx.lessonById) ||
-      Object.fromEntries((school.lessons || []).map(l => [l.id, l]));
-    const out = [];
-    for (const c of (school.cards || [])) {
-      const lesson = lessonById[c.lessonId];
-      if (matcher(lesson, rel)) out.push({ card: c, lesson });
-    }
-    return out;
-  }
-
-  function check(school, lessonId, day, period) {
-    const result = { hard: [], soft: [] };
-    if (!school || !school.relations || !school.relations.length) return result;
-    const lessonById = (school._idx && school._idx.lessonById) ||
-      Object.fromEntries((school.lessons || []).map(l => [l.id, l]));
-    const lesson = lessonById[lessonId];
-    if (!lesson) return result;
-
-    for (const rel of school.relations) {
-      if (rel.disabled) continue;
-      const meta = TYPS[rel.typ];
-      if (!meta) continue;
-      const bin = meta.binary;
-      const primaryMatch = lessonMatches(lesson, rel);
-      const secondaryMatch = bin && lessonMatchesSecond(lesson, rel);
-      if (!primaryMatch && !secondaryMatch) continue;
-
-      const sink = meta.hard ? result.hard : result.soft;
-
-      switch (meta.scope) {
-        // Item 9 — n_2 "must not be at same time" (no same-period for
-        // any other matched lesson). Hard violation if any matched
-        // lesson is at the SAME (day, period).
-        case "sameTime": {
-          const others = placedMatching(school, rel, lessonMatches);
-          for (const o of others) {
-            if (o.card.day === day && o.card.period === period &&
-                o.card.lessonId !== lessonId) {
-              sink.push(`${meta.label} — another matched lesson already at this period`);
-              break;
-            }
-          }
-          break;
-        }
-        // Item 9 — n_3 "alternate days". Soft. Penalise placement at a
-        // day where any other matched lesson already sits.
-        case "alternateDay": {
-          const others = placedMatching(school, rel, lessonMatches);
-          for (const o of others) {
-            if (o.card.day === day && o.card.lessonId !== lessonId) {
-              sink.push(`${meta.label} — already placed on this day`);
-              break;
-            }
-          }
-          break;
-        }
-        // Item 9 — n_15 "evenly spaced across the week". Soft. Penalise
-        // when the placement creates back-to-back days for matched
-        // lessons (variance proxy: any same-or-adjacent day with another
-        // matched lesson).
-        case "evenSpacing": {
-          const others = placedMatching(school, rel, lessonMatches);
-          for (const o of others) {
-            if (o.card.lessonId === lessonId) continue;
-            if (Math.abs(o.card.day - day) <= 1) {
-              sink.push(`${meta.label} — spacing too tight (adjacent day)`);
-              break;
-            }
-          }
-          break;
-        }
-        case "consecutive": {
-          // n_0: cannot follow.  Means: A then B (or vice-versa) cannot be consecutive periods.
-          // Check existing placements at (day, period±1) for the "other side" of the relation.
-          const others = placedMatching(school, rel,
-            primaryMatch ? (bin ? (l => lessonMatchesSecond(l, rel)) : lessonMatches)
-                         : lessonMatches);
-          for (const o of others) {
-            if (o.card.day !== day) continue;
-            if (Math.abs(o.card.period - period) === 1) {
-              sink.push(`${meta.label} — already placed in the adjacent period`);
-              break;
-            }
-          }
-          break;
-        }
-        case "consecutiveOrdered": {
-          // n_6: A must precede B. If placing B at (day, p), there must be an A at (day, p-1).
-          // Hard violation when A is missing OR ordering is reversed.
-          const others = placedMatching(school, rel,
-            l => lessonMatchesSecond(l, rel));
-          if (primaryMatch) {
-            // If we're placing A (the leader), no immediate violation if B isn't placed yet.
-            // If a B is placed at (day, p-1) we'd be violating order.
-            for (const o of others) {
-              if (o.card.day === day && o.card.period === period - 1) {
-                sink.push(`${meta.label} — order would be reversed`);
-                break;
-              }
-            }
-          }
-          break;
-        }
-        case "sameDay": {
-          // n_1: cannot be the same day.  n_8 / n_10: must be same day.
-          const others = placedMatching(school, rel,
-            bin ? (l => lessonMatchesSecond(l, rel)) : lessonMatches);
-          const sameDay = others.some(o => o.card.day === day);
-          const otherDayPresent = others.some(o => o.card.day !== day);
-          if (rel.typ === "n_1") {
-            if (sameDay) sink.push(`${meta.label} — already placed on this day`);
-          } else {
-            // must be same day (n_8/n_10/n_11)
-            if (!sameDay && otherDayPresent) sink.push(`${meta.label} — sibling lesson is on a different day`);
-          }
-          break;
-        }
-        case "sameDayOrdered": {
-          // n_9: A then B both on same day, A first.
-          const others = placedMatching(school, rel,
-            primaryMatch ? (l => lessonMatchesSecond(l, rel)) : lessonMatches);
-          const sameDay = others.find(o => o.card.day === day);
-          if (sameDay) {
-            // We placed A; B is at sameDay.period. Order violation if our (period) > sameDay.period
-            if (primaryMatch && period > sameDay.card.period)
-              sink.push(`${meta.label} — order would be reversed (B is earlier than A)`);
-          }
-          break;
-        }
-        case "betweenBreaks": {
-          // n_7: a break-period cannot fall between the lessons in this set.
-          // Simplified: warn if placement separates other matched cards by a break period.
-          const bell = school.bell && school.bell.periods;
-          if (!bell) break;
-          const others = placedMatching(school, rel, lessonMatches)
-            .filter(o => o.card.day === day);
-          if (others.length) {
-            const ps = others.map(o => o.card.period).concat(period).sort((a, b) => a - b);
-            for (let i = 1; i < ps.length; i++) {
-              const between = bell.slice(ps[i - 1] + 1, ps[i]);
-              if (between.some(p => p.isTeaching === false)) {
-                sink.push(`${meta.label} — a break falls between sibling lessons`);
-                break;
-              }
-            }
-          }
-          break;
-        }
-        case "simultaneous": {
-          // n_12/n_13: subjects must start at same time across classes/groups.
-          // Hard violation if another matched lesson is placed at the same day but DIFFERENT period.
-          const others = placedMatching(school, rel, lessonMatches);
-          for (const o of others) {
-            if (o.card.lessonId === lessonId) continue;
-            if (o.card.period !== period) {
-              sink.push(`${meta.label} — sibling lesson is at period ${o.card.period + 1}, this is ${period + 1}`);
-              break;
-            }
-          }
-          break;
-        }
-        case "samePeriodEachDay": {
-          // n_14: subject must be on the same period each day it's taught.
-          const others = placedMatching(school, rel, lessonMatches);
-          for (const o of others) {
-            if (o.card.lessonId === lessonId) continue;
-            if (o.card.day !== day && o.card.period !== period) {
-              sink.push(`${meta.label} — placed at period ${o.card.period + 1} on day ${o.card.day + 1}; this is period ${period + 1}`);
-              break;
-            }
-          }
-          break;
-        }
-        case "position": {
-          // n_16: subject must be first or last period of the day.
-          const periodCount = (school.bell && school.bell.periods) ? school.bell.periods.length : 8;
-          const wantFirst = rel.positions === "first";
-          const wantLast  = rel.positions === "last";
-          if (wantFirst && period !== 0)
-            sink.push(`${meta.label} — should be at period 1, this is ${period + 1}`);
-          if (wantLast && period !== periodCount - 1)
-            sink.push(`${meta.label} — should be at last period, this is ${period + 1}`);
-          break;
-        }
-        case "afternoon": {
-          // n_17: subjects must be in the afternoon (outside teaching block).
-          // Heuristic: afternoon = bottom half of periods.
-          const periodCount = (school.bell && school.bell.periods) ? school.bell.periods.length : 8;
-          if (period < Math.floor(periodCount / 2))
-            sink.push(`${meta.label} — must be in the afternoon (later periods)`);
-          break;
-        }
-        case "distribution": {
-          // n_4: card distribution — soft pressure on uneven placement (placeholder).
-          // Real impl requires sibling-card lookup; emit a hint only.
-          const dayCounts = {};
-          for (const o of placedMatching(school, rel, lessonMatches)) {
-            dayCounts[o.card.day] = (dayCounts[o.card.day] || 0) + 1;
-          }
-          const max = Math.max(...Object.values(dayCounts), 0);
-          if (max >= 2) {
-            sink.push(`${meta.label} — already ${max} on one day`);
-          }
-          break;
-        }
-      }
-    }
-    return result;
-  }
-
-  /** Return an array of human-readable enforcement summaries for the UI. */
-  function explain(school, lessonId, day, period) {
-    const r = check(school, lessonId, day, period);
-  return [...r.hard.map(s => `🚫 ${s}`), ...r.soft.map(s => `⚠️ ${s}`)];
-}
-
-export { TYPS, check, explain };
-
-// Backward compat: UI code still uses window.RelationEnforcer
-if (typeof globalThis !== "undefined") {
-  globalThis.RelationEnforcer = { check, explain, TYPS };
-}
-
 /* ─── FILE: js/ui/components/verification.js ─── */
 /* Chronexa Verification Panel (bottom drawer)
  *
@@ -19229,7 +18929,7 @@ window.StartScreen = (function () {
       ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   }
 
-  return { render, collectRecent };
+  return { render, collectRecent, openSampleInfo };
 })();
 
 /* ─── FILE: js/ui/main.js ─── */
@@ -19239,6 +18939,117 @@ window.StartScreen = (function () {
 (function () {
   "use strict";
   const t = (k) => I18N.t(k);
+
+  // ─── Event Delegation for CTA Buttons (P129 Load-Order / DOM Re-render fixes) ───
+  document.addEventListener("click", async (e) => {
+    const demoBtn = e.target.closest("#cta-load-demo");
+    const buildBtn = e.target.closest("#cta-build-new");
+    const infoBtn = e.target.closest("#start-sample-info");
+
+    if (demoBtn) {
+      e.preventDefault();
+      if (window.Tour && window.Tour.end) window.Tour.end();
+      const status = document.getElementById("xml-status");
+      if (status) status.innerHTML = `<span class="text-slate-500">Loading bundled sample…</span>`;
+      try {
+        const r = await fetch("./sample-school.xml");
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        const xmlText = await r.text();
+        const blob = new Blob([xmlText], { type: "application/xml" });
+        const file = new File([blob], "sample-school.xml", { type: "application/xml" });
+        const school = await parseTimetableXml.parseFile(file);
+        window.APP.school = school;
+        if (window.CreateNew && window.CreateNew.ensureColors) window.CreateNew.ensureColors();
+        const c = school._meta.counts;
+        if (status) status.innerHTML = `<span class="text-emerald-700 font-semibold">Loaded.</span> <span class="text-slate-600">${c.teachers} teachers · ${c.classes} classes · ${c.subjects} subjects · ${c.classrooms} rooms · ${c.lessons} lessons · ${c.cards} cards</span>`;
+        document.querySelectorAll(".needs-school").forEach(b => b.disabled = false);
+        document.dispatchEvent(new CustomEvent("app:school-loaded", { detail: { source: "demo-xml" } }));
+        setTimeout(() => showStep(6), 250);
+      } catch (err) {
+        console.warn("[demo] bundled XML fetch failed, falling back to 22-card seed:", err);
+        if (status) status.innerHTML = `<span class="text-amber-700">Bundled file unavailable, using 22-card demo instead.</span>`;
+        if (window.CreateNew && window.CreateNew.createDemoSeed) {
+          window.CreateNew.createDemoSeed();
+          document.querySelectorAll(".needs-school").forEach(b => b.disabled = false);
+          showStep(6);
+        }
+      }
+    } else if (buildBtn) {
+      e.preventDefault();
+      if (window.SchoolTemplates && window.SchoolTemplates.showPicker) {
+        try {
+          const S = window.APP && window.APP.school;
+          const hasData = S && ((S.teachers && S.teachers.length) || (S.cards && S.cards.length));
+          if (hasData && !confirm("A timetable is already loaded. Replace it with a fresh start?")) return;
+        } catch (err) {}
+        window.SchoolTemplates.showPicker((id, result) => {
+          if (window.OnboardingWiring && window.OnboardingWiring.onTemplatePicked) {
+            window.OnboardingWiring.onTemplatePicked(id, result);
+          } else {
+            document.querySelectorAll(".needs-school").forEach(b => b.disabled = false);
+            if (window.WizardWalkthrough && window.WizardWalkthrough.start) {
+              window.WizardWalkthrough.start();
+            } else {
+              showStep(6);
+            }
+          }
+        });
+        return;
+      }
+      
+      // Fallback build-new handler
+      if (window.Tour && window.Tour.end) window.Tour.end();
+      if (window.APP.school && (window.APP.school.teachers.length || window.APP.school.cards.length)) {
+        if (!confirm("A timetable is already loaded. Replace it with a new one?")) return;
+      }
+      if (window.CreateNew && window.CreateNew.createBlank) {
+        window.CreateNew.createBlank();
+        document.querySelectorAll(".needs-school").forEach(b => b.disabled = false);
+        if (window.WizardWalkthrough && window.WizardWalkthrough.start) {
+          window.WizardWalkthrough.start();
+        } else {
+          showStep(6);
+        }
+      }
+    } else if (infoBtn) {
+      e.preventDefault();
+      if (window.StartScreen && window.StartScreen.openSampleInfo) {
+        window.StartScreen.openSampleInfo();
+      } else {
+        openSampleInfoFallback();
+      }
+    }
+  });
+
+  function openSampleInfoFallback() {
+    const title = "Sample school";
+    const paragraphs = [
+      "The bundled demo contains a realistic school setup with teachers, classes, rooms, subjects, lessons, bell periods, and placed timetable cards.",
+      "It loads locally from this app, can be edited like any timetable, and is useful for trying the editor before opening your own file.",
+    ];
+    const D = window.EntityDialog;
+    if (D && D.openSheet && D.el) {
+      try {
+        D.openSheet(D.el("div", { class: "chrx-start-info" },
+          ...paragraphs.map((text) => D.el("p", null, text))
+        ), { title });
+        return;
+      } catch (e) {}
+    }
+    const modal = document.createElement("div");
+    modal.className = "chrx-start-modal";
+    modal.innerHTML = `
+      <div class="chrx-start-modal__panel" role="dialog" aria-modal="true" aria-label="Sample school">
+        <h3>Sample school</h3>
+        <p>${escapeHtml(paragraphs[0])}</p>
+        <p>${escapeHtml(paragraphs[1])}</p>
+        <button type="button" class="chrx-btn chrx-btn--primary">Done</button>
+      </div>
+    `;
+    modal.addEventListener("click", (e) => { if (e.target === modal) modal.remove(); });
+    modal.querySelector("button").addEventListener("click", () => modal.remove());
+    document.body.appendChild(modal);
+  }
 
   // ----- Error banner (red on-page, copy of sitting-planner pattern) --------
   function showError(where, err) {
@@ -19405,6 +19216,12 @@ window.StartScreen = (function () {
 
   // ----- Boot --------------------------------------------------------------
   function boot() {
+    console.log("--> [main.js] boot() is executing!");
+    const demoBtnCheck = document.getElementById("cta-load-demo");
+    const buildBtnCheck = document.getElementById("cta-build-new");
+    console.log("--> [main.js] cta-load-demo element exists:", !!demoBtnCheck);
+    console.log("--> [main.js] cta-build-new element exists:", !!buildBtnCheck);
+
     document.querySelectorAll(".step-btn").forEach(b => {
       b.onclick = () => {
         const n = parseInt(b.dataset.step, 10);

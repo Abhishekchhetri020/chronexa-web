@@ -48,7 +48,6 @@ js/ui/components/school_toolbar.js
 js/ui/components/period_override_matrix.js
 js/ui/components/ai_actions.js
 js/ui/io/export_html.js
-js/solver/relation_enforcer.js
 js/ui/components/verification.js
 js/ui/solver_ui/backend_client.js
 js/ui/solver_ui/multi_branch.js

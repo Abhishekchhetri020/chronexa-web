@@ -348,8 +348,7 @@
     ["ui","components/period_override_matrix"],
     ["ui","components/ai_actions"],
     ["ui","io/export_html"],
-    // ─── Relation enforcer — wires the 15 n_* constraints into the solver ──
-    ["solver","relation_enforcer"],
+    // ─── Relation enforcer — dynamically imported as ES module below ──
     ["ui","components/verification"],
     ["ui","solver_ui/backend_client"],
     ["ui","solver_ui/multi_branch"],
@@ -619,6 +618,16 @@
     });
   } catch (e) {
     console.warn("[constraint-explainer] SolverConstraints shim failed; falling back to Placement.classify", e);
+  }
+  try {
+    const mod = await import("./js/solver/relation_enforcer.js?v=" + window.APP_VER);
+    window.RelationEnforcer = {
+      check: mod.check,
+      explain: mod.explain,
+      TYPS: mod.TYPS
+    };
+  } catch (e) {
+    console.warn("[relation-enforcer] relation_enforcer.js module import failed", e);
   }
 </script>
 
