@@ -1,0 +1,40 @@
+{
+  "timestamp": "2026-05-27T04:17:35.711Z",
+  "platform": "darwin arm64",
+  "nodeVersion": "v26.0.0",
+  "results": [
+    {
+      "name": "Small School (50 cards)",
+      "duration": 0.020326916999999993,
+      "status": "FEASIBLE",
+      "placed": 39,
+      "expected": 39,
+      "softScore": 0,
+      "hardConflicts": 0,
+      "durationMs": 18,
+      "violations": 0
+    },
+    {
+      "name": "Medium School (300 cards)",
+      "duration": 0.332719709,
+      "status": "FEASIBLE",
+      "placed": 300,
+      "expected": 300,
+      "softScore": 0,
+      "hardConflicts": 0,
+      "durationMs": 333,
+      "violations": 0
+    },
+    {
+      "name": "Large School (800 cards)",
+      "duration": 3.812756291,
+      "status": "FEASIBLE",
+      "placed": 800,
+      "expected": 800,
+      "softScore": 0,
+      "hardConflicts": 0,
+      "durationMs": 3813,
+      "violations": 0
+    }
+  ]
+}

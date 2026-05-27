@@ -1,0 +1,1149 @@
+{
+  "schoolName": "Medium School Benchmark",
+  "daysPerWeek": 6,
+  "periodsPerDay": 7,
+  "bell": "default",
+  "bells": [
+    {
+      "id": "default",
+      "name": "Standard Week",
+      "periods": [
+        {
+          "label": "1",
+          "duration": 1
+        },
+        {
+          "label": "2",
+          "duration": 1
+        },
+        {
+          "label": "BREAK",
+          "duration": 1
+        },
+        {
+          "label": "3",
+          "duration": 1
+        },
+        {
+          "label": "4",
+          "duration": 1
+        },
+        {
+          "label": "5",
+          "duration": 1
+        },
+        {
+          "label": "6",
+          "duration": 1
+        },
+        {
+          "label": "7",
+          "duration": 1
+        }
+      ]
+    }
+  ],
+  "subjects": [
+    {
+      "id": "s1",
+      "name": "Math",
+      "color": "#4dabf7"
+    },
+    {
+      "id": "s2",
+      "name": "English",
+      "color": "#51cf66"
+    },
+    {
+      "id": "s3",
+      "name": "Science",
+      "color": "#ff922b"
+    },
+    {
+      "id": "s4",
+      "name": "Social Studies",
+      "color": "#cc5de8"
+    },
+    {
+      "id": "s5",
+      "name": "Hindi",
+      "color": "#ffd43b"
+    },
+    {
+      "id": "s6",
+      "name": "Computer",
+      "color": "#20c997"
+    },
+    {
+      "id": "s7",
+      "name": "Physical Education",
+      "color": "#f06595"
+    },
+    {
+      "id": "s8",
+      "name": "Art",
+      "color": "#845ef7"
+    }
+  ],
+  "teachers": [
+    {
+      "id": "t1",
+      "name": "Mr. Kumar",
+      "subjects": [
+        "s1"
+      ],
+      "timeOff": {
+        "2-5": true,
+        "2-6": true
+      }
+    },
+    {
+      "id": "t2",
+      "name": "Ms. Sharma",
+      "subjects": [
+        "s2"
+      ],
+      "timeOff": {}
+    },
+    {
+      "id": "t3",
+      "name": "Dr. Patel",
+      "subjects": [
+        "s3"
+      ],
+      "timeOff": {}
+    },
+    {
+      "id": "t4",
+      "name": "Mrs. Singh",
+      "subjects": [
+        "s4"
+      ],
+      "timeOff": {}
+    },
+    {
+      "id": "t5",
+      "name": "Mr. Gupta",
+      "subjects": [
+        "s5"
+      ],
+      "timeOff": {}
+    },
+    {
+      "id": "t6",
+      "name": "Ms. Verma",
+      "subjects": [
+        "s6"
+      ],
+      "timeOff": {},
+      "maxPeriodsPerDay": 4
+    },
+    {
+      "id": "t7",
+      "name": "Mr. Joshi",
+      "subjects": [
+        "s7"
+      ],
+      "timeOff": {}
+    },
+    {
+      "id": "t8",
+      "name": "Mrs. Reddy",
+      "subjects": [
+        "s8"
+      ],
+      "timeOff": {}
+    },
+    {
+      "id": "t9",
+      "name": "Dr. Mehta",
+      "subjects": [
+        "s1",
+        "s3"
+      ],
+      "timeOff": {}
+    },
+    {
+      "id": "t10",
+      "name": "Mr. Iyer",
+      "subjects": [
+        "s2",
+        "s5"
+      ],
+      "timeOff": {}
+    },
+    {
+      "id": "t11",
+      "name": "Ms. Rao",
+      "subjects": [
+        "s4",
+        "s6"
+      ],
+      "timeOff": {}
+    },
+    {
+      "id": "t12",
+      "name": "Mr. Das",
+      "subjects": [
+        "s3",
+        "s7"
+      ],
+      "timeOff": {}
+    },
+    {
+      "id": "t13",
+      "name": "Mrs. Khan",
+      "subjects": [
+        "s1",
+        "s2"
+      ],
+      "timeOff": {}
+    },
+    {
+      "id": "t14",
+      "name": "Mr. Ali",
+      "subjects": [
+        "s5",
+        "s8"
+      ],
+      "timeOff": {}
+    },
+    {
+      "id": "t15",
+      "name": "Dr. Pillai",
+      "subjects": [
+        "s4",
+        "s6",
+        "s7"
+      ],
+      "timeOff": {}
+    }
+  ],
+  "classes": [
+    {
+      "id": "c1",
+      "name": "Grade 6A",
+      "bellId": "default"
+    },
+    {
+      "id": "c2",
+      "name": "Grade 6B",
+      "bellId": "default"
+    },
+    {
+      "id": "c3",
+      "name": "Grade 6C",
+      "bellId": "default"
+    },
+    {
+      "id": "c4",
+      "name": "Grade 7A",
+      "bellId": "default"
+    },
+    {
+      "id": "c5",
+      "name": "Grade 7B",
+      "bellId": "default"
+    },
+    {
+      "id": "c6",
+      "name": "Grade 7C",
+      "bellId": "default"
+    },
+    {
+      "id": "c7",
+      "name": "Grade 8A",
+      "bellId": "default"
+    },
+    {
+      "id": "c8",
+      "name": "Grade 8B",
+      "bellId": "default"
+    },
+    {
+      "id": "c9",
+      "name": "Grade 8C",
+      "bellId": "default"
+    },
+    {
+      "id": "c10",
+      "name": "Grade 9A",
+      "bellId": "default"
+    }
+  ],
+  "classrooms": [
+    {
+      "id": "r1",
+      "name": "Room 101",
+      "capacity": 35,
+      "tags": [
+        "science"
+      ]
+    },
+    {
+      "id": "r2",
+      "name": "Room 102",
+      "capacity": 35,
+      "tags": [
+        "science"
+      ]
+    },
+    {
+      "id": "r3",
+      "name": "Room 103",
+      "capacity": 35,
+      "tags": [
+        "science"
+      ]
+    },
+    {
+      "id": "r4",
+      "name": "Room 104",
+      "capacity": 35,
+      "tags": []
+    },
+    {
+      "id": "r5",
+      "name": "Room 105",
+      "capacity": 35,
+      "tags": []
+    },
+    {
+      "id": "r6",
+      "name": "Room 106",
+      "capacity": 35,
+      "tags": []
+    },
+    {
+      "id": "r7",
+      "name": "Room 107",
+      "capacity": 35,
+      "tags": []
+    },
+    {
+      "id": "r8",
+      "name": "Room 108",
+      "capacity": 35,
+      "tags": []
+    },
+    {
+      "id": "r9",
+      "name": "Room 109",
+      "capacity": 35,
+      "tags": []
+    },
+    {
+      "id": "r10",
+      "name": "Room 110",
+      "capacity": 35,
+      "tags": []
+    }
+  ],
+  "lessons": [
+    {
+      "id": "l1",
+      "classId": "c1",
+      "subjectId": "s1",
+      "teacherId": "t13",
+      "periodsPerWeek": 5,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l2",
+      "classId": "c1",
+      "subjectId": "s2",
+      "teacherId": "t2",
+      "periodsPerWeek": 5,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l3",
+      "classId": "c1",
+      "subjectId": "s3",
+      "teacherId": "t9",
+      "periodsPerWeek": 4,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": true
+    },
+    {
+      "id": "l4",
+      "classId": "c1",
+      "subjectId": "s4",
+      "teacherId": "t15",
+      "periodsPerWeek": 4,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l5",
+      "classId": "c1",
+      "subjectId": "s5",
+      "teacherId": "t5",
+      "periodsPerWeek": 4,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l6",
+      "classId": "c1",
+      "subjectId": "s6",
+      "teacherId": "t11",
+      "periodsPerWeek": 3,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l7",
+      "classId": "c1",
+      "subjectId": "s7",
+      "teacherId": "t15",
+      "periodsPerWeek": 3,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l8",
+      "classId": "c1",
+      "subjectId": "s8",
+      "teacherId": "t14",
+      "periodsPerWeek": 2,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l9",
+      "classId": "c2",
+      "subjectId": "s1",
+      "teacherId": "t1",
+      "periodsPerWeek": 5,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l10",
+      "classId": "c2",
+      "subjectId": "s2",
+      "teacherId": "t10",
+      "periodsPerWeek": 5,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l11",
+      "classId": "c2",
+      "subjectId": "s3",
+      "teacherId": "t12",
+      "periodsPerWeek": 4,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": true
+    },
+    {
+      "id": "l12",
+      "classId": "c2",
+      "subjectId": "s4",
+      "teacherId": "t4",
+      "periodsPerWeek": 4,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l13",
+      "classId": "c2",
+      "subjectId": "s5",
+      "teacherId": "t10",
+      "periodsPerWeek": 4,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l14",
+      "classId": "c2",
+      "subjectId": "s6",
+      "teacherId": "t15",
+      "periodsPerWeek": 3,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l15",
+      "classId": "c2",
+      "subjectId": "s7",
+      "teacherId": "t7",
+      "periodsPerWeek": 3,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l16",
+      "classId": "c2",
+      "subjectId": "s8",
+      "teacherId": "t8",
+      "periodsPerWeek": 2,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l17",
+      "classId": "c3",
+      "subjectId": "s1",
+      "teacherId": "t9",
+      "periodsPerWeek": 5,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l18",
+      "classId": "c3",
+      "subjectId": "s2",
+      "teacherId": "t13",
+      "periodsPerWeek": 5,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l19",
+      "classId": "c3",
+      "subjectId": "s3",
+      "teacherId": "t3",
+      "periodsPerWeek": 4,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": true
+    },
+    {
+      "id": "l20",
+      "classId": "c3",
+      "subjectId": "s4",
+      "teacherId": "t11",
+      "periodsPerWeek": 4,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l21",
+      "classId": "c3",
+      "subjectId": "s5",
+      "teacherId": "t14",
+      "periodsPerWeek": 4,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l22",
+      "classId": "c3",
+      "subjectId": "s6",
+      "teacherId": "t6",
+      "periodsPerWeek": 3,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l23",
+      "classId": "c3",
+      "subjectId": "s7",
+      "teacherId": "t12",
+      "periodsPerWeek": 3,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l24",
+      "classId": "c3",
+      "subjectId": "s8",
+      "teacherId": "t14",
+      "periodsPerWeek": 2,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l25",
+      "classId": "c4",
+      "subjectId": "s1",
+      "teacherId": "t13",
+      "periodsPerWeek": 5,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l26",
+      "classId": "c4",
+      "subjectId": "s2",
+      "teacherId": "t2",
+      "periodsPerWeek": 5,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l27",
+      "classId": "c4",
+      "subjectId": "s3",
+      "teacherId": "t9",
+      "periodsPerWeek": 4,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": true
+    },
+    {
+      "id": "l28",
+      "classId": "c4",
+      "subjectId": "s4",
+      "teacherId": "t15",
+      "periodsPerWeek": 4,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l29",
+      "classId": "c4",
+      "subjectId": "s5",
+      "teacherId": "t5",
+      "periodsPerWeek": 4,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l30",
+      "classId": "c4",
+      "subjectId": "s6",
+      "teacherId": "t11",
+      "periodsPerWeek": 3,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l31",
+      "classId": "c4",
+      "subjectId": "s7",
+      "teacherId": "t15",
+      "periodsPerWeek": 3,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l32",
+      "classId": "c4",
+      "subjectId": "s8",
+      "teacherId": "t8",
+      "periodsPerWeek": 2,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l33",
+      "classId": "c5",
+      "subjectId": "s1",
+      "teacherId": "t1",
+      "periodsPerWeek": 5,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l34",
+      "classId": "c5",
+      "subjectId": "s2",
+      "teacherId": "t10",
+      "periodsPerWeek": 5,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l35",
+      "classId": "c5",
+      "subjectId": "s3",
+      "teacherId": "t12",
+      "periodsPerWeek": 4,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": true
+    },
+    {
+      "id": "l36",
+      "classId": "c5",
+      "subjectId": "s4",
+      "teacherId": "t4",
+      "periodsPerWeek": 4,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l37",
+      "classId": "c5",
+      "subjectId": "s5",
+      "teacherId": "t10",
+      "periodsPerWeek": 4,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l38",
+      "classId": "c5",
+      "subjectId": "s6",
+      "teacherId": "t15",
+      "periodsPerWeek": 3,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l39",
+      "classId": "c5",
+      "subjectId": "s7",
+      "teacherId": "t7",
+      "periodsPerWeek": 3,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l40",
+      "classId": "c5",
+      "subjectId": "s8",
+      "teacherId": "t14",
+      "periodsPerWeek": 2,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l41",
+      "classId": "c6",
+      "subjectId": "s1",
+      "teacherId": "t9",
+      "periodsPerWeek": 5,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l42",
+      "classId": "c6",
+      "subjectId": "s2",
+      "teacherId": "t13",
+      "periodsPerWeek": 5,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l43",
+      "classId": "c6",
+      "subjectId": "s3",
+      "teacherId": "t3",
+      "periodsPerWeek": 4,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": true
+    },
+    {
+      "id": "l44",
+      "classId": "c6",
+      "subjectId": "s4",
+      "teacherId": "t11",
+      "periodsPerWeek": 4,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l45",
+      "classId": "c6",
+      "subjectId": "s5",
+      "teacherId": "t14",
+      "periodsPerWeek": 4,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l46",
+      "classId": "c6",
+      "subjectId": "s6",
+      "teacherId": "t6",
+      "periodsPerWeek": 3,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l47",
+      "classId": "c6",
+      "subjectId": "s7",
+      "teacherId": "t12",
+      "periodsPerWeek": 3,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l48",
+      "classId": "c6",
+      "subjectId": "s8",
+      "teacherId": "t8",
+      "periodsPerWeek": 2,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l49",
+      "classId": "c7",
+      "subjectId": "s1",
+      "teacherId": "t13",
+      "periodsPerWeek": 5,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l50",
+      "classId": "c7",
+      "subjectId": "s2",
+      "teacherId": "t2",
+      "periodsPerWeek": 5,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l51",
+      "classId": "c7",
+      "subjectId": "s3",
+      "teacherId": "t9",
+      "periodsPerWeek": 4,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": true
+    },
+    {
+      "id": "l52",
+      "classId": "c7",
+      "subjectId": "s4",
+      "teacherId": "t15",
+      "periodsPerWeek": 4,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l53",
+      "classId": "c7",
+      "subjectId": "s5",
+      "teacherId": "t5",
+      "periodsPerWeek": 4,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l54",
+      "classId": "c7",
+      "subjectId": "s6",
+      "teacherId": "t11",
+      "periodsPerWeek": 3,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l55",
+      "classId": "c7",
+      "subjectId": "s7",
+      "teacherId": "t15",
+      "periodsPerWeek": 3,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l56",
+      "classId": "c7",
+      "subjectId": "s8",
+      "teacherId": "t14",
+      "periodsPerWeek": 2,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l57",
+      "classId": "c8",
+      "subjectId": "s1",
+      "teacherId": "t1",
+      "periodsPerWeek": 5,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l58",
+      "classId": "c8",
+      "subjectId": "s2",
+      "teacherId": "t10",
+      "periodsPerWeek": 5,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l59",
+      "classId": "c8",
+      "subjectId": "s3",
+      "teacherId": "t12",
+      "periodsPerWeek": 4,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": true
+    },
+    {
+      "id": "l60",
+      "classId": "c8",
+      "subjectId": "s4",
+      "teacherId": "t4",
+      "periodsPerWeek": 4,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l61",
+      "classId": "c8",
+      "subjectId": "s5",
+      "teacherId": "t10",
+      "periodsPerWeek": 4,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l62",
+      "classId": "c8",
+      "subjectId": "s6",
+      "teacherId": "t15",
+      "periodsPerWeek": 3,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l63",
+      "classId": "c8",
+      "subjectId": "s7",
+      "teacherId": "t7",
+      "periodsPerWeek": 3,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l64",
+      "classId": "c8",
+      "subjectId": "s8",
+      "teacherId": "t8",
+      "periodsPerWeek": 2,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l65",
+      "classId": "c9",
+      "subjectId": "s1",
+      "teacherId": "t9",
+      "periodsPerWeek": 5,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l66",
+      "classId": "c9",
+      "subjectId": "s2",
+      "teacherId": "t13",
+      "periodsPerWeek": 5,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l67",
+      "classId": "c9",
+      "subjectId": "s3",
+      "teacherId": "t3",
+      "periodsPerWeek": 4,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": true
+    },
+    {
+      "id": "l68",
+      "classId": "c9",
+      "subjectId": "s4",
+      "teacherId": "t11",
+      "periodsPerWeek": 4,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l69",
+      "classId": "c9",
+      "subjectId": "s5",
+      "teacherId": "t14",
+      "periodsPerWeek": 4,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l70",
+      "classId": "c9",
+      "subjectId": "s6",
+      "teacherId": "t6",
+      "periodsPerWeek": 3,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l71",
+      "classId": "c9",
+      "subjectId": "s7",
+      "teacherId": "t12",
+      "periodsPerWeek": 3,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l72",
+      "classId": "c9",
+      "subjectId": "s8",
+      "teacherId": "t14",
+      "periodsPerWeek": 2,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l73",
+      "classId": "c10",
+      "subjectId": "s1",
+      "teacherId": "t13",
+      "periodsPerWeek": 5,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l74",
+      "classId": "c10",
+      "subjectId": "s2",
+      "teacherId": "t2",
+      "periodsPerWeek": 5,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l75",
+      "classId": "c10",
+      "subjectId": "s3",
+      "teacherId": "t9",
+      "periodsPerWeek": 4,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": true
+    },
+    {
+      "id": "l76",
+      "classId": "c10",
+      "subjectId": "s4",
+      "teacherId": "t15",
+      "periodsPerWeek": 4,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l77",
+      "classId": "c10",
+      "subjectId": "s5",
+      "teacherId": "t5",
+      "periodsPerWeek": 4,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l78",
+      "classId": "c10",
+      "subjectId": "s6",
+      "teacherId": "t11",
+      "periodsPerWeek": 3,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l79",
+      "classId": "c10",
+      "subjectId": "s7",
+      "teacherId": "t15",
+      "periodsPerWeek": 3,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    },
+    {
+      "id": "l80",
+      "classId": "c10",
+      "subjectId": "s8",
+      "teacherId": "t8",
+      "periodsPerWeek": 2,
+      "periodsPerDay": 1,
+      "doubleLesson": false,
+      "roomRequired": false
+    }
+  ],
+  "settings": {
+    "maxTeacherGapsPerDay": 3,
+    "maxConsecutivePeriods": 5,
+    "preferMorningPeriods": true
+  }
+}

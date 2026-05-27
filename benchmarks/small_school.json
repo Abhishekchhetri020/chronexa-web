@@ -1,0 +1,57 @@
+{
+  "schoolName": "Small School Benchmark",
+  "daysPerWeek": 5,
+  "periodsPerDay": 6,
+  "bell": "default",
+  "bells": [{
+    "id": "default",
+    "name": "Standard Day",
+    "periods": [
+      {"label": "1", "duration": 1},
+      {"label": "2", "duration": 1},
+      {"label": "3", "duration": 1},
+      {"label": "4", "duration": 1},
+      {"label": "5", "duration": 1},
+      {"label": "6", "duration": 1}
+    ]
+  }],
+  "subjects": [
+    {"id": "s1", "name": "Math", "color": "#4dabf7"},
+    {"id": "s2", "name": "English", "color": "#51cf66"},
+    {"id": "s3", "name": "Science", "color": "#ff922b"},
+    {"id": "s4", "name": "History", "color": "#cc5de8"}
+  ],
+  "teachers": [
+    {"id": "t1", "name": "Mr. Smith", "subjects": ["s1", "s3"], "timeOff": {}},
+    {"id": "t2", "name": "Ms. Jones", "subjects": ["s2"], "timeOff": {}},
+    {"id": "t3", "name": "Dr. Brown", "subjects": ["s3", "s4"], "timeOff": {}},
+    {"id": "t4", "name": "Mrs. Davis", "subjects": ["s1", "s2"], "timeOff": {}}
+  ],
+  "classes": [
+    {"id": "c1", "name": "Grade 6A", "bellId": "default"},
+    {"id": "c2", "name": "Grade 6B", "bellId": "default"},
+    {"id": "c3", "name": "Grade 7A", "bellId": "default"}
+  ],
+  "classrooms": [
+    {"id": "r1", "name": "Room 101", "capacity": 30, "tags": ["science"]},
+    {"id": "r2", "name": "Room 102", "capacity": 30, "tags": []},
+    {"id": "r3", "name": "Room 103", "capacity": 30, "tags": []}
+  ],
+  "lessons": [
+    {"id": "l1", "classId": "c1", "subjectId": "s1", "teacherId": "t1", "periodsPerWeek": 5, "periodsPerDay": 1, "doubleLesson": false},
+    {"id": "l2", "classId": "c1", "subjectId": "s2", "teacherId": "t2", "periodsPerWeek": 4, "periodsPerDay": 1, "doubleLesson": false},
+    {"id": "l3", "classId": "c1", "subjectId": "s3", "teacherId": "t3", "periodsPerWeek": 3, "periodsPerDay": 1, "doubleLesson": false},
+    {"id": "l4", "classId": "c1", "subjectId": "s4", "teacherId": "t4", "periodsPerWeek": 3, "periodsPerDay": 1, "doubleLesson": false},
+    {"id": "l5", "classId": "c2", "subjectId": "s1", "teacherId": "t4", "periodsPerWeek": 5, "periodsPerDay": 1, "doubleLesson": false},
+    {"id": "l6", "classId": "c2", "subjectId": "s2", "teacherId": "t2", "periodsPerWeek": 4, "periodsPerDay": 1, "doubleLesson": false},
+    {"id": "l7", "classId": "c2", "subjectId": "s3", "teacherId": "t1", "periodsPerWeek": 3, "periodsPerDay": 1, "doubleLesson": false},
+    {"id": "l8", "classId": "c3", "subjectId": "s1", "teacherId": "t1", "periodsPerWeek": 5, "periodsPerDay": 1, "doubleLesson": false},
+    {"id": "l9", "classId": "c3", "subjectId": "s2", "teacherId": "t4", "periodsPerWeek": 4, "periodsPerDay": 1, "doubleLesson": false},
+    {"id": "l10", "classId": "c3", "subjectId": "s3", "teacherId": "t3", "periodsPerWeek": 3, "periodsPerDay": 1, "doubleLesson": false}
+  ],
+  "settings": {
+    "maxTeacherGapsPerDay": 2,
+    "maxConsecutivePeriods": 4,
+    "preferMorningPeriods": true
+  }
+}

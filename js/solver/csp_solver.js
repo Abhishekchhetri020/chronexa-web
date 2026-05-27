@@ -21,6 +21,7 @@
 
 import { DEFAULT_SOFT_WEIGHTS, FAIL, FAIL_NAME, Weight } from "./constraints.js";
 import { popcount32 } from "./bitmask.js";
+import { createLearningForSchool, SolverLearning } from "./solver_learning.js";
 
 export const VERSION = "js-csp-1.0.0";
 
@@ -2380,21 +2381,25 @@ function countFeasibleCandidates(model, state, lessonIdx) {
   return n;
 }
 
-function selectByMrvDegree(model, state, unassigned, unassignedCount, seed, depth) {
-  let bestLesson = -1, bestDomain = Number.MAX_SAFE_INTEGER, bestDegree = -1, bestTie = Number.MAX_SAFE_INTEGER;
+function selectByMrvDegree(model, state, unassigned, unassignedCount, seed, depth, learning) {
+  let bestLesson = -1, bestScore = Number.MAX_SAFE_INTEGER, bestDomain = Number.MAX_SAFE_INTEGER, bestDegree = -1, bestTie = Number.MAX_SAFE_INTEGER;
   for (let i = 0; i < unassignedCount; i++) {
     const l = unassigned[i];
     if (state.lessonAssigned[l]) continue;
     const dom = countFeasibleCandidates(model, state, l);
     const deg = model.lessonAdjacencyDegree[l];
+    // ML: learned difficulty boosts priority (lower score = higher priority)
+    const learnedPriority = learning ? learning.getVariablePriority(model, l) : 0;
+    // Combined score: MRV (domain) - learned_priority_bonus + degree tiebreak
+    const score = dom - learnedPriority * 0.5;  // each learned backtrack = 0.5 domain reduction
     const tie = mix64Int(BigInt(seed) ^ BigInt(depth) ^ BigInt(l));
     const better =
-      dom < bestDomain ||
-      (dom === bestDomain && deg > bestDegree) ||
-      (dom === bestDomain && deg === bestDegree && tie < bestTie) ||
-      (dom === bestDomain && deg === bestDegree && tie === bestTie && l < bestLesson);
+      score < bestScore ||
+      (score === bestScore && deg > bestDegree) ||
+      (score === bestScore && deg === bestDegree && tie < bestTie) ||
+      (score === bestScore && deg === bestDegree && tie === bestTie && l < bestLesson);
     if (better) {
-      bestLesson = l; bestDomain = dom; bestDegree = deg; bestTie = tie;
+      bestLesson = l; bestScore = score; bestDomain = dom; bestDegree = deg; bestTie = tie;
     }
   }
   return bestLesson;
@@ -2493,25 +2498,29 @@ function backtrack(model, state, unassigned, unassignedCount, ctx) {
       state.bestSoftScore = score;
       state.bestHardCount = 0;
       snapshotBest(state);
+      // ML: record all currently assigned lessons as successes
+      if (ctx.learning) {
+        for (let i = 0; i < model.lessonCount; i++) {
+          if (state.lessonAssigned[i]) {
+            ctx.learning.onSuccess(model, i, state.lessonAssignedSlot[i], state.lessonAssignedRoom[i]);
+          }
+        }
+      }
     }
     return;
   }
 
-  // Pick the next lesson via MRV+degree. If the chosen lesson has 0
-  // feasible candidates, REMOVE it from the active unassigned set (treat as
-  // unplaceable for this branch) and recurse with the smaller set, instead
-  // of bailing the whole branch. Without this, a single dense class wall
-  // would terminate BT early, leaving hundreds of placeable lessons untouched.
-  const selected = selectByMrvDegree(model, state, unassigned, unassignedCount, ctx.branchSeed, ctx.depth);
+  // Pick the next lesson via MRV+degree + learned difficulty. If the chosen
+  // lesson has 0 feasible candidates, REMOVE it from the active unassigned
+  // set (treat as unplaceable for this branch) and recurse.
+  const selected = selectByMrvDegree(model, state, unassigned, unassignedCount, ctx.branchSeed, ctx.depth, ctx.learning);
   if (selected < 0) return;
 
   const candidates = ctx.candidateScratch;
   let feasibleCount = fillFeasibleCandidates(model, state, selected, candidates);
 
   if (feasibleCount === 0) {
-    // Record current state as best partial then skip this lesson and
-    // continue with the remaining ones. This is the key fix vs the prior
-    // bail-out-on-first-zero.
+    // Record current state as best partial then skip this lesson.
     const score = -softScore(model, state);
     const entries = state.assignedLessonCount;
     if (entries > state.bestAssignedEntries ||
@@ -2521,6 +2530,8 @@ function backtrack(model, state, unassigned, unassignedCount, ctx) {
       state.bestHardCount = unassignedCount;
       snapshotBest(state);
     }
+    // ML: record this lesson as a backtrack (will get priority next time)
+    if (ctx.learning) ctx.learning.onBacktrack(selected);
     // Drop the 0-domain lesson from the active set, recurse, then restore.
     const reducedCount = removeFromUnassigned(unassigned, unassignedCount, selected);
     backtrack(model, state, unassigned, reducedCount, ctx);
@@ -2529,7 +2540,31 @@ function backtrack(model, state, unassigned, unassignedCount, ctx) {
     return;
   }
 
-  const iterStep = deterministicStep(BigInt(ctx.branchSeed) ^ (BigInt(selected) << 1n) ^ BigInt(ctx.depth), feasibleCount);
+  // ML: sort candidates by learned slot success rate (best slots first)
+  if (ctx.learning && feasibleCount > 1) {
+    const rates = new Float32Array(feasibleCount);
+    for (let i = 0; i < feasibleCount; i++) {
+      const slot = model.candidateSlot[candidates[i]];
+      rates[i] = ctx.learning.getSlotSuccessRate(model, selected, slot);
+    }
+    // Simple insertion sort on rates (feasibleCount is typically small, <50)
+    for (let i = 1; i < feasibleCount; i++) {
+      const r = rates[i];
+      const c = candidates[i];
+      let j = i;
+      while (j > 0 && rates[j - 1] < r) {
+        rates[j] = rates[j - 1];
+        candidates[j] = candidates[j - 1];
+        j--;
+      }
+      rates[j] = r;
+      candidates[j] = c;
+    }
+    // Override iterStep to be sequential (best-first order already learned)
+    var iterStep = 1;
+  } else {
+    var iterStep = deterministicStep(BigInt(ctx.branchSeed) ^ (BigInt(selected) << 1n) ^ BigInt(ctx.depth), feasibleCount);
+  }
   const reducedCount = removeFromUnassigned(unassigned, unassignedCount, selected);
 
   for (let offset = 0; offset < feasibleCount; offset++) {
@@ -2539,6 +2574,9 @@ function backtrack(model, state, unassigned, unassignedCount, ctx) {
     const slot = model.candidateSlot[candidate];
     const room = model.candidateRoom[candidate];
     if (canPlace(model, state, selected, slot, room) !== null) continue;
+
+    // ML: record slot attempt
+    if (ctx.learning) ctx.learning.onSlotTried(selected, slot);
 
     const mark = ctx.undoStack.length;
     applyPlacement(model, state, selected, slot, room, ctx.undoStack);
@@ -2553,6 +2591,8 @@ function backtrack(model, state, unassigned, unassignedCount, ctx) {
   }
 
   addToUnassigned(unassigned, reducedCount, selected);
+  // ML: record that this lesson had to backtrack (hard to place)
+  if (ctx.learning) ctx.learning.onBacktrack(selected);
   ctx.backtracks += 1;
 }
 
@@ -3606,6 +3646,12 @@ export function solve(school, options = {}) {
 
   let totalNodes = 0, totalBacktracks = 0;
   let anyTimedOut = false;
+  
+  // ML: Initialize learning module for this school structure
+  const learning = options.disableLearning ? null : createLearningForSchool(school);
+  if (learning && learning.getStats().variablePatterns > 0) {
+    console.log('[SolverLearning] Loaded', learning.getStats());
+  }
 
   for (let b = 0; b < branches; b++) {
     if (performance.now() >= deadlineMs) { anyTimedOut = true; break; }
@@ -3666,6 +3712,8 @@ export function solve(school, options = {}) {
       lessonLabels,
       model,
       progressEmitCount: 0,
+      // ML: learning module for variable/candidate ordering
+      learning,
     };
 
     // Wall-clock safety net: even if the search never reaches a `backtrack`
@@ -4035,6 +4083,23 @@ export function solve(school, options = {}) {
     }
   }
   const chyby = Object.values(chybyMap).sort((a, b) => b.count - a.count);
+
+  // ML: persist learned patterns for future solves
+  if (learning && placed > 0) {
+    try {
+      // Record successes from the global best assignment for all placed lessons
+      for (let i = 0; i < model.lessonCount; i++) {
+        if (globalBest.state.bestLessonAssigned[i]) {
+          learning.onSuccess(model, i,
+            globalBest.state.bestLessonAssignedSlot[i],
+            globalBest.state.bestLessonAssignedRoom[i]);
+        }
+      }
+      learning.save();
+    } catch (e) {
+      // ML is best-effort — never block the solver result
+    }
+  }
 
   return {
     status,
