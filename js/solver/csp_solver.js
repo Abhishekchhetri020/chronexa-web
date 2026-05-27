@@ -545,6 +545,25 @@ function buildModel(school) {
   }
   const anyRoom = Array.from({ length: school.classrooms.length }, (_, i) => i);
 
+  // Phase 2b: Room equivalence classes — rooms of the same type that have no
+  // distinguishing capacity constraints are interchangeable. For value ordering,
+  // prefer the canonical (lowest-indexed) room in each equivalence class.
+  // This breaks symmetry when multiple equivalent rooms are available.
+  const roomEquivalenceClass = new Int32Array(school.classrooms.length);
+  for (let r = 0; r < school.classrooms.length; r++) {
+    roomEquivalenceClass[r] = r;
+    const rt = school.classrooms[r].roomType || "__any__";
+    const cap = school.classrooms[r].capacity || 0;
+    // Find lowest-indexed room with same type and capacity
+    for (let other = 0; other < r; other++) {
+      if ((school.classrooms[other].roomType || "__any__") === rt &&
+          (school.classrooms[other].capacity || 0) === cap) {
+        roomEquivalenceClass[r] = other;
+        break;
+      }
+    }
+  }
+
   // Per-lesson candidate (slot, room) list. Filtered by:
   //   - room type (if requiredRoomType / preferredRoomId)
   //   - fixed slot (if present)
@@ -1034,6 +1053,7 @@ function buildModel(school) {
     classHomeroomTeacher,
     lessonAdjacencyDegree,
     lessonNeighborStart, lessonNeighborCount, lessonNeighborFlat,
+    roomEquivalenceClass,  // Phase 2b: symmetry breaking
     slotDay, slotPeriod, periodPref,
     weights,
     teacherLastPeriodCap: teacherMaxLastPeriod,
@@ -1726,6 +1746,8 @@ function applyPlacement(model, state, lessonIdx, slot, roomIdx, undoStack) {
   state.lessonAssigned[lessonIdx] = 1;
   state.assignedLessonCount += 1;
   if (undoStack) undoStack.push({ lessonIdx, slot, roomIdx });
+  // Phase 3: invalidate domain cache for this lesson and its neighbors
+  if (state._domCache) invalidateNeighbors(state._domCache, model, lessonIdx);
 }
 
 function undoPlacement(model, state, record) {
@@ -1737,6 +1759,8 @@ function undoPlacement(model, state, record) {
   state.lessonAssignedRoom[record.lessonIdx] = -1;
   state.lessonAssigned[record.lessonIdx] = 0;
   state.assignedLessonCount -= 1;
+  // Phase 3: invalidate domain cache
+  if (state._domCache) invalidateNeighbors(state._domCache, model, record.lessonIdx);
 }
 
 function undoToMark(model, state, undoStack, mark) {
@@ -2392,12 +2416,12 @@ function countFeasibleCandidates(model, state, lessonIdx) {
   return n;
 }
 
-function selectByMrvDegree(model, state, unassigned, unassignedCount, seed, depth, learning) {
+function selectByMrvDegree(model, state, unassigned, unassignedCount, seed, depth, learning, domCache) {
   let bestLesson = -1, bestScore = Number.MAX_SAFE_INTEGER, bestDomain = Number.MAX_SAFE_INTEGER, bestDegree = -1, bestTie = Number.MAX_SAFE_INTEGER;
   for (let i = 0; i < unassignedCount; i++) {
     const l = unassigned[i];
     if (state.lessonAssigned[l]) continue;
-    const dom = countFeasibleCandidates(model, state, l);
+    const dom = domCache ? cachedCount(model, state, domCache, l) : countFeasibleCandidates(model, state, l);
     const deg = model.lessonAdjacencyDegree[l];
     // ML: learned difficulty boosts priority (lower score = higher priority)
     const learnedPriority = learning ? learning.getVariablePriority(model, l) : 0;
@@ -2567,7 +2591,7 @@ function backtrack(model, state, unassigned, unassignedCount, ctx) {
   // Pick the next lesson via MRV+degree + learned difficulty. If the chosen
   // lesson has 0 feasible candidates, REMOVE it from the active unassigned
   // set (treat as unplaceable for this branch) and recurse.
-  const selected = selectByMrvDegree(model, state, unassigned, unassignedCount, ctx.branchSeed, ctx.depth, ctx.learning);
+  const selected = selectByMrvDegree(model, state, unassigned, unassignedCount, ctx.branchSeed, ctx.depth, ctx.learning, ctx.domCache);
   if (selected < 0) return;
 
   const candidates = ctx.candidateScratch;
@@ -2595,6 +2619,7 @@ function backtrack(model, state, unassigned, unassignedCount, ctx) {
   }
 
   // ML: sort candidates by learned slot success rate (best slots first)
+  // Phase 2b symmetry: tie-break by room canonical preference (lower = better)
   if (ctx.learning && feasibleCount > 1) {
     const rates = new Float32Array(feasibleCount);
     for (let i = 0; i < feasibleCount; i++) {
@@ -2615,6 +2640,31 @@ function backtrack(model, state, unassigned, unassignedCount, ctx) {
       candidates[j] = c;
     }
     // Override iterStep to be sequential (best-first order already learned)
+    var iterStep = 1;
+  } else if (feasibleCount > 1) {
+    // Phase 2b: Without ML, sort by room canonical preference (symmetry breaking).
+    // For same-slot candidates, prefer the canonical room (lowest in eq. class).
+    // This prunes symmetric branches where room A↔B↔C are interchangeable.
+    for (let i = 1; i < feasibleCount; i++) {
+      const c = candidates[i];
+      const cSlot = model.candidateSlot[c];
+      const cRoom = model.candidateRoom[c];
+      const cCanon = cRoom >= 0 ? model.roomEquivalenceClass[cRoom] : -1;
+      let j = i;
+      while (j > 0) {
+        const pSlot = model.candidateSlot[candidates[j - 1]];
+        const pRoom = model.candidateRoom[candidates[j - 1]];
+        const pCanon = pRoom >= 0 ? model.roomEquivalenceClass[pRoom] : -1;
+        // Sort by: slot ASC, then canonical room ASC, then room ASC
+        if (cSlot < pSlot ||
+            (cSlot === pSlot && cCanon < pCanon) ||
+            (cSlot === pSlot && cCanon === pCanon && cRoom < pRoom)) {
+          candidates[j] = candidates[j - 1];
+          j--;
+        } else break;
+      }
+      candidates[j] = c;
+    }
     var iterStep = 1;
   } else {
     var iterStep = deterministicStep(BigInt(ctx.branchSeed) ^ (BigInt(selected) << 1n) ^ BigInt(ctx.depth), feasibleCount);
@@ -3553,6 +3603,216 @@ function randomEvictPlaced(model, state, K, rngState) {
  * @returns {object} SolveResponse per DATA_SHAPES.md
  */
 
+// ---------------------------------------------------------------------------
+// Phase 4: Input validation — catch malformed data before buildModel crashes
+// ---------------------------------------------------------------------------
+function validateSchool(school) {
+  const issues = [];
+  if (!school || typeof school !== "object") {
+    issues.push({ severity: "error", msg: "school is null or not an object" });
+    return issues;
+  }
+  if (!Array.isArray(school.teachers)) issues.push({ severity: "error", msg: "school.teachers is not an array" });
+  if (!Array.isArray(school.classes)) issues.push({ severity: "error", msg: "school.classes is not an array" });
+  if (!Array.isArray(school.subjects)) issues.push({ severity: "error", msg: "school.subjects is not an array" });
+  if (!Array.isArray(school.lessons)) issues.push({ severity: "error", msg: "school.lessons is not an array" });
+  if (!Array.isArray(school.classrooms)) {
+    issues.push({ severity: "warn", msg: "school.classrooms missing — lessons requiring rooms will be infeasible" });
+  }
+  if (issues.length) return issues;
+
+  // Check for duplicate ids
+  const seen = { teachers: new Set(), classes: new Set(), subjects: new Set(), classrooms: new Set() };
+  for (const t of school.teachers) {
+    if (seen.teachers.has(t.id)) issues.push({ severity: "warn", msg: `Duplicate teacher id: ${t.id}` });
+    seen.teachers.add(t.id);
+  }
+  for (const c of school.classes) {
+    if (seen.classes.has(c.id)) issues.push({ severity: "warn", msg: `Duplicate class id: ${c.id}` });
+    seen.classes.add(c.id);
+  }
+  for (const s of school.subjects) {
+    if (seen.subjects.has(s.id)) issues.push({ severity: "warn", msg: `Duplicate subject id: ${s.id}` });
+    seen.subjects.add(s.id);
+  }
+  if (school.classrooms) {
+    for (const r of school.classrooms) {
+      if (seen.classrooms.has(r.id)) issues.push({ severity: "warn", msg: `Duplicate classroom id: ${r.id}` });
+      seen.classrooms.add(r.id);
+    }
+  }
+
+  // Check lesson references
+  for (let i = 0; i < school.lessons.length; i++) {
+    const l = school.lessons[i];
+    if (!seen.subjects.has(l.subjectId)) {
+      issues.push({ severity: "error", msg: `Lesson ${l.id || i}: subjectId "${l.subjectId}" not found` });
+    }
+    for (const tid of (l.teacherIds || [])) {
+      if (!seen.teachers.has(tid)) {
+        issues.push({ severity: "error", msg: `Lesson ${l.id || i}: teacherId "${tid}" not found` });
+      }
+    }
+    for (const cid of (l.classIds || [])) {
+      if (!seen.classes.has(cid)) {
+        issues.push({ severity: "error", msg: `Lesson ${l.id || i}: classId "${cid}" not found` });
+      }
+    }
+    if (l.periodsPerWeek != null && l.periodsPerWeek < 1) {
+      issues.push({ severity: "warn", msg: `Lesson ${l.id || i}: periodsPerWeek=${l.periodsPerWeek} (<1, will skip)` });
+    }
+  }
+
+  return issues;
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4: Diagnostic analyzer — explain WHY lessons are unplaceable
+// ---------------------------------------------------------------------------
+function diagnoseUnplaceabled(model, state, unplaceableIndices) {
+  const diagnostics = [];
+  for (const idx of unplaceableIndices) {
+    const start = model.lessonCandidateStart[idx];
+    const count = model.lessonCandidateCount[idx];
+    if (count === 0) {
+      // No candidates at all — check why
+      const l = model.lessons[idx];
+      const reasons = [];
+      if (l.requiredRoomType) {
+        const hasRoom = model.roomIds.length > 0;
+        if (!hasRoom) reasons.push(`no classrooms of type "${l.requiredRoomType}" defined`);
+      }
+      if (l.fixedDay != null) reasons.push(`fixed to day ${l.fixedDay}`);
+      // Check teacher availability
+      const teacherStart = model.lessonTeacherStart[idx];
+      const teacherCount = model.lessonTeacherCount[idx];
+      for (let k = 0; k < teacherCount; k++) {
+        const t = model.lessonTeacherFlat[teacherStart + k];
+        let totalAvailable = 0;
+        for (let d = 0; d < model.days; d++) {
+          totalAvailable += popcount32(model.teacherAvailabilityMask[t * model.days + d]);
+        }
+        if (totalAvailable === 0) reasons.push(`teacher ${model.teacherIds[t]} has 0 available periods`);
+      }
+      diagnostics.push({
+        lessonIdx: idx,
+        lessonId: l.id,
+        subjectId: l.subjectId,
+        reason: reasons.length ? reasons.join("; ") : "no valid (slot, room) candidates for this lesson",
+      });
+      continue;
+    }
+    // Has candidates but none feasible — count rejection reasons
+    const rejectCounts = {};
+    for (let i = start; i < start + count; i++) {
+      const fail = canPlace(model, state, idx, model.candidateSlot[i], model.candidateRoom[i]);
+      if (fail !== null) {
+        const name = FAIL_NAME[fail] || `code_${fail}`;
+        rejectCounts[name] = (rejectCounts[name] || 0) + 1;
+      }
+    }
+    const sorted = Object.entries(rejectCounts).sort((a, b) => b[1] - a[1]);
+    diagnostics.push({
+      lessonIdx: idx,
+      lessonId: model.lessons[idx].id,
+      subjectId: model.lessons[idx].subjectId,
+      reason: sorted.map(([name, n]) => `${name}: ${n}/${count}`).join(", "),
+    });
+  }
+  return diagnostics;
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3: Cached domain counts — avoid re-scanning canPlace for unchanged lessons
+// ---------------------------------------------------------------------------
+function makeDomCache(model) {
+  return {
+    counts: new Int32Array(model.lessonCount).fill(-1),
+    version: new Int32Array(model.lessonCount).fill(0),
+    globalVersion: 0,
+  };
+}
+
+function invalidateNeighbors(domCache, model, lessonIdx) {
+  // When a lesson is placed/removed, its neighbors' domains may change
+  domCache.counts[lessonIdx] = -1;
+  domCache.version[lessonIdx] = domCache.globalVersion;
+  const nStart = model.lessonNeighborStart[lessonIdx];
+  const nCount = model.lessonNeighborCount[lessonIdx];
+  for (let n = nStart; n < nStart + nCount; n++) {
+    const neighbor = model.lessonNeighborFlat[n];
+    domCache.counts[neighbor] = -1;
+    domCache.version[neighbor] = domCache.globalVersion;
+  }
+  domCache.globalVersion++;
+}
+
+function cachedCount(model, state, domCache, lessonIdx) {
+  const cached = domCache.counts[lessonIdx];
+  if (cached >= 0 && domCache.version[lessonIdx] === domCache.globalVersion) return cached;
+  const n = countFeasibleCandidates(model, state, lessonIdx);
+  domCache.counts[lessonIdx] = n;
+  domCache.version[lessonIdx] = domCache.globalVersion;
+  return n;
+}
+
+// ---------------------------------------------------------------------------
+// Phase 5: Soft score auto-calibration — adjust weights based on violation patterns
+// ---------------------------------------------------------------------------
+function calibrateWeights(model, state, currentWeights) {
+  // Analyze which soft constraint categories contribute most to the score
+  // and suggest weight adjustments for the next solve
+  const violationBreakdown = {};
+  for (const key of Object.keys(DEFAULT_SOFT_WEIGHTS)) {
+    violationBreakdown[key] = 0;
+  }
+
+  // Measure teacher gap violations
+  for (let t = 0; t < model.teacherCount; t++) {
+    let totalGaps = 0;
+    for (let d = 0; d < model.days; d++) {
+      totalGaps += state.teacherDayGap[t * model.days + d];
+    }
+    if (totalGaps > 0) violationBreakdown.teacherGaps = (violationBreakdown.teacherGaps || 0) + totalGaps;
+  }
+
+  // Measure class gap violations
+  for (let c = 0; c < model.classCount; c++) {
+    let totalGaps = 0;
+    for (let d = 0; d < model.days; d++) {
+      totalGaps += state.classDayGap[c * model.days + d];
+    }
+    if (totalGaps > 0) violationBreakdown.classGaps = (violationBreakdown.classGaps || 0) + totalGaps;
+  }
+
+  // Subject distribution violations
+  if (state.totalSubjectDistribution > 0) {
+    violationBreakdown.subjectDistribution = state.totalSubjectDistribution;
+  }
+
+  // Teacher room stability
+  if (state.totalTeacherRoomStability > 0) {
+    violationBreakdown.teacherRoomStability = state.totalTeacherRoomStability;
+  }
+
+  // Teacher consecutive overload
+  if (state.totalTeacherConsecutiveOverload > 0) {
+    violationBreakdown.consecutiveOverload = state.totalTeacherConsecutiveOverload;
+  }
+
+  // Last period overflow
+  if (state.totalTeacherLastPeriodOverflow > 0) {
+    violationBreakdown.lastPeriodOverflow = state.totalTeacherLastPeriodOverflow;
+  }
+
+  // Period load balance
+  if (state.totalPeriodLoadBalance > 0) {
+    violationBreakdown.periodLoadBalance = state.totalPeriodLoadBalance;
+  }
+
+  return violationBreakdown;
+}
+
 // Luby restart sequence: 1, 1, 2, 1, 1, 2, 4, 1, 1, 2, 1, 1, 2, 4, 8, ...
 // Returns the i-th value (0-indexed) of the universal Luby sequence.
 // Optimal for unknown heavy-tailed runtime distributions.
@@ -3619,6 +3879,19 @@ export function solve(school, options = {}) {
   const seed = options.seed ?? 9881;
   const onProgress = options.onProgress;
 
+  // Phase 4: Validate input before buildModel
+  const validationIssues = validateSchool(school);
+  const fatalIssues = validationIssues.filter(v => v.severity === "error");
+  if (fatalIssues.length > 0) {
+    return {
+      status: "ERROR",
+      assignment: [],
+      stats: { placed: 0, unplaced: (school.lessons || []).length, hardConflicts: 0, softScore: 0, durationMs: Math.round(performance.now() - t0) },
+      violations: fatalIssues.map(v => ({ ruleId: "validation_error", description: v.msg })),
+      validationIssues,
+    };
+  }
+
   let model;
   try {
     model = buildModel(school);
@@ -3628,6 +3901,7 @@ export function solve(school, options = {}) {
       assignment: [],
       stats: { placed: 0, unplaced: school.lessons.length, hardConflicts: 0, softScore: 0, durationMs: Math.round(performance.now() - t0) },
       violations: [{ ruleId: "build_model_error", description: String(e.message || e) }],
+      validationIssues,
     };
   }
 
@@ -3758,6 +4032,8 @@ export function solve(school, options = {}) {
     state.bestSoftScore = -Number.MAX_SAFE_INTEGER;
     state.bestHardCount = Number.MAX_SAFE_INTEGER;
     state.bestAssignedEntries = 0;
+    // Phase 3: init domain cache for this branch run
+    state._domCache = makeDomCache(model);
 
     // Replay warm-start moves into this branch's fresh state. Skips moves that
     // violate constraints — those fall through to backtrack as normal.
@@ -3800,6 +4076,7 @@ export function solve(school, options = {}) {
       // Luby restart: per-run node budget (-1 = unlimited for last run)
       restartNodeBudget: runBudget,
       macPruneCount: 0,
+      domCache: state._domCache,
       // Progress emission state — inline in the search loop. See backtrack().
       onProgress,
       progressLastIter: 0,
@@ -4210,6 +4487,37 @@ export function solve(school, options = {}) {
     }
   }
 
+  // Phase 4: diagnose unplaceable lessons (only when there are any)
+  let diagnostics = null;
+  if (unplaced > 0) {
+    const unplaceableIndices = [];
+    for (let i = 0; i < model.lessonCount; i++) {
+      if (!globalBest.state.bestLessonAssigned[i] && initiallyInfeasible.indexOf(i) === -1) {
+        unplaceableIndices.push(i);
+      }
+    }
+    if (unplaceableIndices.length > 0) {
+      try {
+        diagnostics = diagnoseUnplaceabled(model, globalBest.state, unplaceableIndices);
+      } catch (_e) { /* diagnostic is optional — don't break solve() */ }
+    }
+  }
+
+  // Phase 5: soft score auto-calibration suggestion (only when something was placed)
+  let weightSuggestions = null;
+  if (placed > 0) {
+    try {
+      const breakdown = calibrateWeights(model, globalBest.state, model.weights);
+      // Only surface categories that have non-zero violations
+      const nonZero = {};
+      let any = false;
+      for (const [k, v] of Object.entries(breakdown)) {
+        if (v > 0) { nonZero[k] = v; any = true; }
+      }
+      if (any) weightSuggestions = nonZero;
+    } catch (_e) { /* calibration is optional — don't break solve() */ }
+  }
+
   return {
     status,
     assignment,
@@ -4223,6 +4531,9 @@ export function solve(school, options = {}) {
     },
     violations,
     chyby,
+    validationIssues,
+    diagnostics,
+    weightSuggestions,
   };
 }
 
