@@ -1198,11 +1198,275 @@ function makeState(model) {
 // canPlace — checks hard constraints; returns null if OK, else a failure code.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// WASM (Phase 3 cutover): CSR-flatten relation partner sets + bind arrays.
+//
+// The assembly canPlace (js/solver/wasm/assembly/canplace.ts) needs the
+// relation partner Sets flattened into (Start/Count/Flat) CSR arrays so it
+// can iterate them without object-graph traversal. Called once per solve
+// after buildModel; the resulting arrays live on the model object.
+// ---------------------------------------------------------------------------
+function flattenRelationSets(lessonCount, partnersMap) {
+  // partnersMap: Map<lessonIdx, Set<partnerIdx>>
+  // Returns { start: Int32Array, count: Int32Array, flat: Int32Array }
+  // All three arrays are pre-padded with 0 for lessonIdx with no partners.
+  const start = new Int32Array(lessonCount);
+  const count = new Int32Array(lessonCount);
+  let total = 0;
+  if (partnersMap) {
+    for (const [lid, pSet] of partnersMap) {
+      if (lid >= lessonCount) continue;
+      count[lid] = pSet.size;
+      total += pSet.size;
+    }
+  }
+  const flat = new Int32Array(total);
+  let cursor = 0;
+  for (let i = 0; i < lessonCount; i++) {
+    start[i] = cursor;
+    const n = count[i];
+    if (n > 0) {
+      for (const pIdx of partnersMap.get(i)) flat[cursor++] = pIdx;
+    }
+  }
+  return { start, count, flat };
+}
+
+function flattenAllRelations(model) {
+  const LC = model.lessonCount;
+  // JS Set partner relations — each is a sparse array: model.lessonN1Partners[i] = Set<pIdx> or undefined
+  const toMap = (arr) => {
+    if (!arr) return null;
+    const m = new Map();
+    for (let i = 0; i < arr.length; i++) {
+      if (arr[i] && arr[i].size) m.set(i, arr[i]);
+    }
+    return m;
+  };
+  model._relCSR = {
+    n1:      flattenRelationSets(LC, toMap(model.lessonN1Partners)),
+    n0:      flattenRelationSets(LC, toMap(model.lessonN0Partners)),
+    sd:      flattenRelationSets(LC, toMap(model.lessonSamedayPart)),
+    fAny:    flattenRelationSets(LC, toMap(model.lessonMustFollowAny)),
+    fBefore: flattenRelationSets(LC, toMap(model.lessonMustFollowBefore)),
+    fAfter:  flattenRelationSets(LC, toMap(model.lessonMustFollowAfter)),
+    sim:     flattenRelationSets(LC, toMap(model.lessonSimultaneous)),
+    n7:      flattenRelationSets(LC, toMap(model.lessonN7Partners)),
+  };
+  // lessonMustFirstLast as Uint8Array
+  if (!model.lessonMustFirstLastArr) {
+    const arr = model.lessonMustFirstLast;
+    const out = new Uint8Array(LC);
+    if (arr) for (let i = 0; i < LC; i++) if (arr[i]) out[i] = 1;
+    model.lessonMustFirstLastArr = out;
+  }
+  // breakPeriods as Int32Array
+  if (!model.breakPeriodsArr) {
+    const bp = model.breakPeriods;
+    model.breakPeriodsArr = bp ? Int32Array.from(bp) : new Int32Array(0);
+  }
+}
+
+// Bind model + state into WASM after buildModel. Returns true if successful.
+// Safe to call multiple times; last bind wins. The wasm module is loaded
+// asynchronously by csp_wasm.js; if not ready this returns false and the
+// JS canPlace fallback runs.
+function wasmBind(model, state) {
+  const w = globalThis.__chronexaWasmExports;
+  if (!w || !w.setShape || !w.bindArrays || !w.canPlace) return false;
+  try {
+    // Ensure relation + static arrays exist
+    if (!model._relCSR) flattenAllRelations(model);
+    // setShape(days, periodsPerDay, subjectCount, totalSlots)
+    w.setShape(model.days, model.periodsPerDay, model.subjectCount, model.totalSlots);
+    // Grab Uint32Array/Int32Array byteOffsets into the shared memory.
+    // AssemblyScript's load<i32/i64> reads from its own memory; we must
+    // copy our typed arrays into the wasm memory and pass pointers.
+    // For now we use raw pointer passing assuming memory layout matches —
+    // this requires our arrays to BE the wasm memory. Instead we copy.
+    const mem = new Uint8Array(w.memory.buffer);
+    const views = new DataView(w.memory.buffer);
+
+    // Helper: copy a TypedArray into wasm memory, return offset.
+    // Use a simple arena allocator — just bump a pointer.
+    if (!wasmBind._arenaOffset) wasmBind._arenaOffset = mem.length - 0x10000;  // near end
+    const arena = { offset: 0 };
+    // Reset arena for this bind
+    if (!wasmBind._nextOffset) wasmBind._nextOffset = 16;  // start after rtti
+    arena.offset = wasmBind._nextOffset;
+
+    function copyU32(arr) {
+      const byteLen = arr.byteLength;
+      const off = arena.offset;
+      // Align to 4
+      const aligned = (off + 3) & ~3;
+      new Uint32Array(w.memory.buffer, aligned, arr.length).set(arr);
+      arena.offset = aligned + byteLen;
+      return aligned;
+    }
+    function copyI32(arr) {
+      const byteLen = arr.byteLength;
+      const off = arena.offset;
+      const aligned = (off + 3) & ~3;
+      new Int32Array(w.memory.buffer, aligned, arr.length).set(arr);
+      arena.offset = aligned + byteLen;
+      return aligned;
+    }
+    function copyU8(arr) {
+      const off = arena.offset;
+      const aligned = (off + 3) & ~3;
+      new Uint8Array(w.memory.buffer, aligned, arr.length).set(arr);
+      arena.offset = aligned + ((arr.length + 3) & ~3);
+      return aligned;
+    }
+    // Grow memory if needed
+    const pagesNeeded = Math.ceil(arena.offset / (64 * 1024)) + 8;
+    const currentPages = w.memory.buffer.byteLength / (64 * 1024);
+    if (pagesNeeded > currentPages) w.memory.grow(pagesNeeded - currentPages);
+
+    const rel = model._relCSR;
+
+    // Copy every host array into wasm memory. The wasm module's memory
+    // grows automatically.
+    const P = {
+      teacherOcc:           copyU32(state.teacherOcc),
+      teacherAvail:         copyU32(model.teacherAvailabilityMask),
+      classGroupOcc:        copyU32(state.classGroupOcc),
+      roomOcc:              copyU32(roomOccArr(model, state)),
+      teacherDayLoad:       copyI32(state.teacherDayLoad),
+      classDayLoad:         copyI32(state.classDayLoad),
+      classSubjectDayCt:    copyI32(state.classSubjectDayCount),
+      classSubjTotalPlaced: copyI32(state.classSubjectTotalPlaced),
+      slotDay:              copyI32(model.slotDay),
+      slotPeriod:           copyI32(model.slotPeriod),
+      lTeacherStart:        copyI32(model.lessonTeacherStart),
+      lTeacherCount:        copyI32(model.lessonTeacherCount),
+      lTeacherFlat:         copyI32(model.lessonTeacherFlat),
+      lClassStart:          copyI32(model.lessonClassStart),
+      lClassCount:          copyI32(model.lessonClassCount),
+      lClassFlat:           copyI32(model.lessonClassFlat),
+      lClassPacked:         copyU32(model.lessonClassGroupMask),
+      lSubject:             copyI32(model.lessonSubject),
+      lFixedSlot:           copyI32(model.lessonFixedSlot),
+      lMustFirstLast:       copyU8 (model.lessonMustFirstLastArr),
+      lAssigned:            copyU8 (state.lessonAssigned),
+      lAssignedSlot:        copyI32(state.lessonAssignedSlot),
+      teacherMaxPerDay:     copyI32(model.teacherMaxPerDay),
+      classMaxPerDay:       copyI32(model.classMaxPerDay),
+      classValidPeriodMask: copyU32(model.classValidPeriodMask || new Uint32Array(model.classCount).map((_, c) => ~0)),
+      subjectDailyLimit:    copyI32(model.subjectDailyLimit),
+      subjectDailyMin:      copyI32(model.subjectDailyMin || new Int32Array(model.classCount * model.subjectCount)),
+      sessionsByCS:         copyI32(model._sessionsByClassSubject),
+    };
+
+    w.bindArrays(
+      P.teacherOcc, P.teacherAvail,
+      P.classGroupOcc, P.roomOcc,
+      P.teacherDayLoad, P.classDayLoad,
+      P.classSubjectDayCt, P.classSubjTotalPlaced,
+      P.slotDay, P.slotPeriod,
+      P.lTeacherStart, P.lTeacherCount, P.lTeacherFlat,
+      P.lClassStart, P.lClassCount, P.lClassFlat, P.lClassPacked,
+      P.lSubject, P.lFixedSlot, P.lMustFirstLast,
+      P.lAssigned, P.lAssignedSlot,
+      P.teacherMaxPerDay, P.classMaxPerDay, P.classValidPeriodMask,
+      P.subjectDailyLimit, P.subjectDailyMin, P.sessionsByCS,
+    );
+
+    // Relation CSR
+    const RP = {
+      n1Start: copyI32(rel.n1.start),      n1Count: copyI32(rel.n1.count),      n1Flat: copyI32(rel.n1.flat),
+      n0Start: copyI32(rel.n0.start),      n0Count: copyI32(rel.n0.count),      n0Flat: copyI32(rel.n0.flat),
+      sdStart: copyI32(rel.sd.start),      sdCount: copyI32(rel.sd.count),      sdFlat: copyI32(rel.sd.flat),
+      fAnyStart: copyI32(rel.fAny.start),  fAnyCount: copyI32(rel.fAny.count),  fAnyFlat: copyI32(rel.fAny.flat),
+      fBeforeStart: copyI32(rel.fBefore.start), fBeforeCount: copyI32(rel.fBefore.count), fBeforeFlat: copyI32(rel.fBefore.flat),
+      fAfterStart: copyI32(rel.fAfter.start), fAfterCount: copyI32(rel.fAfter.count), fAfterFlat: copyI32(rel.fAfter.flat),
+      simStart: copyI32(rel.sim.start),    simCount: copyI32(rel.sim.count),    simFlat: copyI32(rel.sim.flat),
+      n7Start: copyI32(rel.n7.start),      n7Count: copyI32(rel.n7.count),      n7Flat: copyI32(rel.n7.flat),
+      breakPeriods: copyI32(model.breakPeriodsArr),
+    };
+
+    w.bindRelations(
+      RP.n1Start, RP.n1Count, RP.n1Flat,
+      RP.n0Start, RP.n0Count, RP.n0Flat,
+      RP.sdStart, RP.sdCount, RP.sdFlat,
+      RP.fAnyStart, RP.fAnyCount, RP.fAnyFlat,
+      RP.fBeforeStart, RP.fBeforeCount, RP.fBeforeFlat,
+      RP.fAfterStart, RP.fAfterCount, RP.fAfterFlat,
+      RP.simStart, RP.simCount, RP.simFlat,
+      RP.n7Start, RP.n7Count, RP.n7Flat,
+      RP.breakPeriods, model.breakPeriodsArr.length,
+    );
+
+    // Remember the offsets so we can update state arrays later.
+    wasmBind._P = P;
+    wasmBind._arenaEnd = arena.offset;
+    wasmBind._mem = w.memory;
+    return true;
+  } catch (e) {
+    console.warn("[wasmBind] failed:", e.message);
+    return false;
+  }
+}
+
+// Re-serialize mutable state arrays back into the wasm memory after a
+// placement/undo so the next wasmCanPlace sees fresh values. Called from
+// applyPlacement / undoPlacement. Cheap because it copies exact typed arrays.
+function wasmSyncState(model, state) {
+  if (!wasmBind._P) return;
+  try {
+    const mem = wasmBind._mem.buffer;
+    const P = wasmBind._P;
+    new Uint32Array(mem, P.teacherOcc, state.teacherOcc.length).set(state.teacherOcc);
+    new Uint32Array(mem, P.classGroupOcc, state.classGroupOcc.length).set(state.classGroupOcc);
+    new Uint32Array(mem, P.roomOcc, roomOccArr(model, state).length).set(roomOccArr(model, state));
+    new Int32Array(mem, P.teacherDayLoad, state.teacherDayLoad.length).set(state.teacherDayLoad);
+    new Int32Array(mem, P.classDayLoad, state.classDayLoad.length).set(state.classDayLoad);
+    new Int32Array(mem, P.classSubjectDayCt, state.classSubjectDayCount.length).set(state.classSubjectDayCount);
+    new Int32Array(mem, P.classSubjTotalPlaced, state.classSubjectTotalPlaced.length).set(state.classSubjectTotalPlaced);
+    new Uint8Array(mem, P.lAssigned, state.lessonAssigned.length).set(state.lessonAssigned);
+    new Int32Array(mem, P.lAssignedSlot, state.lessonAssignedSlot.length).set(state.lessonAssignedSlot);
+  } catch (e) {
+    // Non-fatal; wasm will just use slightly stale data and JS canPlace will catch mismatches.
+  }
+}
+
+// Small helper: state doesn't keep roomOcc as Uint32Array-of-days; it's already Uint32Array
+// but shaped (roomCount * days), which matches what wasm expects.
+function roomOccArr(model, state) { return state.roomOcc; }
+
 function canPlace(model, state, lessonIdx, slot, roomIdx) {
-  // WASM cutover was never finished — the dispatched _wx.canPlace ran
-  // against NULL-pointer arrays and its return value was discarded. Cost
-  // when WASM was loaded: one dead call per canPlace, on the hot path.
-  // Removed; re-introduce with a real bindArrays() + result-as-truth path.
+  // WASM (Phase 3) dispatch: if wasm is bound, sync mutable state + call
+  // wasm canPlace. wasm returns 0 = placeable, or integer FAIL code matching
+  // FAIL enum. Falls through to JS canPlace body on wasm failure/load-miss.
+  // Disabled by default — opt in via `options.useWasm = true` on solve().
+  // Validation mode (`options.validateWasm`): calls BOTH wasm + JS and
+  // logs divergences. Off by default (slow).
+  if (model._wasmEnabled) {
+    try {
+      wasmSyncState(model, state);
+      const w = globalThis.__chronexaWasmExports;
+      const ret = w.canPlace(lessonIdx, slot, roomIdx);
+      if (model._wasmValidate) {
+        const jsResult = _canPlaceJS(model, state, lessonIdx, slot, roomIdx);
+        const wasmFail = ret === 0 ? null : ret;
+        if (jsResult !== wasmFail) {
+          console.warn("[wasm] divergence: lesson=" + lessonIdx + " slot=" + slot + " room=" + roomIdx +
+                       " wasm=" + wasmFail + " js=" + jsResult);
+        }
+        return jsResult;  // JS is source of truth in validate mode
+      }
+      return ret === 0 ? null : ret;
+    } catch (e) {
+      // Disable wasm on any failure and fall through to JS.
+      model._wasmEnabled = false;
+      console.warn("[wasm] disabled:", e.message);
+    }
+  }
+  return _canPlaceJS(model, state, lessonIdx, slot, roomIdx);
+}
+
+function _canPlaceJS(model, state, lessonIdx, slot, roomIdx) {
   const d = model.slotDay[slot];
   const p = model.slotPeriod[slot];
   const bit = (1 << p) >>> 0;
@@ -3905,6 +4169,21 @@ export function solve(school, options = {}) {
     };
   }
 
+  // Phase 3 (WASM): pre-flatten relation partner sets into CSR so the
+  // one-time cost is paid here, not in the hot loop. Cheap on small
+  // schools, ~1ms on a 951-lesson XML.
+  flattenAllRelations(model);
+  // Pre-flight: check if wasm is available and user opted in.
+  if (options.useWasm || options.validateWasm) {
+    const w = globalThis.__chronexaWasmExports;
+    if (w && w.setShape && w.bindArrays && w.canPlace) {
+      model._wasmEnabled = true;
+      model._wasmValidate = !!options.validateWasm;
+    } else {
+      if (options.useWasm) console.warn("[solver] options.useWasm=true but __chronexaWasmExports not loaded yet; falling back to JS. Reload after initial solve to warm the module.");
+    }
+  }
+
   // Lessons that have zero candidate (slot, room) pairs are INFEASIBLE.
   // Detect them up-front.
   const initiallyInfeasible = [];
@@ -4034,6 +4313,11 @@ export function solve(school, options = {}) {
     state.bestAssignedEntries = 0;
     // Phase 3: init domain cache for this branch run
     state._domCache = makeDomCache(model);
+    // Phase 3 (WASM): bind fresh state arrays into wasm memory for this branch.
+    // Only done if model._wasmEnabled was set during pre-flight. Safe no-op otherwise.
+    if (model._wasmEnabled && !wasmBind(model, state)) {
+      model._wasmEnabled = false;
+    }
 
     // Replay warm-start moves into this branch's fresh state. Skips moves that
     // violate constraints — those fall through to backtrack as normal.

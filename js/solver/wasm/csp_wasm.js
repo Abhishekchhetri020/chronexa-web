@@ -30,7 +30,14 @@ async function loadWasm() {
       const fs = await import("node:fs/promises");
       buf = (await fs.readFile(url.pathname)).buffer;
     }
-    const mod  = await WebAssembly.instantiate(buf, { env: {} });
+    const mod  = await WebAssembly.instantiate(buf, { 
+      env: {
+        abort: (msg, file, line, col) => {
+          console.error(`[wasm] abort at ${file}:${line}:${col}`);
+          throw new Error("wasm abort");
+        },
+      },
+    });
     _wasmExports = mod.instance.exports;
     return _wasmExports;
   } catch (e) {
