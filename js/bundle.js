@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-27T15:29:14Z
+/* Chronexa bundle — generated 2026-05-27T15:31:42Z
  *      164 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -17015,15 +17015,17 @@ window.PendingStrip = (function () {
     
     if (displacedCard) {
       setTimeout(() => {
-        dispatch("editor:pickup", {
-          cardId: `placed_${displacedCard.lessonId}_${day}_${period}`,
-          lessonId: displacedCard.lessonId,
-          day: day,
-          period: period,
-          originClassroomId: displacedCard.classroomId,
-          fromPending: false,
-          mode: mode
-        });
+        document.dispatchEvent(new CustomEvent("editor:pickup", {
+          detail: {
+            cardId: `placed_${displacedCard.lessonId}_${day}_${period}`,
+            lessonId: displacedCard.lessonId,
+            day: day,
+            period: period,
+            originClassroomId: displacedCard.classroomId,
+            fromPending: false,
+            mode: mode
+          }
+        }));
       }, 50);
     }
   }
