@@ -212,7 +212,14 @@ body::before{
   width:18px; flex:0 0 18px; text-align:center;
   font-family:var(--chrx-font-display); font-style:italic; font-weight:600;
   font-size:14px; color:var(--ink-3);
+  display:inline-flex; align-items:center; justify-content:center;
 }
+.chrx-side-link__icon svg{
+  width:16px; height:16px; stroke:var(--ink-3);
+  transition:stroke var(--chrx-duration-micro) var(--chrx-ease);
+}
+.chrx-side-link:hover .chrx-side-link__icon svg{stroke:var(--ink)}
+.chrx-side-link.is-active .chrx-side-link__icon svg{stroke:var(--teal)}
 .chrx-side-link.is-active .chrx-side-link__icon{color:var(--teal)}
 .chrx-side-link__count{
   margin-left:auto; font-family:var(--chrx-font-mono);
@@ -536,7 +543,13 @@ input:focus,select:focus,textarea:focus{
 .chrx-palette-item__icon{
   font-family:var(--chrx-font-display); font-style:italic;
   font-weight:600; color:var(--ink-3); width:18px; text-align:center;
+  display:inline-flex; align-items:center; justify-content:center;
 }
+.chrx-palette-item__icon svg{
+  width:16px; height:16px; stroke:var(--ink-3);
+}
+.chrx-palette-item:hover .chrx-palette-item__icon svg,
+.chrx-palette-item.is-active .chrx-palette-item__icon svg{stroke:var(--teal)}
 .chrx-palette-item__sub{
   margin-left:auto; font-family:var(--chrx-font-mono); font-size:10.5px; color:var(--ink-3);
 }
@@ -812,4 +825,321 @@ input:focus,select:focus,textarea:focus{
   }
 }
 
+/* ───── p-UI-01: Polished Hero Landing Page ───────────────
+   Transform the generic start screen into an editorial-studio
+   welcome with Fraunces display type, proper card styling,
+   and feature highlights. */
 
+/* Hero container */
+.chrx-shell .chrx-start {
+  max-width: 680px !important;
+  margin: 60px auto 0 !important;
+  padding: 0 24px !important;
+}
+
+/* Hero title — Fraunces display */
+.chrx-shell .chrx-start__wordmark {
+  font-family: var(--chrx-font-display) !important;
+  font-weight: 700 !important;
+  font-size: 48px !important;
+  letter-spacing: -0.025em !important;
+  line-height: 1.05 !important;
+  color: var(--ink) !important;
+  margin: 0 0 8px 0 !important;
+  font-variation-settings: "SOFT" 30, "opsz" 144 !important;
+}
+
+/* Hero tagline */
+.chrx-shell .chrx-start__tagline {
+  font-family: var(--chrx-font-sans) !important;
+  font-size: 16px !important;
+  color: var(--ink-3) !important;
+  letter-spacing: -0.005em !important;
+  line-height: 1.5 !important;
+  margin: 0 0 32px 0 !important;
+}
+
+/* Hero action cards container */
+.chrx-shell .chrx-start__actions {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 16px !important;
+  margin-bottom: 32px !important;
+}
+
+/* Hero action cards — New / Open file */
+.chrx-shell .chrx-start-card {
+  background: var(--paper) !important;
+  border: 1px solid var(--line) !important;
+  border-radius: var(--chrx-radius-lg) !important;
+  padding: 24px 20px !important;
+  min-height: 120px !important;
+  cursor: pointer !important;
+  box-shadow: var(--chrx-shadow-sm) !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 16px !important;
+  transition:
+    transform var(--chrx-duration-fast) var(--chrx-ease),
+    box-shadow var(--chrx-duration-fast) var(--chrx-ease),
+    border-color var(--chrx-duration-fast) var(--chrx-ease) !important;
+}
+.chrx-shell .chrx-start-card:hover {
+  transform: translateY(-3px) !important;
+  box-shadow: 0 8px 24px rgba(26,23,20,.08), 0 2px 6px rgba(26,23,20,.06) !important;
+  border-color: var(--ink-3) !important;
+}
+.chrx-shell .chrx-start-card:active {
+  transform: translateY(-1px) !important;
+}
+
+/* Card icon circle */
+.chrx-shell .chrx-start-card__icon {
+  width: 44px !important;
+  height: 44px !important;
+  display: grid !important;
+  place-items: center !important;
+  flex: 0 0 44px !important;
+  border-radius: 12px !important;
+  font-size: 22px !important;
+  font-weight: 600 !important;
+  line-height: 1 !important;
+}
+/* New card icon — teal accent */
+.chrx-shell .chrx-start-card--new .chrx-start-card__icon {
+  background: var(--teal-soft) !important;
+  color: var(--teal) !important;
+}
+/* Open card icon — warm paper */
+.chrx-shell .chrx-start-card--open .chrx-start-card__icon {
+  background: var(--paper-2) !important;
+  color: var(--ink-2) !important;
+}
+
+/* Card text */
+.chrx-shell .chrx-start-card__title {
+  font-family: var(--chrx-font-display) !important;
+  font-weight: 600 !important;
+  font-size: 18px !important;
+  letter-spacing: -0.012em !important;
+  color: var(--ink) !important;
+}
+.chrx-shell .chrx-start-card__subtitle {
+  font-family: var(--chrx-font-sans) !important;
+  font-size: 13px !important;
+  color: var(--ink-3) !important;
+  letter-spacing: -0.005em !important;
+}
+
+/* Start links — Demo · Sample school · Docs */
+.chrx-shell .chrx-start-links {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  margin-top: 20px !important;
+  font-family: var(--chrx-font-sans) !important;
+}
+.chrx-shell .chrx-start-links button,
+.chrx-shell .chrx-start-links a {
+  font-family: var(--chrx-font-sans) !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  color: var(--teal) !important;
+  background: none !important;
+  border: none !important;
+  padding: 4px 8px !important;
+  border-radius: 6px !important;
+  cursor: pointer !important;
+  text-decoration: none !important;
+  transition: background var(--chrx-duration-micro) ease !important;
+}
+.chrx-shell .chrx-start-links button:hover,
+.chrx-shell .chrx-start-links a:hover {
+  background: var(--teal-soft) !important;
+}
+.chrx-shell .chrx-start-links span[aria-hidden] {
+  color: var(--ink-3) !important;
+  font-size: 14px !important;
+}
+
+/* Recent timetables section */
+.chrx-shell .chrx-start-recent {
+  margin-bottom: 24px !important;
+}
+.chrx-shell .chrx-start-recent__head h3 {
+  font-family: var(--chrx-font-sans) !important;
+  font-size: 11px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.12em !important;
+  color: var(--ink-3) !important;
+  font-weight: 600 !important;
+  margin: 0 0 10px 0 !important;
+}
+.chrx-shell .chrx-start-recent__list {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 6px !important;
+}
+
+/* Footer "Runs entirely in browser" line */
+.chrx-shell .chrx-main > footer {
+  font-family: var(--chrx-font-sans) !important;
+  font-size: 12px !important;
+  color: var(--ink-3) !important;
+  letter-spacing: -0.005em !important;
+  background: transparent !important;
+  padding: 16px 24px !important;
+  text-align: center !important;
+}
+
+/* ───── p-UI-02: Step-Tab Strip — Editorial Segmented Control ──────
+   Replace the old Tailwind pill buttons (bg-blue-700 / bg-emerald-600
+   / bg-slate-200) with a clean editorial segmented control. */
+
+/* The nav container itself */
+.chrx-shell .chrx-main > nav:has(button.step-btn) {
+  background: var(--paper) !important;
+  backdrop-filter: none !important;
+  border-bottom: 1px solid var(--line-soft) !important;
+  box-shadow: none !important;
+}
+.chrx-shell .chrx-main > nav:has(button.step-btn) > div {
+  max-width: none !important;
+  padding: 8px 22px !important;
+  gap: 4px !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+/* Step buttons — unified editorial style */
+.chrx-shell button.step-btn {
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  color: var(--ink-3) !important;
+  font-family: var(--chrx-font-sans) !important;
+  font-weight: 500 !important;
+  font-size: 13px !important;
+  letter-spacing: -0.005em !important;
+  padding: 7px 16px !important;
+  border-radius: var(--chrx-radius-sm) !important;
+  transition: all var(--chrx-duration-fast) var(--chrx-ease) !important;
+  box-shadow: none !important;
+  white-space: nowrap !important;
+  line-height: 1.3 !important;
+}
+
+/* Hover — subtle paper-2 fill */
+.chrx-shell button.step-btn:hover:not(:disabled) {
+  background: var(--paper-2) !important;
+  border-color: var(--line-soft) !important;
+  color: var(--ink-2) !important;
+}
+
+/* Active state (detected by bg-blue-700 or bg-emerald-600 in class) */
+.chrx-shell button.step-btn[class*="bg-blue-700"],
+.chrx-shell button.step-btn[class*="bg-emerald-600"] {
+  background: var(--teal) !important;
+  color: var(--paper) !important;
+  border-color: var(--teal) !important;
+  font-weight: 600 !important;
+  box-shadow: 0 1px 3px rgba(13,79,84,.25) !important;
+}
+.chrx-shell button.step-btn[class*="bg-blue-700"]:hover:not(:disabled),
+.chrx-shell button.step-btn[class*="bg-emerald-600"]:hover:not(:disabled) {
+  background: var(--teal-2) !important;
+  border-color: var(--teal-2) !important;
+}
+
+/* Disabled state */
+.chrx-shell button.step-btn:disabled {
+  color: var(--ink-3) !important;
+  opacity: 0.5 !important;
+  cursor: not-allowed !important;
+}
+
+/* ───── p-UI-03: Feature Highlights on Landing ──────────────
+   New section below the start cards showing key features
+   in a compact editorial grid. Added to index.html as well. */
+
+.chrx-features {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  margin-top: 40px;
+  padding-top: 32px;
+  border-top: 1px solid var(--line-soft);
+}
+.chrx-feature {
+  padding: 0;
+}
+.chrx-feature__icon {
+  font-size: 24px;
+  margin-bottom: 8px;
+  display: block;
+  color: var(--teal);
+  font-family: var(--chrx-font-display);
+  font-style: italic;
+  font-weight: 700;
+}
+.chrx-feature__title {
+  font-family: var(--chrx-font-display);
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  margin: 0 0 4px 0;
+}
+.chrx-feature__desc {
+  font-family: var(--chrx-font-sans);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-3);
+  letter-spacing: -0.005em;
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  .chrx-features {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  .chrx-shell .chrx-start__actions {
+    grid-template-columns: 1fr !important;
+  }
+  .chrx-shell .chrx-start__wordmark {
+    font-size: 36px !important;
+  }
+}
+
+/* ───── p-UI-04: Editor Area Polish ──────────────────
+   Clean up remaining Tailwind artifacts in the editor views. */
+
+/* Step panels general */
+.chrx-shell .step-panel h2 {
+  font-family: var(--chrx-font-display) !important;
+  font-weight: 600 !important;
+  font-size: 22px !important;
+  letter-spacing: -0.015em !important;
+  color: var(--ink) !important;
+  margin: 0 0 4px 0 !important;
+}
+.chrx-shell .step-panel > p {
+  font-family: var(--chrx-font-sans) !important;
+  font-size: 13px !important;
+  color: var(--ink-3) !important;
+  letter-spacing: -0.005em !important;
+  margin: 0 0 16px 0 !important;
+}
+
+/* "Tip" banner in editor */
+.chrx-shell #editor-banner {
+  background: rgba(176,138,62,.08) !important;
+  border-left: 3px solid var(--gold) !important;
+  border-radius: 0 var(--chrx-radius-sm) var(--chrx-radius-sm) 0 !important;
+  font-family: var(--chrx-font-sans) !important;
+  font-size: 12.5px !important;
+  color: var(--ink-2) !important;
+}
+
+/* Bump APP_VER on every deploy so the browser refetches the JS bundle */
