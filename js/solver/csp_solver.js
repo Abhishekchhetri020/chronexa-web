@@ -22,6 +22,10 @@
 import { DEFAULT_SOFT_WEIGHTS, FAIL, FAIL_NAME, Weight } from "./constraints.js";
 import { popcount32 } from "./bitmask.js";
 import { createLearningForSchool, SolverLearning } from "./solver_learning.js";
+// TYPS is the canonical relation-type registry (n_0..n_17).
+// Used by buildRelationPartnerSets -> all partner arrays derive from these definitions.
+import { TYPS } from "./relation_enforcer.js";
+
 
 export const VERSION = "js-csp-1.0.0";
 
@@ -125,6 +129,13 @@ function buildModel(school) {
     // Empty mask would block everything; fall back to default to avoid
     // false-positive infeasibility from misconfigured per-class bell.
     classValidPeriodMask[i] = mask || _defaultMask || ((1 << periodsPerDay) - 1) >>> 0;
+    // Phase 5: warn when a class bell is misconfigured (0 mask) and the
+    // school default is also empty — the full-bitmask fallback hides the issue.
+    if (!mask && !_defaultMask && cls && cls.bellId) {
+      console.warn("[solver] class \"" + (cls.name || cls.id) + "\" bellId=\"" + cls.bellId + "\" produced empty mask; falling back to ALL periods. Check bell definition.");
+    } else if (!mask && cls && !cls.bellId && !_defaultMask) {
+      console.warn("[solver] school default bell is empty; ALL periods enabled. Define periods in school.bell.");
+    }
   }
 
   const teacherIdx = new Map(teacherIds.map((id, i) => [id, i]));
@@ -872,6 +883,8 @@ function buildModel(school) {
   const lessonSimultaneous = new Array(lessonCount); // n_12 / n_13
   const lessonN7Partners = new Array(lessonCount);
   for (let i = 0; i < lessonCount; i++) lessonN7Partners[i] = null;
+  const lessonN2Partners = new Array(lessonCount);
+  for (let i = 0; i < lessonCount; i++) lessonN2Partners[i] = null;
   const lessonMustFirstLast = new Uint8Array(lessonCount);
   // Pre-compute break period indices (0-based) — for n_7 check.
   const breakPeriods = [];
@@ -887,6 +900,7 @@ function buildModel(school) {
     lessonMustFollowBefore[i] = null;
     lessonMustFollowAfter[i] = null;
     lessonSimultaneous[i] = null;
+    lessonN2Partners[i]  = null;
   }
   function gatherMatched(rel) {
     // Two-subject relations (e.g. n_5 must-follow, n_8 must-same-day,
@@ -929,6 +943,15 @@ function buildModel(school) {
         break;
       case "n_0":
         pairCrossSubject(matched, lessonN0Partners);
+        break;
+      case "n_2":
+        // n_2: no two matched lessons at the same (day, period).
+        for (let a = 0; a < matched.length; a++) {
+          for (let b = a + 1; b < matched.length; b++) {
+            (lessonN2Partners[matched[a]] = lessonN2Partners[matched[a]] || new Set()).add(matched[b]);
+            (lessonN2Partners[matched[b]] = lessonN2Partners[matched[b]] || new Set()).add(matched[a]);
+          }
+        }
         break;
       case "n_8":
       case "n_10":
@@ -995,7 +1018,7 @@ function buildModel(school) {
   for (const rel of rels) {
     if (!rel || rel.disabled) continue;
     const typ = rel.typ;
-    if (typ !== "n_4" && typ !== "n_11" && typ !== "n_14" && typ !== "n_17") continue;
+    if (typ !== "n_3" && typ !== "n_4" && typ !== "n_11" && typ !== "n_14" && typ !== "n_15" && typ !== "n_17") continue;
     const matched = gatherMatched(rel);
     if (!matched.length) continue;
     // Group expanded-lesson indices by source lesson id so the per-source
@@ -1011,6 +1034,31 @@ function buildModel(school) {
     const groups = [];
     for (const [, indices] of bySrc) groups.push(Int32Array.from(indices));
     softRels.push({ typ, groups, flatIndices: Int32Array.from(matched) });
+
+  }
+  // Per-lesson index into softRels for fast candidate preference scoring.
+  // lessonSoftRelIdx[l] = [{ ri: relIdx, gi: groupIdx }, ...] or null.
+  const lessonSoftRelIdx = new Array(lessonCount);
+  for (let i = 0; i < lessonCount; i++) lessonSoftRelIdx[i] = null;
+  for (let ri = 0; ri < softRels.length; ri++) {
+    const sr = softRels[ri];
+    if (sr.typ === "n_17") {
+      // n_17 uses flatIndices — no per-source grouping
+      const idx = sr.flatIndices;
+      for (let k = 0; k < idx.length; k++) {
+        const li = idx[k];
+        (lessonSoftRelIdx[li] = lessonSoftRelIdx[li] || []).push({ ri, gi: -1 });
+      }
+    } else {
+      // n_3/n_4/n_11/n_14/n_15 use groups (per source lesson)
+      for (let gi = 0; gi < sr.groups.length; gi++) {
+        const grp = sr.groups[gi];
+        for (let k = 0; k < grp.length; k++) {
+          const li = grp[k];
+          (lessonSoftRelIdx[li] = lessonSoftRelIdx[li] || []).push({ ri, gi });
+        }
+      }
+    }
   }
 
   return {
@@ -1067,8 +1115,10 @@ function buildModel(school) {
     lessonMustFollowAfter,
     lessonSimultaneous,
     lessonN7Partners,
+    lessonN2Partners,
     breakPeriods,
     lessonMustFirstLast,
+    lessonSoftRelIdx,
     softRels,
   };
 }
@@ -1191,6 +1241,9 @@ function makeState(model) {
     subjectDayOverflow: new Int32Array(classCount * subjectCount * days),
     teacherRoomPenalty: new Int32Array(teacherCount),
     teacherLastOverflow: new Int32Array(teacherCount),
+    // Soft score cache: invalidated on applySingle/removeSingle.
+    _scoreDirty: true,
+    _cachedSoftScore: 0,
     // WASM sync versioning (Phase 3): bumped on every applySingle/removeSingle
     // so wasmSyncState can skip redundant copies when state is stable between
     // consecutive canPlace calls.
@@ -1259,6 +1312,7 @@ function flattenAllRelations(model) {
     fAfter:  flattenRelationSets(LC, toMap(model.lessonMustFollowAfter)),
     sim:     flattenRelationSets(LC, toMap(model.lessonSimultaneous)),
     n7:      flattenRelationSets(LC, toMap(model.lessonN7Partners)),
+    n2:      flattenRelationSets(LC, toMap(model.lessonN2Partners)),
   };
   // lessonMustFirstLast as Uint8Array
   if (!model.lessonMustFirstLastArr) {
@@ -1590,6 +1644,16 @@ function _canPlaceJS(model, state, lessonIdx, slot, roomIdx) {
         const ps = state.lessonAssignedSlot[pIdx];
         if (ps >= 0 && model.slotDay[ps] === d) return FAIL.RELATION_SAME_DAY_FORBIDDEN;
       }
+  // n_2: no two matched lessons at same (day, period)
+  const partnersN2 = model.lessonN2Partners && model.lessonN2Partners[lessonIdx];
+  if (partnersN2) {
+    for (const pIdx of partnersN2) {
+      if (state.lessonAssigned && state.lessonAssigned[pIdx]) {
+        const ps = state.lessonAssignedSlot[pIdx];
+        if (ps >= 0 && ps === slot) return FAIL.RELATION_SAME_PERIOD_FORBIDDEN;
+      }
+    }
+  }
     }
   }
   const partnersN0 = model.lessonN0Partners && model.lessonN0Partners[lessonIdx];
@@ -1867,6 +1931,7 @@ function refreshPeriodLoad(model, state) {
 }
 
 function applySingle(model, state, lessonIdx, slot, roomIdx) {
+  state._scoreDirty = true;
   // Bump wasm sync version so wasmSyncState knows state is dirty.
   state._wasmVersion++;
   const d = model.slotDay[slot];
@@ -1948,6 +2013,7 @@ function applySingle(model, state, lessonIdx, slot, roomIdx) {
 }
 
 function removeSingle(model, state, lessonIdx, slot, roomIdx) {
+  state._scoreDirty = true;
   // Bump wasm sync version so wasmSyncState knows state is dirty.
   state._wasmVersion++;
   const d = model.slotDay[slot];
@@ -2066,6 +2132,7 @@ function undoToMark(model, state, undoStack, mark) {
 // ---------------------------------------------------------------------------
 
 function softScore(model, state) {
+  if (!state._scoreDirty) return state._cachedSoftScore;
   const w = model.weights;
   let s = 0;
   s += state.totalTeacherGap * w[0];
@@ -2093,6 +2160,8 @@ function softScore(model, state) {
   s += teacherIntervalMaxDaysPenalty(model, state) * (w[0] || 1);
   s += supervisionCriteriaSoftPenalty(model, state) * (w[0] || 1);
   s += studentSubjectsConflictPenalty(model, state) * (w[1] || 1);
+  state._cachedSoftScore = s;
+  state._scoreDirty = false;
   return s;
 }
 
@@ -2683,6 +2752,17 @@ function softRelationPenalty(model, state) {
         if (cardsPlaced > 1 && dayBits.size > 1) penalty += (dayBits.size - 1);
       } else if (rel.typ === "n_14") {
         if (periodBits.size > 1) penalty += (periodBits.size - 1);
+      } else if (rel.typ === "n_3") {
+        // Alternate days: penalize same-day placements within a source lesson
+        if (cardsPlaced > 1 && dayBits.size < cardsPlaced) {
+          penalty += (cardsPlaced - dayBits.size);
+        }
+      } else if (rel.typ === "n_15") {
+        // Even spacing: penalize adjacent-day placements
+        const sortedDays = [...dayBits].sort((a, b) => a - b);
+        for (let d = 1; d < sortedDays.length; d++) {
+          if (sortedDays[d] - sortedDays[d - 1] <= 1) penalty += 1;
+        }
       }
     }
   }
@@ -2734,6 +2814,72 @@ function selectByMrvDegree(model, state, unassigned, unassignedCount, seed, dept
   return bestLesson;
 }
 
+
+// Soft-relation candidate preference — returns penalty for placing lessonIdx
+// at the given slot. Used by fillFeasibleCandidates to sort candidates so
+// the backtracking search tries soft-relation-friendly placements first.
+// Returns 0 if the lesson has no soft relations, or a positive penalty.
+function softRelationPref(model, state, lessonIdx, slot) {
+  const groups = model.lessonSoftRelIdx && model.lessonSoftRelIdx[lessonIdx];
+  if (!groups || !groups.length) return 0;
+  const softRels = model.softRels;
+  if (!softRels || !softRels.length) return 0;
+  const d = model.slotDay[slot];
+  const p = model.slotPeriod[slot];
+  const halfPoint = Math.floor(model.periodsPerDay / 2);
+  const assigned = state.lessonAssigned;
+  const assignedSlot = state.lessonAssignedSlot;
+  let penalty = 0;
+  for (let g = 0; g < groups.length; g++) {
+    const { ri, gi } = groups[g];
+    const rel = softRels[ri];
+    if (gi < 0) {
+      // n_17: penalty if this period is before afternoon cutoff
+      if (rel.typ === "n_17" && p < halfPoint) penalty += 1;
+    } else {
+      // n_3/n_4/n_11/n_14/n_15: group-based
+      const indices = rel.groups[gi];
+      // Count already-placed cards in this group + this placement
+      const daySet = new Set();
+      const periodSet = new Set();
+      let placed = 0;
+      for (let k = 0; k < indices.length; k++) {
+        const idx = indices[k];
+        if (idx === lessonIdx) {
+          // This is the candidate placement we're evaluating
+          daySet.add(d);
+          periodSet.add(p);
+          placed++;
+        } else if (assigned[idx]) {
+          const sl = assignedSlot[idx];
+          if (sl >= 0) {
+            daySet.add(model.slotDay[sl]);
+            periodSet.add(model.slotPeriod[sl]);
+            placed++;
+          }
+        }
+      }
+      if (placed <= 1) continue;
+      if (rel.typ === "n_3") {
+        if (daySet.size < placed) penalty += (placed - daySet.size);
+      } else if (rel.typ === "n_4") {
+        const target = Math.max(1, Math.ceil(placed / 2));
+        if (daySet.size < target) penalty += (target - daySet.size);
+      } else if (rel.typ === "n_11") {
+        if (daySet.size > 1) penalty += (daySet.size - 1);
+      } else if (rel.typ === "n_14") {
+        if (periodSet.size > 1) penalty += (periodSet.size - 1);
+      } else if (rel.typ === "n_15") {
+        const sorted = [...daySet].sort((a, b) => a - b);
+        for (let sd = 1; sd < sorted.length; sd++) {
+          if (sorted[sd] - sorted[sd - 1] <= 1) penalty += 1;
+        }
+      }
+    }
+  }
+  return penalty;
+}
+
 function fillFeasibleCandidates(model, state, lessonIdx, out) {
   const start = model.lessonCandidateStart[lessonIdx];
   const count = model.lessonCandidateCount[lessonIdx];
@@ -2742,6 +2888,18 @@ function fillFeasibleCandidates(model, state, lessonIdx, out) {
     if (canPlace(model, state, lessonIdx, model.candidateSlot[i], model.candidateRoom[i]) === null) {
       out[k++] = i;
     }
+  }
+  // Phase 4: Sort feasible candidates by soft-relation preference so
+  // the search tries relation-friendly placements first. Candidates with
+  // no soft-relation involvement stay at the top (penalty=0).
+  if (k > 1 && model.lessonSoftRelIdx && model.lessonSoftRelIdx[lessonIdx]) {
+    // Build (candidateIdx, penalty) pairs, sort, reorder
+    const scored = new Array(k);
+    for (let m = 0; m < k; m++) {
+      scored[m] = { idx: out[m], penalty: softRelationPref(model, state, lessonIdx, model.candidateSlot[out[m]]) };
+    }
+    scored.sort((a, b) => a.penalty - b.penalty);
+    for (let m = 0; m < k; m++) out[m] = scored[m].idx;
   }
   return k;
 }
@@ -4759,6 +4917,45 @@ export function solve(school, options = {}) {
             if (c.period - 1 < halfPoint) {
               violations.push({ ruleId: "SOFT_n_17_afternoon", description:
                 `Lesson ${l.id} placed in morning period ${c.period}; n_17 prefers afternoon.` });
+              break;
+            }
+          }
+        }
+      }
+      else if (rel.typ === "n_2") {
+        // Hard check: no two matched lessons at same (day, period)
+        for (let a = 0; a < matched.length; a++) {
+          for (let b = a + 1; b < matched.length; b++) {
+            const ca = cardsByLesson[matched[a].id] || [];
+            const cb = cardsByLesson[matched[b].id] || [];
+            for (const ac of ca) {
+              for (const bc of cb) {
+                if (ac.day === bc.day && ac.period === bc.period) {
+                  violations.push({ ruleId: "HARD_n_2_same_period_forbidden",
+                    description: `n_2: ${matched[a].id} and ${matched[b].id} at same period ${ac.period} on day ${ac.day + 1}.` });
+                }
+              }
+            }
+          }
+        }
+      } else if (rel.typ === "n_3") {
+        for (const l of matched) {
+          const cards = cardsByLesson[l.id] || [];
+          if (!cards.length) continue;
+          const daysUsed = new Set(cards.map(c => c.day)).size;
+          if (cards.length > 1 && daysUsed < cards.length) {
+            violations.push({ ruleId: "SOFT_n_3_alternate_days",
+              description: `n_3: Lesson ${l.id} has ${cards.length} cards on ${daysUsed} day(s); prefer alternate days.` });
+          }
+        }
+      } else if (rel.typ === "n_15") {
+        for (const l of matched) {
+          const cards = cardsByLesson[l.id] || [];
+          const sorted = cards.map(c => c.day).sort((a, b) => a - b);
+          for (let d = 1; d < sorted.length; d++) {
+            if (sorted[d] - sorted[d - 1] <= 1) {
+              violations.push({ ruleId: "SOFT_n_15_even_spacing",
+                description: `n_15: Lesson ${l.id} has cards on adjacent days ${sorted[d-1]+1} and ${sorted[d]+1}.` });
               break;
             }
           }

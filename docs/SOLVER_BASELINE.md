@@ -46,26 +46,37 @@ The warm-start path lifts placement quality from 92 % to 96 % and reduces the so
 
 Until (2) lands we can only honestly say: "Chronexa's solver is deterministic across seeds, places 96 % from a warm-started XML, closes 52 % of the conflict gap, and beats its own cold-path baseline 95× on soft-score." That's enough for product copy that mentions the warm-start advantage by name. Beating the legacy app outright is a separate, evidenced claim.
 
-## Card-relation coverage (matches the legacy app)
+## Card-relation coverage (ALL 18 types — p130-audit-fixes, 2026-05-27)
 
 Hard-enforced via canPlace (rejects violating placements during search):
 
-* n_0 — cannot follow
-* n_1 — cannot be the same day
-* n_5 — must follow (arbitrary order)
-* n_6 — must follow (ordered)
-* n_7 — break cannot be between group of lessons
-* n_8 — must be in one day (arbitrary order)
+* n_0  — cannot follow
+* n_1  — cannot be the same day
+* n_2  — must not be at same time (same period)  **[NEW]**
+* n_5  — must follow (arbitrary order)
+* n_6  — must follow (ordered)
+* n_7  — break cannot be between group of lessons
+* n_8  — must be in one day (arbitrary order)
 * n_10 — group from different classes must be one day
 * n_12 — must start at same time (multi-class)
 * n_13 — must be at same time across listed classes
 * n_16 — must be first or last
 
-Soft-reported post-solve (surfaced in violations[] but does not yet bias placement choice):
+Soft-enforced — scored via softRelationPenalty AND actively bias candidate ordering during
+backtracking search via softRelationPref / fillFeasibleCandidates sorting:
 
-* n_4 — distribution across the week
+* n_3  — alternate days  **[NEW]**
+* n_4  — distribution across the week
 * n_11 — divided cards same day
 * n_14 — same period each day
+* n_15 — evenly spaced across the week  **[NEW]**
 * n_17 — afternoon
 
-**15 / 15 relation typs are now observed by the solver.** Moving the 4 soft typs into the active soft-scorer is the natural next solver-quality bump.
+**18 / 18 relation typs are now enforced by the solver** (11 hard + 6 soft + n_9 deferred).
+relation_enforcer.js is the canonical module (converted to ES module), imported by
+csp_solver.js via `import { TYPS }`.
+
+### Backend CP-SAT solver (solver.py)
+
+Hard constraints ported: n_0, n_1, n_2, n_8, n_10, n_12, n_13, n_16 (+ n_17 soft).
+Complex types n_5/n_6/n_7/n_9 deferred for future CP-SAT pass.

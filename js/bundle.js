@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-27T06:17:27Z
+/* Chronexa bundle — generated 2026-05-27T07:17:57Z
  *      165 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -12226,25 +12226,22 @@ ${body}
 /* Relation Enforcer — closes the #1 audit gap.
  *
  * The Classic audit identified the "30% done" trap: dialogs persist data
- * the solver ignores. All 15 n_* relations have a 3-step wizard at
- * /js/ui/entities/relations.js, but solver/constraints.js enforces ZERO
- * of them. This module reads window.APP.school.relations and answers:
+ * the solver ignores. All 18 n_* relations have a 3-step wizard at
+ * /js/ui/entities/relations.js. This module exports:
  *
- *   RelationEnforcer.check(school, lessonId, day, period) →
- *     { hard: [verbatim-message…], soft: [verbatim-message…] }
+ *   TYPS — canonical relation type metadata (label, binary, hard, scope)
+ *   check(school, lessonId, day, period) → { hard: [msg...], soft: [msg...] }
+ *   explain(school, lessonId, day, period) → ["🚫 msg", "⚠️ msg", ...]
  *
- * The solver's canPlace() can call this; the editor's constraint-explainer
- * tooltip already calls it too. The signature mirrors
- * SolverConstraints.checkPlacement() so integration is one line.
+ * Import by csp_solver.js for partner-set construction; imported by UI
+ * for the constraint-explainer tooltip.
  *
- * Implements all 15 decoded n_* codes from
+ * Sourced from:
  *   /Users/abhishekchhetri/Downloads/Cloning CLASSIC/docs/ASC_CARDRELATIONSHIPS_DECODING_2026-04-20.md
  * Verbatim labels match Classic's wire.
  */
-(function (global) {
-  "use strict";
 
-  const TYPS = Object.freeze({
+const TYPS = Object.freeze({
     n_0:  { label: "cannot follow",                                  binary: false, hard: true,  scope: "consecutive" },
     n_1:  { label: "cannot be the same day",                         binary: false, hard: true,  scope: "sameDay" },
     // §4.7 — n_2, n_3, n_15 typs are not documented in Classic source.
@@ -12515,11 +12512,15 @@ ${body}
   /** Return an array of human-readable enforcement summaries for the UI. */
   function explain(school, lessonId, day, period) {
     const r = check(school, lessonId, day, period);
-    return [...r.hard.map(s => `🚫 ${s}`), ...r.soft.map(s => `⚠️ ${s}`)];
-  }
+  return [...r.hard.map(s => `🚫 ${s}`), ...r.soft.map(s => `⚠️ ${s}`)];
+}
 
-  global.RelationEnforcer = { check, explain, TYPS };
-})(window);
+export { TYPS, check, explain };
+
+// Backward compat: UI code still uses window.RelationEnforcer
+if (typeof globalThis !== "undefined") {
+  globalThis.RelationEnforcer = { check, explain, TYPS };
+}
 
 /* ─── FILE: js/ui/components/verification.js ─── */
 /* Chronexa Verification Panel (bottom drawer)

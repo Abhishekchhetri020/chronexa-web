@@ -333,6 +333,137 @@ def solve(
         if len(group) > 1:
             model.AddAllDifferent([g["day_var"] for g in group])
 
+    # --- Card relations (ported from JS solver — hard constraints only) ---
+    relations = payload.get("relations") or []
+    if relations:
+        for rel in relations:
+            if rel.get("disabled"):
+                continue
+            typ = rel.get("typ")
+            if not typ:
+                continue
+            subj_set = set(rel.get("subjectids") or [])
+            subj2_set = set(rel.get("subject2ids") or [])
+            all_subjs = subj_set | subj2_set
+            class_set = set(rel.get("classids") or [])
+
+            # Gather matched occurrences
+            matched = []
+            for o in occs:
+                lesson = o["lesson"]
+                if all_subjs and lesson.get("subjectId") not in all_subjs:
+                    continue
+                if class_set and not any(
+                    cid in class_set for cid in (lesson.get("classIds") or [])
+                ):
+                    continue
+                matched.append(o)
+
+            if len(matched) < 2:
+                continue
+
+            # --- n_1: cannot be same day (cross-subject pairs) ---
+            if typ == "n_1":
+                for a in range(len(matched)):
+                    for b in range(a + 1, len(matched)):
+                        oa, ob = matched[a], matched[b]
+                        if oa["lesson"].get("subjectId") == ob["lesson"].get("subjectId"):
+                            continue
+                        model.Add(oa["day_var"] != ob["day_var"])
+
+            # --- n_2: cannot be same slot (same day + same period) ---
+            elif typ == "n_2":
+                for a in range(len(matched)):
+                    for b in range(a + 1, len(matched)):
+                        model.Add(matched[a]["slot_var"] != matched[b]["slot_var"])
+
+            # --- n_8 / n_10: must be same day (cross-subject pairs) ---
+            elif typ == "n_8" or typ == "n_10":
+                for a in range(len(matched)):
+                    for b in range(a + 1, len(matched)):
+                        oa, ob = matched[a], matched[b]
+                        if oa["lesson"].get("subjectId") == ob["lesson"].get("subjectId"):
+                            continue
+                        model.Add(oa["day_var"] == ob["day_var"])
+
+            # --- n_12 / n_13: simultaneous (same period on same day) ---
+            elif typ == "n_12" or typ == "n_13":
+                for a in range(len(matched)):
+                    for b in range(a + 1, len(matched)):
+                        oa, ob = matched[a], matched[b]
+                        same_day = model.NewBoolVar(
+                            f"rel_{typ}_sd_{oa['lesson_idx']}o{oa['occ_idx']}_{ob['lesson_idx']}o{ob['occ_idx']}"
+                        )
+                        model.Add(oa["day_var"] == ob["day_var"]).OnlyEnforceIf(same_day)
+                        model.Add(oa["day_var"] != ob["day_var"]).OnlyEnforceIf(same_day.Not())
+                        model.Add(oa["period_var"] == ob["period_var"]).OnlyEnforceIf(same_day)
+
+            # --- n_16: must be first or last period ---
+            elif typ == "n_16":
+                first_p = teaching_periods[0]
+                last_p = teaching_periods[-1]
+                for o in matched:
+                    is_first = model.NewBoolVar(f"rel_n16_f_{o['lesson_idx']}o{o['occ_idx']}")
+                    model.Add(o["period_var"] == first_p).OnlyEnforceIf(is_first)
+                    model.Add(o["period_var"] != first_p).OnlyEnforceIf(is_first.Not())
+                    is_last = model.NewBoolVar(f"rel_n16_l_{o['lesson_idx']}o{o['occ_idx']}")
+                    model.Add(o["period_var"] == last_p).OnlyEnforceIf(is_last)
+                    model.Add(o["period_var"] != last_p).OnlyEnforceIf(is_last.Not())
+                    model.AddBoolOr([is_first, is_last])
+
+            # --- n_0: cannot follow (adjacent periods on same day) — simplified ---
+            # Forbid any pair of matched occurrences from being adjacent on same day
+            elif typ == "n_0":
+                for a in range(len(matched)):
+                    for b in range(a + 1, len(matched)):
+                        oa, ob = matched[a], matched[b]
+                        if oa["lesson"].get("subjectId") == ob["lesson"].get("subjectId"):
+                            continue
+                        # Same day => |period_offset diff| != 1
+                        same_day = model.NewBoolVar(
+                            f"rel_n0_sd_{oa['lesson_idx']}o{oa['occ_idx']}_{ob['lesson_idx']}o{ob['occ_idx']}"
+                        )
+                        model.Add(oa["day_var"] == ob["day_var"]).OnlyEnforceIf(same_day)
+                        model.Add(oa["day_var"] != ob["day_var"]).OnlyEnforceIf(same_day.Not())
+                        diff = model.NewIntVar(-P, P,
+                            f"rel_n0_df_{oa['lesson_idx']}o{oa['occ_idx']}_{ob['lesson_idx']}o{ob['occ_idx']}"
+                        )
+                        model.Add(diff == oa["period_offset_var"] - ob["period_offset_var"])
+                        # Adjacent when diff is in {-1, 1}
+                        adjacent = model.NewBoolVar(
+                            f"rel_n0_adj_{oa['lesson_idx']}o{oa['occ_idx']}_{ob['lesson_idx']}o{ob['occ_idx']}"
+                        )
+                        model.AddLinearExpressionInDomain(
+                            diff, cp_model.Domain.FromValues([-1, 1])
+                        ).OnlyEnforceIf(adjacent)
+                        model.Add(diff != -1).OnlyEnforceIf(adjacent.Not())
+                        model.Add(diff != 1).OnlyEnforceIf(adjacent.Not())
+                        both_b = model.NewBoolVar(
+                            f"rel_n0_both_{oa['lesson_idx']}o{oa['occ_idx']}_{ob['lesson_idx']}o{ob['occ_idx']}"
+                        )
+                        model.AddBoolAnd([same_day, adjacent]).OnlyEnforceIf(both_b)
+                        model.AddBoolOr([same_day.Not(), adjacent.Not()]).OnlyEnforceIf(both_b.Not())
+                        model.Add(both_b == 0)
+
+            # --- n_17: afternoon preference (soft penalty) ---
+            elif typ == "n_17":
+                half = len(teaching_periods) // 2
+                cutoff = teaching_periods[half] if half < len(teaching_periods) else teaching_periods[-1]
+                for o in matched:
+                    in_morning = model.NewBoolVar(
+                        f"rel_n17_m_{o['lesson_idx']}o{o['occ_idx']}"
+                    )
+                    model.Add(o["period_var"] < cutoff).OnlyEnforceIf(in_morning)
+                    model.Add(o["period_var"] >= cutoff).OnlyEnforceIf(in_morning.Not())
+                    soft_terms.append(in_morning)
+                    soft_weights.append(5)
+
+            # Note: n_5 (must follow), n_6 (ordered follow), n_7 (break between),
+            # n_9 (same-day ordered), n_3/n_4/n_11/n_14/n_15 (soft) are deferred
+            # to a future CP-SAT pass. The JS solver handles these on the browser path.
+
+
+
     # --- Soft: preferred-room ---
     for o in occs:
         pref = o["pref_room_idx"]
