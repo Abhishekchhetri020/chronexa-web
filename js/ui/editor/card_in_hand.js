@@ -293,7 +293,9 @@
     if (!slot) return cancel();
     const d = parseInt(slot.dataset.day, 10), p = parseInt(slot.dataset.period, 10);
     const v = classifySlot(slot);
-    if (v.validity === "red" || targetCardsForSlot(slot).length) return showCollisionMenu(slot, v, e.clientX, e.clientY);
+    if (v.validity === "red") return showCollisionMenu(slot, v, e.clientX, e.clientY);
+    const occupants = targetCardsForSlot(slot);
+    if (occupants.length) return commit(d, p, slot, { displace: true });
     commit(d, p, slot);
   }
   function onKey(e) {
@@ -306,7 +308,10 @@
         e.preventDefault();
         const d = parseInt(f.dataset.day, 10), p = parseInt(f.dataset.period, 10);
         const v = classifySlot(f);
-        if (v.validity === "red" || targetCardsForSlot(f).length) showCollisionMenu(f, v); else commit(d, p, f);
+        if (v.validity === "red") return showCollisionMenu(f, v);
+        const occupants = targetCardsForSlot(f);
+        if (occupants.length) return commit(d, p, f, { displace: true });
+        commit(d, p, f);
       }
     }
   }
@@ -329,16 +334,13 @@
     const originClassroomId = inHand.originClassroomId;
     const isMove = !fromPending && Number.isFinite(originDay) && Number.isFinite(originPeriod);
     const forced = !!(options && options.force);
-    const replace = !!(options && options.replace);
+    const displace = !!(options && (options.displace || options.replace));
     const isSameSlot = isMove && originDay === day && originPeriod === period;
     const lesson = S && S._idx ? S._idx.lessonById[lessonId] : null;
     const cid = slot ? classroomForSlot(lessonId, slot) : (lesson ? lesson.preferredRoomId : undefined);
-    const targetRemoved = replace ? targetCardsForSlot(slot).map(c => ({
-      lessonId: c.lessonId,
-      day: c.day,
-      period: c.period,
-      classroomId: c.classroomId,
-    })) : [];
+    
+    const occupants = targetCardsForSlot(slot);
+    const displacedCard = displace && occupants.length ? occupants[0] : null;
 
     function applyPlacement() {
       if (!S) return;
@@ -346,16 +348,14 @@
         const oi = S.cards.findIndex(c => c.lessonId === lessonId && c.day === originDay && c.period === originPeriod);
         if (oi !== -1) S.cards.splice(oi, 1);
       }
-      if (replace && targetRemoved.length) {
-        for (const removed of targetRemoved) {
-          const ri = S.cards.findIndex(c =>
-            c.lessonId === removed.lessonId &&
-            c.day === removed.day &&
-            c.period === removed.period &&
-            (c.classroomId || "") === (removed.classroomId || "")
-          );
-          if (ri !== -1) S.cards.splice(ri, 1);
-        }
+      if (displacedCard) {
+        const ri = S.cards.findIndex(c =>
+          c.lessonId === displacedCard.lessonId &&
+          c.day === displacedCard.day &&
+          c.period === displacedCard.period &&
+          (c.classroomId || "") === (displacedCard.classroomId || "")
+        );
+        if (ri !== -1) S.cards.splice(ri, 1);
       }
       if (!S.cards.some(c => c.lessonId === lessonId && c.day === day && c.period === period))
         S.cards.push({ lessonId, day, period, classroomId: cid });
@@ -364,27 +364,23 @@
       if (!S) return;
       const ti = S.cards.findIndex(c => c.lessonId === lessonId && c.day === day && c.period === period);
       if (ti !== -1) S.cards.splice(ti, 1);
-      for (const removed of targetRemoved) {
-        if (!S.cards.some(c =>
-          c.lessonId === removed.lessonId &&
-          c.day === removed.day &&
-          c.period === removed.period &&
-          (c.classroomId || "") === (removed.classroomId || "")
-        )) {
-          S.cards.push({
-            lessonId: removed.lessonId,
-            day: removed.day,
-            period: removed.period,
-            classroomId: removed.classroomId,
-          });
-        }
+      if (displacedCard && !S.cards.some(c =>
+        c.lessonId === displacedCard.lessonId &&
+        c.day === displacedCard.day &&
+        c.period === displacedCard.period &&
+        (c.classroomId || "") === (displacedCard.classroomId || "")
+      )) {
+        S.cards.push({
+          lessonId: displacedCard.lessonId,
+          day: displacedCard.day,
+          period: displacedCard.period,
+          classroomId: displacedCard.classroomId,
+        });
       }
       if (isMove && !S.cards.some(c => c.lessonId === lessonId && c.day === originDay && c.period === originPeriod))
         S.cards.push({ lessonId, day: originDay, period: originPeriod, classroomId: originClassroomId || cid });
     }
 
-    // Push onto undo stack so AI → Cleanup last card move can revert it.
-    // Skip the stack for same-slot drops (round-trip is a no-op for the user).
     const auditCommit = window.APP && window.APP.audit && typeof window.APP.audit.commit === "function";
     if (auditCommit && !isSameSlot) {
       const label = fromPending ? "Place card" : "Move card";
@@ -407,8 +403,24 @@
         { detail: { cardId, lessonId, day, period, forced } }));
       rerender();
     }
+    
+    const mode = inHand.mode;
     if (window.APP.editor) window.APP.editor.cardInHand = null;
     cleanup();
+    
+    if (displacedCard) {
+      setTimeout(() => {
+        dispatch("editor:pickup", {
+          cardId: `placed_${displacedCard.lessonId}_${day}_${period}`,
+          lessonId: displacedCard.lessonId,
+          day: day,
+          period: period,
+          originClassroomId: displacedCard.classroomId,
+          fromPending: false,
+          mode: mode
+        });
+      }, 50);
+    }
   }
 
   function bumpAndCancel(slot) {
@@ -603,7 +615,9 @@
     commit: commit,
     cancel: cancel,
     pickup: pickup,
-    swap: swap
+    swap: swap,
+    classifySlot: classifySlot,
+    showCollisionMenu: showCollisionMenu
   };
 
   function rowPlacementCheck(lessonId, slot) {
@@ -639,7 +653,7 @@
     const reasons = (base.reasons || []).slice();
     const labels = occupants.map(c => cardLabel(c)).filter(Boolean);
     reasons.unshift(labels.length ? `slot occupied by ${labels.join(", ")}` : "slot occupied");
-    return { validity: "red", reasons };
+    return { validity: base.validity, reasons };
   }
 
   function targetCardsForSlot(slot, prefilteredCards) {

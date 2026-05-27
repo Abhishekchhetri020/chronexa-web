@@ -621,7 +621,12 @@ window.Editor = (function () {
         if (slot.classList.contains("chrx-slot--highlight-place") || slot.classList.contains("chrx-slot--highlight-swap")) {
           const occupants = slot.querySelectorAll(".chrx-vkarta");
           if (occupants.length) {
-            window.CardInHand.swap(d, p, slot);
+            const v = window.CardInHand.classifySlot ? window.CardInHand.classifySlot(slot) : { validity: "green" };
+            if (v.validity === "red") {
+              window.CardInHand.showCollisionMenu(slot, v);
+            } else {
+              window.CardInHand.commit(d, p, slot, { displace: true });
+            }
           } else {
             window.CardInHand.commit(d, p, slot);
           }
