@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-27T05:45:36Z
+/* Chronexa bundle — generated 2026-05-27T05:53:31Z
  *      165 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -13894,11 +13894,15 @@ ${body}
     const close = el("button", { type: "button", class: "chrx-btn", onclick: doClose }, "Close");
     const actions = el("div", { class: "csu-dialog__actions" }, disc, view, close, apply);
 
-    dlg.append(title, status, hero, grid, actions);
+    // Phase 4 / Phase 5: diagnostics + weight suggestions container.
+    // Populated by renderDiagnostics() only when the solver emitted data.
+    const diagSection = el("div", { class: "csu-result__diag", id: "csu-result-diag" });
+
+    dlg.append(title, status, hero, grid, diagSection, actions);
     host.appendChild(dlg);
     document.body.appendChild(host);
 
-    refs = { title, status, placed, unplaced, relax, soft, grid, apply, view, disc, close };
+    refs = { title, status, placed, unplaced, relax, soft, grid, diagSection, apply, view, disc, close };
   }
 
   function renderHero(result, totalLessons) {
@@ -13964,6 +13968,81 @@ ${body}
         row.appendChild(cell);
       }
       refs.grid.appendChild(row);
+    }
+  }
+
+  // Phase 4 / Phase 5: render solver-authored diagnostics + weight calibration
+  // suggestions. These are only present when the solver emits them (unplaced > 0
+  // or placed > 0 respectively). Hidden entirely when absent.
+  //
+  // Diagnostics explain WHY each unplaceable lesson failed, broken down by
+  // FAIL code (e.g. "TEACHER_CONFLICT: 12/26").
+  // Weight suggestions show which soft-constraint categories had non-zero
+  // violations, letting the user see what's driving the soft score.
+  function renderDiagnostics(result) {
+    refs.diagSection.innerHTML = "";
+    const diag = result && Array.isArray(result.diagnostics) ? result.diagnostics : [];
+    const ws   = result && result.weightSuggestions ? result.weightSuggestions : null;
+    const issues = result && Array.isArray(result.validationIssues) ? result.validationIssues : [];
+    const warnings = issues.filter(i => i.severity === "warn" && i.msg);
+
+    if (!diag.length && !ws && !warnings.length) {
+      refs.diagSection.style.display = "none";
+      return;
+    }
+    refs.diagSection.style.display = "";
+
+    const wrap = (title, bodyNode) => {
+      const hdr = el("div", { class: "csu-result__diagHdr" }, title);
+      const box = el("details", { class: "csu-result__diagBox" }, hdr, bodyNode);
+      return box;
+    };
+
+    if (warnings.length) {
+      const list = el("ul", { class: "csu-result__diagList" });
+      for (const w of warnings) list.appendChild(el("li", {}, "⚠  " + w.msg));
+      refs.diagSection.appendChild(wrap("Input warnings (" + warnings.length + ")", list));
+    }
+
+    if (diag.length) {
+      const list = el("ul", { class: "csu-result__diagList" });
+      // Cap at 12 visible; full list is in verification panel.
+      const cap = Math.min(diag.length, 12);
+      for (let i = 0; i < cap; i++) {
+        const d = diag[i];
+        const subject = d.subjectId || "";
+        const lid = d.lessonId || ("lesson " + (d.lessonIdx + 1));
+        list.appendChild(el("li", {},
+          el("strong", {}, lid),
+          subject ? " (" + subject + ")" : "",
+          el("br"),
+          el("span", { class: "csu-result__diagReason" }, d.reason || "unplaceable"),
+        ));
+      }
+      if (diag.length > cap) {
+        list.appendChild(el("li", { class: "csu-result__diagMore" },
+          `…and ${diag.length - cap} more. Open "View violations" for the full list.`));
+      }
+      refs.diagSection.appendChild(wrap("Unplaceable lessons (" + diag.length + ")", list));
+    }
+
+    if (ws) {
+      const keys = Object.keys(ws).sort((a, b) => ws[b] - ws[a]);
+      if (keys.length) {
+        const list = el("ul", { class: "csu-result__diagList" });
+        for (const k of keys) {
+          const v = ws[k];
+          const label = k.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase()).trim();
+          list.appendChild(el("li", {},
+            el("strong", {}, label),
+            el("span", { class: "csu-result__diagReason" }, " — " + Number(v).toLocaleString() + " penalty points"),
+          ));
+        }
+        const tip = el("div", { class: "csu-result__diagTip" },
+          "These are the largest contributors to your soft score. Increasing the corresponding weight in Solver Parameters will prioritize them in the next run.");
+        refs.diagSection.appendChild(wrap("Soft score breakdown", list));
+        refs.diagSection.lastChild.appendChild(tip);
+      }
     }
   }
 
@@ -14134,6 +14213,7 @@ ${body}
     refs.disc.disabled = true;
     renderHero(state.result, totalLessons);
     renderPerSlotGrid(state.result, state.school);
+    renderDiagnostics(state.result);
 
     // De-emphasize Apply when the run is destructive (TIMEOUT, hard conflicts,
     // or strictly fewer cards than the current school). The confirmation
