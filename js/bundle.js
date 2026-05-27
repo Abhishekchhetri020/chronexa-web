@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-27T16:24:39Z
+/* Chronexa bundle — generated 2026-05-27T16:32:48Z
  *      164 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -17297,12 +17297,14 @@ window.PendingStrip = (function () {
     if (S && S.cards) {
       originalCards = S.cards;
       const excludeFn = c => {
+        const cDay = parseInt(c.day, 10);
+        const cPeriod = parseInt(c.period, 10);
         // Exclude carried card at its origin slot
-        if (!inHand.fromPending && c.lessonId === inHand.lessonId && c.day === inHand.originDay && c.period === inHand.originPeriod) {
+        if (!inHand.fromPending && c.lessonId === inHand.lessonId && cDay === inHand.originDay && cPeriod === inHand.originPeriod) {
           return false;
         }
         // Exclude occupant cards at the target slot
-        if (c.day === d && c.period === p) {
+        if (cDay === d && cPeriod === p) {
           return false;
         }
         return true;

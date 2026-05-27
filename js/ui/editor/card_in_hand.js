@@ -674,12 +674,14 @@
     if (S && S.cards) {
       originalCards = S.cards;
       const excludeFn = c => {
+        const cDay = parseInt(c.day, 10);
+        const cPeriod = parseInt(c.period, 10);
         // Exclude carried card at its origin slot
-        if (!inHand.fromPending && c.lessonId === inHand.lessonId && c.day === inHand.originDay && c.period === inHand.originPeriod) {
+        if (!inHand.fromPending && c.lessonId === inHand.lessonId && cDay === inHand.originDay && cPeriod === inHand.originPeriod) {
           return false;
         }
         // Exclude occupant cards at the target slot
-        if (c.day === d && c.period === p) {
+        if (cDay === d && cPeriod === p) {
           return false;
         }
         return true;
