@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-27T15:31:42Z
+/* Chronexa bundle — generated 2026-05-27T15:41:00Z
  *      164 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -15662,6 +15662,7 @@ window.Editor = (function () {
     const day = parseInt(vk.dataset.day, 10);
     const period = parseInt(vk.dataset.period, 10);
     const originClassroomId = vk.dataset.classroomId || undefined;
+    const rowKey = vk.closest(".chrx-row")?.dataset.row;
     
     const held = window.APP.editor.cardInHand;
     if (held) {
@@ -15673,7 +15674,13 @@ window.Editor = (function () {
       window.CardInHand.cancel();
     }
     
-    dispatch("editor:pickup", { cardId, lessonId, day, period, originClassroomId, mode: "click" });
+    removeCardFromSchool(lessonId, day, period);
+    window.APP.editor.cardInHand = { cardId, lessonId, originDay: day, originPeriod: period, originClassroomId, rowKey, mode: "click" };
+    syncCardInHandClass();
+    dispatch("editor:pickup", { cardId, lessonId, day, period, originClassroomId, rowKey, mode: "click" });
+    
+    const host = vk.closest(".chrx-editor");
+    if (host) render(host);
   }
 
   function startDragPickup(vk, startX, startY) {
@@ -16642,6 +16649,7 @@ window.PendingStrip = (function () {
                originDay: d.day, originPeriod: d.period,
                originClassroomId: d.originClassroomId,
                fromPending: !!d.fromPending,
+               rowKey: d.rowKey,
                mode: mode };
                
     window.APP.editor = window.APP.editor || {};
@@ -17023,7 +17031,8 @@ window.PendingStrip = (function () {
             period: period,
             originClassroomId: displacedCard.classroomId,
             fromPending: false,
-            mode: mode
+            mode: mode,
+            rowKey: slot ? slot.dataset.row : undefined
           }
         }));
       }, 50);
@@ -17258,9 +17267,10 @@ window.PendingStrip = (function () {
     const occupants = targetCardsForSlot(slot, prefilteredCards);
     
     let originalCards = null;
+    let filteredPrefilteredCards = null;
     if (S && S.cards) {
       originalCards = S.cards;
-      S.cards = S.cards.filter(c => {
+      const excludeFn = c => {
         // Exclude carried card at its origin slot
         if (!inHand.fromPending && c.lessonId === inHand.lessonId && c.day === inHand.originDay && c.period === inHand.originPeriod) {
           return false;
@@ -17270,12 +17280,16 @@ window.PendingStrip = (function () {
           return false;
         }
         return true;
-      });
+      };
+      S.cards = S.cards.filter(excludeFn);
+      if (prefilteredCards) {
+        filteredPrefilteredCards = prefilteredCards.filter(excludeFn);
+      }
     }
 
     let base = { validity: "green", reasons: [] };
     try {
-      base = window.Placement ? window.Placement.classify(inHand.lessonId, d, p, classroomForSlot(inHand.lessonId, slot), prefilteredCards) : { validity: "green", reasons: [] };
+      base = window.Placement ? window.Placement.classify(inHand.lessonId, d, p, classroomForSlot(inHand.lessonId, slot), filteredPrefilteredCards) : { validity: "green", reasons: [] };
     } catch (_e) {}
     
     if (S && originalCards) {
@@ -17386,14 +17400,16 @@ window.PendingStrip = (function () {
     if (!lesson) return;
     
     const perspective = (window.APP && window.APP.editor && window.APP.editor.perspective) || "class";
-    let rowKey = null;
+    let rowKey = inHand.rowKey;
     
-    if (!inHand.fromPending) {
-      const cardEl = document.querySelector(`.chrx-editor .chrx-vkarta[data-card-id="${inHand.cardId}"]`);
-      rowKey = cardEl?.closest(".chrx-row")?.dataset.row;
-    } else {
-      const keys = rowKeysForCard(lesson, perspective, inHand);
-      if (keys && keys.length) rowKey = keys[0];
+    if (!rowKey) {
+      if (!inHand.fromPending) {
+        const cardEl = document.querySelector(`.chrx-editor .chrx-vkarta[data-card-id="${inHand.cardId}"]`);
+        rowKey = cardEl?.closest(".chrx-row")?.dataset.row;
+      } else {
+        const keys = rowKeysForCard(lesson, perspective, inHand);
+        if (keys && keys.length) rowKey = keys[0];
+      }
     }
     
     if (!rowKey) return;

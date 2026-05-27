@@ -562,6 +562,7 @@ window.Editor = (function () {
     const day = parseInt(vk.dataset.day, 10);
     const period = parseInt(vk.dataset.period, 10);
     const originClassroomId = vk.dataset.classroomId || undefined;
+    const rowKey = vk.closest(".chrx-row")?.dataset.row;
     
     const held = window.APP.editor.cardInHand;
     if (held) {
@@ -573,7 +574,13 @@ window.Editor = (function () {
       window.CardInHand.cancel();
     }
     
-    dispatch("editor:pickup", { cardId, lessonId, day, period, originClassroomId, mode: "click" });
+    removeCardFromSchool(lessonId, day, period);
+    window.APP.editor.cardInHand = { cardId, lessonId, originDay: day, originPeriod: period, originClassroomId, rowKey, mode: "click" };
+    syncCardInHandClass();
+    dispatch("editor:pickup", { cardId, lessonId, day, period, originClassroomId, rowKey, mode: "click" });
+    
+    const host = vk.closest(".chrx-editor");
+    if (host) render(host);
   }
 
   function startDragPickup(vk, startX, startY) {

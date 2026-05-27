@@ -37,6 +37,7 @@
                originDay: d.day, originPeriod: d.period,
                originClassroomId: d.originClassroomId,
                fromPending: !!d.fromPending,
+               rowKey: d.rowKey,
                mode: mode };
                
     window.APP.editor = window.APP.editor || {};
@@ -418,7 +419,8 @@
             period: period,
             originClassroomId: displacedCard.classroomId,
             fromPending: false,
-            mode: mode
+            mode: mode,
+            rowKey: slot ? slot.dataset.row : undefined
           }
         }));
       }, 50);
@@ -653,9 +655,10 @@
     const occupants = targetCardsForSlot(slot, prefilteredCards);
     
     let originalCards = null;
+    let filteredPrefilteredCards = null;
     if (S && S.cards) {
       originalCards = S.cards;
-      S.cards = S.cards.filter(c => {
+      const excludeFn = c => {
         // Exclude carried card at its origin slot
         if (!inHand.fromPending && c.lessonId === inHand.lessonId && c.day === inHand.originDay && c.period === inHand.originPeriod) {
           return false;
@@ -665,12 +668,16 @@
           return false;
         }
         return true;
-      });
+      };
+      S.cards = S.cards.filter(excludeFn);
+      if (prefilteredCards) {
+        filteredPrefilteredCards = prefilteredCards.filter(excludeFn);
+      }
     }
 
     let base = { validity: "green", reasons: [] };
     try {
-      base = window.Placement ? window.Placement.classify(inHand.lessonId, d, p, classroomForSlot(inHand.lessonId, slot), prefilteredCards) : { validity: "green", reasons: [] };
+      base = window.Placement ? window.Placement.classify(inHand.lessonId, d, p, classroomForSlot(inHand.lessonId, slot), filteredPrefilteredCards) : { validity: "green", reasons: [] };
     } catch (_e) {}
     
     if (S && originalCards) {
@@ -781,14 +788,16 @@
     if (!lesson) return;
     
     const perspective = (window.APP && window.APP.editor && window.APP.editor.perspective) || "class";
-    let rowKey = null;
+    let rowKey = inHand.rowKey;
     
-    if (!inHand.fromPending) {
-      const cardEl = document.querySelector(`.chrx-editor .chrx-vkarta[data-card-id="${inHand.cardId}"]`);
-      rowKey = cardEl?.closest(".chrx-row")?.dataset.row;
-    } else {
-      const keys = rowKeysForCard(lesson, perspective, inHand);
-      if (keys && keys.length) rowKey = keys[0];
+    if (!rowKey) {
+      if (!inHand.fromPending) {
+        const cardEl = document.querySelector(`.chrx-editor .chrx-vkarta[data-card-id="${inHand.cardId}"]`);
+        rowKey = cardEl?.closest(".chrx-row")?.dataset.row;
+      } else {
+        const keys = rowKeysForCard(lesson, perspective, inHand);
+        if (keys && keys.length) rowKey = keys[0];
+      }
     }
     
     if (!rowKey) return;
