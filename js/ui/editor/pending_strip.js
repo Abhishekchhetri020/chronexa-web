@@ -167,12 +167,23 @@ window.PendingStrip = (function () {
       if (held.cardId === cardId) return;
     }
     
+    window.APP.editor = window.APP.editor || {};
+    window.APP.editor.cardInHand = { cardId, lessonId, fromPending: true, mode: "click" };
+    document.body.classList.add("chrx-card-in-hand");
+    
     document.dispatchEvent(new CustomEvent("editor:pickup", { detail: { cardId, lessonId, fromPending: true, mode: "click" } }));
+    
+    render(vk.closest(".chrx-pending-strip"));
   }
 
   function countPlaced(S) {
     const out = Object.create(null);
     for (const c of (S.cards || [])) out[c.lessonId] = (out[c.lessonId] || 0) + 1;
+    
+    const held = window.APP && window.APP.editor && window.APP.editor.cardInHand;
+    if (held && held.lessonId) {
+      out[held.lessonId] = (out[held.lessonId] || 0) + 1;
+    }
     return out;
   }
 

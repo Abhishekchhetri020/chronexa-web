@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-27T15:41:00Z
+/* Chronexa bundle — generated 2026-05-27T16:24:39Z
  *      164 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -16295,12 +16295,23 @@ window.PendingStrip = (function () {
       if (held.cardId === cardId) return;
     }
     
+    window.APP.editor = window.APP.editor || {};
+    window.APP.editor.cardInHand = { cardId, lessonId, fromPending: true, mode: "click" };
+    document.body.classList.add("chrx-card-in-hand");
+    
     document.dispatchEvent(new CustomEvent("editor:pickup", { detail: { cardId, lessonId, fromPending: true, mode: "click" } }));
+    
+    render(vk.closest(".chrx-pending-strip"));
   }
 
   function countPlaced(S) {
     const out = Object.create(null);
     for (const c of (S.cards || [])) out[c.lessonId] = (out[c.lessonId] || 0) + 1;
+    
+    const held = window.APP && window.APP.editor && window.APP.editor.cardInHand;
+    if (held && held.lessonId) {
+      out[held.lessonId] = (out[held.lessonId] || 0) + 1;
+    }
     return out;
   }
 
@@ -17018,7 +17029,22 @@ window.PendingStrip = (function () {
     }
     
     const mode = inHand.mode;
-    if (window.APP.editor) window.APP.editor.cardInHand = null;
+    if (window.APP.editor) {
+      if (displacedCard) {
+        window.APP.editor.cardInHand = {
+          cardId: `placed_${displacedCard.lessonId}_${day}_${period}`,
+          lessonId: displacedCard.lessonId,
+          originDay: day,
+          originPeriod: period,
+          originClassroomId: displacedCard.classroomId,
+          fromPending: false,
+          rowKey: slot ? slot.dataset.row : undefined,
+          mode: mode
+        };
+      } else {
+        window.APP.editor.cardInHand = null;
+      }
+    }
     cleanup();
     
     if (displacedCard) {

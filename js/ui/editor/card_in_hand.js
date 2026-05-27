@@ -406,7 +406,22 @@
     }
     
     const mode = inHand.mode;
-    if (window.APP.editor) window.APP.editor.cardInHand = null;
+    if (window.APP.editor) {
+      if (displacedCard) {
+        window.APP.editor.cardInHand = {
+          cardId: `placed_${displacedCard.lessonId}_${day}_${period}`,
+          lessonId: displacedCard.lessonId,
+          originDay: day,
+          originPeriod: period,
+          originClassroomId: displacedCard.classroomId,
+          fromPending: false,
+          rowKey: slot ? slot.dataset.row : undefined,
+          mode: mode
+        };
+      } else {
+        window.APP.editor.cardInHand = null;
+      }
+    }
     cleanup();
     
     if (displacedCard) {
