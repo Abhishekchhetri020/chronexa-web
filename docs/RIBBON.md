@@ -182,3 +182,6 @@ attendance, lists of teachers/classes) are deferred — see
 - Each ribbon menu opens a dropdown panel ✓
 - `Files → Export → Classic Timetable XML` produces a round-trip-clean .xml ✓
 - File budgets: topbar 12.1 KB · each menu ≤ 3.4 KB · print_preview 12.9 KB ✓
+
+
+<!-- Chronexa Web -->

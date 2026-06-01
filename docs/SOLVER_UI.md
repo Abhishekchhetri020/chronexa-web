@@ -120,3 +120,6 @@ agent's scope.
 6. **Apply to timetable** swaps `APP.school.cards` for the new placement;
    the existing Class / Teacher / Room grids re-render the next time
    their `render()` runs. **Discard** restores the snapshot.
+
+
+<!-- Chronexa Web -->

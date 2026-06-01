@@ -166,3 +166,6 @@ Subscribe events stay the same except `progress` events now optionally carry
 | `js/solver/constraints.js`                        | `CKritSluzba`, `CKritCourseGroup`, `CKritTriedny`, `CKritResty`, `CKritVhodneNaSpojenie` |
 | `js/ui/solver_ui/backend_client.js`               | `/solve/start` + polling, 404 → sync heartbeat fallback  |
 | `docs/SOLVER_V2.md`                               | This file                                                |
+
+
+<!-- Chronexa Web -->

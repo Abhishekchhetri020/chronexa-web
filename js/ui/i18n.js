@@ -89,3 +89,5 @@ window.I18N = (function () {
 
   return { t, dayLabel, STRINGS };
 })();
+
+// Chronexa Web

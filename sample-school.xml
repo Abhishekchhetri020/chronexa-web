@@ -1841,3 +1841,4 @@
   </cards>
   <classroomsupervisions options="canadd,export:silent" columns="classroomid,teacherid,day,week,term,period,break"/>
 </timetable>
+<!-- Chronexa Web Sample Timetable -->

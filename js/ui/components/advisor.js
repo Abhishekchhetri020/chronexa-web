@@ -186,3 +186,5 @@
   window.addEventListener("app:advisor", () => open());
   window.Advisor = { open, collectSuggestions };
 })();
+
+// Chronexa Web

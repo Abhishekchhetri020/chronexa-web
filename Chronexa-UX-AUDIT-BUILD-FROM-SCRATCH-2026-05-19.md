@@ -190,3 +190,6 @@ The current `Class Grid / Teacher Grid / Room Grid` (read-only timetable preview
 Fixing P0 (14 hours) restores the from-scratch path. P1 (22 hours) brings the wizard to Classic parity. P2 (30 hours) takes us past it into moat territory.
 
 **No code changes were made in this audit.** Approval gate before the sprint starts.
+
+
+<!-- Chronexa Web -->

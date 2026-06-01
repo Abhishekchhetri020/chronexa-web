@@ -189,3 +189,5 @@
 
   global.EntityWeeks = { open, ensure, defaultId, patternLabel };
 })(window);
+
+// Chronexa Web

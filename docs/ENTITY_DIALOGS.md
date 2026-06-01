@@ -145,3 +145,6 @@ called after the XML is parsed.
 - Undo is event-logged on every change but the shell doesn't auto-replay
   yet; that's the global undo-redo agent's job. We trust whoever wires
   the undo button to pop+replay our records.
+
+
+<!-- Chronexa Web -->

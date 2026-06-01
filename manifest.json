@@ -35,7 +35,7 @@
     {
       "name": "Open existing",
       "short_name": "Open",
-      "description": "Load an Timetable XML file",
+      "description": "Load a Timetable XML file",
       "url": "./?action=open",
       "icons": [{ "src": "assets/icon-192.png", "sizes": "192x192" }]
     }

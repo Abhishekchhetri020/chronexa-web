@@ -215,3 +215,5 @@
 
   global.EntityDays = { open, ensure, defaultId, patternLabel };
 })(window);
+
+// Chronexa Web

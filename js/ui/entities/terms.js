@@ -183,3 +183,5 @@
 
   global.EntityTerms = { open, ensure, defaultId, patternLabel };
 })(window);
+
+// Chronexa Web

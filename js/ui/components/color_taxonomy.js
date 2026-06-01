@@ -153,3 +153,5 @@
 
   global.ColorTaxonomy = { autoColor, harmonize, resolveCardColor, colorForId, hslToHex, openDialog };
 })(window);
+
+// Chronexa Web

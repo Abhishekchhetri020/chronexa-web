@@ -115,3 +115,6 @@ decorator whenever the attribute changes, so toggling is instant.
   renderer continues to use flex.
 - **Cursor-following held-card ghost** — Phase-15 scope (see Classic E2
   reference, section "GAP: Card-follows-cursor visual ghost").
+
+
+<!-- Chronexa Web -->

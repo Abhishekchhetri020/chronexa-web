@@ -150,3 +150,5 @@
 
   global.PerDayBellOverride = { open };
 })(window);
+
+// Chronexa Web

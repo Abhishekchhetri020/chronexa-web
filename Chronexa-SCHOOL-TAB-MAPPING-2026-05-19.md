@@ -184,3 +184,6 @@ Classic's "I want to create multi-term/multi-week timetable" checkbox opens a TB
 ## 11. Bottom line
 
 The School tab is now mapped at **~85%** vs the ~30% the user observed earlier. The remaining 15% is the per-day-of-week period override matrix UI plus a few edge cases. The data model + entity routing + UI shell are all in place.
+
+
+<!-- Chronexa Web -->

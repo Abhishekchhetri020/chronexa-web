@@ -141,3 +141,5 @@
 
   global.EntityBuildings = { open };
 })(window);
+
+// Chronexa Web

@@ -214,3 +214,5 @@
 
   APP.snapshot = { save, saveAs, open, listSnapshots, openVersionHistory, diffSummary };
 })();
+
+// Chronexa Web

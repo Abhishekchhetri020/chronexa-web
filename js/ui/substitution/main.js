@@ -159,3 +159,5 @@
     el, esc, todayYmd, ymdToDay,
   };
 })();
+
+// Chronexa Web

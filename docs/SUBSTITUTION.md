@@ -91,3 +91,6 @@ css/substitution.css       Module-scoped styling and @media print rules.
 Persists for the session in memory (no save-to-disk yet — the planner's
 backend persistence layer was Apps Script-specific; a chronexa-web
 equivalent can layer on top of `js/ui/io/snapshot`).
+
+
+<!-- Chronexa Web -->

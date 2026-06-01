@@ -73,3 +73,6 @@ See `docs/DEPLOY.md` for the full Hostinger checklist.
 - 2026-05-18 — Scaffold; 4 parallel agents building Phases 0-3.
 - 2026-05-20 — VPS deploy target.
 - See `Chronexa-WEB-ROADMAP-2026-05-18.md` (project root: `~/Downloads/Cloning CLASSIC/`) for the full 5-phase plan.
+
+
+<!-- Chronexa Web -->

@@ -704,3 +704,6 @@ Highest-leverage gaps for Chronexa (in priority order):
   data = open('/tmp/edu.tar.gz','rb').read()  # 13.5 MB
   ```
   Or re-run the walk — the firecrawl profile is persistent so login is skipped.
+
+
+<!-- Chronexa Web -->

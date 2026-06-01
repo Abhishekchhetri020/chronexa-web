@@ -109,3 +109,6 @@ The frontend re-serializes the JSON assignment back into the original XML file's
 ## Versioning
 
 All shapes carry an implicit `schemaVersion: 1` field. If we break a shape, bump to 2 and write a migration.
+
+
+<!-- Chronexa Web -->

@@ -169,3 +169,5 @@
 
   global.Snapshots = { take, restore, remove, list: load, listForSchool, showHistory };
 })(window);
+
+// Chronexa Web

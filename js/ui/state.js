@@ -18,3 +18,5 @@ window.APP = window.APP || {
   day: 0,                 // Monday default
   dirty: new Set(),
 };
+
+// Chronexa Web

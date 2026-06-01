@@ -169,3 +169,5 @@
 
   global.EntitySupervisions = { open };
 })(window);
+
+// Chronexa Web

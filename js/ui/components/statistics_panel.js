@@ -269,3 +269,5 @@
 
   global.StatisticsPanel = { open, compute };
 })(window);
+
+// Chronexa Web

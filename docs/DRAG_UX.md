@@ -120,3 +120,6 @@ APP.editor.cardInHand           // null when idle
 Placement.classify("LESSON_ID", 0, 1)
 // → { validity:"green", reasons:[] } or similar.
 ```
+
+
+<!-- Chronexa Web -->

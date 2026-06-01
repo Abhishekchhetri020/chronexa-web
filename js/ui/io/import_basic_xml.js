@@ -105,3 +105,5 @@
   window.ImportBasicXml = { run, parse };
   window.addEventListener("app:import-classic-basic", () => run());
 })();
+
+// Chronexa Web
