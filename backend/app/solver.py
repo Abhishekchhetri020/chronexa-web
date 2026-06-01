@@ -124,6 +124,12 @@ def solve(
     t0 = time.perf_counter()
 
     teaching_periods = _teaching_period_indices(payload)
+    # Break (non-teaching) period indices — used by n_7 "break cannot be between".
+    _bell_periods = (payload.get("bell") or {}).get("periods") or []
+    break_periods = sorted(
+        int(bp["index"]) for bp in _bell_periods
+        if bp.get("index") is not None and not bp.get("isTeaching", True)
+    )
     classes = payload.get("classes") or []
     teachers = payload.get("teachers") or []
     rooms = payload.get("classrooms") or []
@@ -172,6 +178,9 @@ def solve(
     # violations so the response explains the unplaced count instead of silently
     # blaming the solver.
     preflight_skipped: List[Dict[str, str]] = []
+    # Pre-placed cards whose classroomId can't be resolved — the room lock is
+    # unenforceable, so we surface it instead of silently ignoring it.
+    bad_room_locks: List[Dict[str, str]] = []
 
     # --- per-lesson occurrence variables ---
     for lesson_idx, lesson in enumerate(lessons):
@@ -262,8 +271,17 @@ def solve(
                     model.Add(day_var == c["day"])
                 if isinstance(c.get("period"), int) and c["period"] in period_to_offset:
                     model.Add(period_var == c["period"])
-                if rooms and c.get("classroomId") in room_index:
-                    model.Add(room_var == room_index[c["classroomId"]])
+                cid_lock = c.get("classroomId")
+                if cid_lock is not None:
+                    if rooms and cid_lock in room_index:
+                        model.Add(room_var == room_index[cid_lock])
+                    else:
+                        # Unknown room id: don't silently downgrade the lock to
+                        # "any room" — record it so the response can surface it.
+                        bad_room_locks.append({
+                            "lessonId": lesson.get("id") or f"lesson_{lesson_idx}",
+                            "classroomId": str(cid_lock),
+                        })
 
             # Teacher timeOff: hard-forbid "unavailable" slots for any teacher on this lesson.
             for tidx in teacher_idxs_lesson:
@@ -360,11 +378,30 @@ def solve(
                     model.Add(si != sj).OnlyEnforceIf(both)
 
     # --- Hard (g): a lesson's occurrences must be on different DAYS. ---
+    # Exception: a lesson that participates in a "same day" relation (n_5/n_6
+    # must-follow, n_8/n_10 one-day) is explicitly meant to share a day with its
+    # partner, so forcing its own occurrences apart would make the relation
+    # unsatisfiable. The browser solver has no rule (g) at all and bunches them;
+    # we exempt exactly those lessons to match.
+    _same_day_typs = {"n_5", "n_6", "n_8", "n_10"}
+    same_day_relation_lessons: set = set()
+    for rel in (payload.get("relations") or []):
+        if rel.get("disabled") or rel.get("typ") not in _same_day_typs:
+            continue
+        rsubjs = set(rel.get("subjectids") or []) | set(rel.get("subject2ids") or [])
+        rclasses = set(rel.get("classids") or [])
+        for li, lz in enumerate(lessons):
+            if rsubjs and lz.get("subjectId") not in rsubjs:
+                continue
+            if rclasses and not any(c in rclasses for c in (lz.get("classIds") or [])):
+                continue
+            same_day_relation_lessons.add(li)
+
     lesson_to_occs: Dict[int, List[Any]] = {}
     for o in occs:
         lesson_to_occs.setdefault(o["lesson_idx"], []).append(o)
     for lesson_idx, group in lesson_to_occs.items():
-        if len(group) > 1:
+        if len(group) > 1 and lesson_idx not in same_day_relation_lessons:
             model.AddAllDifferent([g["day_var"] for g in group])
 
     # --- Card relations (ported from JS solver — hard constraints only) ---
@@ -496,9 +533,61 @@ def solve(
                     soft_terms.append(in_morning)
                     soft_weights.append(5)
 
-            # Note: n_5 (must follow), n_6 (ordered follow), n_7 (break between),
-            # n_9 (same-day ordered), n_3/n_4/n_11/n_14/n_15 (soft) are deferred
-            # to a future CP-SAT pass. The JS solver handles these on the browser path.
+            # --- n_5: must follow, arbitrary order (same day, adjacent periods) ---
+            elif typ == "n_5":
+                for a in range(len(matched)):
+                    for b in range(a + 1, len(matched)):
+                        oa, ob = matched[a], matched[b]
+                        if oa["lesson"].get("subjectId") == ob["lesson"].get("subjectId"):
+                            continue
+                        model.Add(oa["day_var"] == ob["day_var"])
+                        adj = model.NewIntVar(0, teaching_periods[-1],
+                            f"rel_n5_adj_{oa['lesson_idx']}o{oa['occ_idx']}_{ob['lesson_idx']}o{ob['occ_idx']}")
+                        model.AddAbsEquality(adj, oa["period_var"] - ob["period_var"])
+                        model.Add(adj == 1)
+
+            # --- n_6: must follow, ordered (B in the period right after A, same day) ---
+            elif typ == "n_6":
+                _subjids = rel.get("subjectids") or []
+                _subj2 = rel.get("subject2ids") or []
+                first_subj = _subjids[0] if _subjids else None
+                second_subj = (_subj2[0] if _subj2 else None) or (_subjids[1] if len(_subjids) > 1 else None)
+                if first_subj and second_subj:
+                    a_occs = [o for o in matched if o["lesson"].get("subjectId") == first_subj]
+                    b_occs = [o for o in matched if o["lesson"].get("subjectId") == second_subj]
+                    for oa in a_occs:
+                        for ob in b_occs:
+                            model.Add(ob["day_var"] == oa["day_var"])
+                            model.Add(ob["period_var"] == oa["period_var"] + 1)
+
+            # --- n_7: a break period must not sit strictly between two partners ---
+            # on the same day. Equivalent: on a shared day, both partners stay on
+            # the same side of every break.
+            elif typ == "n_7":
+                for a in range(len(matched)):
+                    for b in range(a + 1, len(matched)):
+                        oa, ob = matched[a], matched[b]
+                        if oa["lesson"].get("subjectId") == ob["lesson"].get("subjectId"):
+                            continue
+                        if not break_periods:
+                            continue
+                        same_day = model.NewBoolVar(
+                            f"rel_n7_sd_{oa['lesson_idx']}o{oa['occ_idx']}_{ob['lesson_idx']}o{ob['occ_idx']}")
+                        model.Add(oa["day_var"] == ob["day_var"]).OnlyEnforceIf(same_day)
+                        model.Add(oa["day_var"] != ob["day_var"]).OnlyEnforceIf(same_day.Not())
+                        for bp in break_periods:
+                            a_above = model.NewBoolVar(
+                                f"rel_n7_aa_{oa['lesson_idx']}o{oa['occ_idx']}_{bp}")
+                            model.Add(oa["period_var"] >= bp + 1).OnlyEnforceIf(a_above)
+                            model.Add(oa["period_var"] <= bp - 1).OnlyEnforceIf(a_above.Not())
+                            b_above = model.NewBoolVar(
+                                f"rel_n7_ba_{ob['lesson_idx']}o{ob['occ_idx']}_{bp}")
+                            model.Add(ob["period_var"] >= bp + 1).OnlyEnforceIf(b_above)
+                            model.Add(ob["period_var"] <= bp - 1).OnlyEnforceIf(b_above.Not())
+                            model.Add(a_above == b_above).OnlyEnforceIf(same_day)
+
+            # Note: n_9 (same-day ordered) and the soft typs n_3/n_4/n_11/n_14/n_15
+            # remain deferred. The JS solver handles these on the browser path.
 
 
 
@@ -668,6 +757,12 @@ def solve(
          "description": f"Lesson {sk['lessonId']} skipped before solving: {sk['reason']}"}
         for sk in preflight_skipped
     ]
+    violations.extend(
+        {"ruleId": "room_lock_unresolved", "lessonId": rl["lessonId"],
+         "description": f"Lesson {rl['lessonId']} is locked to unknown room "
+                        f"{rl['classroomId']}; the room lock was not applied"}
+        for rl in bad_room_locks
+    )
     if status_label not in ("OPTIMAL", "FEASIBLE"):
         violations.append({
             "ruleId": "solver_no_solution",
