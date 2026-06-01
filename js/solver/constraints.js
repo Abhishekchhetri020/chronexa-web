@@ -218,11 +218,19 @@ export function CKritSluzba(assignment, lessonsById, schoolData) {
   if (!sups.length || !assignment || !assignment.length) {
     return { violations: 0, weight: w };
   }
-  // Index assignment by (teacherId, day, period) for O(1) lookup.
+  // Index assignment by (teacherId, day, period) for O(1) lookup. Resolve the
+  // lesson's full teacher list so co-teachers are checked too — the assignment
+  // only carries the singular teacherId (= teacherIds[0]) per the output schema.
+  const lookup = lessonsByIdMap(lessonsById);
   const taught = new Set();
   for (const a of assignment) {
-    if (a.teacherId == null) continue;
-    taught.add(`${a.teacherId}|${a.day | 0}|${a.period | 0}`);
+    const l = lookup && lookup.get(a.lessonId);
+    const tids = (l && l.teacherIds && l.teacherIds.length)
+      ? l.teacherIds
+      : (a.teacherId != null ? [a.teacherId] : []);
+    for (const tid of tids) {
+      taught.add(`${tid}|${a.day | 0}|${a.period | 0}`);
+    }
   }
   let violations = 0;
   for (const s of sups) {
@@ -259,17 +267,23 @@ export function CKritCourseGroup(assignment, lessonsById, schoolData) {
   for (const g of groups) {
     const sids = (g && g.subjectids) || [];
     if (sids.length < 2) continue;
-    // Gather all slots used by ANY subject in this group.
-    const slotCounts = new Map();
+    // Gather the DISTINCT group-subjects present at each slot. Counting raw
+    // occurrences would let the same subject taught to two classes at one slot
+    // mask a genuinely missing sibling subject.
+    const slotSubjects = new Map(); // slotKey -> Set<subjectId>
     for (const sid of sids) {
       const slots = subjectSlots.get(sid) || [];
-      for (const k of slots) slotCounts.set(k, (slotCounts.get(k) || 0) + 1);
+      for (const k of slots) {
+        let set = slotSubjects.get(k);
+        if (!set) { set = new Set(); slotSubjects.set(k, set); }
+        set.add(sid);
+      }
     }
-    // For a group of S subjects, each (day,period) should host exactly S
+    // For a group of S subjects, each (day,period) should host all S
     // coinciding lessons; anything less means at least one subject is missing
     // from that synchronisation point — count the gap.
-    for (const [, count] of slotCounts) {
-      if (count > 0 && count < sids.length) violations += (sids.length - count);
+    for (const [, set] of slotSubjects) {
+      if (set.size > 0 && set.size < sids.length) violations += (sids.length - set.size);
     }
   }
   return { violations, weight: w };
@@ -292,12 +306,22 @@ export function CKritTriedny(assignment, lessonsById, schoolData) {
   const teaching = periods.filter(p => p.isTeaching !== false);
   const lastPeriod = teaching.length ? (teaching[teaching.length - 1].index | 0) : 8;
   // For each class, days on which the class-teacher does NOT occupy lastPeriod.
-  // Group assignments by class.
-  const classDayLast = new Map(); // key=`${classId}|${day}` -> teacherId at last
+  // Group assignments by class. A class can have more than one lesson at the
+  // same last period (e.g. a group split), so collect every teacher there —
+  // a single-value map would let the last write hide the class-teacher.
+  const lookup = lessonsByIdMap(lessonsById);
+  const classDayLast = new Map(); // key=`${classId}|${day}` -> Set<teacherId> at last
   for (const a of assignment) {
     if ((a.period | 0) !== lastPeriod) continue;
+    const l = lookup && lookup.get(a.lessonId);
+    const tids = (l && l.teacherIds && l.teacherIds.length)
+      ? l.teacherIds
+      : (a.teacherId != null ? [a.teacherId] : []);
     for (const cid of (a.classIds || [])) {
-      classDayLast.set(`${cid}|${a.day | 0}`, a.teacherId);
+      const key = `${cid}|${a.day | 0}`;
+      let set = classDayLast.get(key);
+      if (!set) { set = new Set(); classDayLast.set(key, set); }
+      for (const tid of tids) set.add(tid);
     }
   }
   // Days the class actually has assignments (so empty days don't count).
@@ -315,8 +339,8 @@ export function CKritTriedny(assignment, lessonsById, schoolData) {
     const days = classDays.get(c.id);
     if (!days) continue;
     for (const d of days) {
-      const occupant = classDayLast.get(`${c.id}|${d}`);
-      if (occupant !== ct) violations++;
+      const occupants = classDayLast.get(`${c.id}|${d}`);
+      if (!occupants || !occupants.has(ct)) violations++;
     }
   }
   return { violations, weight: w };
@@ -735,7 +759,11 @@ export function studentScheduleConflicts(school) {
   }
   for (const st of school.students) {
     const buckets = {}; // "d_p" → [card]
+    const seen = new Set(); // dedupe the SAME card reached via >1 enrollment
     const note = (c) => {
+      const id = c.lessonId + "|" + c.day + "|" + c.period;
+      if (seen.has(id)) return;
+      seen.add(id);
       const k = c.day + "_" + c.period;
       (buckets[k] = buckets[k] || []).push(c);
     };

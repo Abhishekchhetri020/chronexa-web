@@ -1632,7 +1632,11 @@ function _canPlaceJS(model, state, lessonIdx, slot, roomIdx) {
         const ps = state.lessonAssignedSlot[pIdx];
         if (ps >= 0 && model.slotDay[ps] === d) return FAIL.RELATION_SAME_DAY_FORBIDDEN;
       }
-  // n_2: no two matched lessons at same (day, period)
+    }
+  }
+  // n_2: no two matched lessons at same (day, period). Sibling of the n_1 block
+  // above — must NOT be nested inside it, or it is skipped for lessons that have
+  // n_2 partners but no n_1 partner.
   const partnersN2 = model.lessonN2Partners && model.lessonN2Partners[lessonIdx];
   if (partnersN2) {
     for (const pIdx of partnersN2) {
@@ -1640,8 +1644,6 @@ function _canPlaceJS(model, state, lessonIdx, slot, roomIdx) {
         const ps = state.lessonAssignedSlot[pIdx];
         if (ps >= 0 && ps === slot) return FAIL.RELATION_SAME_PERIOD_FORBIDDEN;
       }
-    }
-  }
     }
   }
   const partnersN0 = model.lessonN0Partners && model.lessonN0Partners[lessonIdx];
@@ -4111,7 +4113,14 @@ function validateSchool(school) {
 // ---------------------------------------------------------------------------
 function diagnoseUnplaceabled(model, state, unplaceableIndices) {
   const diagnostics = [];
+  // Aggregate by source lesson id: a multi-session lesson expands to several
+  // cards ("X#1", "X#2"), but the user knows it as one lesson ("X"). Report one
+  // row per srcId so the count matches the input (and assignment[]/violations).
+  const seenSrc = new Set();
   for (const idx of unplaceableIndices) {
+    const srcId = model.lessons[idx].srcId;
+    if (seenSrc.has(srcId)) continue;
+    seenSrc.add(srcId);
     const start = model.lessonCandidateStart[idx];
     const count = model.lessonCandidateCount[idx];
     if (count === 0) {
@@ -4136,7 +4145,7 @@ function diagnoseUnplaceabled(model, state, unplaceableIndices) {
       }
       diagnostics.push({
         lessonIdx: idx,
-        lessonId: l.id,
+        lessonId: srcId,
         subjectId: l.subjectId,
         reason: reasons.length ? reasons.join("; ") : "no valid (slot, room) candidates for this lesson",
       });
@@ -4154,7 +4163,7 @@ function diagnoseUnplaceabled(model, state, unplaceableIndices) {
     const sorted = Object.entries(rejectCounts).sort((a, b) => b[1] - a[1]);
     diagnostics.push({
       lessonIdx: idx,
-      lessonId: model.lessons[idx].id,
+      lessonId: srcId,
       subjectId: model.lessons[idx].subjectId,
       reason: sorted.map(([name, n]) => `${name}: ${n}/${count}`).join(", "),
     });
