@@ -1,19 +1,19 @@
-# Chronexa ↔ aSc Print System — Feature Parity Map
+# Chronexa ↔ Classic Print System — Feature Parity Map
 
 **Drafted:** 2026-05-22 (eighth-session research)
 **Sources:**
-- 25 aSc print-UX screenshots (cached at `~/.claude/image-cache/4248d083-3ef1-42ec-b72a-4dad7b00cccf/`) — 15 initial + 10 follow-up on the Modify-structure dialog
-- Ghidra-decompiled aSc print code at `/Users/abhishekchhetri/Downloads/Cloning ASC/GhidraProject/`
-- Print blueprint: `/Users/abhishekchhetri/Downloads/Cloning ASC/docs/ASC_PRINT_EXPORT_SOLVER_BLUEPRINT.md`
+- 25 Classic print-UX screenshots (cached at `~/.claude/image-cache/4248d083-3ef1-42ec-b72a-4dad7b00cccf/`) — 15 initial + 10 follow-up on the Modify-structure dialog
+- Ghidra-decompiled Classic print code at `/Users/abhishekchhetri/Downloads/Cloning Classic/GhidraProject/`
+- Print blueprint: `/Users/abhishekchhetri/Downloads/Cloning Classic/docs/CLASSIC_PRINT_EXPORT_SOLVER_BLUEPRINT.md`
 - Current Chronexa print module at `js/ui/print_preview/`
 
-**⚠ Important context discovered from screenshot 25's URL bar:** what we're studying is **EduPage's online aSc engine** (`abhishekchhetri.edupage.org/timetable/online.php`), not the Windows desktop. EduPage runs aSc's print module in the browser — which proves every UI pattern below is achievable in a web app, because EduPage already shipped it. The Ghidra-decompiled Windows binary and the EduPage web version share the same engine.
+**⚠ Important context discovered from screenshot 25's URL bar:** what we're studying is **Classic's online Classic engine** (`abhishekchhetri.classic.org/timetable/online.php`), not the Windows desktop. Classic runs Classic's print module in the browser — which proves every UI pattern below is achievable in a web app, because Classic already shipped it. The Ghidra-decompiled Windows binary and the Classic web version share the same engine.
 
 ---
 
-## How aSc's print pipeline is architected (from the decompiled C)
+## How Classic's print pipeline is architected (from the decompiled C)
 
-aSc's print is **not a single render function** — it's a 4-layer composition pipeline:
+Classic's print is **not a single render function** — it's a 4-layer composition pipeline:
 
 | Layer | Decompiled symbol | What it does |
 |---|---|---|
@@ -22,7 +22,7 @@ aSc's print is **not a single render function** — it's a 4-layer composition p
 | 3. Cell renderer | `FUN_00a092c2` (`final_renderer.c`) | Constructs 6 `CPen` line-styles + 3 `CBrush` backgrounds; renders the actual card content for each cell |
 | 4. Leaf renderers | `FUN_00877a91` (lines, 7 modes), `FUN_00983a31` (text, 6 modes) (`leaf_renderers.c`) | Low-level grid lines + multi-element text rendering |
 
-Each printed cell has up to **7 independent text elements** (Subject / Teacher / Class / Group / Classroom / Count / Bell times). aSc stores per-element position, size, font, style — that's what the per-card style dialog (screenshot 5) is editing.
+Each printed cell has up to **7 independent text elements** (Subject / Teacher / Class / Group / Classroom / Count / Bell times). Classic stores per-element position, size, font, style — that's what the per-card style dialog (screenshot 5) is editing.
 
 Templates are dispatched via a `PrintObject` enumeration — the choice of report ("Timetable for each class" vs "Summary for each teacher") swaps the enumerated object list, not the renderer. **Design files** (`asc_extracted/designs/*/def.xml`) drive the visual constants — pen colors, brush palettes, font defaults.
 
@@ -30,7 +30,7 @@ Templates are dispatched via a `PrintObject` enumeration — the choice of repor
 
 ## Where Chronexa stands today
 
-We have a **shell** of the print system: 17 template renderers + a settings dialog + a cell-style dialog. Crucially though, every template currently produces a single layout shape and the cell-style dialog only configures ONE shared anchor + ONE shared font + ONE shared bg/fg color for the entire template. aSc's per-element style storage is not there.
+We have a **shell** of the print system: 17 template renderers + a settings dialog + a cell-style dialog. Crucially though, every template currently produces a single layout shape and the cell-style dialog only configures ONE shared anchor + ONE shared font + ONE shared bg/fg color for the entire template. Classic's per-element style storage is not there.
 
 Current files (`js/ui/print_preview/`):
 - `print_preview.js` (367 lines) — page composer + canvas
@@ -47,9 +47,9 @@ Status legend: ✅ parity / 🟡 partial (gap noted) / ⛔ missing entirely.
 
 ### A. The per-card style dialog (screenshot 5) — the headline feature
 
-aSc lets the user click any single card in the print preview and edit how its 7 elements render — **each element independently**.
+Classic lets the user click any single card in the print preview and edit how its 7 elements render — **each element independently**.
 
-| Sub-feature | aSc behaviour | Chronexa today | Status |
+| Sub-feature | Classic behaviour | Chronexa today | Status |
 |---|---|---|---|
 | 7-element toolbar (Subject / Teacher / Class / Group / Classroom / Count / Bell times) | All 7 shown side-by-side, each with own checkbox to enable | All 7 checkboxes present, but flat list | 🟡 — UI exists, semantics shared not per-element |
 | Per-element 3×3 position grid | Each element has its OWN 9-position chooser | ONE 9-position chooser applies to whole card | ⛔ — needs split: 7 anchors instead of 1 |
@@ -66,15 +66,15 @@ aSc lets the user click any single card in the print preview and edit how its 7 
 | Defaults invert per report context | A **Class** report defaults Subject + Teacher + Classroom on, Class off (page title is class). A **Teacher** report defaults Subject + Class on, Teacher + Classroom off (page title is teacher). Confirmed in screenshots 5 vs 30 | Static defaults regardless of template | ⛔ |
 | Multi-class activity cells | Friday 4th period in screenshot 29 shows `ACTIVITY / IX B/IX A/X A/X B/IX C` — one card representing one activity attended by 5 classes, label concatenated with slashes | Renderer not implemented for multi-class cards | ⛔ |
 
-**This single dialog is what makes aSc's print feel mature.** The current Chronexa dialog covers the surface area but misses the fundamental shape (per-element settings, not whole-card).
+**This single dialog is what makes Classic's print feel mature.** The current Chronexa dialog covers the surface area but misses the fundamental shape (per-element settings, not whole-card).
 
 ### B′. **Modify Structure / Print report properties** — the pivot-table report builder (screenshots 19–28)
 
-**This is the single biggest architectural difference between aSc and Chronexa.** aSc does not have 17 hardcoded templates — it has **one composable pivot engine with four axes**, and the 17 named "templates" are just preset axis configurations. The "Modify structure" dialog lets the user pick any axis combination at runtime.
+**This is the single biggest architectural difference between Classic and Chronexa.** Classic does not have 17 hardcoded templates — it has **one composable pivot engine with four axes**, and the 17 named "templates" are just preset axis configurations. The "Modify structure" dialog lets the user pick any axis combination at runtime.
 
 The four axes:
 
-| Axis | aSc selector | Allowed values | Levels | Purpose |
+| Axis | Classic selector | Allowed values | Levels | Purpose |
 |---|---|---|---|---|
 | **Pages** | "Print one page for" (3 dropdowns) | -, Day, Period, Week, Term, Class, Teacher, Subject, Classroom, Student | 1–3 nested | Each page covers one combination of the nested levels (e.g. "Class" → 23 pages, "Class × Day" → 138 pages) |
 | **Columns** | "Columns" (3 dropdowns) | same 9 values + `-` | 1–3 nested | What runs horizontally on the page |
@@ -104,9 +104,9 @@ Bottom: "Set default print styles" (writes the current axis config + per-element
 | Teacher workload | — | Teacher × Subject | Class | Print count of lessons |
 | Custom 1/2/3 | (user picks all 4 axes) | — | — | — |
 
-**Implication for Chronexa:** the right long-term shape is NOT 17 hardcoded template `.js` files — it's **one pivot-renderer + one Modify-Structure dialog**, plus a presets layer that ships the 17 named configurations as JSON. The current Chronexa templates work but they're 17× the code surface aSc has, and they can't compose new reports.
+**Implication for Chronexa:** the right long-term shape is NOT 17 hardcoded template `.js` files — it's **one pivot-renderer + one Modify-Structure dialog**, plus a presets layer that ships the 17 named configurations as JSON. The current Chronexa templates work but they're 17× the code surface Classic has, and they can't compose new reports.
 
-| Sub-feature | aSc | Chronexa today | Status |
+| Sub-feature | Classic | Chronexa today | Status |
 |---|---|---|---|
 | "Modify structure" ribbon button opens the Print report properties modal | Yes | No (we have `print_settings_dialog.js` but it does global settings, not per-report axis config) | ⛔ |
 | Pages axis with 3-level nesting | Yes | No — each template is a fixed page-loop | ⛔ |
@@ -119,9 +119,9 @@ Bottom: "Set default print styles" (writes the current axis config + per-element
 
 ### B. Report-template picker (screenshots 7 + 8)
 
-aSc's "Select your report" dropdown lists ~17 entries grouped into 4 families.
+Classic's "Select your report" dropdown lists ~17 entries grouped into 4 families.
 
-| aSc entry | Chronexa template | Status |
+| Classic entry | Chronexa template | Status |
 |---|---|---|
 | Timetable for each class | `classwise_with_table.js` | ✅ |
 | Timetable for each teacher | `teacherwise_with_table.js` | ✅ |
@@ -144,13 +144,13 @@ aSc's "Select your report" dropdown lists ~17 entries grouped into 4 families.
 | Timetable for each day — with table | — | ⛔ |
 | Timetable for each student | `timetable_for_each_student.js` + `timetable_for_student.js` | ✅ |
 
-**Coverage:** ~17 of 20 aSc templates have a Chronexa counterpart. The 3 Wait-points + Day-with-table reports are missing. Naming and visual parity inside each template is a separate pass — we haven't done a side-by-side audit.
+**Coverage:** ~17 of 20 Classic templates have a Chronexa counterpart. The 3 Wait-points + Day-with-table reports are missing. Naming and visual parity inside each template is a separate pass — we haven't done a side-by-side audit.
 
 ### C. Filter dialog (screenshots 9 → 15)
 
-aSc has a global filter modal with 6 sections (Classes / Teachers / Classrooms / Subjects / Periods / Days), each opening a two-pane transfer-list dialog.
+Classic has a global filter modal with 6 sections (Classes / Teachers / Classrooms / Subjects / Periods / Days), each opening a two-pane transfer-list dialog.
 
-| Sub-feature | aSc | Chronexa | Status |
+| Sub-feature | Classic | Chronexa | Status |
 |---|---|---|---|
 | Global Filter modal entry point | Yes — `Filter` button in print ribbon | No equivalent | ⛔ |
 | Classes filter (transfer list) | Two-pane left/right with selected on right (green highlight), blue swap arrows, ↑ × ↓ reorder controls | No | ⛔ |
@@ -159,13 +159,13 @@ aSc has a global filter modal with 6 sections (Classes / Teachers / Classrooms /
 | "Clear filter — print ALL items" reset | Yes | No | ⛔ |
 | Filter persists across print sessions | Implicit | No | ⛔ |
 
-**This is the second-biggest unmodeled aSc feature.** Without it, the user cannot say "print just the teachers Mr Sharma and Mrs Singh's timetables" — they have to print the whole set and discard pages.
+**This is the second-biggest unmodeled Classic feature.** Without it, the user cannot say "print just the teachers Mr Sharma and Mrs Singh's timetables" — they have to print the whole set and discard pages.
 
 ### D. Print setup dialog (screenshot 18)
 
-aSc's `Print setup` covers global rendering choices.
+Classic's `Print setup` covers global rendering choices.
 
-| aSc section | aSc detail | Chronexa | Status |
+| Classic section | Classic detail | Chronexa | Status |
 |---|---|---|---|
 | Axis orientation | "Days are represented by columns OR Days are represented by rows" | Limited — buried inside a few templates | 🟡 |
 | Header text | School name + free-text field | Chronexa `Print settings → Page header tab` | ✅ |
@@ -176,9 +176,9 @@ aSc's `Print setup` covers global rendering choices.
 
 ### E. Header (Periods) sub-dialog (screenshot 17)
 
-aSc lets the user separately configure how the period-header row looks.
+Classic lets the user separately configure how the period-header row looks.
 
-| Sub-feature | aSc | Chronexa | Status |
+| Sub-feature | Classic | Chronexa | Status |
 |---|---|---|---|
 | Position 3×3 grid for period number | Yes — 40 % default | Single setting in `print_settings_dialog.js` Sizes tab | 🟡 |
 | Size slider + font + B/I/U for period number | Yes | No B/I/U | 🟡 |
@@ -188,9 +188,9 @@ aSc lets the user separately configure how the period-header row looks.
 
 ### F. Ribbon-level controls (always-visible row in screenshots 4, 7, 16)
 
-aSc's print ribbon has 9 grouped buttons in addition to Print / Prev / Next.
+Classic's print ribbon has 9 grouped buttons in addition to Print / Prev / Next.
 
-| Ribbon control | aSc behaviour | Chronexa | Status |
+| Ribbon control | Classic behaviour | Chronexa | Status |
 |---|---|---|---|
 | Print | Send to printer | ✅ — `printAllPages` (p47-print-all-pages fix) | ✅ |
 | Previous / Next page | Walk through pages | Yes | ✅ |
@@ -205,13 +205,13 @@ aSc's print ribbon has 9 grouped buttons in addition to Print / Prev / Next.
 
 ### G. Design-file system (no screenshot, but documented in `def.xml`)
 
-aSc reads `designs/*/def.xml` files at startup. Each design defines:
+Classic reads `designs/*/def.xml` files at startup. Each design defines:
 - Pen colors + widths (6 line styles per decompiled evidence at `final_renderer.c:73–96`)
 - Brush palettes (3 brush styles per `final_renderer.c:97–101`)
 - Font defaults
 - Image assets (logos)
 
-| Sub-feature | aSc | Chronexa | Status |
+| Sub-feature | Classic | Chronexa | Status |
 |---|---|---|---|
 | Pluggable design XML files | Yes — `Sample Blue 2`, `Sample Grey`, etc. | No XML loader | ⛔ |
 | Color preset switcher | Yes — Design ribbon button | Limited — Colors tab | 🟡 |
@@ -225,7 +225,7 @@ The second batch of screenshots showed every other report type rendered with rea
 
 ### H1. Multi-card-per-cell rendering with comma concatenation
 
-When multiple cards land in the same (row, col) intersection — which happens whenever the pivot axes don't fully partition the data — aSc renders all matching cards in one cell, joining each element with a comma.
+When multiple cards land in the same (row, col) intersection — which happens whenever the pivot axes don't fully partition the data — Classic renders all matching cards in one cell, joining each element with a comma.
 
 Evidence:
 - **Image 33** (Subject = English page, 6 days × 8 periods grid): Monday 1st-period cell reads `Ms. Sushmita, Ms. Bindhya, Ms. Palmu, Ms. Tresha, Mr. Aswani / I A, III B, IV A, V A, VII A`. Five lessons share that slot because each class has English at Mon-1, taught by a different teacher. Same cell, 5 cards merged.
@@ -274,7 +274,7 @@ Implication: Chronexa needs a card-type for non-lesson duties (the school alread
 
 Look at image 35 (summary of classes) vs image 43 (one class with table). In the summary, columns are Day×Period (≈48 columns) so each cell is ~25 px wide and the text shrinks dramatically — subject names abbreviated, wrapped to multiple lines, no teacher name. In the one-class report, columns are Period only (8 columns) so each cell is 110 px wide and the full subject name + teacher fits.
 
-aSc has a built-in **text-shrink-to-fit** algorithm. The per-element `size` slider in the style dialog (e.g., Subject 19%) is the **maximum** size; the renderer shrinks below that if the cell is too narrow. Long names like "MATHS LAB PD" wrap to two lines automatically.
+Classic has a built-in **text-shrink-to-fit** algorithm. The per-element `size` slider in the style dialog (e.g., Subject 19%) is the **maximum** size; the renderer shrinks below that if the cell is too narrow. Long names like "MATHS LAB PD" wrap to two lines automatically.
 
 Implication: the cell renderer needs:
 1. A `measureText` pass to detect overflow
@@ -339,7 +339,7 @@ Stacked dialog with two collapsible sections — Extra columns (top) and Extra r
 
 Each added extra is rendered alongside the main timetable grid — extras columns to the right of the grid, extras rows below it. The "Timetable for each class — with table" preset (image 43) uses extras with type = `Subjects` + `Sum of lessons` (one row per subject, with the count). The teacher version (image 44) uses the same shape filtered to the teacher.
 
-**Image 49** catches the Edupage save-changes prompt that triggers when the dialog is closed with unsaved edits — a generic dirty-close guard. Chronexa needs equivalent dirty-state handling on all print dialogs.
+**Image 49** catches the Classic save-changes prompt that triggers when the dialog is closed with unsaved edits — a generic dirty-close guard. Chronexa needs equivalent dirty-state handling on all print dialogs.
 
 ### I2. `Sizes/widths` dialog (images 50–52)
 
@@ -352,7 +352,7 @@ Four controls in one sheet:
 | **Number of copies** | 1, 2, 3, … |
 | **Add classroom timetable** | checkbox; when on, appends a classroom-timetable section after the main report |
 
-The two "Print setup" labels are unfortunate UX duplication in aSc; we'd rename ours `Page orientation` and `Pages per sheet` for clarity.
+The two "Print setup" labels are unfortunate UX duplication in Classic; we'd rename ours `Page orientation` and `Pages per sheet` for clarity.
 
 ### I3. `Design` dialog (image 53)
 
@@ -363,7 +363,7 @@ Two simple sections:
 | **Print logo** | Checkbox + uploaded image. When on, the image renders top-left of every page. Image upload via click-on-preview. |
 | **Header and Footer** | "Header text" free-text field. Same text appears in the page header line (e.g. `G.D Goenka Public School, Darbhanga`). |
 
-Footer text is its own thing — aSc shows `W.E.F 18.08.2025` on the left and `aSc Timetables Online` on the right at the bottom of every page. The footer text isn't directly editable in this dialog (probably configured elsewhere or auto-generated from school metadata).
+Footer text is its own thing — Classic shows `W.E.F 18.08.2025` on the left and `Classic Timetables Online` on the right at the bottom of every page. The footer text isn't directly editable in this dialog (probably configured elsewhere or auto-generated from school metadata).
 
 ### I4. `Colors` dialog (images 54–56)
 
@@ -377,7 +377,7 @@ Three independently-toggleable color sections, each with a master checkbox:
 
 **Image 56** confirms what "Print in color" produces: SCI LAB PD cells render green (the Subject's stored color in the entity table), Bio cells render grey. Color is sourced from the entity record, not the print config — meaning the entity-editor's color field directly feeds the print renderer. Chronexa already has per-subject colors on the entity dialogs, so this is wiring work, not new data modelling.
 
-The "two backgrounds" pattern hasn't shown rendered output yet in any of the 53 screenshots, so its exact semantic is still ambiguous. Working hypotheses: (a) odd/even row striping for the header band, (b) gradient between Color 1 and Color 2 within a single cell, (c) one color for "regular" cells + the other for a special class (e.g. lab cells). Worth confirming with one more screenshot or by reading the EduPage JS bundle when we start implementing.
+The "two backgrounds" pattern hasn't shown rendered output yet in any of the 53 screenshots, so its exact semantic is still ambiguous. Working hypotheses: (a) odd/even row striping for the header band, (b) gradient between Color 1 and Color 2 within a single cell, (c) one color for "regular" cells + the other for a special class (e.g. lab cells). Worth confirming with one more screenshot or by reading the Classic JS bundle when we start implementing.
 
 ---
 
@@ -385,7 +385,7 @@ The "two backgrounds" pattern hasn't shown rendered output yet in any of the 53 
 
 This is the version after seeing every dialog (4–56). It replaces every earlier draft. Each phase names what gets built, which screenshots it satisfies, which files it touches, what depends on it, and the cost in focused days.
 
-The architecture rests on **one realisation** confirmed across every screenshot: aSc's print module is **one composable pivot engine** with surrounding dialogs that edit pieces of one shared `PrintReport` document. The 20 "templates" are presets. Cloning means rebuilding around a `PrintReport` JSON shape, not extending the current 17-template approach. Total time: **12.5 focused days** (Phases 0–9) for full parity; +2 optional days for Phase 10.
+The architecture rests on **one realisation** confirmed across every screenshot: Classic's print module is **one composable pivot engine** with surrounding dialogs that edit pieces of one shared `PrintReport` document. The 20 "templates" are presets. Cloning means rebuilding around a `PrintReport` JSON shape, not extending the current 17-template approach. Total time: **12.5 focused days** (Phases 0–9) for full parity; +2 optional days for Phase 10.
 
 ### Phase 0 — Spec freeze + module scaffold (½ day)
 
@@ -425,7 +425,7 @@ PrintReport {
 
 `dim ∈ { day, period, week, term, class, teacher, subject, classroom, student }`.
 
-Also: `presets/print_presets.json` — 20 named configurations matching aSc's "Select your report". JSON-only at this stage.
+Also: `presets/print_presets.json` — 20 named configurations matching Classic's "Select your report". JSON-only at this stage.
 
 **Dependencies:** none. **Output:** one schema + 20 presets. **Risk:** zero.
 
@@ -582,9 +582,9 @@ Each phase produces a user-visible improvement; no big-bang. Order rationale:
 |---|---|
 | Pivot engine output diverges from existing 17 templates | Ship behind feature flag; visual diff each template; fallback for one release. |
 | `Set for more` semantics ambiguous | Start with conservative interpretation: applies to currently-selected cards in the preview. |
-| `Two background colours` semantics ambiguous in Phase 5 | Hypothesis: odd/even stripes. Confirm by reading EduPage JS bundle or ship single-colour for v1. |
+| `Two background colours` semantics ambiguous in Phase 5 | Hypothesis: odd/even stripes. Confirm by reading Classic JS bundle or ship single-colour for v1. |
 | `def.xml` schema complexity in Phase 10 | Skip Phase 10 for v1. |
-| Text-shrink-to-fit not pixel-exact with aSc | Acceptance criterion: text never overflows. Pixel match not required. |
+| Text-shrink-to-fit not pixel-exact with Classic | Acceptance criterion: text never overflows. Pixel match not required. |
 
 ---
 

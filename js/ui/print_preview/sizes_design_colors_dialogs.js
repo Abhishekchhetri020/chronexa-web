@@ -7,7 +7,7 @@
  *   APP.PrintDesignDialog.open(report, onSave)  — logo + header text
  *   APP.PrintColorsDialog.open(report, onSave)  — card / row / col colors
  *
- * Matches aSc screenshots 50-56.
+ * Matches Classic screenshots 50-56.
  */
 (function () {
   "use strict";

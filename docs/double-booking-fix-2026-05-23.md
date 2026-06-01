@@ -2,7 +2,7 @@
 
 ## Symptom
 
-User loaded `asctt2012 (3)-export (1).xml` and hit Generate. Rendered
+User loaded `sample-school (3)-export (1).xml` and hit Generate. Rendered
 timetable showed visibly overlapping cards:
 
 - VI B Mon-P6: "S.S.T, SANSKRIT, INFORMATION TECHNOLOGY"

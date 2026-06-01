@@ -2,7 +2,7 @@
  * full timetable embedded (no external deps, no JS, just print-friendly HTML
  * + CSS). Schools email this to teachers / parents / website.
  *
- * Ports Swift's ASCHTMLExporter.swift. Triggered via `app:export-html` event.
+ * Ports Swift's ClassicHTMLExporter.swift. Triggered via `app:export-html` event.
  * Output filename derives from school.schoolName.
  */
 (function () {

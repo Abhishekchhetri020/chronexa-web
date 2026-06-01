@@ -176,7 +176,7 @@
 
     /* ── "Set for more" dual-pane transfer dialog ──
        Single-click toggles: click a row on the left → green ✓ + appears
-       on the right. Click again → removed. Matches ASC Timetables. */
+       on the right. Click again → removed. Matches Classic Timetables. */
     function openSetForMore(fieldKey, fieldLabel, getValue) {
       const allSubjects = (window.APP.school && window.APP.school.subjects) || [];
       const others = allSubjects.filter(s => s.id !== ref.id);
@@ -216,7 +216,7 @@
       leftPane.appendChild(leftList);
       body.appendChild(leftPane);
 
-      // ─── Center: ↔ indicator (decorative, like ASC) ───
+      // ─── Center: ↔ indicator (decorative, like Classic) ───
       const center = D.el("div", {
         style: "display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 6px;gap:6px"
       });

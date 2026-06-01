@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-05-27T16:32:48Z
+/* Chronexa bundle — generated 2026-06-01T06:10:46Z
  *      164 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -3018,7 +3018,7 @@ window.Inspector = (function () {
 
     /* ── "Set for more" dual-pane transfer dialog ──
        Single-click toggles: click a row on the left → green ✓ + appears
-       on the right. Click again → removed. Matches ASC Timetables. */
+       on the right. Click again → removed. Matches Classic Timetables. */
     function openSetForMore(fieldKey, fieldLabel, getValue) {
       const allSubjects = (window.APP.school && window.APP.school.subjects) || [];
       const others = allSubjects.filter(s => s.id !== ref.id);
@@ -3058,7 +3058,7 @@ window.Inspector = (function () {
       leftPane.appendChild(leftList);
       body.appendChild(leftPane);
 
-      // ─── Center: ↔ indicator (decorative, like ASC) ───
+      // ─── Center: ↔ indicator (decorative, like Classic) ───
       const center = D.el("div", {
         style: "display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 6px;gap:6px"
       });
@@ -9914,7 +9914,7 @@ window.Inspector = (function () {
  * days/week, periods/day, multi-term toggle, default time-zone, and the
  * 23 `globals.settings` fields documented in legacy-research.
  *
- * Now mirrors the aSc "Settings" dialog layout:
+ * Now mirrors the Classic "Settings" dialog layout:
  *   - "Bell times" link → EntityBells
  *   - "Rename days" link → EntityDays
  *   - "Define terms" / "Define weeks" shown when multi-term is checked
@@ -11642,7 +11642,7 @@ window.Inspector = (function () {
 })(window);
 
 /* ─── FILE: js/ui/components/school_toolbar.js ─── */
-/* Entity icon toolbar — aSc-style horizontal strip.
+/* Entity icon toolbar — Classic-style horizontal strip.
  * window.SchoolToolbar.render(host) mounts above the timetable grid.
  *
  * Each button fires `app:open-entity` (for entity CRUD) or a dedicated
@@ -12101,7 +12101,7 @@ window.Inspector = (function () {
  * full timetable embedded (no external deps, no JS, just print-friendly HTML
  * + CSS). Schools email this to teachers / parents / website.
  *
- * Ports Swift's ASCHTMLExporter.swift. Triggered via `app:export-html` event.
+ * Ports Swift's ClassicHTMLExporter.swift. Triggered via `app:export-html` event.
  * Output filename derives from school.schoolName.
  */
 (function () {
@@ -15437,6 +15437,17 @@ window.Editor = (function () {
   function onMouseOver(ev) {
     const vk = ev.target.closest(".chrx-vkarta");
     if (vk && vk.dataset.lessonId) {
+      // While a card is in hand: show hover-target info as a tip inside the
+      // inspector (Classic-style: bottom-left detail panel updates on hover).
+      if (document.body.classList.contains("chrx-card-in-hand")) {
+        showHoverTip(vk.dataset.lessonId, {
+          day: parseInt(vk.dataset.day, 10),
+          period: parseInt(vk.dataset.period, 10),
+          classroomId: vk.dataset.classroomId || undefined,
+          source: "target",
+        });
+        return;
+      }
       showCardPanel(vk.dataset.lessonId, {
         day: parseInt(vk.dataset.day, 10),
         period: parseInt(vk.dataset.period, 10),
@@ -15457,6 +15468,66 @@ window.Editor = (function () {
     }
   }
 
+  // Classic-style hover tip: updates a dedicated panel inside the inspector
+  // when hovering over any card, showing full subject·class·teacher·room detail.
+  let hoverTipTimer = null;
+  function showHoverTip(lessonId, opts) {
+    const S = window.APP && window.APP.school;
+    const L = S && S._idx ? S._idx.lessonById[lessonId] : null;
+    if (!L) return;
+    const host = document.getElementById("editor-inspector-root");
+    if (!host) return;
+    const subject = S._idx.subjectById[L.subjectId];
+    const subjectAbbr = subject ? (subject.abbr || subject.name) : "?";
+    const subjectFull = subject ? subject.name : "?";
+    const classNames = (L.classIds || []).map(id => S._idx.classById[id]).filter(Boolean).map(c => c.name || c.id).join(", ");
+    const teacherNames = (L.teacherIds || []).map(id => S._idx.teacherById[id]).filter(Boolean).map(t => t.name || t.abbr).join(", ");
+    const roomId = (opts && opts.classroomId) ? opts.classroomId : L.preferredRoomId;
+    const room = roomId ? S._idx.classroomById[roomId] : null;
+    const slotLabel = (opts && Number.isFinite(opts.day) && Number.isFinite(opts.period))
+      ? `${DAY_LABELS_EN[opts.day] || ("D" + opts.day)} · P${opts.period}`
+      : "";
+    const hue = subjectHueForId(L.subjectId, subject);
+    let tip = document.getElementById("chrx-hover-tip");
+    if (!tip) {
+      tip = document.createElement("div");
+      tip.id = "chrx-hover-tip";
+      tip.className = "chrx-hover-tip";
+    }
+    tip.style.setProperty("--chrx-tip-hue", hue);
+    tip.innerHTML = `
+      <div class="chrx-hover-tip__subject">
+        <span class="chrx-hover-tip__dot"></span>
+        <span class="chrx-hover-tip__subj-abbr">${esc(subjectAbbr)}</span>
+        ${subjectAbbr !== subjectFull ? `<span class="chrx-hover-tip__subj-full">· ${esc(subjectFull)}</span>` : ""}
+      </div>
+      <div class="chrx-hover-tip__rows">
+        ${classNames ? `<div class="chrx-hover-tip__row"><span class="chrx-hover-tip__label">Class</span><span class="chrx-hover-tip__value">${esc(classNames)}</span></div>` : ""}
+        ${teacherNames ? `<div class="chrx-hover-tip__row"><span class="chrx-hover-tip__label">Teacher</span><span class="chrx-hover-tip__value">${esc(teacherNames)}</span></div>` : ""}
+        ${room ? `<div class="chrx-hover-tip__row"><span class="chrx-hover-tip__label">Room</span><span class="chrx-hover-tip__value">${esc(room.name)}</span></div>` : ""}
+        ${slotLabel ? `<div class="chrx-hover-tip__row"><span class="chrx-hover-tip__label">Slot</span><span class="chrx-hover-tip__value">${esc(slotLabel)}</span></div>` : ""}
+      </div>
+    `;
+    if (tip.parentNode !== host) host.appendChild(tip);
+  }
+
+  function hideHoverTip() {
+    const tip = document.getElementById("chrx-hover-tip");
+    if (tip && tip.parentNode) tip.parentNode.removeChild(tip);
+  }
+
+  function subjectHueForId(subjectId, subject) {
+    const HUE = { MA:220, MAT:220, MATH:220, MATHS:220, EN:12, ENG:12, ENGL:12, HI:32, HIN:32,
+      HINDI:32, SC:150, SCI:150, SS:50, SST:50, SOC:50, MU:285, MUS:285, AR:330, ART:330,
+      PE:110, PT:110, PED:110, SP:110, IT:250, CS:250, COMP:250, LIB:200,
+      EVS:130, HINDI:32, DRAW:300 };
+    const k = (subject ? (subject.abbr || subject.name || "") : "").toUpperCase().replace(/[^A-Z]/g, "");
+    if (HUE[k] != null) return HUE[k];
+    let h = 0;
+    for (let i = 0; i < k.length; i++) h = (h * 31 + k.charCodeAt(i)) & 0xffff;
+    return h % 360;
+  }
+
   function onFocusIn(ev) {
     const vk = ev.target.closest(".chrx-vkarta");
     if (vk && vk.dataset.lessonId) {
@@ -15470,6 +15541,19 @@ window.Editor = (function () {
   }
 
   function onMouseOut(ev) {
+    // Hide hover tip when mouse leaves a card (in normal, non-carry mode)
+    if (!document.body.classList.contains("chrx-card-in-hand")) {
+      const vk = ev.target.closest(".chrx-vkarta");
+      if (vk) {
+        hideHoverTip();
+        return;
+      }
+    }
+    // Also hide if leaving the target while carrying
+    if (document.body.classList.contains("chrx-card-in-hand")) {
+      const vk = ev.target.closest(".chrx-vkarta");
+      if (vk) hideHoverTip();
+    }
     const label = ev.target.closest(".chrx-rowlabel");
     if (!label) return;
     if (window.FocusMode && typeof window.FocusMode.exit === "function") {
@@ -16673,53 +16757,47 @@ window.PendingStrip = (function () {
     const classShort = (lesson.classIds || []).map(c => S._idx.classById[c])
       .filter(Boolean).map(c => c.name).join(", ");
       
-    // Always build the ghost!
-    const hue = subjectHue(subj);
-    ghost = document.createElement("div");
-    ghost.className = "chrx-card-ghost";
-    ghost.setAttribute("aria-hidden", "true");
-    ghost.innerHTML = `<div class="chrx-vkarta" style="--chrx-card-hue:${hue}">
-      <div class="chrx-vk-line1">${esc(subjShort)}</div>
-      <div class="chrx-vk-line2">${esc(classShort)}</div>
-      <div class="chrx-vk-line3">${esc(teacherShort)}</div></div>`;
-    document.body.appendChild(ghost);
-    document.body.classList.add("chrx-card-in-hand");
-    showCarryPanel(S, lesson, subjShort, classShort, teacherShort);
-
-    // Sticky banner so users see they're carrying a card.
-    let banner = document.getElementById("chrx-carry-banner");
-    if (!banner) {
-      banner = document.createElement("div");
-      banner.id = "chrx-carry-banner";
-      banner.style.cssText = "position:fixed;top:8px;left:50%;transform:translateX(-50%);background:rgba(15,23,42,.92);color:#fff;padding:8px 18px;border-radius:999px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;font-weight:500;box-shadow:0 8px 24px rgba(15,23,42,.35);z-index:10001;pointer-events:none;display:flex;align-items:center;gap:8px;";
-      document.body.appendChild(banner);
-    }
-    banner.innerHTML = `<span style="font-size:16px;line-height:1">✋</span><span><strong>${esc(subjShort)}</strong>${teacherShort ? ' · ' + esc(teacherShort) : ''}${classShort ? ' · ' + esc(classShort) : ''}</span><span style="opacity:.7;font-size:11px;margin-left:6px">click empty slot to place · Esc to cancel</span>`;
-
-    // Pulse the origin card briefly so the user sees "lifted".
-    if (!d.fromPending && d.day != null && d.period != null) {
-      const origin = document.querySelector(`.chrx-editor .chrx-slot[data-day="${d.day}"][data-period="${d.period}"]`);
-      if (origin) {
-        origin.classList.add("chrx-slot-pickup-pulse");
-        setTimeout(() => origin.classList.remove("chrx-slot-pickup-pulse"), 600);
-      }
-    }
-
-    const w = ghost.offsetWidth || 96, h = ghost.offsetHeight || 48;
-    dx = (w / 2) | 0; dy = (h / 2) | 0;
-    px = (typeof d.sourceX === "number") ? d.sourceX : (window.event ? window.event.clientX : 0);
-    py = (typeof d.sourceY === "number") ? d.sourceY : (window.event ? window.event.clientY : 0);
-    apply();
-    paintAllSlots();
-    
-    // Always listen to keydown and mousemove
-    document.addEventListener("mousemove", onMove, true);
-    document.addEventListener("keydown", onKey, true);
-    // Listen to touchmove for touchscreen support
-    document.addEventListener("touchmove", onTouchMove, { passive: true });
-
     if (mode === "drag") {
+      const hue = subjectHue(subj);
+      ghost = document.createElement("div");
+      ghost.className = "chrx-card-ghost";
+      ghost.setAttribute("aria-hidden", "true");
+      ghost.innerHTML = `<div class="chrx-vkarta" style="--chrx-card-hue:${hue}">
+        <div class="chrx-vk-line1">${esc(subjShort)}</div>
+        <div class="chrx-vk-line2">${esc(classShort)}</div>
+        <div class="chrx-vk-line3">${esc(teacherShort)}</div></div>`;
+      document.body.appendChild(ghost);
+      document.body.classList.add("chrx-card-in-hand");
+      showCarryPanel(S, lesson, subjShort, classShort, teacherShort);
+
+      // Sticky banner so users see they're carrying a card.
+      let banner = document.getElementById("chrx-carry-banner");
+      if (!banner) {
+        banner = document.createElement("div");
+        banner.id = "chrx-carry-banner";
+        banner.style.cssText = "position:fixed;top:8px;left:50%;transform:translateX(-50%);background:rgba(15,23,42,.92);color:#fff;padding:8px 18px;border-radius:999px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;font-weight:500;box-shadow:0 8px 24px rgba(15,23,42,.35);z-index:10001;pointer-events:none;display:flex;align-items:center;gap:8px;";
+        document.body.appendChild(banner);
+      }
+      banner.innerHTML = `<span style="font-size:16px;line-height:1">✋</span><span><strong>${esc(subjShort)}</strong>${teacherShort ? ' · ' + esc(teacherShort) : ''}${classShort ? ' · ' + esc(classShort) : ''}</span><span style="opacity:.7;font-size:11px;margin-left:6px">click empty slot to place · Esc to cancel</span>`;
+
+      // Pulse the origin card briefly so the user sees "I picked it up".
+      if (!d.fromPending && d.day != null && d.period != null) {
+        const origin = document.querySelector(`.chrx-editor .chrx-slot[data-day="${d.day}"][data-period="${d.period}"]`);
+        if (origin) {
+          origin.classList.add("chrx-slot-pickup-pulse");
+          setTimeout(() => origin.classList.remove("chrx-slot-pickup-pulse"), 600);
+        }
+      }
+
+      const w = ghost.offsetWidth || 60, h = ghost.offsetHeight || 24;
+      dx = (w / 2) | 0; dy = (h / 2) | 0;
+      px = (typeof d.sourceX === "number") ? d.sourceX : (window.event ? window.event.clientX : 0);
+      py = (typeof d.sourceY === "number") ? d.sourceY : (window.event ? window.event.clientY : 0);
+      apply();
+      paintAllSlots();
+      document.addEventListener("mousemove", onMove, true);
       document.addEventListener("mouseup", onUp, true);
+      document.addEventListener("keydown", onKey, true);
     } else {
       // Click mode!
       // Add selection style to the card element
@@ -16734,8 +16812,13 @@ window.PendingStrip = (function () {
         cardEl.classList.add("chrx-vkarta--selected");
       }
       
+      // Show hand chip in click mode (Classic-style — always visible in inspector)
+      showHandChip(S, lesson, subjShort, classShort, teacherShort);
+      
       // Paint highlights instantly!
       paintHighlightsForClickMode();
+      
+      document.addEventListener("keydown", onKey, true);
     }
   }
 
@@ -16861,16 +16944,6 @@ window.PendingStrip = (function () {
     if (!rafId) rafId = requestAnimationFrame(flush);
   }
   
-  function onTouchMove(e) {
-    if (!ghost || !e.touches || !e.touches[0]) return;
-    const t = e.touches[0];
-    px = t.clientX; py = t.clientY;
-    if (dragTooltipEl && dragTooltipEl.style.display !== "none") {
-      positionDragTooltip(t.clientX, t.clientY);
-    }
-    if (!rafId) rafId = requestAnimationFrame(flush);
-  }
-  
   function flush() {
     rafId = 0;
     if (!ghost) return;
@@ -16917,9 +16990,7 @@ window.PendingStrip = (function () {
     if (!slot) return cancel();
     const d = parseInt(slot.dataset.day, 10), p = parseInt(slot.dataset.period, 10);
     const v = classifySlot(slot);
-    if (v.validity === "red") return showCollisionMenu(slot, v, e.clientX, e.clientY);
-    const occupants = targetCardsForSlot(slot);
-    if (occupants.length) return commit(d, p, slot, { displace: true });
+    if (v.validity === "red" || targetCardsForSlot(slot).length) return showCollisionMenu(slot, v, e.clientX, e.clientY);
     commit(d, p, slot);
   }
   function onKey(e) {
@@ -16932,10 +17003,7 @@ window.PendingStrip = (function () {
         e.preventDefault();
         const d = parseInt(f.dataset.day, 10), p = parseInt(f.dataset.period, 10);
         const v = classifySlot(f);
-        if (v.validity === "red") return showCollisionMenu(f, v);
-        const occupants = targetCardsForSlot(f);
-        if (occupants.length) return commit(d, p, f, { displace: true });
-        commit(d, p, f);
+        if (v.validity === "red" || targetCardsForSlot(f).length) showCollisionMenu(f, v); else commit(d, p, f);
       }
     }
   }
@@ -16958,13 +17026,36 @@ window.PendingStrip = (function () {
     const originClassroomId = inHand.originClassroomId;
     const isMove = !fromPending && Number.isFinite(originDay) && Number.isFinite(originPeriod);
     const forced = !!(options && options.force);
-    const displace = !!(options && (options.displace || options.replace));
+    const replace = !!(options && options.replace);
     const isSameSlot = isMove && originDay === day && originPeriod === period;
     const lesson = S && S._idx ? S._idx.lessonById[lessonId] : null;
     const cid = slot ? classroomForSlot(lessonId, slot) : (lesson ? lesson.preferredRoomId : undefined);
-    
-    const occupants = targetCardsForSlot(slot);
-    const displacedCard = displace && occupants.length ? occupants[0] : null;
+
+    if (!forced && slot) {
+      const v = classifySlot(slot);
+      const colliding = getCollidingCards(lessonId, day, period, slot);
+      const occupants = targetCardsForSlot(slot);
+      if (v.validity === "red" || colliding.length > 0 || occupants.length > 0) {
+        showCollisionMenu(slot, v);
+        return;
+      }
+    }
+
+    const colliding = slot ? getCollidingCards(lessonId, day, period, slot) : [];
+    const occupants = slot ? targetCardsForSlot(slot) : [];
+    const allColliding = [...occupants];
+    for (const c of colliding) {
+      if (!allColliding.some(x => x.lessonId === c.lessonId && x.day === c.day && x.period === c.period)) {
+        allColliding.push(c);
+      }
+    }
+    const targetRemoved = replace ? allColliding.map(c => ({
+      lessonId: c.lessonId,
+      day: c.day,
+      period: c.period,
+      classroomId: c.classroomId,
+    })) : [];
+
 
     function applyPlacement() {
       if (!S) return;
@@ -16972,14 +17063,16 @@ window.PendingStrip = (function () {
         const oi = S.cards.findIndex(c => c.lessonId === lessonId && c.day === originDay && c.period === originPeriod);
         if (oi !== -1) S.cards.splice(oi, 1);
       }
-      if (displacedCard) {
-        const ri = S.cards.findIndex(c =>
-          c.lessonId === displacedCard.lessonId &&
-          c.day === displacedCard.day &&
-          c.period === displacedCard.period &&
-          (c.classroomId || "") === (displacedCard.classroomId || "")
-        );
-        if (ri !== -1) S.cards.splice(ri, 1);
+      if (replace && targetRemoved.length) {
+        for (const removed of targetRemoved) {
+          const ri = S.cards.findIndex(c =>
+            c.lessonId === removed.lessonId &&
+            c.day === removed.day &&
+            c.period === removed.period &&
+            (c.classroomId || "") === (removed.classroomId || "")
+          );
+          if (ri !== -1) S.cards.splice(ri, 1);
+        }
       }
       if (!S.cards.some(c => c.lessonId === lessonId && c.day === day && c.period === period))
         S.cards.push({ lessonId, day, period, classroomId: cid });
@@ -16988,23 +17081,27 @@ window.PendingStrip = (function () {
       if (!S) return;
       const ti = S.cards.findIndex(c => c.lessonId === lessonId && c.day === day && c.period === period);
       if (ti !== -1) S.cards.splice(ti, 1);
-      if (displacedCard && !S.cards.some(c =>
-        c.lessonId === displacedCard.lessonId &&
-        c.day === displacedCard.day &&
-        c.period === displacedCard.period &&
-        (c.classroomId || "") === (displacedCard.classroomId || "")
-      )) {
-        S.cards.push({
-          lessonId: displacedCard.lessonId,
-          day: displacedCard.day,
-          period: displacedCard.period,
-          classroomId: displacedCard.classroomId,
-        });
+      for (const removed of targetRemoved) {
+        if (!S.cards.some(c =>
+          c.lessonId === removed.lessonId &&
+          c.day === removed.day &&
+          c.period === removed.period &&
+          (c.classroomId || "") === (removed.classroomId || "")
+        )) {
+          S.cards.push({
+            lessonId: removed.lessonId,
+            day: removed.day,
+            period: removed.period,
+            classroomId: removed.classroomId,
+          });
+        }
       }
       if (isMove && !S.cards.some(c => c.lessonId === lessonId && c.day === originDay && c.period === originPeriod))
         S.cards.push({ lessonId, day: originDay, period: originPeriod, classroomId: originClassroomId || cid });
     }
 
+    // Push onto undo stack so AI → Cleanup last card move can revert it.
+    // Skip the stack for same-slot drops (round-trip is a no-op for the user).
     const auditCommit = window.APP && window.APP.audit && typeof window.APP.audit.commit === "function";
     if (auditCommit && !isSameSlot) {
       const label = fromPending ? "Place card" : "Move card";
@@ -17027,42 +17124,8 @@ window.PendingStrip = (function () {
         { detail: { cardId, lessonId, day, period, forced } }));
       rerender();
     }
-    
-    const mode = inHand.mode;
-    if (window.APP.editor) {
-      if (displacedCard) {
-        window.APP.editor.cardInHand = {
-          cardId: `placed_${displacedCard.lessonId}_${day}_${period}`,
-          lessonId: displacedCard.lessonId,
-          originDay: day,
-          originPeriod: period,
-          originClassroomId: displacedCard.classroomId,
-          fromPending: false,
-          rowKey: slot ? slot.dataset.row : undefined,
-          mode: mode
-        };
-      } else {
-        window.APP.editor.cardInHand = null;
-      }
-    }
+    if (window.APP.editor) window.APP.editor.cardInHand = null;
     cleanup();
-    
-    if (displacedCard) {
-      setTimeout(() => {
-        document.dispatchEvent(new CustomEvent("editor:pickup", {
-          detail: {
-            cardId: `placed_${displacedCard.lessonId}_${day}_${period}`,
-            lessonId: displacedCard.lessonId,
-            day: day,
-            period: period,
-            originClassroomId: displacedCard.classroomId,
-            fromPending: false,
-            mode: mode,
-            rowKey: slot ? slot.dataset.row : undefined
-          }
-        }));
-      }, 50);
-    }
   }
 
   function bumpAndCancel(slot) {
@@ -17079,39 +17142,52 @@ window.PendingStrip = (function () {
     setTimeout(() => slot.classList.remove("chrx-slot-bump"), 200);
     
     const d = parseInt(slot.dataset.day, 10), p = parseInt(slot.dataset.period, 10);
-    const occupants = targetCardsForSlot(slot);
-    const reasons = validity && validity.reasons && validity.reasons.length
-      ? validity.reasons
-      : ["Placement conflicts with the current timetable"];
     
-    // Create Backdrop
+    // Find all colliding cards
+    const occupants = targetCardsForSlot(slot);
+    const otherColliding = getCollidingCards(inHand.lessonId, d, p, slot);
+    const allColliding = [...occupants];
+    for (const c of otherColliding) {
+      if (!allColliding.some(x => x.lessonId === c.lessonId && x.day === c.day && x.period === c.period)) {
+        allColliding.push(c);
+      }
+    }
+
+    // Format labels
+    const allCollidingLabels = [];
+    // 1. The card being placed (inHand)
+    allCollidingLabels.push(formatCardCollisionLabel(inHand, d, p));
+    // 2. The other colliding cards
+    for (const c of allColliding) {
+      allCollidingLabels.push(formatCardCollisionLabel(c, c.day, c.period));
+    }
+    
+    // Create Backdrop (transparent)
     const backdrop = document.createElement("div");
     backdrop.className = "chrx-modal-backdrop";
     backdrop.id = "chrx-collision-modal-backdrop";
-    
-    const occupantNames = occupants.map(c => cardLabel(c)).filter(Boolean);
+    backdrop.style.background = "rgba(0, 0, 0, 0)"; // completely transparent
+    backdrop.style.backdropFilter = "none";
+    backdrop.style.webkitBackdropFilter = "none";
     
     backdrop.innerHTML = `
-      <div class="chrx-modal">
-        <div class="chrx-modal__title">
-          <span>⚠️ Collisions Found at ${esc(dayLabel(d))} P${esc(p)}</span>
+      <div class="chrx-collision-popup chrx-collision-menu">
+        <div class="chrx-collision-popup__title">Collisions found</div>
+        <div class="chrx-collision-popup__list">
+          ${allCollidingLabels.map(label => `<div class="chrx-collision-popup__item">${esc(label)}</div>`).join("")}
         </div>
-        
-        <ul class="chrx-modal__list">
-          ${occupantNames.length ? `<li class="chrx-modal__item"><strong>Conflict:</strong> Slot occupied by ${esc(occupantNames.join(", "))}</li>` : ""}
-          ${reasons.slice(0, 5).map(r => `<li class="chrx-modal__item">${esc(r)}</li>`).join("")}
-        </ul>
-        
-        <div class="chrx-modal__actions">
-          <button type="button" class="chrx-modal__btn chrx-modal__btn--danger" data-act="replace">
-            Remove collisions and place
-          </button>
-          <button type="button" class="chrx-modal__btn chrx-modal__btn--primary" data-act="force">
-            ${occupants.length ? "Add alongside (Ignore conflicts)" : "Ignore conflicts and place"}
-          </button>
-          <button type="button" class="chrx-modal__btn chrx-modal__btn--secondary" data-act="cancel">
+        <div class="chrx-collision-popup__divider"></div>
+        <div class="chrx-collision-popup__options">
+          <div class="chrx-collision-popup__option chrx-collision-popup__option--replace" data-act="replace">
+            <span class="chrx-collision-popup__checkmark">✓</span>
+            Remove collisions and place the card
+          </div>
+          <div class="chrx-collision-popup__option" data-act="cancel">
             Cancel
-          </button>
+          </div>
+          <div class="chrx-collision-popup__option" data-act="force">
+            Ignore conflicts and place the card
+          </div>
         </div>
       </div>
     `;
@@ -17120,8 +17196,8 @@ window.PendingStrip = (function () {
     backdrop.addEventListener("mouseup", e => e.stopPropagation(), true);
     
     backdrop.addEventListener("click", e => {
-      const btn = e.target.closest("button[data-act]");
-      if (!btn) {
+      const option = e.target.closest(".chrx-collision-popup__option");
+      if (!option) {
         if (e.target === backdrop) {
           e.preventDefault();
           cancel();
@@ -17130,7 +17206,7 @@ window.PendingStrip = (function () {
       }
       e.preventDefault();
       e.stopPropagation();
-      const act = btn.dataset.act;
+      const act = option.dataset.act;
       if (act === "cancel") return cancel();
       if (act === "force") return commit(d, p, slot, { force: true });
       if (act === "replace") return commit(d, p, slot, { replace: true, force: true });
@@ -17140,6 +17216,7 @@ window.PendingStrip = (function () {
     collisionMenu = backdrop; // reuse collisionMenu pointer
     updateCarryPanel(slot, validity);
   }
+
 
   function placeCollisionMenu(x, y) {
     if (!collisionMenu) return;
@@ -17179,7 +17256,7 @@ window.PendingStrip = (function () {
   }
 
   function cancel() {
-    if (!ghost) return;
+    if (!inHand) return;
     if (!inHand.fromPending && Number.isFinite(inHand.originDay) && Number.isFinite(inHand.originPeriod)) {
       const S = window.APP && window.APP.school;
       if (S) {
@@ -17189,16 +17266,20 @@ window.PendingStrip = (function () {
           S.cards.push({ lessonId: inHand.lessonId, day: inHand.originDay, period: inHand.originPeriod, classroomId: cid });
       }
     }
-    const target = !inHand.fromPending ? document.querySelector(
-      `.chrx-editor .chrx-slot[data-day="${inHand.originDay}"][data-period="${inHand.originPeriod}"]`) : null;
-    if (target) {
-      const r = target.getBoundingClientRect();
-      ghost.classList.add("chrx-card-ghost-snap");
-      ghost.style.transform = `translate(${r.left}px, ${r.top}px)`;
-      setTimeout(finalise, 180);
+    if (ghost) {
+      const target = !inHand.fromPending ? document.querySelector(
+        `.chrx-editor .chrx-slot[data-day="${inHand.originDay}"][data-period="${inHand.originPeriod}"]`) : null;
+      if (target) {
+        const r = target.getBoundingClientRect();
+        ghost.classList.add("chrx-card-ghost-snap");
+        ghost.style.transform = `translate(${r.left}px, ${r.top}px)`;
+        setTimeout(finalise, 180);
+      } else {
+        ghost.classList.add("chrx-card-ghost-fade");
+        setTimeout(finalise, 160);
+      }
     } else {
-      ghost.classList.add("chrx-card-ghost-fade");
-      setTimeout(finalise, 160);
+      finalise();
     }
     function finalise() {
       if (window.APP.editor) window.APP.editor.cardInHand = null;
@@ -17216,7 +17297,6 @@ window.PendingStrip = (function () {
   function cleanup() {
     document.removeEventListener("mousemove", onMove, true);
     document.removeEventListener("mouseup", onUp, true);
-    document.removeEventListener("touchmove", onTouchMove, { passive: true });
     document.removeEventListener("keydown", onKey, true);
     if (lastSlot) { lastSlot.removeAttribute("data-validity"); lastSlot.removeAttribute("title"); }
     lastSlot = null;
@@ -17230,6 +17310,11 @@ window.PendingStrip = (function () {
       carryPanel.parentNode.removeChild(carryPanel);
       carryPanel = null;
     }
+    // Remove Classic-style hand chip and hover tip
+    const handChip = document.getElementById("chrx-hand-chip");
+    if (handChip && handChip.parentNode) handChip.parentNode.removeChild(handChip);
+    const hoverTip = document.getElementById("chrx-hover-tip");
+    if (hoverTip && hoverTip.parentNode) hoverTip.parentNode.removeChild(hoverTip);
     
     // Clear click mode highlights
     document.querySelectorAll(".chrx-vkarta--selected").forEach(el => el.classList.remove("chrx-vkarta--selected"));
@@ -17257,9 +17342,7 @@ window.PendingStrip = (function () {
     commit: commit,
     cancel: cancel,
     pickup: pickup,
-    swap: swap,
-    classifySlot: classifySlot,
-    showCollisionMenu: showCollisionMenu
+    swap: swap
   };
 
   function rowPlacementCheck(lessonId, slot) {
@@ -17286,50 +17369,153 @@ window.PendingStrip = (function () {
   function classifySlot(slot, prefilteredCards) {
     const d = parseInt(slot.dataset.day, 10);
     const p = parseInt(slot.dataset.period, 10);
-    const rowCheck = rowPlacementCheck(inHand.lessonId, slot);
-    if (!rowCheck.ok) return { validity: "red", reasons: [rowCheck.reason] };
-
-    const S = window.APP && window.APP.school;
     const occupants = targetCardsForSlot(slot, prefilteredCards);
     
-    let originalCards = null;
-    let filteredPrefilteredCards = null;
-    if (S && S.cards) {
-      originalCards = S.cards;
-      const excludeFn = c => {
-        const cDay = parseInt(c.day, 10);
-        const cPeriod = parseInt(c.period, 10);
-        // Exclude carried card at its origin slot
-        if (!inHand.fromPending && c.lessonId === inHand.lessonId && cDay === inHand.originDay && cPeriod === inHand.originPeriod) {
-          return false;
-        }
-        // Exclude occupant cards at the target slot
-        if (cDay === d && cPeriod === p) {
-          return false;
-        }
-        return true;
-      };
-      S.cards = S.cards.filter(excludeFn);
-      if (prefilteredCards) {
-        filteredPrefilteredCards = prefilteredCards.filter(excludeFn);
-      }
-    }
-
-    let base = { validity: "green", reasons: [] };
-    try {
-      base = window.Placement ? window.Placement.classify(inHand.lessonId, d, p, classroomForSlot(inHand.lessonId, slot), filteredPrefilteredCards) : { validity: "green", reasons: [] };
-    } catch (_e) {}
+    const S = window.APP && window.APP.school;
+    const candidates = prefilteredCards || (S ? S.cards.filter(c => c.day === d && c.period === p) : []);
+    const excludedLessonIds = new Set([inHand.lessonId, ...occupants.map(o => o.lessonId)]);
+    const filteredSameSlot = candidates.filter(c => !excludedLessonIds.has(c.lessonId));
     
-    if (S && originalCards) {
-      S.cards = originalCards;
-    }
-
+    const rowCheck = rowPlacementCheck(inHand.lessonId, slot);
+    const base = rowCheck.ok
+      ? (window.Placement ? window.Placement.classify(inHand.lessonId, d, p, classroomForSlot(inHand.lessonId, slot), filteredSameSlot) : { validity: "green", reasons: [] })
+      : { validity: "red", reasons: [rowCheck.reason] };
+      
     if (!occupants.length) return base;
     const reasons = (base.reasons || []).slice();
     const labels = occupants.map(c => cardLabel(c)).filter(Boolean);
     reasons.unshift(labels.length ? `slot occupied by ${labels.join(", ")}` : "slot occupied");
     return { validity: base.validity, reasons };
   }
+
+  function getCollidingCards(lessonId, d, p, slot) {
+    const S = window.APP && window.APP.school;
+    if (!S) return [];
+    const idx = S._idx;
+    const lesson = idx.lessonById[lessonId];
+    if (!lesson) return [];
+
+    const myClasses = new Set(lesson.classIds || []);
+    const myTeachers = new Set(lesson.teacherIds || []);
+    const rid = classroomForSlot(lessonId, slot) || lesson.preferredRoomId;
+
+    const colliding = [];
+
+    // Find all cards in the system at (d, p) that conflict
+    const sameSlot = (S.cards || []).filter(c => c.day === d && c.period === p);
+    for (const c of sameSlot) {
+      if (c.lessonId === lessonId) continue;
+      const other = idx.lessonById[c.lessonId];
+      if (!other) continue;
+
+      let isConflict = false;
+
+      // 1. Class conflict
+      for (const cid of (other.classIds || [])) {
+        if (myClasses.has(cid)) {
+          isConflict = true;
+          break;
+        }
+      }
+
+      // 2. Teacher conflict
+      if (!isConflict) {
+        for (const tid of (other.teacherIds || [])) {
+          if (myTeachers.has(tid)) {
+            isConflict = true;
+            break;
+          }
+        }
+      }
+
+      // 3. Room conflict
+      if (!isConflict && rid) {
+        const otherRid = c.classroomId || other.preferredRoomId;
+        if (otherRid === rid) {
+          isConflict = true;
+        }
+      }
+
+      if (isConflict) {
+        colliding.push(c);
+      }
+    }
+
+    // 4. Lab double P+1 check
+    if (lesson.isLabDouble) {
+      const nextSlot = (S.cards || []).filter(c => c.day === d && c.period === p + 1);
+      for (const c of nextSlot) {
+        if (c.lessonId === lessonId) continue;
+        const other = idx.lessonById[c.lessonId];
+        if (!other) continue;
+
+        let isConflict = false;
+
+        // Class conflict at P+1
+        for (const cid of (other.classIds || [])) {
+          if (myClasses.has(cid)) {
+            isConflict = true;
+            break;
+          }
+        }
+
+        // Teacher conflict at P+1
+        if (!isConflict) {
+          for (const tid of (other.teacherIds || [])) {
+            if (myTeachers.has(tid)) {
+              isConflict = true;
+              break;
+            }
+          }
+        }
+
+        // Room conflict at P+1
+        if (!isConflict && rid) {
+          const otherRid = c.classroomId || other.preferredRoomId;
+          if (otherRid === rid) {
+            isConflict = true;
+          }
+        }
+
+        if (isConflict) {
+          colliding.push(c);
+        }
+      }
+    }
+
+    return colliding;
+  }
+
+  function getOrdinal(n) {
+    const s = ["th", "st", "nd", "rd"];
+    const v = n % 100;
+    return n + (s[(v - 20) % 10] || s[v] || s[0]);
+  }
+
+  function getFullDayName(d) {
+    return ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"][d] || ("Day " + d);
+  }
+
+  function formatCardCollisionLabel(card, day, period) {
+    const S = window.APP && window.APP.school;
+    const lesson = S && S._idx ? S._idx.lessonById[card.lessonId] : null;
+    if (!lesson) return "";
+    const subject = S._idx.subjectById[lesson.subjectId];
+    const subjectName = subject ? (subject.name || subject.abbr) : card.lessonId;
+    const classes = (lesson.classIds || [])
+      .map(id => S._idx.classById[id])
+      .filter(Boolean)
+      .map(c => c.name || c.id)
+      .join("/");
+    const classPart = classes ? `(${classes})` : "";
+    
+    const dLabel = getFullDayName(day);
+    const periodObj = (S.bell && S.bell.periods || []).find(p => p.index === period);
+    const pLabel = periodObj ? (periodObj.label || getOrdinal(period)) : getOrdinal(period);
+    
+    return `${subjectName} ${classPart} - ${dLabel} ${pLabel}`;
+  }
+
 
   function targetCardsForSlot(slot, prefilteredCards) {
     const S = window.APP && window.APP.school;
@@ -17398,6 +17584,27 @@ window.PendingStrip = (function () {
     const host = document.getElementById("editor-inspector-root");
     if (host) host.appendChild(carryPanel);
     else document.body.appendChild(carryPanel);
+    // Also show the hand chip for consistent UX across both drag and click mode
+    showHandChip(S, lesson, subjShort, classShort, teacherShort);
+  }
+
+  function showHandChip(S, lesson, subjShort, classShort, teacherShort) {
+    // Remove any existing chip
+    const existing = document.getElementById("chrx-hand-chip");
+    if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+    const hue = subjectHue(S._idx ? S._idx.subjectById[lesson.subjectId] : null);
+    const chip = document.createElement("div");
+    chip.id = "chrx-hand-chip";
+    chip.className = "chrx-hand-chip";
+    chip.style.setProperty("--chrx-hand-hue", hue);
+    chip.innerHTML = `
+      <span class="chrx-hand-chip__dot"></span>
+      <span class="chrx-hand-chip__label">Carrying</span>
+      <span class="chrx-hand-chip__name">${esc(subjShort)}</span>
+      <span class="chrx-hand-chip__meta">${[classShort, teacherShort].filter(Boolean).join(" · ")}</span>
+    `;
+    const host = document.getElementById("editor-inspector-root");
+    if (host) host.insertBefore(chip, host.firstChild);
   }
 
   function updateCarryPanel(slot, validity) {
@@ -17495,179 +17702,103 @@ window.PendingStrip = (function () {
       if (v.validity === "red") {
         return showCollisionMenu(slotB, v);
       }
-      return commit(dayB, periodB, slotB, { replace: true, force: true });
+      const classroomIdB = classroomForSlot(cardA.lessonId, slotB);
+      return executeDisplacement(cardA, dayB, periodB, classroomIdB, cardB);
     }
     
     const classroomIdB = classroomForSlot(cardA.lessonId, slotB);
-    const originSlot = document.querySelector(`.chrx-editor .chrx-slot[data-day="${cardA.originDay}"][data-period="${cardA.originPeriod}"]`);
-    const classroomIdA = classroomForSlot(cardB.lessonId, originSlot);
     
-    const vA = window.Placement ? window.Placement.classify(cardA.lessonId, dayB, periodB, classroomIdB) : { validity: "green", reasons: [] };
-    const vB = window.Placement ? window.Placement.classify(cardB.lessonId, cardA.originDay, cardA.originPeriod, classroomIdA) : { validity: "green", reasons: [] };
+    // Classify cardA at slotB, prefiltering target occupant cardB to avoid false double-booking warnings
+    const prefiltered = S.cards.filter(c => c.day === dayB && c.period === periodB && c.lessonId !== cardB.lessonId);
+    const vA = window.Placement ? window.Placement.classify(cardA.lessonId, dayB, periodB, classroomIdB, prefiltered) : { validity: "green", reasons: [] };
     
-    const isRed = vA.validity === "red" || vB.validity === "red";
-    const combinedReasons = [...(vA.reasons || []), ...(vB.reasons || [])];
-    
-    if (isRed) {
-      return showCollisionMenuForSwap(cardA, slotB, cardB, combinedReasons);
+    if (vA.validity === "red") {
+      return showCollisionMenu(slotB, vA);
     }
     
-    executeSwap(cardA, dayB, periodB, classroomIdB, cardB, cardA.originDay, cardA.originPeriod, classroomIdA);
+    executeDisplacement(cardA, dayB, periodB, classroomIdB, cardB);
   }
 
-  function executeSwap(cardA, dayB, periodB, classroomIdB, cardB, dayA, periodA, classroomIdA, options) {
+  function executeDisplacement(cardA, dayB, periodB, classroomIdB, cardB, options) {
     const S = window.APP && window.APP.school;
     if (!S) return;
     
     const lessonIdA = cardA.lessonId;
     const lessonIdB = cardB.lessonId;
+    const dayA = cardA.originDay;
+    const periodA = cardA.originPeriod;
+    const classroomIdA = cardB.classroomId || classroomForSlot(lessonIdB, null);
     
+    const isMoveA = !cardA.fromPending && Number.isFinite(dayA) && Number.isFinite(periodA);
     const forced = !!(options && options.force);
-    const replace = !!(options && options.replace);
     
-    const targetRemoved = [];
-    if (replace) {
-      const slotBElement = document.querySelector(`.chrx-editor .chrx-slot[data-day="${dayB}"][data-period="${periodB}"]`);
-      const slotAElement = document.querySelector(`.chrx-editor .chrx-slot[data-day="${dayA}"][data-period="${periodA}"]`);
-      
-      const occupantsB = targetCardsForSlot(slotBElement).filter(c => c.lessonId !== lessonIdA && c.lessonId !== lessonIdB);
-      const occupantsA = targetCardsForSlot(slotAElement).filter(c => c.lessonId !== lessonIdA && c.lessonId !== lessonIdB);
-      
-      occupantsB.concat(occupantsA).forEach(c => {
-        targetRemoved.push({
-          lessonId: c.lessonId,
-          day: c.day,
-          period: c.period,
-          classroomId: c.classroomId
-        });
-      });
-    }
+    const slotBElement = document.querySelector(`.chrx-editor .chrx-slot[data-day="${dayB}"][data-period="${periodB}"]`);
+    const rowKeyB = slotBElement?.dataset.row;
 
-    function applySwap() {
-      removeCardFromSchool(lessonIdA, dayA, periodA);
-      removeCardFromSchool(lessonIdB, dayB, periodB);
-      
-      if (replace && targetRemoved.length) {
-        for (const removed of targetRemoved) {
-          removeCardFromSchool(removed.lessonId, removed.day, removed.period);
-        }
+    function applyDisplacement() {
+      if (isMoveA) {
+        removeCardFromSchool(lessonIdA, dayA, periodA);
       }
-      
+      removeCardFromSchool(lessonIdB, dayB, periodB);
       placeCardOnSchool(lessonIdA, dayB, periodB, classroomIdB);
-      placeCardOnSchool(lessonIdB, dayA, periodA, classroomIdA);
     }
     
-    function revertSwap() {
+    function revertDisplacement() {
       removeCardFromSchool(lessonIdA, dayB, periodB);
-      removeCardFromSchool(lessonIdB, dayA, periodA);
-      
-      for (const removed of targetRemoved) {
-        placeCardOnSchool(removed.lessonId, removed.day, removed.period, removed.classroomId);
+      placeCardOnSchool(lessonIdB, dayB, periodB, classroomIdA);
+      if (isMoveA) {
+        placeCardOnSchool(lessonIdA, dayA, periodA, cardA.originClassroomId);
       }
-      
-      placeCardOnSchool(lessonIdA, dayA, periodA, classroomIdA);
-      placeCardOnSchool(lessonIdB, dayB, periodB, classroomIdB);
     }
 
     const auditCommit = window.APP && window.APP.audit && typeof window.APP.audit.commit === "function";
     if (auditCommit) {
       window.APP.audit.commit({
-        label: "Swap cards",
+        label: "Displace card",
         do() {
-          applySwap();
+          applyDisplacement();
           document.dispatchEvent(new CustomEvent("editor:place", { detail: { lessonId: lessonIdA, day: dayB, period: periodB, forced } }));
-          document.dispatchEvent(new CustomEvent("editor:place", { detail: { lessonId: lessonIdB, day: dayA, period: periodA, forced } }));
           rerender();
+          
+          const cardIdB = `placed_${lessonIdB}_${dayB}_${periodB}`;
+          window.CardInHand.pickup({
+            cardId: cardIdB,
+            lessonId: lessonIdB,
+            day: dayB,
+            period: periodB,
+            originClassroomId: classroomIdA,
+            rowKey: rowKeyB,
+            mode: "click"
+          });
         },
         undo() {
-          revertSwap();
+          window.CardInHand._cleanup();
+          revertDisplacement();
           document.dispatchEvent(new CustomEvent("editor:unplace", { detail: { lessonId: lessonIdA, day: dayA, period: periodA } }));
-          document.dispatchEvent(new CustomEvent("editor:unplace", { detail: { lessonId: lessonIdB, day: dayB, period: periodB } }));
           rerender();
+          if (cardA) {
+            window.CardInHand.pickup(cardA);
+          }
         }
       });
     } else {
-      applySwap();
+      applyDisplacement();
       document.dispatchEvent(new CustomEvent("editor:place", { detail: { lessonId: lessonIdA, day: dayB, period: periodB, forced } }));
-      document.dispatchEvent(new CustomEvent("editor:place", { detail: { lessonId: lessonIdB, day: dayA, period: periodA, forced } }));
       rerender();
+      
+      const cardIdB = `placed_${lessonIdB}_${dayB}_${periodB}`;
+      window.CardInHand.pickup({
+        cardId: cardIdB,
+        lessonId: lessonIdB,
+        day: dayB,
+        period: periodB,
+        originClassroomId: classroomIdA,
+        rowKey: rowKeyB,
+        mode: "click"
+      });
     }
-    
-    if (window.APP.editor) window.APP.editor.cardInHand = null;
-    cleanup();
   }
 
-  function showCollisionMenuForSwap(cardA, slotB, cardB, reasons) {
-    closeCollisionMenu();
-    
-    slotB.classList.add("chrx-slot-bump");
-    setTimeout(() => slotB.classList.remove("chrx-slot-bump"), 200);
-    
-    const d = parseInt(slotB.dataset.day, 10), p = parseInt(slotB.dataset.period, 10);
-    
-    const backdrop = document.createElement("div");
-    backdrop.className = "chrx-modal-backdrop";
-    backdrop.id = "chrx-collision-modal-backdrop";
-    
-    const labelA = cardLabel(cardA);
-    const labelB = cardLabel(cardB);
-    
-    backdrop.innerHTML = `
-      <div class="chrx-modal">
-        <div class="chrx-modal__title">
-          <span>⚠️ Swap Collisions at ${esc(dayLabel(d))} P${esc(p)}</span>
-        </div>
-        
-        <div style="font-size: 13px; color: #475569; line-height: 1.4; margin-bottom: 8px;">
-          Swapping <strong>${esc(labelA)}</strong> and <strong>${esc(labelB)}</strong> causes conflicts:
-        </div>
-        
-        <ul class="chrx-modal__list">
-          ${reasons.slice(0, 5).map(r => `<li class="chrx-modal__item">${esc(r)}</li>`).join("")}
-        </ul>
-        
-        <div class="chrx-modal__actions">
-          <button type="button" class="chrx-modal__btn chrx-modal__btn--danger" data-act="replace">
-            Remove other collisions and swap
-          </button>
-          <button type="button" class="chrx-modal__btn chrx-modal__btn--primary" data-act="force">
-            Ignore conflicts and swap
-          </button>
-          <button type="button" class="chrx-modal__btn chrx-modal__btn--secondary" data-act="cancel">
-            Cancel
-          </button>
-        </div>
-      </div>
-    `;
-    
-    backdrop.addEventListener("mousedown", e => e.stopPropagation(), true);
-    backdrop.addEventListener("mouseup", e => e.stopPropagation(), true);
-    
-    backdrop.addEventListener("click", e => {
-      const btn = e.target.closest("button[data-act]");
-      if (!btn) {
-        if (e.target === backdrop) {
-          e.preventDefault();
-          cancel();
-        }
-        return;
-      }
-      e.preventDefault();
-      e.stopPropagation();
-      const act = btn.dataset.act;
-      
-      const classroomIdB = classroomForSlot(cardA.lessonId, slotB);
-      const originSlot = document.querySelector(`.chrx-editor .chrx-slot[data-day="${cardA.originDay}"][data-period="${cardA.originPeriod}"]`);
-      const classroomIdA = classroomForSlot(cardB.lessonId, originSlot);
-      
-      if (act === "cancel") return cancel();
-      if (act === "force") return executeSwap(cardA, d, p, classroomIdB, cardB, cardA.originDay, cardA.originPeriod, classroomIdA, { force: true });
-      if (act === "replace") return executeSwap(cardA, d, p, classroomIdB, cardB, cardA.originDay, cardA.originPeriod, classroomIdA, { replace: true, force: true });
-    });
-    
-    document.body.appendChild(backdrop);
-    collisionMenu = backdrop;
-  }
 })();
 
 /* ─── FILE: js/ui/editor/row_context_menu.js ─── */
@@ -18253,7 +18384,7 @@ window.PendingStrip = (function () {
 /* ─── FILE: js/ui/editor/card_context_menu.js ─── */
 /* Right-click context menu on placed cards (chrx-vkarta).
  *
- * Mirrors ASC Timetables' card right-click: Remove, Lock, Unlock,
+ * Mirrors Classic Timetables' card right-click: Remove, Lock, Unlock,
  * Edit lesson, Find, Time off, Quick changes.
  *
  * Lock/Unlock sets or clears `card.locked` on the individual card
@@ -23401,7 +23532,7 @@ window.StartScreen = (function () {
 /* ─── FILE: js/ui/print_preview/cell_style_dialog.js ─── */
 /* Per-element cell-style dialog — Phase 2 of the print-system rewrite.
  *
- * Replaces the flat "anchor + colors" dialog with aSc's exact UX:
+ * Replaces the flat "anchor + colors" dialog with Classic's exact UX:
  *   - 7 element panels (Subject / Teacher / Class / Group / Classroom
  *     / Count / Bell times)
  *   - Each panel: enabled / 3×3 anchor grid / size slider / font /
@@ -24367,7 +24498,7 @@ window.StartScreen = (function () {
     "day":       { subject:true,  teacher:true,  class:true,  group:false, classroom:false, count:false, bellTimes:false },
   };
 
-  // Default size % per element (matches aSc values from screenshots 5, 30, 32, 34).
+  // Default size % per element (matches Classic values from screenshots 5, 30, 32, 34).
   const DEFAULT_SIZE = {
     subject: 19, teacher: 14, class: 24, group: 10,
     classroom: 10, count: 20, bellTimes: 6,
@@ -25457,7 +25588,7 @@ window.StartScreen = (function () {
 /* ─── FILE: js/ui/print_preview/modify_structure_dialog.js ─── */
 /* Modify-Structure / Print report properties dialog.
  *
- * Exact reproduction of aSc's pivot-configuration modal (screenshots 19-28).
+ * Exact reproduction of Classic's pivot-configuration modal (screenshots 19-28).
  * Edits the active PrintReport's pages/rows/cols/cells/fit/hide-empty config.
  *
  * Usage:
@@ -25702,7 +25833,7 @@ window.StartScreen = (function () {
  * sub-modal on click. State lives on report.filters; the pivot engine
  * already reads it via applyFilters.
  *
- * Matches aSc screenshots 9-15.
+ * Matches Classic screenshots 9-15.
  *
  * Public API:
  *   APP.PrintFilterDialog.open(report, onSave)
@@ -25744,7 +25875,7 @@ window.StartScreen = (function () {
   // ────────────────────────────────────────────────────────────────────
   // Two-pane transfer list — single-click toggle with green ✓
   // Click a row on left → ✓ appears, item shows on right.
-  // Click again → removed. Matches ASC Timetables.
+  // Click again → removed. Matches Classic Timetables.
   // ────────────────────────────────────────────────────────────────────
 
   function openTransferList(title, allEntities, selectedIds, onSave) {
@@ -26026,7 +26157,7 @@ window.StartScreen = (function () {
 /* ─── FILE: js/ui/print_preview/extras_dialog.js ─── */
 /* Extra columns / rows dialog — Phase 4 of the print-system rewrite.
  *
- * Matches aSc screenshots 45-49. Lets the user add derived side panels
+ * Matches Classic screenshots 45-49. Lets the user add derived side panels
  * alongside the main timetable grid. Each entry has:
  *   - Type dropdown (empty / sum of lessons / teachers / classrooms /
  *                     subjects / sum of covered lessons)
@@ -26268,7 +26399,7 @@ window.StartScreen = (function () {
   }
 
   // ────────────────────────────────────────────────────────────────────
-  // Shared save-changes prompt (matches aSc screenshot 49)
+  // Shared save-changes prompt (matches Classic screenshot 49)
   // ────────────────────────────────────────────────────────────────────
 
   function showSaveChangesPrompt(onCancel, onDiscard, onSave) {
@@ -26331,7 +26462,7 @@ window.StartScreen = (function () {
  *   APP.PrintDesignDialog.open(report, onSave)  — logo + header text
  *   APP.PrintColorsDialog.open(report, onSave)  — card / row / col colors
  *
- * Matches aSc screenshots 50-56.
+ * Matches Classic screenshots 50-56.
  */
 (function () {
   "use strict";
@@ -26636,7 +26767,7 @@ window.StartScreen = (function () {
 /* ─── FILE: js/ui/print_preview/header_dialog.js ─── */
 /* Period-header sub-dialog — Phase 8 of the print-system rewrite.
  *
- * Edits report.periodHeader (already in Phase 0 schema). Matches aSc
+ * Edits report.periodHeader (already in Phase 0 schema). Matches Classic
  * screenshot 17 — separate anchor / size / font / B/I/U for the period
  * number and (optionally) for the time-interval label below it.
  *

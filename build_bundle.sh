@@ -39,7 +39,8 @@ while IFS= read -r entry; do
     continue
   fi
   echo "/* ─── FILE: $path ─── */" >> "$OUT"
-  cat "$path" >> "$OUT"
+  # Comment out ES6 exports so classic scripts don't throw syntax errors in browser
+  sed -E 's/^export[[:space:]]+\{/\/\/ export \{/; s/^export[[:space:]]+default/\/\/ export default/' "$path" >> "$OUT"
   echo "" >> "$OUT"
   echo "$path" >> "$MAN"
   count=$((count + 1))

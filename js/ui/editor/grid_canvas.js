@@ -337,6 +337,17 @@ window.Editor = (function () {
   function onMouseOver(ev) {
     const vk = ev.target.closest(".chrx-vkarta");
     if (vk && vk.dataset.lessonId) {
+      // While a card is in hand: show hover-target info as a tip inside the
+      // inspector (Classic-style: bottom-left detail panel updates on hover).
+      if (document.body.classList.contains("chrx-card-in-hand")) {
+        showHoverTip(vk.dataset.lessonId, {
+          day: parseInt(vk.dataset.day, 10),
+          period: parseInt(vk.dataset.period, 10),
+          classroomId: vk.dataset.classroomId || undefined,
+          source: "target",
+        });
+        return;
+      }
       showCardPanel(vk.dataset.lessonId, {
         day: parseInt(vk.dataset.day, 10),
         period: parseInt(vk.dataset.period, 10),
@@ -357,6 +368,66 @@ window.Editor = (function () {
     }
   }
 
+  // Classic-style hover tip: updates a dedicated panel inside the inspector
+  // when hovering over any card, showing full subject·class·teacher·room detail.
+  let hoverTipTimer = null;
+  function showHoverTip(lessonId, opts) {
+    const S = window.APP && window.APP.school;
+    const L = S && S._idx ? S._idx.lessonById[lessonId] : null;
+    if (!L) return;
+    const host = document.getElementById("editor-inspector-root");
+    if (!host) return;
+    const subject = S._idx.subjectById[L.subjectId];
+    const subjectAbbr = subject ? (subject.abbr || subject.name) : "?";
+    const subjectFull = subject ? subject.name : "?";
+    const classNames = (L.classIds || []).map(id => S._idx.classById[id]).filter(Boolean).map(c => c.name || c.id).join(", ");
+    const teacherNames = (L.teacherIds || []).map(id => S._idx.teacherById[id]).filter(Boolean).map(t => t.name || t.abbr).join(", ");
+    const roomId = (opts && opts.classroomId) ? opts.classroomId : L.preferredRoomId;
+    const room = roomId ? S._idx.classroomById[roomId] : null;
+    const slotLabel = (opts && Number.isFinite(opts.day) && Number.isFinite(opts.period))
+      ? `${DAY_LABELS_EN[opts.day] || ("D" + opts.day)} · P${opts.period}`
+      : "";
+    const hue = subjectHueForId(L.subjectId, subject);
+    let tip = document.getElementById("chrx-hover-tip");
+    if (!tip) {
+      tip = document.createElement("div");
+      tip.id = "chrx-hover-tip";
+      tip.className = "chrx-hover-tip";
+    }
+    tip.style.setProperty("--chrx-tip-hue", hue);
+    tip.innerHTML = `
+      <div class="chrx-hover-tip__subject">
+        <span class="chrx-hover-tip__dot"></span>
+        <span class="chrx-hover-tip__subj-abbr">${esc(subjectAbbr)}</span>
+        ${subjectAbbr !== subjectFull ? `<span class="chrx-hover-tip__subj-full">· ${esc(subjectFull)}</span>` : ""}
+      </div>
+      <div class="chrx-hover-tip__rows">
+        ${classNames ? `<div class="chrx-hover-tip__row"><span class="chrx-hover-tip__label">Class</span><span class="chrx-hover-tip__value">${esc(classNames)}</span></div>` : ""}
+        ${teacherNames ? `<div class="chrx-hover-tip__row"><span class="chrx-hover-tip__label">Teacher</span><span class="chrx-hover-tip__value">${esc(teacherNames)}</span></div>` : ""}
+        ${room ? `<div class="chrx-hover-tip__row"><span class="chrx-hover-tip__label">Room</span><span class="chrx-hover-tip__value">${esc(room.name)}</span></div>` : ""}
+        ${slotLabel ? `<div class="chrx-hover-tip__row"><span class="chrx-hover-tip__label">Slot</span><span class="chrx-hover-tip__value">${esc(slotLabel)}</span></div>` : ""}
+      </div>
+    `;
+    if (tip.parentNode !== host) host.appendChild(tip);
+  }
+
+  function hideHoverTip() {
+    const tip = document.getElementById("chrx-hover-tip");
+    if (tip && tip.parentNode) tip.parentNode.removeChild(tip);
+  }
+
+  function subjectHueForId(subjectId, subject) {
+    const HUE = { MA:220, MAT:220, MATH:220, MATHS:220, EN:12, ENG:12, ENGL:12, HI:32, HIN:32,
+      HINDI:32, SC:150, SCI:150, SS:50, SST:50, SOC:50, MU:285, MUS:285, AR:330, ART:330,
+      PE:110, PT:110, PED:110, SP:110, IT:250, CS:250, COMP:250, LIB:200,
+      EVS:130, HINDI:32, DRAW:300 };
+    const k = (subject ? (subject.abbr || subject.name || "") : "").toUpperCase().replace(/[^A-Z]/g, "");
+    if (HUE[k] != null) return HUE[k];
+    let h = 0;
+    for (let i = 0; i < k.length; i++) h = (h * 31 + k.charCodeAt(i)) & 0xffff;
+    return h % 360;
+  }
+
   function onFocusIn(ev) {
     const vk = ev.target.closest(".chrx-vkarta");
     if (vk && vk.dataset.lessonId) {
@@ -370,6 +441,19 @@ window.Editor = (function () {
   }
 
   function onMouseOut(ev) {
+    // Hide hover tip when mouse leaves a card (in normal, non-carry mode)
+    if (!document.body.classList.contains("chrx-card-in-hand")) {
+      const vk = ev.target.closest(".chrx-vkarta");
+      if (vk) {
+        hideHoverTip();
+        return;
+      }
+    }
+    // Also hide if leaving the target while carrying
+    if (document.body.classList.contains("chrx-card-in-hand")) {
+      const vk = ev.target.closest(".chrx-vkarta");
+      if (vk) hideHoverTip();
+    }
     const label = ev.target.closest(".chrx-rowlabel");
     if (!label) return;
     if (window.FocusMode && typeof window.FocusMode.exit === "function") {

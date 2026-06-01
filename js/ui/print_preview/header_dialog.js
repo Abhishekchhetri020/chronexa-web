@@ -1,6 +1,6 @@
 /* Period-header sub-dialog — Phase 8 of the print-system rewrite.
  *
- * Edits report.periodHeader (already in Phase 0 schema). Matches aSc
+ * Edits report.periodHeader (already in Phase 0 schema). Matches Classic
  * screenshot 17 — separate anchor / size / font / B/I/U for the period
  * number and (optionally) for the time-interval label below it.
  *

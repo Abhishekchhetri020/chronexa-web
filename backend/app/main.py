@@ -276,7 +276,7 @@ def _run_solver_blocking(
         time_limit_ms = max(1.0, time_limit) * 1000.0
 
         def _on_prog(p: Dict[str, Any]) -> None:
-            # Map durationMs into the EduPage-style p1 bar (overall progress).
+            # Map durationMs into the Classic-style p1 bar (overall progress).
             dt = float(p.get("durationMs") or 0)
             p1 = min(1.0, dt / time_limit_ms)
             payload = dict(p)

@@ -1,6 +1,6 @@
 # Solver vs Legacy — cross-harness
 
-Side-by-side measurement of Chronexa's CSP solver against the legacy aSc
+Side-by-side measurement of Chronexa's CSP solver against the legacy Classic
 TimeTables (`roz.exe`) solver on the same XML input.
 
 Chronexa's side is fully automated by `tools/run_baseline.mjs`. The legacy
@@ -119,12 +119,12 @@ a fixed result. Same 5 seeds in both runs; deterministic. The hookup will
 have a similar effect on any school where the search has slack to pick
 between morning and afternoon slots.
 
-## Legacy aSc TimeTables — measured directly from `sample-school.xml`
+## Legacy Classic TimeTables — measured directly from `sample-school.xml`
 
-`sample-school.xml` is an **export from aSc TimeTables**, so the 951 `<card>`
-entries inside it ARE aSc's solver output for this school. To compare
+`sample-school.xml` is an **export from Classic TimeTables**, so the 951 `<card>`
+entries inside it ARE Classic's solver output for this school. To compare
 solvers fairly we don't need to re-run roz.exe — we just need to evaluate
-aSc's existing placement through Chronexa's metric (same hard-rule check,
+Classic's existing placement through Chronexa's metric (same hard-rule check,
 same soft-score function) so the numbers are directly subtractable.
 
 ```bash
@@ -132,23 +132,23 @@ NODE_PATH=/private/tmp/chronexa_smoke/node_modules \
   node tools/evaluate_asc.mjs
 ```
 
-The runner builds Chronexa's model from the XML, replays aSc's 951 placed
+The runner builds Chronexa's model from the XML, replays Classic's 951 placed
 cards through Chronexa's `canPlace()` filter, and reports the post-warm-
 start state with `useIterativeRepair: false` and a 0.1 s budget — so no
 search runs, only the evaluation.
 
-### aSc's placement under Chronexa's metric
+### Classic's placement under Chronexa's metric
 
-| Metric                                                       | aSc (from XML) |
+| Metric                                                       | Classic (from XML) |
 |--------------------------------------------------------------|---------------:|
-| Cards in XML (aSc placed all of them)                        | 951            |
+| Cards in XML (Classic placed all of them)                        | 951            |
 | Chronexa-accepted (placed, no hard conflict)                 | **944**        |
 | Chronexa-rejected (teacher / room conflicts after rule-set parity) | **7**    |
-| Soft score (Chronexa's metric on aSc's placement)            | **−5,020**     |
+| Soft score (Chronexa's metric on Classic's placement)            | **−5,020**     |
 | Wall (ms) — evaluation only, no search                       | ~60            |
 
 > **Earlier reading (pre-`p36-groupidsfix` build)** had Chronexa rejecting
-> 35 of aSc's placements. The diagnostic at `tools/diagnose_warm_fails.mjs`
+> 35 of Classic's placements. The diagnostic at `tools/diagnose_warm_fails.mjs`
 > traced 28 of those 35 to a single bug in `csp_solver.js#buildModel`: the
 > per-card expansion was dropping `groupIds`, so every lesson with an
 > elective group (URDU, SANSKRIT, etc.) was treated as a whole-class
@@ -156,37 +156,37 @@ search runs, only the evaluation.
 > class was already placed. One-line fix landed in
 > `20260521-p36-groupidsfix`.
 
-The 35 "Chronexa-rejected" cards are aSc placements that violate Chronexa's
+The 35 "Chronexa-rejected" cards are Classic placements that violate Chronexa's
 hard-rule set — Chronexa's solver refuses to keep them when warm-starting
-from aSc's output. They surface as `HARD_unplaced_lesson` in the violations
-list. This is one solver's view of the other's output; aSc itself
+from Classic's output. They surface as `HARD_unplaced_lesson` in the violations
+list. This is one solver's view of the other's output; Classic itself
 considers the same 35 cards valid under its own rule set.
 
 ## Side-by-side — same XML, three placements
 
 | Configuration                                  | Placed | Conflicts | Soft score | Wall    |
 |------------------------------------------------|-------:|----------:|-----------:|--------:|
-| **aSc** (output read from XML, ~0 wall)        | 951    | 2¹        | −5,020     | n/a     |
+| **Classic** (output read from XML, ~0 wall)        | 951    | 2¹        | −5,020     | n/a     |
 | **Chronexa — cold-path** (median of 5 seeds)   | **938**| **8**     | −12,710    | 15 s    |
 | **Chronexa — warm-start** (5/5 seeds identical)| **946**| **0**     | −520,900   | 30–50 ms |
 
-¹ "Conflicts" for aSc here means *Chronexa's hard-rule violations against
-aSc's placement* — it is not aSc's self-reported conflict count (aSc
-reports 0 because the placement is valid under aSc's own rule set; the
+¹ "Conflicts" for Classic here means *Chronexa's hard-rule violations against
+Classic's placement* — it is not Classic's self-reported conflict count (Classic
+reports 0 because the placement is valid under Classic's own rule set; the
 7-card delta is the residual teacher / room collision Chronexa's rules
 won't accept).
 
 The negative soft on Chronexa-warm is dominated by the
 `totalPeriodLoadBalance` weight (`PERIOD_PREFERENCE_SCORES` × slot load,
 ~500k); the other 7 soft components total ~5,000 and are comparable
-across runs. aSc's evaluation gets the lower soft-score not because it
+across runs. Classic's evaluation gets the lower soft-score not because it
 schedules better but because it places 5 fewer cards, so the
 per-slot-load product is smaller.
 
 ### What this shows
 
-1. **Chronexa's warm-start strictly beats aSc on its own XML.**
-   946 placed / **0 conflicts FEASIBLE** vs aSc's 944 / 2. Three fixes
+1. **Chronexa's warm-start strictly beats Classic on its own XML.**
+   946 placed / **0 conflicts FEASIBLE** vs Classic's 944 / 2. Three fixes
    landed in sequence — `groupIds` carry-through in lesson expansion
    (916→944 unplaced→placed), lab-double over-expansion (944→946),
    and the sibling-subject deficit scorer (transforms cold-path).
@@ -196,34 +196,34 @@ per-slot-load product is smaller.
    sibling-deficit scorer eliminated the cold-path variance that
    appeared after the lab-double fix. All five seeds now place
    937–945 cards (was 363–877 with one catastrophic collapse).
-3. **2 residual hard conflicts in aSc's placement (under Chronexa's lens)**
+3. **2 residual hard conflicts in Classic's placement (under Chronexa's lens)**
    — both `room_conflict` on the Indoor Sports Room (two PE lessons
    want the same room at different slots, with at least one other
-   lesson placed there by aSc via the `_lessonRoomIds` fallback that
+   lesson placed there by Classic via the `_lessonRoomIds` fallback that
    Chronexa's solver doesn't fully model). Chronexa's repair phase
    finds alternative slots for both, hence 0 final conflicts on the
    Chronexa side.
 
 ### Caveats when reading this comparison
 
-* The "−4,950 soft" number for aSc isn't aSc's self-reported soft score —
-  it's Chronexa's `softScore()` applied to aSc's placement. aSc has its own
+* The "−4,950 soft" number for Classic isn't Classic's self-reported soft score —
+  it's Chronexa's `softScore()` applied to Classic's placement. Classic has its own
   internal score that we can't read without running roz.exe.
 * The 35 hard-conflict delta is a *rule-set* difference, not a
   search-quality difference. To eliminate it, Chronexa's hard rules would
-  need to be relaxed to match aSc's (or the aSc XML would need to be
-  re-generated under stricter aSc rules).
+  need to be relaxed to match Classic's (or the Classic XML would need to be
+  re-generated under stricter Classic rules).
 * For a *roz.exe vs Chronexa* head-to-head — where both solvers see the
-  same input, run for the same wall budget, and we read aSc's self-reported
+  same input, run for the same wall budget, and we read Classic's self-reported
   numbers — see the optional manual procedure at the bottom of this file
   (requires Wine on macOS or a Windows VM). The numbers above are the
   honest comparable measurement that doesn't require re-running roz.exe.
 
 ## Optional: re-running roz.exe yourself
 
-If you ever want aSc's *self-reported* numbers (its own placed/conflicts/
-soft-penalty under aSc's rule weights, as opposed to Chronexa's evaluation
-of aSc's placement), you'd need to install Wine or use a Windows VM and
+If you ever want Classic's *self-reported* numbers (its own placed/conflicts/
+soft-penalty under Classic's rule weights, as opposed to Chronexa's evaluation
+of Classic's placement), you'd need to install Wine or use a Windows VM and
 drive roz.exe through its GUI — there's no documented headless mode. The
 Wine-via-Homebrew-cache trick is documented in MemPalace
 `wing_user/wine-works-on-m3-via-cache-extraction` if you want to reproduce
@@ -245,19 +245,19 @@ Code change set on `main` (branch `p33-allrelations`):
   headlessly via jsdom + the existing browser XML parser. 5-seed × 2-mode
   table with optional synthetic relations for the soft-rel hookup check.
 * `tools/test_bias.mjs` — focused fixture for the bias-direction test.
-* `tools/evaluate_asc.mjs` — replays aSc's placement (from XML cards)
+* `tools/evaluate_asc.mjs` — replays Classic's placement (from XML cards)
   through Chronexa's hard-rule filter + soft-scorer; fills the legacy
   column of this doc without re-running roz.exe.
 * `docs/SOLVER_VS_LEGACY.md` — this file.
 
 ## Open follow-ups
 
-1. (Optional) collect aSc's self-reported numbers via the Wine procedure
-   above, to compare aSc's own soft-score against Chronexa's. The
+1. (Optional) collect Classic's self-reported numbers via the Wine procedure
+   above, to compare Classic's own soft-score against Chronexa's. The
    evaluate_asc.mjs path is sufficient for the placement / conflict
    comparison.
 2. Find or build a sample XML that carries real `<cardweek>` relations so
    the soft-rel hookup is exercised on a non-synthetic input.
-3. If aSc's wall-time on this XML is much shorter than Chronexa's at
+3. If Classic's wall-time on this XML is much shorter than Chronexa's at
    15 s, re-run Chronexa with `--time-sec 5` and `--time-sec 30` to bracket
    the comparison fairly.

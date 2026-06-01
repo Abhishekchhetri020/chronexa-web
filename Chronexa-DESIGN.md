@@ -5,14 +5,14 @@ APP_VER `p72-design-v2`.
 
 ## Why
 
-The pre-v2 UI inherited too many aSc 2012 tropes — mid-blue toolbars, dense
+The pre-v2 UI inherited too many Classic 2012 tropes — mid-blue toolbars, dense
 ribbons, Material-era cards. This version restarts from a single intent:
 "editorial software" rather than "school admin tool".
 
 ## Anti-references (deliberate non-influences)
 
-- aSc TimeTables 2012 — slate-blue ribbons, dense info grids
-- EduPage web UI — heavy chrome, multi-row toolbars
+- Classic TimeTables 2012 — slate-blue ribbons, dense info grids
+- Classic web UI — heavy chrome, multi-row toolbars
 - Office Ribbon — tabs of icon-buttons with text labels
 - Bootstrap / Material defaults — slate-on-blue clichés
 
@@ -110,7 +110,7 @@ Three skins now coexist:
 | Skin | Toggle | Use case |
 |---|---|---|
 | **Studio (default)** | implicit | Daily admin work in 2026 |
-| **Classic** | `data-skin="classic"` on `<html>` | Users coming from aSc who want familiarity |
+| **Classic** | `data-skin="classic"` on `<html>` | Users coming from Classic who want familiarity |
 | **Dark** | `data-theme="dark"` on `<html>` | Late-evening editing sessions |
 
 (Dark works on top of Studio — palette is overridden in the `:root` of

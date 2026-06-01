@@ -1,6 +1,6 @@
 /* Per-element cell-style dialog — Phase 2 of the print-system rewrite.
  *
- * Replaces the flat "anchor + colors" dialog with aSc's exact UX:
+ * Replaces the flat "anchor + colors" dialog with Classic's exact UX:
  *   - 7 element panels (Subject / Teacher / Class / Group / Classroom
  *     / Count / Bell times)
  *   - Each panel: enabled / 3×3 anchor grid / size slider / font /

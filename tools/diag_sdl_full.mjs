@@ -1,4 +1,4 @@
-// Diagnostic: parse an aSc XML and run solver, check ALL classes for distribution issues.
+// Diagnostic: parse a Classic XML and run solver, check ALL classes for distribution issues.
 import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -11,7 +11,7 @@ const solverUrl = pathToFileURL(path.join(repoRoot, "js/solver/csp_solver.js")).
 const { solve } = await import(solverUrl);
 
 // Use the latest XML
-const xmlPath = process.argv[2] || "/Users/abhishekchhetri/Downloads/asctt2012 (4).xml";
+const xmlPath = process.argv[2] || "/Users/abhishekchhetri/Downloads/sample-school (4).xml";
 const xmlText = fs.readFileSync(xmlPath, "utf-8");
 
 // Generic attribute parser
@@ -69,7 +69,7 @@ const periods = periodsRaw.map(p => ({
 })).sort((a, b) => a.index - b.index);
 
 const school = {
-  schoolName: "aSc Timetables 2012 XML (diagnostic)",
+  schoolName: "Classic Timetables XML (diagnostic)",
   daysPerWeek: 6, bell: { periods },
   teachers, classes, classrooms, subjects, lessons, groups, cards: [],
 };

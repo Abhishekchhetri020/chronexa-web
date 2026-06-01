@@ -1,6 +1,6 @@
 /* Right-click context menu on placed cards (chrx-vkarta).
  *
- * Mirrors ASC Timetables' card right-click: Remove, Lock, Unlock,
+ * Mirrors Classic Timetables' card right-click: Remove, Lock, Unlock,
  * Edit lesson, Find, Time off, Quick changes.
  *
  * Lock/Unlock sets or clears `card.locked` on the individual card

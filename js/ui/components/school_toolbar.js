@@ -1,4 +1,4 @@
-/* Entity icon toolbar — aSc-style horizontal strip.
+/* Entity icon toolbar — Classic-style horizontal strip.
  * window.SchoolToolbar.render(host) mounts above the timetable grid.
  *
  * Each button fires `app:open-entity` (for entity CRUD) or a dedicated

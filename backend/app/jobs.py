@@ -28,7 +28,7 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional
 #
 #   { iter, softScore, hardConflicts, durationMs, backtracks?, p1?, p2? }
 #
-# `p1` / `p2` are EduPage's overall vs current-branch progress bars (0..1).
+# `p1` / `p2` are Classic's overall vs current-branch progress bars (0..1).
 
 
 def _now_ms() -> int:

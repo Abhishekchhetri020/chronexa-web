@@ -51,7 +51,7 @@ Source: `legacy-research` §a + `legacy-research` "Files menu". Chronexa side: `
 ### 1.1 Import — Classic Timetable XML
 - **Classic location:** Files → Import → "Classic Timetable XML"
 - **What it does:** Parses `.xml` ttx file, populates the doc.
-- **Wire shape:** `importASCTTXML` RPC (server-side parser in `/timetable/app/server/import.js`)
+- **Wire shape:** `importClassicXML` RPC (server-side parser in `/timetable/app/server/import.js`)
 - **Chronexa status:** ✅ at parity (browser-side parser at `js/xml/parse_timetable_xml.js`).
 - **Code anchor:** `js/ui/io/import_timetable_xml.js:1`
 - **Source:** `legacy-research` Files §1

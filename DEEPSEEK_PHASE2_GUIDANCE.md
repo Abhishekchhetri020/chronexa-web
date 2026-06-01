@@ -102,9 +102,9 @@ Use slot-success model to construct a full initial assignment greedily, then run
 
 ---
 
-## Implementation Order to Beat aSc Timetable
+## Implementation Order to Beat Classic Timetable
 
-aSc's edge is finely tuned heuristics and years of industrial hardening. Your shotgun advantage is *learning across solves*. Capitalize in this order:
+Classic's edge is finely tuned heuristics and years of industrial hardening. Your shotgun advantage is *learning across solves*. Capitalize in this order:
 
 1. **MAC + CBJ** — Makes core search world-class
 2. **Symmetry Breaking** — Immediate 10x on some instances
@@ -117,6 +117,6 @@ aSc's edge is finely tuned heuristics and years of industrial hardening. Your sh
 
 ## Summary
 
-Build MAC+CBJ first. It's the foundation everything else rests on. Then symmetry breaking for the easy wins. Luby restart once you have randomness in value ordering. LNS is your quality differentiator against aSc on soft constraints.
+Build MAC+CBJ first. It's the foundation everything else rests on. Then symmetry breaking for the easy wins. Luby restart once you have randomness in value ordering. LNS is your quality differentiator against Classic on soft constraints.
 
 The ML layer you already have is your secret weapon — use it to bias value selection during restarts and to predict LNS neighborhoods.

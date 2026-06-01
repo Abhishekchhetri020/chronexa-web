@@ -1,6 +1,6 @@
 /* Modify-Structure / Print report properties dialog.
  *
- * Exact reproduction of aSc's pivot-configuration modal (screenshots 19-28).
+ * Exact reproduction of Classic's pivot-configuration modal (screenshots 19-28).
  * Edits the active PrintReport's pages/rows/cols/cells/fit/hide-empty config.
  *
  * Usage:

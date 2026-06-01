@@ -1,6 +1,6 @@
 /* Extra columns / rows dialog — Phase 4 of the print-system rewrite.
  *
- * Matches aSc screenshots 45-49. Lets the user add derived side panels
+ * Matches Classic screenshots 45-49. Lets the user add derived side panels
  * alongside the main timetable grid. Each entry has:
  *   - Type dropdown (empty / sum of lessons / teachers / classrooms /
  *                     subjects / sum of covered lessons)
@@ -242,7 +242,7 @@
   }
 
   // ────────────────────────────────────────────────────────────────────
-  // Shared save-changes prompt (matches aSc screenshot 49)
+  // Shared save-changes prompt (matches Classic screenshot 49)
   // ────────────────────────────────────────────────────────────────────
 
   function showSaveChangesPrompt(onCancel, onDiscard, onSave) {

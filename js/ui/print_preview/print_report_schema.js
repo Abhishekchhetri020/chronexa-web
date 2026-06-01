@@ -55,7 +55,7 @@
     "day":       { subject:true,  teacher:true,  class:true,  group:false, classroom:false, count:false, bellTimes:false },
   };
 
-  // Default size % per element (matches aSc values from screenshots 5, 30, 32, 34).
+  // Default size % per element (matches Classic values from screenshots 5, 30, 32, 34).
   const DEFAULT_SIZE = {
     subject: 19, teacher: 14, class: 24, group: 10,
     classroom: 10, count: 20, bellTimes: 6,

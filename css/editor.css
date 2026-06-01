@@ -16,7 +16,7 @@
 .chrx-rowlabel{width:var(--chrx-rowlabel-w,52px);min-width:var(--chrx-rowlabel-w,52px);padding:0 3px;display:flex;align-items:center;font-size:9.5px;line-height:1.15;font-weight:var(--chrx-fw-semibold);background:var(--chrx-bg-tile);border-right:1px solid var(--chrx-line);position:sticky;left:0;z-index:calc(var(--chrx-z-grid) + 1);overflow:hidden;white-space:nowrap}
 .chrx-grid .chrx-row{min-height:28px}
 /* Day group separator — slightly stronger vertical line at day boundary so the
-   eye groups periods. EduPage uses the same visual cue. */
+   eye groups periods. Classic uses the same visual cue. */
 .chrx-h-day{border-right-width:2px}
 .chrx-rowlabel-main{display:inline-block;transform-origin:left center;white-space:nowrap}
 .chrx-rowlabel-sub{display:none}
@@ -79,6 +79,23 @@ body.chrx-card-in-hand .chrx-slot.empty.out-of-bell{outline:1px solid var(--chrx
 .chrx-editor-inspector{min-height:96px;border:1px solid var(--chrx-line);border-radius:var(--chrx-radius-md);background:rgba(255,255,255,.72);overflow:auto}
 .chrx-editor-inspector:empty::before{content:"Select a class or hover a card";display:block;padding:18px 14px;color:var(--chrx-fg-tertiary);font-size:var(--chrx-font-small)}
 .chrx-pending-region{min-width:0}
+/* ─── Classic-style hover info tip (appears at bottom of inspector) ─── */
+.chrx-hover-tip{background:#fff;border:1px solid var(--chrx-line);border-radius:var(--chrx-radius-md);padding:10px 12px;font-family:var(--chrx-font-sans);animation:chrx-tip-in 120ms ease-out;position:relative}
+@keyframes chrx-tip-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.chrx-hover-tip__subject{display:flex;align-items:center;gap:7px;margin-bottom:7px}
+.chrx-hover-tip__dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;background:hsl(var(--chrx-tip-hue,210) 65% 50%)}
+.chrx-hover-tip__subj-abbr{font-size:13px;font-weight:800;color:#0f172a;letter-spacing:-.01em}
+.chrx-hover-tip__subj-full{font-size:11px;color:#64748b;font-weight:500;margin-left:2px}
+.chrx-hover-tip__rows{display:flex;flex-direction:column;gap:4px}
+.chrx-hover-tip__row{display:grid;grid-template-columns:54px 1fr;gap:6px;align-items:baseline}
+.chrx-hover-tip__label{font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8;font-weight:700}
+.chrx-hover-tip__value{font-size:12px;font-weight:600;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* hand chip: compact colored strip at top of inspector while carrying */
+.chrx-hand-chip{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--chrx-line-soft);font-family:var(--chrx-font-sans);background:rgba(15,23,42,.04)}
+.chrx-hand-chip__dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;background:hsl(var(--chrx-hand-hue,210) 65% 50%)}
+.chrx-hand-chip__label{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8;font-weight:700;margin-right:2px}
+.chrx-hand-chip__name{font-size:12px;font-weight:700;color:#0f172a}
+.chrx-hand-chip__meta{font-size:11px;color:#64748b;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .chrx-carry-panel{width:auto;background:rgba(15,23,42,.94);color:#fff;border:1px solid rgba(255,255,255,.16);border-radius:8px;box-shadow:0 14px 40px rgba(15,23,42,.18);padding:12px;font-family:var(--chrx-font-sans);pointer-events:none}
 .chrx-carry-panel__eyebrow{font-size:10px;text-transform:uppercase;letter-spacing:.08em;opacity:.7;font-weight:700}
 .chrx-carry-panel__title{font-size:20px;line-height:1.1;font-weight:800;margin:4px 0 10px}
@@ -118,7 +135,7 @@ body.chrx-card-in-hand .chrx-class-panel{display:none}
 .chrx-card-panel[data-state="amber"] .chrx-card-panel__progress span{background:#f59e0b}
 .chrx-card-panel[data-state="red"]{border-color:rgba(239,68,68,.58)}
 .chrx-card-panel[data-state="red"] .chrx-card-panel__progress span{background:#ef4444}
-body.chrx-card-in-hand .chrx-card-panel{display:none}
+/* card-panel remains visible while carrying — it shows hover-target info */
 .chrx-collision-menu{position:fixed;z-index:10003;width:280px;background:rgba(255,255,255,.98);color:#111827;border:1px solid rgba(239,68,68,.45);border-radius:8px;box-shadow:0 18px 44px rgba(15,23,42,.24);font-family:var(--chrx-font-sans);padding:12px}
 .chrx-collision-menu__title{font-size:12px;font-weight:800;color:#b91c1c;text-transform:uppercase;letter-spacing:.05em;margin-bottom:7px}
 .chrx-collision-menu__reasons{margin:0 0 10px;padding:0 0 0 16px;font-size:12px;line-height:1.35;color:#374151;max-height:112px;overflow:auto}
@@ -482,3 +499,89 @@ body.chrx-body--resizing * {
   from { transform: scale(0.95); opacity: 0; }
   to { transform: scale(1); opacity: 1; }
 }
+
+/* ────── Custom Collisions Found Popup ────── */
+.chrx-collision-popup {
+  width: 440px;
+  max-width: 90vw;
+  background: #ffffff;
+  border: 1.5px solid #0056b3; /* Thin blue/cyan border */
+  border-radius: 6px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.15);
+  font-family: Arial, Helvetica, sans-serif;
+  padding: 16px 0 8px 0;
+  display: flex;
+  flex-direction: column;
+  animation: chrx-scale-up 180ms ease-out;
+}
+
+.chrx-collision-popup__title {
+  font-size: 14.5px;
+  font-weight: bold;
+  color: #1e293b;
+  padding: 0 20px 10px 20px;
+  user-select: none;
+}
+
+.chrx-collision-popup__list {
+  padding: 0 20px 14px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chrx-collision-popup__item {
+  font-size: 13px;
+  color: #334155;
+  padding-left: 14px;
+  position: relative;
+  line-height: 1.4;
+}
+
+.chrx-collision-popup__item::before {
+  content: "•";
+  position: absolute;
+  left: 0;
+  color: #64748b;
+}
+
+.chrx-collision-popup__divider {
+  height: 1px;
+  background: #e2e8f0;
+  margin: 0;
+}
+
+.chrx-collision-popup__options {
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+}
+
+.chrx-collision-popup__option {
+  font-size: 13px;
+  color: #1e293b;
+  padding: 8px 14px;
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  user-select: none;
+  font-weight: 500;
+  transition: background 120ms ease;
+}
+
+.chrx-collision-popup__option:hover {
+  background: #f1f5f9;
+}
+
+.chrx-collision-popup__option--replace {
+  color: #0f172a;
+}
+
+.chrx-collision-popup__checkmark {
+  color: #10b981; /* Green checkmark */
+  font-weight: bold;
+  font-size: 14px;
+}
+

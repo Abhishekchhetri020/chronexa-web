@@ -4,7 +4,7 @@
 // conflicting placement into unplaced rather than emitting it in
 // `assignment[]`.
 //
-// Repros the user-reported scenario from asctt2012 (3)-export (1).xml
+// Repros the user-reported scenario from sample-school (3)-export (1).xml
 // where VI B Mon-P7, X A Thu-P2, etc. showed double/triple booking in the
 // rendered timetable.
 //

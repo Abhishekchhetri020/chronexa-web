@@ -1264,7 +1264,7 @@
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   Entity icon toolbar — aSc-style horizontal strip
+   Entity icon toolbar — Classic-style horizontal strip
    ───────────────────────────────────────────────────────────────────────────── */
 .chrx-entity-toolbar {
   display: flex;

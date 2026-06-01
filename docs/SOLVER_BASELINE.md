@@ -38,7 +38,7 @@ Placement rate: **96.3 %** (916 / 951). Five different seeds again converge to t
 
 The warm-start path lifts placement quality from 92 % to 96 % and reduces the soft-cost by two orders of magnitude on the same XML in the same time budget. This is the headline number for the "solver better than the legacy app" claim — measurement against the legacy binary itself requires a separate harness that can drive a Windows .exe; that's tracked but out of scope here.
 
-## What's responsible to ship before claiming "better than ASC"
+## What's responsible to ship before claiming "better than Classic"
 
 1. Hook the 4 soft card-relation typs (n_4, n_11, n_14, n_17) into the soft-scorer so they bias placement rather than only reporting violations post-hoc.
 2. Cross-run the same XML through the legacy app's solver and tabulate placed / conflicts / soft-score per run.

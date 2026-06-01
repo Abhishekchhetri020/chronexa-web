@@ -1,7 +1,7 @@
 # DeepSeek V4 Collaboration Brief — Chronexa CSP Solver
 
 ## Mission
-Collaborate to make Chronexa's timetable CSP solver **battle-hardened, production-grade, and the best school timetabling solver in the world** — better than aSc Timetable and Timefold for the school-scheduling domain.
+Collaborate to make Chronexa's timetable CSP solver **battle-hardened, production-grade, and the best school timetabling solver in the world** — better than Classic Timetable and Timefold for the school-scheduling domain.
 
 ## Current Architecture (Summary)
 - **SmartCspSolver v1** (Kotlin port) — `js/solver/csp_solver.js` (4078 lines)

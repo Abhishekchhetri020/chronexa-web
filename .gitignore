@@ -21,3 +21,4 @@ build/
 # Mission director / Codex handoff scratch — local-only, may contain creds
 .mission/
 .gstack/
+.vercel

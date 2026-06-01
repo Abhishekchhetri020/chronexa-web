@@ -6,7 +6,7 @@
  * sub-modal on click. State lives on report.filters; the pivot engine
  * already reads it via applyFilters.
  *
- * Matches aSc screenshots 9-15.
+ * Matches Classic screenshots 9-15.
  *
  * Public API:
  *   APP.PrintFilterDialog.open(report, onSave)
@@ -48,7 +48,7 @@
   // ────────────────────────────────────────────────────────────────────
   // Two-pane transfer list — single-click toggle with green ✓
   // Click a row on left → ✓ appears, item shows on right.
-  // Click again → removed. Matches ASC Timetables.
+  // Click again → removed. Matches Classic Timetables.
   // ────────────────────────────────────────────────────────────────────
 
   function openTransferList(title, allEntities, selectedIds, onSave) {

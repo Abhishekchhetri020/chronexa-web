@@ -4,7 +4,7 @@
  * days/week, periods/day, multi-term toggle, default time-zone, and the
  * 23 `globals.settings` fields documented in legacy-research.
  *
- * Now mirrors the aSc "Settings" dialog layout:
+ * Now mirrors the Classic "Settings" dialog layout:
  *   - "Bell times" link → EntityBells
  *   - "Rename days" link → EntityDays
  *   - "Define terms" / "Define weeks" shown when multi-term is checked

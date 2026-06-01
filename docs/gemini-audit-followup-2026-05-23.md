@@ -11,7 +11,7 @@ findings audited; four patched, two deferred with reasons.
 | 2 | `teacherBuildingChangesPenalty` O(T·D·P·L) | ✓ | ✓ | Rewritten to single-pass bucket fill + O(T·D·P) sweep. Warm-start solve on sample-school.xml: **445 ms → 74 ms (6× speedup)**, placement unchanged (946/946). |
 | 3 | WASM `canPlace` result ignored | ✓ | ✓ | Dead dispatch removed (csp_solver.js:1029-1036 block deleted). Comment was explicit: "JS remains authoritative; this side-by-side call provides the runway." |
 | 4 | `wire()` leaks mousedown listeners | ✓ | ✓ | Gated by `rootEl._chrxWired`; day-tab clicks moved to delegate on rootEl so they survive innerHTML replace. Test: 1 listener across 5 renders (was N). |
-| 5 | Silent card deletion on 2nd pickup | ✓ | ✓ | On 2nd pickup while `cardInHand` is set, the held card is restored to its origin slot (aSc CLASSIC behavior). Fires `editor:restore` event with `reason: "second-pickup"`. |
+| 5 | Silent card deletion on 2nd pickup | ✓ | ✓ | On 2nd pickup while `cardInHand` is set, the held card is restored to its origin slot (Classic CLASSIC behavior). Fires `editor:restore` event with `reason: "second-pickup"`. |
 | 6 | XML parser drops timeoff / relations / class constraints | ✓ | **defer** | Multi-component effort: each missing data type (timeoff, cardrelations, class.constraints, classroomsupervisions, breaks, buildings, students) has its own CLASSIC schema. A partial patch risks introducing subtle parse bugs that won't surface until real XML hits them. Scope and ship per data-type. |
 | 7 | Global `APP` mutation sprawl | n/a | n/a | Not a bug — architectural opinion. Gemini themselves flagged "acceptable for prototypes." |
 
@@ -54,11 +54,11 @@ Each missing data type in the parser is its own deliverable:
 
 - **`teacher.timeOff` parsing** — CLASSIC stores per-teacher availability
   as 2D bitmask or "d_p"-keyed map. Single-table parse, but the format
-  varies across aSc versions. Highest-value to land first.
+  varies across Classic versions. Highest-value to land first.
 - **`cardrelations` → `school.relations`** — the solver already reads this
   (csp_solver.js:773, 3613). The XML element `<cardrelations><cardrelation
   typ_id="..." ... />` carries the constraint type via `typ_id`; a typ
-  catalog (`n_0` … `n_17` from aSc docs) is needed to map them.
+  catalog (`n_0` … `n_17` from Classic docs) is needed to map them.
 - **`class.constraints`** — 14-field constraints subobject. Bundle line
   2018 references it but parser doesn't populate.
 - **`classroomsupervisions`** — already in XML; solver has scoring hooks

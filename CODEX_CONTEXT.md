@@ -143,8 +143,8 @@ Use your `browser` plugin to open the live URL with the cache-bust query string,
 ## 6. Hard constraints (do not violate)
 
 1. **No banned tokens.** This is a verbatim mandate from Abhishek:
-   *"Remove the word asc and edupage from everywhere even from the codes so that we do not get copyright stikes and this has to be taken care in future as well."*
-   Identifiers, filenames, comments, docs: zero occurrences of `aSc`, `asc` (as an identifier — `ascending` in a code comment is fine), `EduPage`, `edupage`, `ExportAsc`, `ImportAsc`, `AscXml`, `AscRoz`. The `--verify` step in `build_bundle.sh` catches the common shapes. See `Chronexa-NAMING-POLICY.md` for the full naming rules.
+   *"Remove the banned third-party terms from everywhere even from the codes so that we do not get copyright strikes and this has to be taken care in future as well."*
+   Identifiers, filenames, comments, docs: zero occurrences of legacy product or cloud provider names. The `--verify` step in `build_bundle.sh` catches legacy shapes. See `Chronexa-NAMING-POLICY.md` for the full naming rules.
 2. **Don't bypass `--verify`.** If a check fails, fix the cause; don't `--no-verify` past it.
 3. **No bundle hand-edits.** `js/bundle.js` is regenerated; only edit source files in `js/`.
 4. **Don't widen scope.** If you notice another bug while doing the assigned mission, note it in the handoff under `## sidefinding — not fixing` and move on. The director picks the next mission.

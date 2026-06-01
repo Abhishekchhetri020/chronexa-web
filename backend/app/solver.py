@@ -9,11 +9,11 @@ Model:
     c) No two occurrences share (room, day, period).
     d) periodsPerWeek is satisfied by construction (N occurrences per lesson).
     e) fixedDay / fixedPeriod pin the FIRST occurrence of a lesson (existing behaviour
-       of aSc's "fix card" — if a lesson has multiple weekly periods, the user must
+       of Classic's "fix card" — if a lesson has multiple weekly periods, the user must
        pre-place the rest via `cards`).
     f) Teacher timeOff `"unavailable"` is forbidden.
     g) Occurrences of the same lesson must land on DIFFERENT days (prevents
-       double-booking the same subject for a class on one day, which is the aSc
+       double-booking the same subject for a class on one day, which is the Classic
        default expectation).
 - Soft constraints (objective, minimized):
     * Teacher gaps within a day (count of empty middle periods between teaching).
@@ -82,7 +82,7 @@ class _ProgressCallback(cp_model.CpSolverSolutionCallback):
 
 # --- domain ---------------------------------------------------------------
 
-# Mon..Sat = 6 days; aSc convention (DATA_SHAPES.md).
+# Mon..Sat = 6 days; Classic convention (DATA_SHAPES.md).
 NUM_DAYS = 6
 
 

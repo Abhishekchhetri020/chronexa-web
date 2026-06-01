@@ -3095,7 +3095,7 @@ function backtrack(model, state, unassigned, unassignedCount, ctx) {
         const pSlot = model.candidateSlot[candidates[j - 1]];
         const pRoom = model.candidateRoom[candidates[j - 1]];
         const pCanon = pRoom >= 0 ? model.roomEquivalenceClass[pRoom] : -1;
-        // Sort by: slot ASC, then canonical room ASC, then room ASC
+        // Sort by: slot ascending, then canonical room ascending, then room ascending
         if (cSlot < pSlot ||
             (cSlot === pSlot && cCanon < pCanon) ||
             (cSlot === pSlot && cCanon === pCanon && cRoom < pRoom)) {
@@ -3492,7 +3492,7 @@ function tryPlaceViaRepair(model, state, lessonIdx, chainDepth, evictedThisChain
     // commit a conflicting overlay. Before this guard the post-solve
     // scrubber dropped ~30 placements per real-school cold solve — the
     // source of the "1198/1240 stuck around 97%" symptom on
-    // asctt2012 (4).xml. If a slot is no longer free, leave the lesson
+    // sample-school (4).xml. If a slot is no longer free, leave the lesson
     // unplaced; backtrack will retry via its normal candidate list.
     for (let k = 0; k < evicted.length; k++) {
       const e = evicted[k];
@@ -4664,7 +4664,7 @@ export function solve(school, options = {}) {
     // proves it). LNS perturbs with larger, structured destruction
     // (random / by-class / by-day / by-subject) and re-repairs, keeping
     // strictly-improving solutions. This is the path to ACTUALLY beating
-    // aSc on this XML — anything else just confirms aSc's placement.
+    // Classic on this XML — anything else just confirms Classic's placement.
     // ──────────────────────────────────────────────────────────────────────
     if (options.useLNS === true && performance.now() < totalDeadlineMs) {
       const lnsCtx = {

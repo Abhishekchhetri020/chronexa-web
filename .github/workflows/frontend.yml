@@ -1,3 +1,4 @@
+# Static CI checks for Chronexa Web frontend resources
 name: frontend-static-check
 
 on:
