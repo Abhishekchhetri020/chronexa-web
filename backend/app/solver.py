@@ -453,16 +453,20 @@ def solve(
                         oa, ob = matched[a], matched[b]
                         if oa["lesson"].get("subjectId") == ob["lesson"].get("subjectId"):
                             continue
-                        # Same day => |period_offset diff| != 1
+                        # Same day => |period diff| != 1
                         same_day = model.NewBoolVar(
                             f"rel_n0_sd_{oa['lesson_idx']}o{oa['occ_idx']}_{ob['lesson_idx']}o{ob['occ_idx']}"
                         )
                         model.Add(oa["day_var"] == ob["day_var"]).OnlyEnforceIf(same_day)
                         model.Add(oa["day_var"] != ob["day_var"]).OnlyEnforceIf(same_day.Not())
-                        diff = model.NewIntVar(-P, P,
+                        # Use the real 1-based period index, not the break-collapsed
+                        # offset, so two teaching periods that straddle a break are
+                        # not treated as adjacent.
+                        max_pidx = teaching_periods[-1]
+                        diff = model.NewIntVar(-max_pidx, max_pidx,
                             f"rel_n0_df_{oa['lesson_idx']}o{oa['occ_idx']}_{ob['lesson_idx']}o{ob['occ_idx']}"
                         )
-                        model.Add(diff == oa["period_offset_var"] - ob["period_offset_var"])
+                        model.Add(diff == oa["period_var"] - ob["period_var"])
                         # Adjacent when diff is in {-1, 1}
                         adjacent = model.NewBoolVar(
                             f"rel_n0_adj_{oa['lesson_idx']}o{oa['occ_idx']}_{ob['lesson_idx']}o{ob['occ_idx']}"

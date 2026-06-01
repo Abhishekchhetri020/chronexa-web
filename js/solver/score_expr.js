@@ -137,7 +137,7 @@
   function evalRule(rule, ctx) {
     if (!rule || !rule.expr) return 0;
     const v = evalNode(rule.expr, ctx);
-    if (typeof v === "boolean") return v ? (rule.weight || 1) : 0;
+    if (typeof v === "boolean") return v ? (rule.weight != null ? rule.weight : 1) : 0;
     if (typeof v === "number") return v * (rule.weight != null ? rule.weight : 1);
     return 0;
   }

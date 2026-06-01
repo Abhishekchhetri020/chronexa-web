@@ -73,6 +73,30 @@ check("H9: the pre-flight-skipped lesson BAD is named in violations",
       any(v.get("lessonId") == "BAD" for v in r.get("violations", [])),
       repr(r.get("violations")))
 
+# --- H5: n_0 "cannot follow" must use the real period index, not the ---------
+# break-collapsed offset. Bell 1,2,[break 3],4; two n_0-linked lessons pinned
+# to (day0, p2) and (day0, p4) are NOT physically adjacent (break sits between),
+# so the model must be FEASIBLE. Pre-fix the offset diff (1) flagged them
+# adjacent and the pinned placement went INFEASIBLE.
+h5 = dict(
+    schoolName="t",
+    bell={"periods": [{"index": 1, "isTeaching": True}, {"index": 2, "isTeaching": True},
+                      {"index": 3, "isTeaching": False}, {"index": 4, "isTeaching": True}]},
+    teachers=[{"id": "ta"}, {"id": "tb"}],
+    classes=[{"id": "c1"}],
+    classrooms=[{"id": "r1"}],
+    subjects=[{"id": "sa"}, {"id": "sb"}],
+    lessons=[
+        {"id": "A", "subjectId": "sa", "periodsPerWeek": 1, "classIds": ["c1"], "teacherIds": ["ta"], "fixedDay": 0, "fixedPeriod": 2},
+        {"id": "B", "subjectId": "sb", "periodsPerWeek": 1, "classIds": ["c1"], "teacherIds": ["tb"], "fixedDay": 0, "fixedPeriod": 4},
+    ],
+    relations=[{"typ": "n_0", "subjectids": ["sa", "sb"]}],
+)
+r = solve(h5, {"timeLimitSec": 5})
+check("H5: n_0 across a break is not 'adjacent' (periods 2 & 4, break at 3)",
+      r["status"] in ("OPTIMAL", "FEASIBLE") and r["stats"]["placed"] == 2,
+      f"got {r['status']} placed={r['stats']['placed']}")
+
 # --- C3 guard: multi-period lessons stay feasible (audit misdiagnosis) -------
 r = solve(base(bell=bell(6), lessons=[
     {"id": "L1", "subjectId": "s1", "periodsPerWeek": 2, "classIds": ["c1"], "teacherIds": ["t1"]},

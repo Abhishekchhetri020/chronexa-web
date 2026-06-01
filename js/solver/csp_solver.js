@@ -1752,10 +1752,15 @@ function _canPlaceJS(model, state, lessonIdx, slot, roomIdx) {
         case FAIL.TEACHER_UNAVAILABLE: return FAIL.LAB_DOUBLE_TEACHER_UNAVAILABLE;
         case FAIL.TEACHER_MAX_PER_DAY: return FAIL.LAB_DOUBLE_TEACHER_MAX_PER_DAY;
         case FAIL.CLASS_CONFLICT: return FAIL.LAB_DOUBLE_CLASS_CONFLICT;
+        case FAIL.CLASS_UNAVAILABLE: return FAIL.LAB_DOUBLE_CLASS_UNAVAILABLE;
         case FAIL.CLASS_MAX_PER_DAY: return FAIL.LAB_DOUBLE_CLASS_MAX_PER_DAY;
         case FAIL.SUBJECT_DAILY_LIMIT: return FAIL.LAB_DOUBLE_SUBJECT_DAILY_LIMIT;
         case FAIL.ROOM_CONFLICT: return FAIL.LAB_DOUBLE_ROOM_CONFLICT;
-        default: return FAIL.LAB_DOUBLE_TEACHER_CONFLICT;
+        case FAIL.ROOM_UNAVAILABLE: return FAIL.LAB_DOUBLE_ROOM_UNAVAILABLE;
+        // Reasons with no lab-double-specific code (relations, bell-invalid,
+        // required-room-type, fixed-slot): surface the REAL reason rather than
+        // mislabeling every one of them as a teacher conflict.
+        default: return secondReason;
       }
     }
   }

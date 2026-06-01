@@ -174,5 +174,18 @@ test("H13: diagnostics aggregate by source lesson id (no expanded '#' ids)", () 
     `expected one aggregated row for X, got ${xRows.length} (all: ${JSON.stringify(diag.map(d => d.lessonId))})`);
 });
 
+// --- M7 ---------------------------------------------------------------------
+test("M7: a boolean score-rule with weight 0 contributes 0 (not a fallback 1)", () => {
+  globalThis.window = globalThis; // score_expr.js is an IIFE called with `window`
+  require(path.join(__dirname, "..", "score_expr.js"));
+  const { evalRule } = globalThis.ScoreExpr;
+  // expr evaluates to boolean true; weight 0 means "disabled" => must score 0.
+  assert.strictEqual(evalRule({ name: "r", weight: 0, expr: { node: "const", value: true } }, {}), 0,
+    "weight-0 boolean rule must score 0");
+  // sanity: a real weight still applies through the same branch.
+  assert.strictEqual(evalRule({ name: "r2", weight: 7, expr: { node: "const", value: true } }, {}), 7,
+    "weight-7 boolean rule must score 7");
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
