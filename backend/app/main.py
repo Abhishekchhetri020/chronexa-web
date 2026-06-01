@@ -169,6 +169,7 @@ class SolveStats(BaseModel):
 class Violation(BaseModel):
     ruleId: str
     description: str
+    lessonId: Optional[str] = None
 
 
 class SolveResponse(BaseModel):

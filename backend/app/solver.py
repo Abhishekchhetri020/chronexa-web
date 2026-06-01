@@ -162,6 +162,17 @@ def solve(
     period_to_offset = {p: i for i, p in enumerate(teaching_periods)}
     P = len(teaching_periods)
 
+    # Lab-doubles need two *physically consecutive* periods (no break between).
+    # A teaching-period offset o is a valid block-start iff offset o+1 maps to the
+    # very next period index. Empty when the bell has < 2 contiguous periods.
+    lab_start_offsets = [
+        o for o in range(P - 1) if teaching_periods[o + 1] == teaching_periods[o] + 1
+    ]
+    # Lessons dropped during pre-flight (e.g. no resolvable teacher). Surfaced as
+    # violations so the response explains the unplaced count instead of silently
+    # blaming the solver.
+    preflight_skipped: List[Dict[str, str]] = []
+
     # --- per-lesson occurrence variables ---
     for lesson_idx, lesson in enumerate(lessons):
         periods_per_week = max(1, int(lesson.get("periodsPerWeek") or 1))
@@ -170,6 +181,7 @@ def solve(
         fixed_day = lesson.get("fixedDay")
         fixed_period = lesson.get("fixedPeriod")
         required_room_type = lesson.get("requiredRoomType")
+        is_lab = bool(lesson.get("isLabDouble"))
 
         # Pre-compute allowed rooms (filter by roomType if specified).
         if required_room_type and rooms:
@@ -191,6 +203,10 @@ def solve(
         if not teacher_idxs_lesson:
             # Lesson with no resolvable teacher — skip but record.
             LOG.warning("lesson %s has no resolvable teachers; skipping", lesson.get("id"))
+            preflight_skipped.append({
+                "lessonId": lesson.get("id") or f"lesson_{lesson_idx}",
+                "reason": "no resolvable teachers",
+            })
             continue
 
         for occ_idx in range(periods_per_week):
@@ -216,6 +232,18 @@ def solve(
             # Slot id = day * P + period_offset  (contiguous integer 0..NUM_DAYS*P-1).
             slot_var = model.NewIntVar(0, NUM_DAYS * P - 1, f"L{lesson_idx}_O{occ_idx}_slot")
             model.Add(slot_var == day_var * P + period_offset_var)
+
+            # A lab-double occupies this period AND the next contiguous one, so it
+            # books two adjacent slots. Pinning the start to a valid block-start
+            # offset keeps the pair on the same day with no break between them; an
+            # empty offset set (bell too small) makes the lesson INFEASIBLE rather
+            # than silently placing a half lab.
+            slot_vars = [slot_var]
+            if is_lab:
+                model.AddAllowedAssignments([period_offset_var], [[o] for o in lab_start_offsets])
+                slot_var2 = model.NewIntVar(0, NUM_DAYS * P - 1, f"L{lesson_idx}_O{occ_idx}_slot2")
+                model.Add(slot_var2 == slot_var + 1)
+                slot_vars.append(slot_var2)
 
             # Fix first occurrence if pinned.
             if occ_idx == 0:
@@ -255,7 +283,8 @@ def solve(
                     if p not in period_to_offset:
                         continue
                     forbidden_slot = d * P + period_to_offset[p]
-                    model.Add(slot_var != forbidden_slot)
+                    for sv in slot_vars:
+                        model.Add(sv != forbidden_slot)
 
             occs.append({
                 "lesson": lesson,
@@ -265,6 +294,8 @@ def solve(
                 "period_var": period_var,
                 "period_offset_var": period_offset_var,
                 "slot_var": slot_var,
+                "slot_vars": slot_vars,
+                "is_lab": is_lab,
                 "room_var": room_var,
                 "teacher_idxs": teacher_idxs_lesson,
                 "class_idxs": class_idxs_lesson,
@@ -283,7 +314,8 @@ def solve(
     teacher_occ_slots: Dict[int, List[Any]] = {}
     for o in occs:
         for tidx in o["teacher_idxs"]:
-            teacher_occ_slots.setdefault(tidx, []).append(o["slot_var"])
+            for sv in o["slot_vars"]:
+                teacher_occ_slots.setdefault(tidx, []).append(sv)
     for tidx, slots in teacher_occ_slots.items():
         if len(slots) > 1:
             model.AddAllDifferent(slots)
@@ -292,7 +324,8 @@ def solve(
     class_occ_slots: Dict[int, List[Any]] = {}
     for o in occs:
         for cidx in o["class_idxs"]:
-            class_occ_slots.setdefault(cidx, []).append(o["slot_var"])
+            for sv in o["slot_vars"]:
+                class_occ_slots.setdefault(cidx, []).append(sv)
     for cidx, slots in class_occ_slots.items():
         if len(slots) > 1:
             model.AddAllDifferent(slots)
@@ -307,13 +340,14 @@ def solve(
             slots_for_room: List[Any] = []
             for o in occs:
                 rv = o["room_var"]
-                sv = o["slot_var"]
                 is_this_room = model.NewBoolVar(f"L{o['lesson_idx']}_O{o['occ_idx']}_isroom{room_idx}")
                 model.Add(rv == room_idx).OnlyEnforceIf(is_this_room)
                 model.Add(rv != room_idx).OnlyEnforceIf(is_this_room.Not())
-                # Project slot via Booleans into a tagged slot. We accumulate pairs and use !=.
-                # To keep model size manageable, do pairwise reified slot-difference.
-                slots_for_room.append((sv, is_this_room))
+                # Project each slot via Booleans into a tagged slot. We accumulate
+                # pairs and use !=. A lab-double contributes both of its slots, so
+                # nothing else can take the second period of the lab's room either.
+                for sv in o["slot_vars"]:
+                    slots_for_room.append((sv, is_this_room))
             # Pairwise no-conflict.
             n = len(slots_for_room)
             for i in range(n):
@@ -593,19 +627,28 @@ def solve(
                 classroom_id = rooms[room_val]["id"]
             teacher_id = teachers[o["teacher_idxs"][0]]["id"]
             class_ids = [classes[cidx]["id"] for cidx in o["class_idxs"]]
-            entry = {
-                "lessonId": o["lesson"]["id"],
-                "day": day,
-                "period": period,
-                "teacherId": teacher_id,
-                "classIds": class_ids,
-            }
-            if classroom_id is not None:
-                entry["classroomId"] = classroom_id
-            assignment.append(entry)
+            # A lab-double occupies this period and the next; emit a card for each
+            # half so the timetable shows both slots busy (no phantom free period).
+            periods_out = [period, period + 1] if o["is_lab"] else [period]
+            for pout in periods_out:
+                entry = {
+                    "lessonId": o["lesson"]["id"],
+                    "day": day,
+                    "period": pout,
+                    "teacherId": teacher_id,
+                    "classIds": class_ids,
+                }
+                if classroom_id is not None:
+                    entry["classroomId"] = classroom_id
+                assignment.append(entry)
 
     placed = len(assignment)
-    expected = sum(max(1, int(l.get("periodsPerWeek") or 1)) for l in lessons)
+    # A lab-double demands two periods per weekly occurrence — count it as such so
+    # placed == expected when fully scheduled.
+    expected = sum(
+        max(1, int(l.get("periodsPerWeek") or 1)) * (2 if l.get("isLabDouble") else 1)
+        for l in lessons
+    )
     unplaced = max(0, expected - placed)
 
     soft_score = 0
@@ -614,9 +657,23 @@ def solve(
     except Exception:
         soft_score = 0
 
+    # Explain the unplaced count (H3/H9): name pre-flight skips, and flag the
+    # case where the solver produced no assignment at all.
+    violations: List[Dict[str, Any]] = [
+        {"ruleId": "HARD_unplaced_lesson", "lessonId": sk["lessonId"],
+         "description": f"Lesson {sk['lessonId']} skipped before solving: {sk['reason']}"}
+        for sk in preflight_skipped
+    ]
+    if status_label not in ("OPTIMAL", "FEASIBLE"):
+        violations.append({
+            "ruleId": "solver_no_solution",
+            "description": f"solver returned {status_label}; no assignment produced",
+        })
+
     return {
         "status": status_label,
         "assignment": assignment,
+        "violations": violations,
         "stats": {
             "placed": placed,
             "unplaced": unplaced,
