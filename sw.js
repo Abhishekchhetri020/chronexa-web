@@ -45,8 +45,16 @@ self.addEventListener("install", (evt) => {
   evt.waitUntil(
     caches
       .open(CACHE_NAME)
-      .then((cache) => cache.addAll(APP_SHELL).catch(() => null)) // best-effort
-      .then(() => self.skipWaiting())
+      .then((cache) =>
+        cache.addAll(APP_SHELL).then(() => {
+          console.info("[SW] pre-cache OK — activating");
+          return self.skipWaiting();
+        })
+      )
+      .catch((err) => {
+        console.warn("[SW] pre-cache failed, activating anyway:", err);
+        return self.skipWaiting();
+      })
   );
 });
 

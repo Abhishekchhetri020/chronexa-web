@@ -36,9 +36,10 @@
   const POLL_MS = 1000;
   const DEFAULT_TIMEOUT_MS = 90_000;
 
-  // Capture this script's URL at load time so the Worker URL resolves
-  // correctly even when run() is called from a click handler later.
-  const SELF_URL = (document.currentScript && document.currentScript.src) || location.href;
+  // Worker path is hardcoded relative to the page root (not the script/bundle).
+  // This works because the app is always served from the repo root via GitHub
+  // Pages or a static server. If the deploy path changes, update the URL in
+  // runBrowserSingle() below.
 
   function makeSubscribable() {
     const listeners = new Set();

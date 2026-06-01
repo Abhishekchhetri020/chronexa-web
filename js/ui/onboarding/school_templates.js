@@ -37,6 +37,7 @@
     if (!global.CreateNew?.createBlank) return { error: "CreateNew not loaded" };
     global.CreateNew.createBlank({ schoolName: opts.schoolName || choice.label });
     const school = APP.school;
+    school.schemaVersion = school.schemaVersion || 1;
     if (choice.id === "blank") {
       return { ok: true, choice: "blank" };
     }

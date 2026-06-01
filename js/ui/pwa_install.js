@@ -86,12 +86,13 @@
     if (location.protocol === "file:") return;
 
     // Auto-reload when a new SW takes control (version update).
+    // Small delay lets the new cache settle before reload.
     let refreshing = false;
     navigator.serviceWorker.addEventListener("controllerchange", () => {
       if (refreshing) return;
       refreshing = true;
-      console.info("[chronexa] new SW active — reloading…");
-      window.location.reload();
+      console.info("[chronexa] new SW active — reloading in 300ms…");
+      setTimeout(() => window.location.reload(), 300);
     });
 
     navigator.serviceWorker

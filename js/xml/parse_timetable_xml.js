@@ -302,6 +302,7 @@ window.parseTimetableXml = (function () {
     }));
 
     return {
+      schemaVersion: 1,
       schoolName,
       daysPerWeek,
       bell: { periods },

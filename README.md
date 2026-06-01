@@ -2,7 +2,7 @@
 
 Browser-based school timetable viewer, editor, and builder. Same problem as native Chronexa (Mac) — exposed via the web so any teacher / student / principal can use it from any device.
 
-- **Live URL (frontend):** TBA on GitHub Pages
+- **Live URL (frontend):** https://abhishekchhetri020.github.io/chronexa-web/
 - **Backend URL (solver):** TBA on Hostinger VPS (post 20 May 2026)
 
 ## Architecture
@@ -33,12 +33,23 @@ Browser-based school timetable viewer, editor, and builder. Same problem as nati
 ```
 chronexa-web/
 ├── index.html             — main shell
+├── sw.js                  — service worker (offline + cache)
+├── manifest.json          — PWA manifest
+├── sample-school.xml      — demo timetable XML
 ├── css/                   — Chronexa theme (translated from Swift ChronexaTheme)
 ├── js/
-│   ├── ui/                — Step wizards, grid views, editor
+│   ├── ui/                — Step wizards, grid views, editor, solver UI
+│   │   ├── components/    — Reusable UI components
+│   │   ├── editor/        — Drag-and-drop timetable editor
+│   │   ├── entities/      — Entity dialogs (teacher, class, room, subject)
+│   │   ├── onboarding/    — School templates + data library
+│   │   ├── print_preview/ — Print layout engine
+│   │   ├── ribbon/        — Ribbon toolbar
+│   │   ├── solver_ui/     — Solver progress + backend client
+│   │   ├── substitution/  — Teacher substitution module
+│   │   └── wizard/        — Setup wizard
 │   ├── xml/               — Parse + serialize Timetable XML (round-trip)
-│   ├── solver/            — Browser CSP solver (TypeScript port of SmartCspSolver.kt)
-│   └── lib/               — vendored deps if any (mostly CDN)
+│   └── solver/            — Browser CSP solver (JavaScript)
 ├── backend/
 │   ├── Dockerfile
 │   ├── docker-compose.yml
@@ -46,7 +57,10 @@ chronexa-web/
 │   └── nginx/             — Nginx config + Let's Encrypt
 └── docs/
     ├── DEPLOY.md          — Hostinger VPS deploy steps
-    └── XML_SCHEMA.md      — Timetable XML schema notes
+    ├── MASTER_DEPLOY.md   — Full deploy checklist
+    ├── DATA_SHAPES.md     — SchoolData contract + shapes
+    ├── SOLVER.md          — Solver architecture
+    └── ...                — 15+ design + audit docs
 ```
 
 ## Quickstart (local dev)
@@ -57,14 +71,14 @@ python3 -m http.server 8000
 # open http://localhost:8000/
 
 # Backend (optional — defaults to in-browser solver if not running)
-cd backend && docker-compose up -d
+cd backend && docker compose up -d
 # FastAPI on http://localhost:8001/
 ```
 
 ## Deploy
 
 - **Frontend:** push to `main`, GitHub Pages serves it automatically.
-- **Backend:** `cd backend && docker-compose up -d` on the Hostinger VPS. SSL via Let's Encrypt embedded in nginx.
+- **Backend:** `cd backend && docker compose up -d` on the Hostinger VPS. SSL via Let's Encrypt embedded in nginx.
 
 See `docs/DEPLOY.md` for the full Hostinger checklist.
 

@@ -7,9 +7,9 @@
 #
 # First-cert acquisition (run once after DNS is pointed at the VPS):
 #   1) Comment out the `nginx` 443 server block in nginx/default.conf (HTTP-only)
-#      until the cert exists, OR run `docker-compose run --rm certbot` from the
+#      until the cert exists, OR run `docker compose run --rm certbot` from the
 #      compose file with `certonly --standalone -d $DOMAIN`. See DEPLOY.md.
-#   2) Then bring the stack up:  docker-compose up -d
+#   2) Then bring the stack up:  docker compose up -d
 
 services:
   app:
