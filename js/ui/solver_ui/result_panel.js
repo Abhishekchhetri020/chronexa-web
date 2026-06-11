@@ -255,6 +255,8 @@
       const pendRoot = document.querySelector(".chrx-pending-strip");
       if (pendRoot && global.PendingStrip && global.PendingStrip.render) global.PendingStrip.render(pendRoot);
     } catch (e) { console.warn("[result_panel] post-apply re-render failed", e); }
+    // Snapshot the freshly applied timetable immediately (AutoSave listens).
+    try { window.dispatchEvent(new CustomEvent("app:solve-applied")); } catch {}
     if (state.onApply) try { state.onApply(newCards); } catch (e) { console.error(e); }
   }
   function isDestructiveApply() {

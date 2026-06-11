@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-06-11T08:05:00Z
+/* Chronexa bundle — generated 2026-06-11T20:09:18Z
  *      164 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -13806,6 +13806,8 @@ ${body}
       const pendRoot = document.querySelector(".chrx-pending-strip");
       if (pendRoot && global.PendingStrip && global.PendingStrip.render) global.PendingStrip.render(pendRoot);
     } catch (e) { console.warn("[result_panel] post-apply re-render failed", e); }
+    // Snapshot the freshly applied timetable immediately (AutoSave listens).
+    try { window.dispatchEvent(new CustomEvent("app:solve-applied")); } catch {}
     if (state.onApply) try { state.onApply(newCards); } catch (e) { console.error(e); }
   }
   function isDestructiveApply() {
@@ -31545,6 +31547,10 @@ window.StartScreen = (function () {
     window.addEventListener("entity:changed", onEntityChange);
     document.addEventListener("entity:changed", onEntityChange);
     window.addEventListener("app:school-loaded", () => { lastSaveTs = 0; save(); });
+    // A freshly generated/solved timetable is the most expensive-to-recreate
+    // state in the app — snapshot it immediately rather than waiting up to
+    // 60s for the periodic timer (a refresh in that window lost the result).
+    window.addEventListener("app:solve-applied", () => { lastSaveTs = 0; save(); });
     setTimeout(maybeOfferRecovery, 1500);
   }
   if (document.readyState === "loading") {

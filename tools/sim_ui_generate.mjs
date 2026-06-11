@@ -48,7 +48,26 @@ if (process.env.CHRONEXA_SIM_CHILD) {
   const opts = { timeLimitSec: timeSec, seed, disableLearning: true };
   if (stagnationMs != null) opts.stagnationMs = stagnationMs;
   const res = solve(school, opts);
-  process.send({ seed, placed: res.stats.placed, unplaced: res.stats.unplaced, soft: res.stats.softScore, status: res.status, ms: res.stats.durationMs });
+  // Count class mid-day gaps in the result: per (class, day), a gap is an
+  // empty teaching slot between two occupied ones (the visual holes the user
+  // sees). Lower is better; aSc's curated grid has zero.
+  const ppd = Math.max(...(school.bell?.periods || [{index:8}]).map(p => p.index | 0));
+  const lessonById = Object.fromEntries((school.lessons || []).map(l => [l.id, l]));
+  const occ = {}; // classId|day -> Set(period)
+  for (const a of res.assignment || []) {
+    const l = lessonById[a.lessonId]; if (!l) continue;
+    for (const cid of l.classIds || []) {
+      const k = cid + "|" + a.day;
+      (occ[k] = occ[k] || new Set()).add(a.period);
+    }
+  }
+  let gaps = 0;
+  for (const k in occ) {
+    const ps = [...occ[k]].sort((x, y) => x - y);
+    if (ps.length < 2) continue;
+    for (let p = ps[0]; p <= ps[ps.length - 1]; p++) if (!occ[k].has(p)) gaps++;
+  }
+  process.send({ seed, placed: res.stats.placed, unplaced: res.stats.unplaced, soft: res.stats.softScore, status: res.status, ms: res.stats.durationMs, gaps });
   process.exit(0);
 }
 
@@ -80,7 +99,7 @@ for (let i = 0; i < branches; i++) {
 await Promise.all(children);
 results.sort((a, b) => a.seed - b.seed);
 for (const r of results) {
-  console.log(`seed=${String(r.seed).padEnd(6)} placed=${r.placed} unplaced=${r.unplaced} soft=${r.soft} ${r.status}`);
+  console.log(`seed=${String(r.seed).padEnd(6)} placed=${r.placed} unplaced=${r.unplaced} gaps=${r.gaps ?? "?"} soft=${r.soft} ${r.status}`);
 }
 const best = results.reduce((a, b) => (b.placed > a.placed || (b.placed === a.placed && b.soft > a.soft) ? b : a));
-console.log(`BEST (UI would show): placed=${best.placed} unplaced=${best.unplaced} (seed ${best.seed})`);
+console.log(`BEST (UI would show): placed=${best.placed} unplaced=${best.unplaced} gaps=${best.gaps ?? "?"} (seed ${best.seed})`);

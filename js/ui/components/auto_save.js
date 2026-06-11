@@ -145,6 +145,10 @@
     window.addEventListener("entity:changed", onEntityChange);
     document.addEventListener("entity:changed", onEntityChange);
     window.addEventListener("app:school-loaded", () => { lastSaveTs = 0; save(); });
+    // A freshly generated/solved timetable is the most expensive-to-recreate
+    // state in the app — snapshot it immediately rather than waiting up to
+    // 60s for the periodic timer (a refresh in that window lost the result).
+    window.addEventListener("app:solve-applied", () => { lastSaveTs = 0; save(); });
     setTimeout(maybeOfferRecovery, 1500);
   }
   if (document.readyState === "loading") {
