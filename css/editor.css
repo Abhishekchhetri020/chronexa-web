@@ -57,7 +57,12 @@ body.chrx-card-in-hand .chrx-slot.empty.out-of-bell{outline:1px solid var(--chrx
 /* Verification halo — painted by canvas_geometry.paintHalos() per card.
    Red = hard rule violated; amber = soft preference broken. Hover with
    the constraint explainer for the reason text. */
-.chrx-vkarta[data-halo="red"]{box-shadow:0 0 0 2px #ef4444, 0 0 8px rgba(239,68,68,.4);position:relative}
+/* NOTE: do NOT set position:relative here — the base .chrx-vkarta is
+   position:absolute;inset:1px to fill its cell, and a relative override
+   collapses the card to content width (cards stopped filling cells once
+   the grid cells flex wider). The ::before ⚠ anchors fine against the
+   already-absolute card. */
+.chrx-vkarta[data-halo="red"]{box-shadow:0 0 0 2px #ef4444, 0 0 8px rgba(239,68,68,.4)}
 .chrx-vkarta[data-halo="red"]::before{content:"⚠";position:absolute;top:-1px;left:2px;font-size:9px;color:#ef4444;text-shadow:0 0 2px #fff}
 .chrx-vkarta[data-halo="amber"]{box-shadow:0 0 0 1.5px #f59e0b, 0 0 6px rgba(245,158,11,.3)}
 .chrx-pending-strip{position:sticky;bottom:0;left:0;right:0;height:96px;min-height:72px;max-height:55vh;resize:vertical;overflow:auto;display:flex;flex-direction:column;background:var(--chrx-bg-drawer);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-top:1px solid var(--chrx-line);box-shadow:var(--chrx-shadow-drawer);z-index:var(--chrx-z-drawer);font-family:var(--chrx-font-sans)}
