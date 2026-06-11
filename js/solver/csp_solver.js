@@ -30,26 +30,17 @@ import { TYPS } from "./relation_enforcer.js";
 export const VERSION = "js-csp-1.0.0";
 
 // ---------------------------------------------------------------------------
-// 64-bit-ish deterministic PRNG using BigInt for mix64; final reduce to int.
+// Deterministic hashing for tie-breaks and candidate strides.
 // ---------------------------------------------------------------------------
 
-const MIX64_A = 0xbf58476d1ce4e5b9n;
-const MIX64_B = 0x94d049bb133111ebn;
-const MIX64_C = 0x9e3779b97f4a7c15n;
-const MIX64_MASK = (1n << 64n) - 1n;
-
-function mix64(z0) {
-  // Accepts BigInt or Number.
-  let z = ((typeof z0 === "bigint" ? z0 : BigInt(z0 | 0)) + MIX64_C) & MIX64_MASK;
-  z = ((z ^ (z >> 30n)) * MIX64_A) & MIX64_MASK;
-  z = ((z ^ (z >> 27n)) * MIX64_B) & MIX64_MASK;
-  z = (z ^ (z >> 31n)) & MIX64_MASK;
-  return z;
-}
-
-function mix64Int(z0) {
-  // Reduce 64-bit mix into a positive 31-bit int (for use as stride or tie).
-  return Number(mix64(z0) & 0x7fffffffn);
+// 32-bit deterministic mix of three ints (murmur-style finalizer). Replaces
+// the BigInt mix64 path: this runs once per unassigned lesson per search node,
+// and BigInt allocation there dominated selectByMrvDegree's cost.
+function mix32tie(a, b, c) {
+  let h = (a ^ Math.imul(b | 0, 0x85ebca6b) ^ Math.imul(c | 0, 0xc2b2ae35)) | 0;
+  h = Math.imul(h ^ (h >>> 16), 0x45d9f3b);
+  h = Math.imul(h ^ (h >>> 13), 0x45d9f3b);
+  return ((h ^ (h >>> 16)) & 0x7fffffff);
 }
 
 function gcd(a, b) {
@@ -58,9 +49,9 @@ function gcd(a, b) {
   return a >= 0 ? a : -a;
 }
 
-function deterministicStep(seed, size) {
+function deterministicStep(hash, size) {
   if (size <= 1) return 1;
-  let step = mix64Int(seed) % size;
+  let step = (hash | 0) % size;
   if (step === 0) step = 1;
   while (gcd(step, size) !== 1) {
     step += 1;
@@ -150,11 +141,32 @@ function buildModel(school) {
   // warm-start places the first session, applySingle marks BOTH periods
   // teacher-busy via the lab-double extension, and the second pseudo-
   // session can't place at the same teacher slot.
+  // Per-session locks from cards[].locked (MC13). The UI's "Lock" action
+  // (inspector, AI → Lock all placed cells) sets card.locked = true with the
+  // stated intent that the solver respects them — but the solver never read
+  // the flag, so locks silently did nothing. Locked cards are collected per
+  // source lesson, sorted (day, period), and pin the lesson's sessions in
+  // order: the i-th locked card fixes the i-th expanded session. Locked
+  // cards take precedence over the lesson-level fixedDay/fixedPeriod anchor
+  // (they are the more specific, more recent user action). Slot-only pin —
+  // the room may still be reassigned by the solver.
+  const lockedCardsByLesson = Object.create(null);
+  if (Array.isArray(school.cards)) {
+    for (const c of school.cards) {
+      if (!c || !c.locked || !c.lessonId) continue;
+      (lockedCardsByLesson[c.lessonId] = lockedCardsByLesson[c.lessonId] || []).push(c);
+    }
+    for (const k in lockedCardsByLesson) {
+      lockedCardsByLesson[k].sort((a, b) => (a.day - b.day) || (a.period - b.period));
+    }
+  }
+
   const expanded = [];
   for (const l of school.lessons) {
     const periodsPerCard = l.isLabDouble ? 2 : 1;
     const totalPeriods = l.periodsPerWeek | 0;
     const reps = Math.max(1, Math.round(totalPeriods / periodsPerCard));
+    const lockedCards = lockedCardsByLesson[l.id];
     for (let i = 0; i < reps; i++) {
       // Allowed-room set, in priority order:
       //   1. classroomIdsExpanded — user-curated via the Home/Shared/Teacher's/
@@ -171,6 +183,18 @@ function buildModel(school) {
       } else if (l.preferredRoomId) {
         allowedRoomIds = [l.preferredRoomId];
       }
+      // Lesson-level lock (l.fixedDay/fixedPeriod) addresses ONE slot. For a
+      // multi-session lesson (reps > 1) we cannot pin every session to that
+      // same slot — only one would place; the other reps would be hard-
+      // unplaceable. Pin session #0 to honor the anchor; leave the rest
+      // free. Per-session locks come from cards[].locked (see
+      // lockedCardsByLesson above) and override the lesson-level anchor.
+      let fixedDay    = (i === 0 && l.fixedDay    != null) ? (l.fixedDay    | 0) : null;
+      let fixedPeriod = (i === 0 && l.fixedPeriod != null) ? (l.fixedPeriod | 0) : null;
+      if (lockedCards && i < lockedCards.length) {
+        fixedDay    = lockedCards[i].day | 0;
+        fixedPeriod = lockedCards[i].period | 0; // 1-based, same as fixedPeriod
+      }
       expanded.push({
         id: reps === 1 ? l.id : `${l.id}#${i + 1}`,
         srcId: l.id,
@@ -181,15 +205,8 @@ function buildModel(school) {
         requiredRoomType: l.requiredRoomType || null,
         preferredRoomId: l.preferredRoomId || null,
         allowedRoomIds,
-        // Lesson-level lock (l.fixedDay/fixedPeriod) addresses ONE slot. For a
-        // multi-session lesson (reps > 1) we cannot pin every session to that
-        // same slot — only one would place; the other reps would be hard-
-        // unplaceable. Pin session #0 to honor the anchor; leave the rest
-        // free to find feasible slots. Per-session lock data should land via
-        // a future cards[].locked path, not by fanning a single lesson lock
-        // across every expansion.
-        fixedDay:    (i === 0 && l.fixedDay    != null) ? (l.fixedDay    | 0) : null,
-        fixedPeriod: (i === 0 && l.fixedPeriod != null) ? (l.fixedPeriod | 0) : null,
+        fixedDay,
+        fixedPeriod,
         isLabDouble: !!l.isLabDouble,
         tags: Array.isArray(l.tags) ? l.tags.slice() : [],
       });
@@ -436,9 +453,13 @@ function buildModel(school) {
   const classManualnyBlok = new Int8Array(classIds.length);  // m_nManualnyBlok 0/1/2
   function parseWindow(lo, hi) {
     if (lo == null || hi == null || lo === "*" || hi === "*") return 0;
-    const from = (parseInt(lo, 10) | 0) - 1;
-    const to   = (parseInt(hi, 10) | 0) - 1;
-    if (Number.isNaN(from) || Number.isNaN(to)) return 0;
+    // NaN check must run BEFORE the |0 coercion — NaN|0 is 0, which silently
+    // turned non-numeric input into "window starts at period 1".
+    const loN = parseInt(lo, 10);
+    const hiN = parseInt(hi, 10);
+    if (Number.isNaN(loN) || Number.isNaN(hiN)) return 0;
+    const from = (loN | 0) - 1;
+    const to   = (hiN | 0) - 1;
     let m = 0;
     const a = Math.max(0, Math.min(from, to));
     const b = Math.min(periodsPerDay - 1, Math.max(from, to));
@@ -586,6 +607,10 @@ function buildModel(school) {
   const lessonCandidateCount = new Int32Array(lessonCount);
   const candidateSlot = [];
   const candidateRoom = [];
+  // Per-lesson candidate room list (room indices; -1 = no-room sentinel).
+  // Kept for the room→lessons competitor index used by domain-cache
+  // invalidation: placing a room blocks every lesson that wants that room.
+  const lessonRoomCands = new Array(lessonCount);
 
   for (let i = 0; i < lessonCount; i++) {
     const l = expanded[i];
@@ -627,6 +652,7 @@ function buildModel(school) {
     } else {
       roomCands = [-1];
     }
+    lessonRoomCands[i] = roomCands;
 
     // Resolve slot candidates as a per-day available mask.
     // mask[d] is the AND of all teachers' availability for that day.
@@ -673,29 +699,9 @@ function buildModel(school) {
   const candidateSlotArr = Int32Array.from(candidateSlot);
   const candidateRoomArr = Int32Array.from(candidateRoom);
 
-  // Lesson adjacency degree — # of OTHER lessons sharing a teacher or class.
-  // Also build flat neighbor lists for MAC (Maintaining Arc Consistency) propagation.
-  const lessonAdjacencyDegree = new Int32Array(lessonCount);
-  const _neighborList = [];
-  const _lessonNeighborStart = new Int32Array(lessonCount);
-  const _lessonNeighborCount = new Int32Array(lessonCount);
-  for (let i = 0; i < lessonCount; i++) {
-    _lessonNeighborStart[i] = _neighborList.length;
-    let degree = 0;
-    for (let j = 0; j < lessonCount; j++) {
-      if (i === j) continue;
-      if (sharesTeacher(i, j, lessonTeacherStart, lessonTeacherCount, lessonTeacherFlat) ||
-          sharesClass(i, j, lessonClassStart, lessonClassCount, lessonClassFlat)) {
-        degree++;
-        _neighborList.push(j);
-      }
-    }
-    lessonAdjacencyDegree[i] = degree;
-    _lessonNeighborCount[i] = _neighborList.length - _lessonNeighborStart[i];
-  }
-  const lessonNeighborStart = _lessonNeighborStart;
-  const lessonNeighborCount = _lessonNeighborCount;
-  const lessonNeighborFlat = Int32Array.from(_neighborList);
+  // Lesson adjacency (neighbor lists) is built AFTER the relation partner
+  // sets below, via per-entity buckets instead of the previous O(L²) pair
+  // scan — see "Lesson adjacency" near the end of buildModel.
 
   // slotDay / slotPeriod lookup
   const slotDay = new Int32Array(totalSlots);
@@ -827,6 +833,10 @@ function buildModel(school) {
       classSubjectTarget[cIdx * subjectIds.length + sIdx] += ppw;
     }
   }
+  // Deficit baseline (all-unplaced): the incremental totalSiblingDeficit
+  // counter in state starts here and is updated by applySingle/removeSingle.
+  let siblingTargetSum = 0;
+  for (let i = 0; i < classSubjectTarget.length; i++) siblingTargetSum += classSubjectTarget[i];
 
   // Top 30 #5 — classTeacherPos enforcement. Each class can specify a 6×9
   // mark grid for "the homeroom teacher should be here" slots. If the cell
@@ -1036,6 +1046,97 @@ function buildModel(school) {
     softRels.push({ typ, groups, flatIndices: Int32Array.from(matched) });
 
   }
+  // ─── Lesson adjacency (neighbor lists) ──────────────────────────────────
+  // Built via per-entity buckets: total cost is the number of actual
+  // (lesson, lesson, shared-entity) adjacencies, not L². degree counts
+  // teacher/class-shared lessons only (the MRV tie-break heuristic, matching
+  // the original semantics); the neighbor FLAT LIST additionally includes
+  // hard-relation partners so domain-cache invalidation stays exact — a
+  // partner's feasible-candidate count changes when this lesson moves even
+  // when they share no teacher or class (e.g. n_12 across classes).
+  const lessonAdjacencyDegree = new Int32Array(lessonCount);
+  const _neighborList = [];
+  const _lessonNeighborStart = new Int32Array(lessonCount);
+  const _lessonNeighborCount = new Int32Array(lessonCount);
+  {
+    const teacherBuckets = Array.from({ length: teacherIds.length }, () => []);
+    const classBuckets = Array.from({ length: classIds.length }, () => []);
+    for (let i = 0; i < lessonCount; i++) {
+      const ts = lessonTeacherStart[i], tc = lessonTeacherCount[i];
+      for (let k = 0; k < tc; k++) teacherBuckets[lessonTeacherFlat[ts + k]].push(i);
+      const cs = lessonClassStart[i], cc = lessonClassCount[i];
+      for (let k = 0; k < cc; k++) classBuckets[lessonClassFlat[cs + k]].push(i);
+    }
+    const stamp = new Int32Array(lessonCount).fill(-1);
+    const partnerArrays = [
+      lessonN1Partners, lessonN0Partners, lessonSamedayPart,
+      lessonMustFollowAny, lessonMustFollowBefore, lessonMustFollowAfter,
+      lessonSimultaneous, lessonN7Partners, lessonN2Partners,
+    ];
+    for (let i = 0; i < lessonCount; i++) {
+      _lessonNeighborStart[i] = _neighborList.length;
+      let degree = 0;
+      const ts = lessonTeacherStart[i], tc = lessonTeacherCount[i];
+      for (let k = 0; k < tc; k++) {
+        const bucket = teacherBuckets[lessonTeacherFlat[ts + k]];
+        for (let b = 0; b < bucket.length; b++) {
+          const j = bucket[b];
+          if (j !== i && stamp[j] !== i) { stamp[j] = i; _neighborList.push(j); degree++; }
+        }
+      }
+      const cs = lessonClassStart[i], cc = lessonClassCount[i];
+      for (let k = 0; k < cc; k++) {
+        const bucket = classBuckets[lessonClassFlat[cs + k]];
+        for (let b = 0; b < bucket.length; b++) {
+          const j = bucket[b];
+          if (j !== i && stamp[j] !== i) { stamp[j] = i; _neighborList.push(j); degree++; }
+        }
+      }
+      lessonAdjacencyDegree[i] = degree;
+      for (const arr of partnerArrays) {
+        const partners = arr[i];
+        if (!partners) continue;
+        for (const j of partners) {
+          if (j !== i && stamp[j] !== i) { stamp[j] = i; _neighborList.push(j); }
+        }
+      }
+      _lessonNeighborCount[i] = _neighborList.length - _lessonNeighborStart[i];
+    }
+  }
+  const lessonNeighborStart = _lessonNeighborStart;
+  const lessonNeighborCount = _lessonNeighborCount;
+  const lessonNeighborFlat = Int32Array.from(_neighborList);
+
+  // room → lessons competing for it (for domain-cache invalidation).
+  const roomToLessons = Array.from({ length: roomIds.length }, () => []);
+  for (let i = 0; i < lessonCount; i++) {
+    const cands = lessonRoomCands[i];
+    if (!cands) continue;
+    for (const r of cands) if (r >= 0) roomToLessons[r].push(i);
+  }
+  for (let r = 0; r < roomToLessons.length; r++) {
+    roomToLessons[r] = Int32Array.from(roomToLessons[r]);
+  }
+
+  // ─── Scorer activity flags ──────────────────────────────────────────────
+  // Most schools configure only a few of the optional soft criteria, yet
+  // every softScore() call paid an O(lessonCount) scan per scorer to find
+  // out nothing is configured (profiling: ~35% of a large solve). Detect
+  // "feature entirely unused" once here; each scorer early-returns on it.
+  const anyNonZero = (arr) => { for (let i = 0; i < arr.length; i++) if (arr[i]) return true; return false; };
+  const scorerFlags = {
+    lunch: anyNonZero(classLunchMask),
+    teachingWindow: anyNonZero(classTeachingMask),
+    blockPref: anyNonZero(classBlockMask) || anyNonZero(classDruheHodiny) ||
+               anyNonZero(classKoncitNaraz) || anyNonZero(classManualnyBlok),
+    teacherPos: anyNonZero(classTeacherPosMask),
+    conditional: anyNonZero(teacherConditionalMask),
+    intervalMaxDays: teacherIntervalMaxDays.some(x => x != null),
+    roomTags: classroomAllowedTags.some(a => a && a.length) && lessonTags.some(t => t && t.length),
+    studentSets: lessonStudentSets.some(x => x != null),
+    buildings: buildingCount > 0,
+  };
+
   // Per-lesson index into softRels for fast candidate preference scoring.
   // lessonSoftRelIdx[l] = [{ ri: relIdx, gi: groupIdx }, ...] or null.
   const lessonSoftRelIdx = new Array(lessonCount);
@@ -1097,10 +1198,13 @@ function buildModel(school) {
     subjectDailyMin,
     _sessionsByClassSubject,
     classSubjectTarget,
+    siblingTargetSum,
     classTeacherPosMask,
     classHomeroomTeacher,
     lessonAdjacencyDegree,
     lessonNeighborStart, lessonNeighborCount, lessonNeighborFlat,
+    roomToLessons,
+    scorerFlags,
     roomEquivalenceClass,  // Phase 2b: symmetry breaking
     slotDay, slotPeriod, periodPref,
     weights,
@@ -1168,18 +1272,6 @@ function inferPeriodsPerDay(school) {
   return Math.min(32, max);
 }
 
-function sharesTeacher(i, j, starts, counts, flat) {
-  const si = starts[i], ci = counts[i], sj = starts[j], cj = counts[j];
-  for (let a = 0; a < ci; a++) {
-    const t = flat[si + a];
-    for (let b = 0; b < cj; b++) if (flat[sj + b] === t) return true;
-  }
-  return false;
-}
-function sharesClass(i, j, starts, counts, flat) {
-  return sharesTeacher(i, j, starts, counts, flat);
-}
-
 // ---------------------------------------------------------------------------
 // Solver state
 // ---------------------------------------------------------------------------
@@ -1187,6 +1279,11 @@ function sharesClass(i, j, starts, counts, flat) {
 function makeState(model) {
   const { days, totalSlots, teacherCount, classCount, roomCount, lessonCount, subjectCount, periodsPerDay } = model;
   return {
+    // Incremental scorer totals maintained by applySingle/removeSingle
+    // (previously recomputed in full on every softScore call).
+    totalSiblingDeficit: model.siblingTargetSum | 0,
+    totalTeacherConsecHeavy: 0,
+    teacherHeavyPenalty: new Int32Array(teacherCount),
     // Bitmask occupancy: one uint32 per (entity, day). Bit p set iff busy.
     teacherOcc: new Uint32Array(teacherCount * days),
     classOcc: new Uint32Array(classCount * days),
@@ -1838,16 +1935,12 @@ function canPlaceSecond(model, state, lessonIdx, slot, roomIdx) {
 
 function gapPenalty32(mask) {
   if (mask === 0) return 0;
-  // Trailing zeros
-  let tz = 0, w = mask;
-  while ((w & 1) === 0) { tz++; w >>>= 1; }
-  // Position of highest set bit
-  let highest = 0;
-  let scan = mask;
-  for (let i = 31; i >= 0; i--) if ((scan >>> i) & 1) { highest = i; break; }
-  const width = highest - tz + 1;
-  const occupied = popcount32(mask);
-  const gap = width - occupied;
+  // width = (highest set bit) - (lowest set bit) + 1, via clz32 (single op
+  // each) instead of the previous per-bit scan loops — this runs on every
+  // applySingle/removeSingle for each touched (entity, day).
+  const tz = 31 - Math.clz32(mask & -mask);
+  const width = (31 - Math.clz32(mask)) - tz + 1;
+  const gap = width - popcount32(mask);
   return gap > 0 ? gap : 0;
 }
 
@@ -1917,6 +2010,31 @@ function refreshTeacherLast(model, state, teacher) {
   state.totalTeacherLastPeriodOverflow += v;
 }
 
+// Incremental version of the CKritResty-style consecutive-heavy-days scorer:
+// recompute only teacher `t`'s contribution (O(days)) when their day load
+// changes, maintaining state.totalTeacherConsecHeavy. Mirrors the semantics
+// documented on the old full-scan teacherConsecHeavyDaysPenalty: for every
+// pair of consecutive days where BOTH loads exceed the threshold (half the
+// per-day cap, default 5), add both days' excess.
+function refreshTeacherHeavy(model, state, t) {
+  const D = model.days;
+  let penalty = 0;
+  if (D >= 2) {
+    const cap = model.teacherMaxPerDay ? (model.teacherMaxPerDay[t] | 0) : 0;
+    const threshold = cap > 0 ? Math.max(2, Math.floor(cap / 2)) : 5;
+    let prevLoad = state.teacherDayLoad[t * D] | 0;
+    for (let d = 1; d < D; d++) {
+      const curLoad = state.teacherDayLoad[t * D + d] | 0;
+      if (prevLoad > threshold && curLoad > threshold) {
+        penalty += (prevLoad - threshold) + (curLoad - threshold);
+      }
+      prevLoad = curLoad;
+    }
+  }
+  state.totalTeacherConsecHeavy += penalty - state.teacherHeavyPenalty[t];
+  state.teacherHeavyPenalty[t] = penalty;
+}
+
 function refreshPeriodLoad(model, state) {
   let total = 0;
   for (let s = 0; s < state.slotLoad.length; s++) {
@@ -1953,6 +2071,7 @@ function applySingle(model, state, lessonIdx, slot, roomIdx) {
       refreshTeacherRoom(model, state, t);
     }
     refreshTeacherDay(model, state, t, d);
+    refreshTeacherHeavy(model, state, t);
     if (state.teacherSlotOccupant) {
       state.teacherSlotOccupant[t * model.totalSlots + slot] = lessonIdx;
     }
@@ -1985,8 +2104,14 @@ function applySingle(model, state, lessonIdx, slot, roomIdx) {
     }
     state.classDayLoad[cd] += 1;
     const subjectKey = ((c * model.subjectCount) + subject) * model.days + d;
+    const csKey = c * model.subjectCount + subject;
     state.classSubjectDayCount[subjectKey] += 1;
-    state.classSubjectTotalPlaced[c * model.subjectCount + subject] += 1;
+    state.classSubjectTotalPlaced[csKey] += 1;
+    // Incremental sibling-subject deficit: a placement reduces the deficit
+    // only while the (class, subject) pair is still under its weekly target.
+    if (state.classSubjectTotalPlaced[csKey] <= model.classSubjectTarget[csKey]) {
+      state.totalSiblingDeficit -= 1;
+    }
     refreshSubjectCell(model, state, c, subject, d);
     refreshClassDay(model, state, c, d);
     if (state.classSlotOccupant) {
@@ -2034,6 +2159,7 @@ function removeSingle(model, state, lessonIdx, slot, roomIdx) {
       refreshTeacherRoom(model, state, t);
     }
     refreshTeacherDay(model, state, t, d);
+    refreshTeacherHeavy(model, state, t);
     if (state.teacherSlotOccupant) {
       state.teacherSlotOccupant[t * model.totalSlots + slot] = -1;
     }
@@ -2071,8 +2197,13 @@ function removeSingle(model, state, lessonIdx, slot, roomIdx) {
     }
     state.classDayLoad[cd] -= 1;
     const subjectKey = ((c * model.subjectCount) + subject) * model.days + d;
+    const csKey = c * model.subjectCount + subject;
     state.classSubjectDayCount[subjectKey] -= 1;
-    state.classSubjectTotalPlaced[c * model.subjectCount + subject] -= 1;
+    state.classSubjectTotalPlaced[csKey] -= 1;
+    // Incremental sibling-subject deficit (inverse of applySingle).
+    if (state.classSubjectTotalPlaced[csKey] < model.classSubjectTarget[csKey]) {
+      state.totalSiblingDeficit += 1;
+    }
     refreshSubjectCell(model, state, c, subject, d);
     refreshClassDay(model, state, c, d);
     if (state.classSlotOccupant) {
@@ -2101,8 +2232,8 @@ function applyPlacement(model, state, lessonIdx, slot, roomIdx, undoStack) {
   state.lessonAssigned[lessonIdx] = 1;
   state.assignedLessonCount += 1;
   if (undoStack) undoStack.push({ lessonIdx, slot, roomIdx });
-  // Phase 3: invalidate domain cache for this lesson and its neighbors
-  if (state._domCache) invalidateNeighbors(state._domCache, model, lessonIdx);
+  // Phase 3: invalidate domain cache for this lesson, neighbors, room rivals
+  if (state._domCache) invalidateNeighbors(state._domCache, model, lessonIdx, roomIdx);
 }
 
 function undoPlacement(model, state, record) {
@@ -2115,7 +2246,7 @@ function undoPlacement(model, state, record) {
   state.lessonAssigned[record.lessonIdx] = 0;
   state.assignedLessonCount -= 1;
   // Phase 3: invalidate domain cache
-  if (state._domCache) invalidateNeighbors(state._domCache, model, record.lessonIdx);
+  if (state._domCache) invalidateNeighbors(state._domCache, model, record.lessonIdx, record.roomIdx);
 }
 
 function undoToMark(model, state, undoStack, mark) {
@@ -2139,8 +2270,8 @@ function softScore(model, state) {
   s += state.totalTeacherLastPeriodOverflow * w[6];
   s += state.totalPeriodLoadBalance * w[7];
   s += softRelationPenalty(model, state) * w[8];
-  s += teacherConsecHeavyDaysPenalty(model, state) * w[9];
-  s += siblingSubjectDeficitPenalty(model, state) * w[10];
+  s += state.totalTeacherConsecHeavy * w[9];
+  s += state.totalSiblingDeficit * w[10];
   s += teacherConditionalPlacementPenalty(model, state) * w[11];
   s += classTeacherPosPenalty(model, state) * w[12];
   s += classLunchWindowPenalty(model, state) * (w[1] || 1);
@@ -2192,6 +2323,7 @@ function supervisionCriteriaSoftPenalty(model, state) {
 // embedded in softScore so the solver actively prefers conflict-free
 // elective placements during search.
 function studentSubjectsConflictPenalty(model, state) {
+  if (model.scorerFlags && !model.scorerFlags.studentSets) return 0;
   const ses = model.studentElectiveSets;
   if (!ses || !ses.length) return 0;
   let penalty = 0;
@@ -2217,6 +2349,7 @@ function studentSubjectsConflictPenalty(model, state) {
 // tags and the assigned classroom's allowedTags don't overlap, soft
 // penalty. Lets a school say "LAB-tagged lessons should be in Lab Rooms".
 function subjectTagRoomMismatchPenalty(model, state) {
+  if (model.scorerFlags && !model.scorerFlags.roomTags) return 0;
   const allowed = model.classroomAllowedTags;
   const tags = model.lessonTags;
   if (!allowed || !tags) return 0;
@@ -2283,6 +2416,7 @@ function modeBlockPairingPenalty(model, state) {
 // maxDays }. Soft penalty per day the teacher has any teaching slot
 // inside [fromPeriod, toPeriod] beyond maxDays.
 function teacherIntervalMaxDaysPenalty(model, state) {
+  if (model.scorerFlags && !model.scorerFlags.intervalMaxDays) return 0;
   const intervals = model.teacherIntervalMaxDays;
   if (!intervals) return 0;
   const tc = model.teacherCount, days = model.days, ppd = model.periodsPerDay;
@@ -2369,6 +2503,7 @@ function teacherMinRestingHoursPenalty(model, state) {
 // caps the soft tolerance — changes beyond the cap are penalised heavier.
 // Reuses the teacher-room-stability soft weight (w[3]).
 function teacherBuildingChangesPenalty(model, state) {
+  if (model.scorerFlags && !model.scorerFlags.buildings) return 0;
   const roomBuilding = model.classroomBuilding;
   if (!roomBuilding) return 0;
   const cap = model.maxBuildingChangesPerDay; // -1 = unlimited
@@ -2490,6 +2625,7 @@ function lessonTagDailyCapPenalty(model, state) {
 //   manual block (§3.4): mode 2 = strict — escalate block-window penalty;
 //     mode 1 = preferred; mode 0 = off.
 function classBlockPreferencePenalty(model, state) {
+  if (model.scorerFlags && !model.scorerFlags.blockPref) return 0;
   const block  = model.classBlockMask;
   const druhe  = model.classDruheHodiny;
   const koncit = model.classKoncitNaraz;
@@ -2549,6 +2685,7 @@ function classBlockPreferencePenalty(model, state) {
 // inside the class's lunch window so the schedule prefers leaving those
 // periods free for lunch. Reuses the class-gap soft weight (w[1]).
 function classLunchWindowPenalty(model, state) {
+  if (model.scorerFlags && !model.scorerFlags.lunch) return 0;
   const lunch = model.classLunchMask;
   if (!lunch) return 0;
   let penalty = 0;
@@ -2572,6 +2709,7 @@ function classLunchWindowPenalty(model, state) {
 // concentrates teaching in the allowed range. Classes without a window
 // set (mask === 0) are skipped — no restriction.
 function classTeachingWindowPenalty(model, state) {
+  if (model.scorerFlags && !model.scorerFlags.teachingWindow) return 0;
   const teach = model.classTeachingMask;
   if (!teach) return 0;
   let penalty = 0;
@@ -2595,6 +2733,7 @@ function classTeachingWindowPenalty(model, state) {
 // set, the class's homeroom teacher should be the one teaching. Anyone
 // else gets a soft penalty.
 function classTeacherPosPenalty(model, state) {
+  if (model.scorerFlags && !model.scorerFlags.teacherPos) return 0;
   const mask = model.classTeacherPosMask;
   const hr   = model.classHomeroomTeacher;
   if (!mask || !hr) return 0;
@@ -2632,6 +2771,7 @@ function classTeacherPosPenalty(model, state) {
 // but each such placement is soft-penalised so the solver prefers
 // truly-available slots when both work.
 function teacherConditionalPlacementPenalty(model, state) {
+  if (model.scorerFlags && !model.scorerFlags.conditional) return 0;
   const mask = model.teacherConditionalMask;
   if (!mask) return 0;
   const D = model.days;
@@ -2651,58 +2791,10 @@ function teacherConditionalPlacementPenalty(model, state) {
   return penalty;
 }
 
-// CSIntegerCDNeededCards-style scorer: penalise (class, subject) pairs
-// that have fewer placements than their weekly target. The penalty pulls
-// the solver toward placing behind-quota subjects (e.g. URDU 7-per-week)
-// ahead of already-saturated ones. O(classCount × subjectCount × days)
-// — small enough to recompute per softScore call on schools up to
-// ~50 classes × ~50 subjects × 6 days.
-function siblingSubjectDeficitPenalty(model, state) {
-  const target = model.classSubjectTarget;
-  if (!target) return 0;
-  const C = model.classCount;
-  const S = model.subjectCount;
-  const D = model.days;
-  let penalty = 0;
-  for (let c = 0; c < C; c++) {
-    for (let s = 0; s < S; s++) {
-      const tg = target[c * S + s] | 0;
-      if (tg <= 0) continue;
-      let placed = 0;
-      for (let d = 0; d < D; d++) placed += state.classSubjectDayCount[(c * S + s) * D + d] | 0;
-      if (placed < tg) penalty += (tg - placed);
-    }
-  }
-  return penalty;
-}
-
-// CKritResty-style scorer (ported from the legacy C/Kotlin solver). For
-// each teacher, sum the "excess load" of every pair of consecutive days
-// where BOTH days are heavy (load > threshold). Penalty grows with how
-// far over the threshold each day is. Threshold defaults to half the
-// teacher's per-day cap, or 5 if no cap is set. This is a soft pull
-// against burning a teacher out by stacking heavy days back-to-back.
-function teacherConsecHeavyDaysPenalty(model, state) {
-  const T = model.teacherCount;
-  const D = model.days;
-  if (D < 2 || T === 0) return 0;
-  let penalty = 0;
-  for (let t = 0; t < T; t++) {
-    // Per-teacher threshold: half their max-per-day if set, else 5.
-    const cap = model.teacherMaxPerDay ? (model.teacherMaxPerDay[t] | 0) : 0;
-    const threshold = cap > 0 ? Math.max(2, Math.floor(cap / 2)) : 5;
-    let prevLoad = state.teacherDayLoad[t * D] | 0;
-    for (let d = 1; d < D; d++) {
-      const curLoad = state.teacherDayLoad[t * D + d] | 0;
-      if (prevLoad > threshold && curLoad > threshold) {
-        // Excess of both days beyond threshold.
-        penalty += (prevLoad - threshold) + (curLoad - threshold);
-      }
-      prevLoad = curLoad;
-    }
-  }
-  return penalty;
-}
+// The sibling-subject deficit (CSIntegerCDNeededCards-style) and the
+// consecutive-heavy-days (CKritResty-style) scorers are maintained
+// incrementally — see totalSiblingDeficit updates in applySingle/
+// removeSingle and refreshTeacherHeavy(). softScore reads the totals.
 
 function softRelationPenalty(model, state) {
   const rels = model.softRels;
@@ -2725,39 +2817,42 @@ function softRelationPenalty(model, state) {
       continue;
     }
     // n_4 / n_11 / n_14 operate per source lesson (one group per source).
+    // Days and periods are tracked as bitmasks (days <= 7, periods <= 30
+    // always fit a uint32) — Set allocation here was hot in softScore.
     const groups = rel.groups;
     for (let g = 0; g < groups.length; g++) {
       const indices = groups[g];
       let cardsPlaced = 0;
-      const dayBits = new Set();
-      const periodBits = new Set();
+      let dayMask = 0;
+      let periodMask = 0;
       for (let k = 0; k < indices.length; k++) {
         const i = indices[k];
         if (!assigned[i]) continue;
         const sl = slot[i];
-        dayBits.add(slotDay[sl]);
-        periodBits.add(slotPeriod[sl]);
+        dayMask |= (1 << slotDay[sl]);
+        periodMask |= (1 << slotPeriod[sl]);
         cardsPlaced++;
       }
       if (cardsPlaced === 0) continue;
+      const daysUsed = popcount32(dayMask >>> 0);
       if (rel.typ === "n_4") {
         const target = Math.max(1, Math.ceil(cardsPlaced / 2));
-        if (dayBits.size < target) penalty += (target - dayBits.size);
+        if (daysUsed < target) penalty += (target - daysUsed);
       } else if (rel.typ === "n_11") {
-        if (cardsPlaced > 1 && dayBits.size > 1) penalty += (dayBits.size - 1);
+        if (cardsPlaced > 1 && daysUsed > 1) penalty += (daysUsed - 1);
       } else if (rel.typ === "n_14") {
-        if (periodBits.size > 1) penalty += (periodBits.size - 1);
+        const periodsUsed = popcount32(periodMask >>> 0);
+        if (periodsUsed > 1) penalty += (periodsUsed - 1);
       } else if (rel.typ === "n_3") {
         // Alternate days: penalize same-day placements within a source lesson
-        if (cardsPlaced > 1 && dayBits.size < cardsPlaced) {
-          penalty += (cardsPlaced - dayBits.size);
+        if (cardsPlaced > 1 && daysUsed < cardsPlaced) {
+          penalty += (cardsPlaced - daysUsed);
         }
       } else if (rel.typ === "n_15") {
-        // Even spacing: penalize adjacent-day placements
-        const sortedDays = [...dayBits].sort((a, b) => a - b);
-        for (let d = 1; d < sortedDays.length; d++) {
-          if (sortedDays[d] - sortedDays[d - 1] <= 1) penalty += 1;
-        }
+        // Even spacing: penalize adjacent-day placements (two set bits one
+        // apart in the day mask).
+        const adj = dayMask & (dayMask >> 1);
+        penalty += popcount32(adj >>> 0);
       }
     }
   }
@@ -2796,7 +2891,7 @@ function selectByMrvDegree(model, state, unassigned, unassignedCount, seed, dept
     const learnedPriority = learning ? learning.getVariablePriority(model, l) : 0;
     // Combined score: MRV (domain) - learned_priority_bonus + degree tiebreak
     const score = dom - learnedPriority * 0.5;  // each learned backtrack = 0.5 domain reduction
-    const tie = mix64Int(BigInt(seed) ^ BigInt(depth) ^ BigInt(l));
+    const tie = mix32tie(seed, depth, l);
     const better =
       score < bestScore ||
       (score === bestScore && deg > bestDegree) ||
@@ -3004,7 +3099,35 @@ function maybeEmitProgress(ctx, state, unassignedCount0, initiallyInfeasibleCoun
 
 function backtrack(model, state, unassigned, unassignedCount, ctx) {
   if (ctx.timedOut) return;
-  if (performance.now() >= ctx.deadlineMs) { ctx.timedOut = true; return; }
+  // Track search progress: a new maximum placement depth means the run is
+  // still productive. Used by the stagnation bail below.
+  if (state.assignedLessonCount > ctx.runMaxAssigned) {
+    ctx.runMaxAssigned = state.assignedLessonCount;
+    ctx.madeProgress = true;
+  }
+  // Deadline check every 32 nodes — performance.now() per node measurably
+  // slows the search; an overshoot of <=31 nodes is harmless. The candidate
+  // loop below still checks per-placement (each covers a whole subtree).
+  if ((ctx.nodesVisited & 31) === 0) {
+    const now = performance.now();
+    if (ctx.madeProgress) {
+      ctx.madeProgress = false;
+      ctx.lastImproveMs = now;
+    } else if (ctx.stagnationMs > 0 && now - ctx.lastImproveMs > ctx.stagnationMs) {
+      // Stagnation bail: the search hasn't reached a new placement depth in
+      // stagnationMs. Measured on these plateaus, more backtracking adds
+      // nothing (BT-only at 10s places the same count as at 6s) while the
+      // repair phase finishes instantly once it gets the budget — so hand
+      // the remaining time over instead of thrashing in place.
+      ctx.timedOut = true;
+      ctx.stagnationBail = true;
+      return;
+    }
+    if (now >= ctx.deadlineMs) {
+      ctx.timedOut = true;
+      return;
+    }
+  }
   // Luby restart: if this run's node budget is exhausted, bail out so the
   // outer loop can start a fresh run with a new seed and longer budget.
   if (ctx.restartNodeBudget >= 0 && ctx.nodesVisited >= ctx.restartNodeBudget) {
@@ -3012,8 +3135,11 @@ function backtrack(model, state, unassigned, unassignedCount, ctx) {
     return;
   }
   ctx.nodesVisited += 1;
-  // Emit progress every 500 iterations or every 500ms (whichever first).
-  maybeEmitProgress(ctx, state, ctx.unassignedCount0, ctx.initiallyInfeasibleCount, ctx.t0);
+  // Emit progress every 500 iterations (the wall-clock interval in solve()
+  // covers the time-based path, calling maybeEmitProgress directly).
+  if (ctx.onProgress && ctx.nodesVisited - ctx.progressLastIter >= 500) {
+    maybeEmitProgress(ctx, state, ctx.unassignedCount0, ctx.initiallyInfeasibleCount, ctx.t0);
+  }
 
   if (unassignedCount === 0) {
     const score = -softScore(model, state);
@@ -3045,15 +3171,19 @@ function backtrack(model, state, unassigned, unassignedCount, ctx) {
   let feasibleCount = fillFeasibleCandidates(model, state, selected, candidates);
 
   if (feasibleCount === 0) {
-    // Record current state as best partial then skip this lesson.
-    const score = -softScore(model, state);
+    // Record current state as best partial then skip this lesson. Only pay
+    // for softScore (a dozen O(L) scans) when the entry count can actually
+    // win — dead ends are frequent and most can't beat the best.
     const entries = state.assignedLessonCount;
-    if (entries > state.bestAssignedEntries ||
-        (entries === state.bestAssignedEntries && score > state.bestSoftScore)) {
-      state.bestSoftScore = score;
-      state.bestAssignedEntries = entries;
-      state.bestHardCount = unassignedCount;
-      snapshotBest(state);
+    if (entries >= state.bestAssignedEntries) {
+      const score = -softScore(model, state);
+      if (entries > state.bestAssignedEntries ||
+          (entries === state.bestAssignedEntries && score > state.bestSoftScore)) {
+        state.bestSoftScore = score;
+        state.bestAssignedEntries = entries;
+        state.bestHardCount = unassignedCount;
+        snapshotBest(state);
+      }
     }
     // ML: record this lesson as a backtrack (will get priority next time)
     if (ctx.learning) ctx.learning.onBacktrack(selected);
@@ -3114,7 +3244,7 @@ function backtrack(model, state, unassigned, unassignedCount, ctx) {
     }
     var iterStep = 1;
   } else {
-    var iterStep = deterministicStep(BigInt(ctx.branchSeed) ^ (BigInt(selected) << 1n) ^ BigInt(ctx.depth), feasibleCount);
+    var iterStep = deterministicStep(mix32tie(ctx.branchSeed, selected << 1, ctx.depth), feasibleCount);
   }
   const reducedCount = removeFromUnassigned(unassigned, unassignedCount, selected);
 
@@ -3220,6 +3350,9 @@ function materializeBestIntoState(model, state) {
   state.subjectDayOverflow.fill(0);
   state.teacherRoomPenalty.fill(0);
   state.teacherLastOverflow.fill(0);
+  state.totalSiblingDeficit = model.siblingTargetSum | 0;
+  state.totalTeacherConsecHeavy = 0;
+  state.teacherHeavyPenalty.fill(0);
 
   // Allocate inverse-occupancy arrays (used by repair to find blockers).
   const ts = model.teacherCount * model.totalSlots;
@@ -3271,7 +3404,7 @@ function rankRepairCandidates(model, state, lessonIdx) {
     const slot = model.candidateSlot[i];
     const room = model.candidateRoom[i];
     const blockers = listBlockers(model, state, lessonIdx, slot, room);
-    if (blockers === null) continue; // hard-infeasible (unavailable / fixed)
+    if (blockers === null) continue; // hard-infeasible / too many blockers
     out.push({ slot, room, blockers });
     if (out.length >= REPAIR_MAX_SLOTS_PER_LESSON * 2) break;
   }
@@ -3297,8 +3430,17 @@ function listBlockers(model, state, lessonIdx, slot, room) {
   if (fixed >= 0 && fixed !== slot) return null;
   if (model.lessonLabDouble[lessonIdx] === 1 && p + 1 >= model.periodsPerDay) return null;
 
+  // Blocker lists are tiny (capped at REPAIR_MAX_BLOCKERS) — dedupe with a
+  // linear scan instead of a Set, and bail as soon as the cap is exceeded
+  // (such candidates are discarded by the displacement pass anyway). This
+  // function is the repair phase's inner loop; allocation here was hot.
   const blockers = [];
-  const seen = new Set();
+  function addBlocker(occ) {
+    if (occ < 0 || occ === lessonIdx) return true;
+    for (let i = 0; i < blockers.length; i++) if (blockers[i] === occ) return true;
+    blockers.push(occ);
+    return blockers.length <= REPAIR_MAX_BLOCKERS;
+  }
 
   const teacherStart = model.lessonTeacherStart[lessonIdx];
   const teacherCount = model.lessonTeacherCount[lessonIdx];
@@ -3306,25 +3448,16 @@ function listBlockers(model, state, lessonIdx, slot, room) {
     const t = model.lessonTeacherFlat[teacherStart + k];
     const td = t * model.days + d;
     if ((model.teacherAvailabilityMask[td] & ((1 << p) >>> 0)) === 0) return null;
-    const occ = state.teacherSlotOccupant[t * model.totalSlots + slot];
-    if (occ >= 0 && occ !== lessonIdx && !seen.has(occ)) {
-      seen.add(occ); blockers.push(occ);
-    }
+    if (!addBlocker(state.teacherSlotOccupant[t * model.totalSlots + slot])) return null;
   }
   const classStart = model.lessonClassStart[lessonIdx];
   const classCount = model.lessonClassCount[lessonIdx];
   for (let k = 0; k < classCount; k++) {
     const c = model.lessonClassFlat[classStart + k];
-    const occ = state.classSlotOccupant[c * model.totalSlots + slot];
-    if (occ >= 0 && occ !== lessonIdx && !seen.has(occ)) {
-      seen.add(occ); blockers.push(occ);
-    }
+    if (!addBlocker(state.classSlotOccupant[c * model.totalSlots + slot])) return null;
   }
   if (room >= 0) {
-    const ro = state.roomSlotOccupant[room * model.totalSlots + slot];
-    if (ro >= 0 && ro !== lessonIdx && !seen.has(ro)) {
-      seen.add(ro); blockers.push(ro);
-    }
+    if (!addBlocker(state.roomSlotOccupant[room * model.totalSlots + slot])) return null;
   }
 
   // Lab-double: also count blockers in slot+1 (same teachers, classes, room).
@@ -3334,23 +3467,14 @@ function listBlockers(model, state, lessonIdx, slot, room) {
       const t = model.lessonTeacherFlat[teacherStart + k];
       const td = t * model.days + d;
       if ((model.teacherAvailabilityMask[td] & ((1 << (p + 1)) >>> 0)) === 0) return null;
-      const occ = state.teacherSlotOccupant[t * model.totalSlots + slot2];
-      if (occ >= 0 && occ !== lessonIdx && !seen.has(occ)) {
-        seen.add(occ); blockers.push(occ);
-      }
+      if (!addBlocker(state.teacherSlotOccupant[t * model.totalSlots + slot2])) return null;
     }
     for (let k = 0; k < classCount; k++) {
       const c = model.lessonClassFlat[classStart + k];
-      const occ = state.classSlotOccupant[c * model.totalSlots + slot2];
-      if (occ >= 0 && occ !== lessonIdx && !seen.has(occ)) {
-        seen.add(occ); blockers.push(occ);
-      }
+      if (!addBlocker(state.classSlotOccupant[c * model.totalSlots + slot2])) return null;
     }
     if (room >= 0) {
-      const ro2 = state.roomSlotOccupant[room * model.totalSlots + slot2];
-      if (ro2 >= 0 && ro2 !== lessonIdx && !seen.has(ro2)) {
-        seen.add(ro2); blockers.push(ro2);
-      }
+      if (!addBlocker(state.roomSlotOccupant[room * model.totalSlots + slot2])) return null;
     }
   }
   return blockers;
@@ -3527,6 +3651,9 @@ function tryPlaceViaRepair(model, state, lessonIdx, chainDepth, evictedThisChain
  */
 function iterativeRepair(model, state, deadlineMs, ctx) {
   if (performance.now() >= deadlineMs) return 0;
+  // The domain cache belongs to the backtracking phase; repair never reads
+  // it, but applyPlacement would keep paying invalidation for every move.
+  state._domCache = null;
   materializeBestIntoState(model, state);
 
   const before = state.assignedLessonCount;
@@ -3846,36 +3973,36 @@ function largeNeighborhoodSearch(model, state, deadlineMs, ctx) {
 }
 
 function restoreFromSnapshot(model, state, assignedSnap, slotSnap, roomSnap) {
-  // Replay every placement to rebuild the bitmask occupancy + counters.
-  // First clear current state by unplacing everything.
+  // Diff-based restore: a rejected LNS round only moved the lessons the
+  // destroy+repair cycle touched, so remove/re-apply just the differing
+  // placements instead of replaying the whole school (the previous full
+  // replay made every rejected round cost O(allPlacements)).
   for (let i = 0; i < model.lessonCount; i++) {
-    if (state.lessonAssigned[i]) {
-      const slot = state.lessonAssignedSlot[i];
-      const room = state.lessonAssignedRoom[i];
-      if (slot >= 0) {
-        removeSingle(model, state, i, slot, room);
-        if (model.lessonLabDouble[i] === 1) removeSingle(model, state, i, slot + 1, room);
-      }
-      state.lessonAssigned[i] = 0;
-      state.lessonAssignedSlot[i] = -1;
-      state.lessonAssignedRoom[i] = -1;
+    if (!state.lessonAssigned[i]) continue;
+    const slot = state.lessonAssignedSlot[i];
+    const room = state.lessonAssignedRoom[i];
+    const matches = assignedSnap[i] && slotSnap[i] === slot && roomSnap[i] === room;
+    if (matches) continue;
+    if (slot >= 0) {
+      removeSingle(model, state, i, slot, room);
+      if (model.lessonLabDouble[i] === 1) removeSingle(model, state, i, slot + 1, room);
     }
+    state.lessonAssigned[i] = 0;
+    state.lessonAssignedSlot[i] = -1;
+    state.lessonAssignedRoom[i] = -1;
+    state.assignedLessonCount -= 1;
   }
-  state.assignedLessonCount = 0;
-  // Re-apply snapshot.
   for (let i = 0; i < model.lessonCount; i++) {
-    if (assignedSnap[i]) {
-      const slot = slotSnap[i];
-      const room = roomSnap[i];
-      if (slot >= 0) {
-        applySingle(model, state, i, slot, room);
-        if (model.lessonLabDouble[i] === 1) applySingle(model, state, i, slot + 1, room);
-        state.lessonAssigned[i] = 1;
-        state.lessonAssignedSlot[i] = slot;
-        state.lessonAssignedRoom[i] = room;
-        state.assignedLessonCount += 1;
-      }
-    }
+    if (!assignedSnap[i] || state.lessonAssigned[i]) continue;
+    const slot = slotSnap[i];
+    if (slot < 0) continue;
+    const room = roomSnap[i];
+    applySingle(model, state, i, slot, room);
+    if (model.lessonLabDouble[i] === 1) applySingle(model, state, i, slot + 1, room);
+    state.lessonAssigned[i] = 1;
+    state.lessonAssignedSlot[i] = slot;
+    state.lessonAssignedRoom[i] = room;
+    state.assignedLessonCount += 1;
   }
 }
 
@@ -4182,31 +4309,35 @@ function diagnoseUnplaceabled(model, state, unplaceableIndices) {
 function makeDomCache(model) {
   return {
     counts: new Int32Array(model.lessonCount).fill(-1),
-    version: new Int32Array(model.lessonCount).fill(0),
-    globalVersion: 0,
   };
 }
 
-function invalidateNeighbors(domCache, model, lessonIdx) {
-  // When a lesson is placed/removed, its neighbors' domains may change
-  domCache.counts[lessonIdx] = -1;
-  domCache.version[lessonIdx] = domCache.globalVersion;
+// When a lesson is placed/removed, invalidate the cached feasible-candidate
+// counts of every lesson whose domain can have changed: itself, its
+// neighbors (shared teacher/class + hard-relation partners — the flat list
+// includes both), and every lesson competing for the placed room. Everything
+// else keeps its cached count — the previous implementation bumped a global
+// version on each placement, which invalidated ALL entries every node and
+// made selectByMrvDegree recount every unassigned lesson's full domain.
+function invalidateNeighbors(domCache, model, lessonIdx, roomIdx) {
+  const counts = domCache.counts;
+  counts[lessonIdx] = -1;
   const nStart = model.lessonNeighborStart[lessonIdx];
   const nCount = model.lessonNeighborCount[lessonIdx];
   for (let n = nStart; n < nStart + nCount; n++) {
-    const neighbor = model.lessonNeighborFlat[n];
-    domCache.counts[neighbor] = -1;
-    domCache.version[neighbor] = domCache.globalVersion;
+    counts[model.lessonNeighborFlat[n]] = -1;
   }
-  domCache.globalVersion++;
+  if (roomIdx >= 0 && model.roomToLessons) {
+    const competitors = model.roomToLessons[roomIdx];
+    for (let k = 0; k < competitors.length; k++) counts[competitors[k]] = -1;
+  }
 }
 
 function cachedCount(model, state, domCache, lessonIdx) {
   const cached = domCache.counts[lessonIdx];
-  if (cached >= 0 && domCache.version[lessonIdx] === domCache.globalVersion) return cached;
+  if (cached >= 0) return cached;
   const n = countFeasibleCandidates(model, state, lessonIdx);
   domCache.counts[lessonIdx] = n;
-  domCache.version[lessonIdx] = domCache.globalVersion;
   return n;
 }
 
@@ -4380,6 +4511,7 @@ export function solve(school, options = {}) {
   for (let i = 0; i < model.lessonCount; i++) {
     if (model.lessonCandidateCount[i] === 0) initiallyInfeasible.push(i);
   }
+  const initiallyInfeasibleSet = new Set(initiallyInfeasible);
 
   // Per-lesson human label cache used by maybeEmitProgress() to stream a
   // sample of currently-unassigned lessons to the UI. Built once after
@@ -4412,6 +4544,7 @@ export function solve(school, options = {}) {
   // Computed once; replayed per-branch.
   const warmStartMoves = [];
   if (options.warmStart && Array.isArray(school.cards) && school.cards.length > 0) {
+    const roomIdxById = new Map(model.roomIds.map((id, r) => [id, r]));
     const cardsBySrc = Object.create(null);
     for (const c of school.cards) {
       if (!c || !c.lessonId) continue;
@@ -4435,9 +4568,8 @@ export function solve(school, options = {}) {
       const slot = day * model.periodsPerDay + period;
       let roomIdx = -1;
       if (card.classroomId) {
-        for (let r = 0; r < model.roomIds.length; r++) {
-          if (model.roomIds[r] === card.classroomId) { roomIdx = r; break; }
-        }
+        const rx = roomIdxById.get(card.classroomId);
+        if (rx != null) roomIdx = rx;
       }
       warmStartMoves.push({ lessonIdx: i, slot, roomIdx });
     }
@@ -4453,13 +4585,15 @@ export function solve(school, options = {}) {
   const unassigned0 = new Int32Array(model.lessonCount);
   let unassignedCount0 = 0;
   for (let i = 0; i < model.lessonCount; i++) {
-    if (initiallyInfeasible.indexOf(i) === -1) {
+    if (!initiallyInfeasibleSet.has(i)) {
       unassigned0[unassignedCount0++] = i;
     }
   }
 
   let totalNodes = 0, totalBacktracks = 0;
   let anyTimedOut = false;
+  let stagnationBails = 0;
+  let stagnantRuns = 0;
   
   // ML: Initialize learning module for this school structure
   const learning = options.disableLearning ? null : createLearningForSchool(school);
@@ -4547,6 +4681,14 @@ export function solve(school, options = {}) {
       backtracks: 0,
       deadlineMs,
       timedOut: false,
+      // Stagnation bail (only meaningful when repair can pick up the slack):
+      // give up on this BT run when no new placement depth is reached for
+      // this long, freeing the budget for repair/LNS.
+      stagnationMs: useIterativeRepair ? Math.max(800, timeLimitSec * 1000 * btShare * 0.25) : -1,
+      stagnationBail: false,
+      runMaxAssigned: state.assignedLessonCount,
+      madeProgress: false,
+      lastImproveMs: performance.now(),
       // Luby restart: per-run node budget (-1 = unlimited for last run)
       restartNodeBudget: runBudget,
       macPruneCount: 0,
@@ -4598,20 +4740,39 @@ export function solve(school, options = {}) {
     totalNodes += ctx.nodesVisited;
     totalBacktracks += ctx.backtracks;
     totalMacPrunes += ctx.macPruneCount || 0;
-    if (ctx.timedOut && !isLastRun) {
+    if (ctx.timedOut && !ctx.stagnationBail && !isLastRun) {
       // Luby restart: this run hit its node budget — continue to next run
-    } else if (ctx.timedOut) {
+    } else if (ctx.timedOut && !ctx.stagnationBail) {
       anyTimedOut = true;
     }
 
-    if (globalBest === null ||
-        state.bestAssignedEntries > globalBest.assignedEntries ||
-        (state.bestAssignedEntries === globalBest.assignedEntries && state.bestSoftScore > globalBest.softScore)) {
+    const improvedEntries = globalBest === null ||
+        state.bestAssignedEntries > globalBest.assignedEntries;
+    const improvedGlobal = improvedEntries ||
+        (state.bestAssignedEntries === globalBest.assignedEntries && state.bestSoftScore > globalBest.softScore);
+    if (improvedGlobal) {
       globalBest = {
         state,
         assignedEntries: state.bestAssignedEntries,
         softScore: state.bestSoftScore === -Number.MAX_SAFE_INTEGER ? 0 : state.bestSoftScore,
       };
+    }
+
+    // Stagnation handling — both flavors hand the remaining budget to the
+    // repair phase, which on plateaued instances achieves in milliseconds
+    // what further backtracking provably doesn't:
+    //  - in-run bail: the run stopped reaching new placement depth;
+    //  - run-level: several consecutive restarts failed to improve the
+    //    global best (placement count or soft score).
+    if (useIterativeRepair) {
+      if (ctx.stagnationBail) {
+        stagnationBails += 1;
+        if (stagnationBails >= 2) break;
+      }
+      // Placement count is the stagnation signal — soft-score-only gains are
+      // cheaper to harvest in repair/LNS than by burning more BT restarts.
+      stagnantRuns = improvedEntries ? 0 : stagnantRuns + 1;
+      if (run > 0 && stagnantRuns >= 3) break;
     }
   }
 
@@ -4836,7 +4997,7 @@ export function solve(school, options = {}) {
     hardConflicts += 1;
   }
   for (let i = 0; i < model.lessonCount; i++) {
-    if (!globalBest.state.bestLessonAssigned[i] && initiallyInfeasible.indexOf(i) === -1) {
+    if (!globalBest.state.bestLessonAssigned[i] && !initiallyInfeasibleSet.has(i)) {
       const l = model.lessons[i];
       violations.push({
         ruleId: "HARD_unplaced_lesson",
@@ -5005,7 +5166,7 @@ export function solve(school, options = {}) {
   if (unplaced > 0) {
     const unplaceableIndices = [];
     for (let i = 0; i < model.lessonCount; i++) {
-      if (!globalBest.state.bestLessonAssigned[i] && initiallyInfeasible.indexOf(i) === -1) {
+      if (!globalBest.state.bestLessonAssigned[i] && !initiallyInfeasibleSet.has(i)) {
         unplaceableIndices.push(i);
       }
     }
