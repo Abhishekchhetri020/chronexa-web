@@ -17,6 +17,7 @@ const assert = require("node:assert");
 const path = require("path");
 const { solve, __test_internals } = require(path.join(__dirname, "..", "csp_solver.js"));
 const { buildModel, makeState, applySingle, removeSingle } = __test_internals;
+const { checkPlacement } = require(path.join(__dirname, "..", "constraints.js"));
 
 let passed = 0;
 let failed = 0;
@@ -177,6 +178,42 @@ test("INC: totalSiblingDeficit and totalTeacherConsecHeavy stay exact through ap
   applySingle(model, state, 2, 1 * model.periodsPerDay + 1, -1); check("apply#4");
   removeSingle(model, state, 1, 0 * model.periodsPerDay + 1, -1); check("remove#1");
   removeSingle(model, state, 4, 1 * model.periodsPerDay + 0, -1); check("remove#2");
+});
+
+// --- HALO: checkPlacement must not flag a card as conflicting with itself --
+test("HALO: a placed card does not report a phantom self-conflict (room=null + preferredRoomId)", () => {
+  // A homeroom lesson (no stored room) whose lesson defines a preferredRoomId.
+  // Pre-fix, the self-exclusion compared the card's classroomId (null) to the
+  // preferredRoomId fallback, failed to exclude the card, and reported the
+  // card teacher/class-conflicting with itself.
+  const idx = (arr) => Object.fromEntries(arr.map(x => [x.id, x]));
+  const school = {
+    bell: { periods: [{ index: 1, isTeaching: true }, { index: 2, isTeaching: true }] },
+    subjects: [{ id: "s1", name: "Chem", abbr: "Ch" }],
+    teachers: [{ id: "t1", name: "Gaurav" }],
+    classes: [{ id: "c1", name: "X A" }],
+    classrooms: [{ id: "lab1", name: "Lab 1", roomType: "lab" }],
+    lessons: [{ id: "L1", subjectId: "s1", classIds: ["c1"], teacherIds: ["t1"], preferredRoomId: "lab1" }],
+    // The placed card carries NO room (homeroom) even though the lesson has a
+    // preferredRoomId — exactly the mismatch that broke self-exclusion.
+    cards: [{ lessonId: "L1", day: 0, period: 1, classroomId: null }],
+  };
+  school._idx = {
+    lessonById: idx(school.lessons), subjectById: idx(school.subjects),
+    teacherById: idx(school.teachers), classById: idx(school.classes),
+    classroomById: idx(school.classrooms),
+  };
+  const r = checkPlacement(school, "L1", 0, 1, null);
+  assert.strictEqual((r.hard || []).length, 0,
+    `card must not self-conflict; got: ${JSON.stringify(r.hard)}`);
+
+  // Sanity: a genuine teacher conflict (two different lessons, same teacher,
+  // same slot) IS still detected.
+  school.lessons.push({ id: "L2", subjectId: "s1", classIds: ["c1"], teacherIds: ["t1"] });
+  school._idx.lessonById = idx(school.lessons);
+  school.cards.push({ lessonId: "L2", day: 0, period: 1, classroomId: null });
+  const r2 = checkPlacement(school, "L1", 0, 1, null);
+  assert.ok((r2.hard || []).length > 0, "a real same-teacher same-slot conflict must still flag");
 });
 
 console.log("");

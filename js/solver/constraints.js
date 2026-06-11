@@ -522,10 +522,15 @@ export function checkPlacement(school, lessonId, day, period, roomId) {
   }
 
   // Build a per-slot view from S.cards, excluding this exact placement (so
-  // re-checking a card on its own slot doesn't flag itself).
+  // re-checking a card on its own slot doesn't flag itself). A lesson can
+  // occupy a given (day, period) at most once, so excluding by lessonId is
+  // sufficient AND correct. The previous `&& c.classroomId === rid` guard
+  // failed to exclude the card whenever its stored classroomId (often null
+  // for homeroom lessons) differed from `rid` — which falls back to the
+  // lesson's preferredRoomId — making every such card report a phantom
+  // teacher+class conflict against itself (815/911 cards red on the demo).
   const sameSlot = (school.cards || []).filter(c =>
-    c.day === day && c.period === period &&
-    !(c.lessonId === lessonId && c.classroomId === rid)
+    c.day === day && c.period === period && c.lessonId !== lessonId
   );
 
   // 3. Teacher conflict + availability (hard) + preferred-off (soft).
