@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-06-01T06:10:46Z
+/* Chronexa bundle — generated 2026-06-11T08:05:00Z
  *      164 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -23,6 +23,8 @@ window.APP = window.APP || {
   day: 0,                 // Monday default
   dirty: new Set(),
 };
+
+// Chronexa Web
 
 /* ─── FILE: js/ui/i18n.js ─── */
 /**
@@ -116,6 +118,8 @@ window.I18N = (function () {
 
   return { t, dayLabel, STRINGS };
 })();
+
+// Chronexa Web
 
 /* ─── FILE: js/xml/parse_timetable_xml.js ─── */
 /**
@@ -422,6 +426,7 @@ window.parseTimetableXml = (function () {
     }));
 
     return {
+      schemaVersion: 1,
       schoolName,
       daysPerWeek,
       bell: { periods },
@@ -2454,6 +2459,8 @@ window.Inspector = (function () {
   global.ClassConstraintsDialog = { open };
 })(window);
 
+// Chronexa Web
+
 /* ─── FILE: js/ui/components/teacher_constraints_dialog.js ─── */
 /* Teacher constraints dialog — Classic's 11-field teachers.constraints subobject.
  * window.TeacherConstraintsDialog.open(teacherRow, onSave)
@@ -2640,6 +2647,8 @@ window.Inspector = (function () {
 
   global.TeacherConstraintsDialog = { open };
 })(window);
+
+// Chronexa Web
 
 /* ─── FILE: js/ui/components/divisions_tree.js ─── */
 /* Divisions tree component.
@@ -7244,6 +7253,8 @@ window.Inspector = (function () {
   global.EntitySupervisions = { open };
 })(window);
 
+// Chronexa Web
+
 /* ─── FILE: js/ui/entities/coursegroups.js ─── */
 /* CourseGroups CRUD dialog. window.EntityCourseGroups.open()
  * High-school elective groups — e.g. Science / Commerce / Humanities
@@ -7510,6 +7521,8 @@ window.Inspector = (function () {
   global.EntityBuildings = { open };
 })(window);
 
+// Chronexa Web
+
 /* ─── FILE: js/ui/entities/divisions.js ─── */
 /* Divisions CRUD dialog. window.EntityDivisions.open()
  * A division splits one class into parallel sub-groups for elective /
@@ -7643,6 +7656,8 @@ window.Inspector = (function () {
   global.EntityDivisions = { open };
 })(window);
 
+// Chronexa Web
+
 /* ─── FILE: js/ui/entities/groups.js ─── */
 /* Groups CRUD dialog. window.EntityGroups.open()
  * A group is a sub-grouping of a class — either the full class
@@ -7767,6 +7782,8 @@ window.Inspector = (function () {
 
   global.EntityGroups = { open };
 })(window);
+
+// Chronexa Web
 
 /* ─── FILE: js/ui/entities/days.js ─── */
 /* Days CRUD dialog. window.EntityDays.open()
@@ -7987,6 +8004,8 @@ window.Inspector = (function () {
   global.EntityDays = { open, ensure, defaultId, patternLabel };
 })(window);
 
+// Chronexa Web
+
 /* ─── FILE: js/ui/entities/terms.js ─── */
 /* Terms CRUD dialog. window.EntityTerms.open()
  * Defines reusable term-pattern entries (Term-1, Term-2, "Whole year") that
@@ -8173,6 +8192,8 @@ window.Inspector = (function () {
 
   global.EntityTerms = { open, ensure, defaultId, patternLabel };
 })(window);
+
+// Chronexa Web
 
 /* ─── FILE: js/ui/entities/weeks.js ─── */
 /* Weeks CRUD dialog. window.EntityWeeks.open()
@@ -8366,6 +8387,8 @@ window.Inspector = (function () {
 
   global.EntityWeeks = { open, ensure, defaultId, patternLabel };
 })(window);
+
+// Chronexa Web
 
 /* ─── FILE: js/ui/entities/ttreports.js ─── */
 /* TTReports CRUD dialog. window.EntityTTReports.open()
@@ -9906,6 +9929,8 @@ window.Inspector = (function () {
 
   global.StatisticsPanel = { open, compute };
 })(window);
+
+// Chronexa Web
 
 /* ─── FILE: js/ui/components/school_settings_dialog.js ─── */
 /* School settings dialog — window.SchoolSettings.open().
@@ -12449,9 +12474,10 @@ ${body}
   const POLL_MS = 1000;
   const DEFAULT_TIMEOUT_MS = 90_000;
 
-  // Capture this script's URL at load time so the Worker URL resolves
-  // correctly even when run() is called from a click handler later.
-  const SELF_URL = (document.currentScript && document.currentScript.src) || location.href;
+  // Worker path is hardcoded relative to the page root (not the script/bundle).
+  // This works because the app is always served from the repo root via GitHub
+  // Pages or a static server. If the deploy path changes, update the URL in
+  // runBrowserSingle() below.
 
   function makeSubscribable() {
     const listeners = new Set();
@@ -15040,13 +15066,35 @@ ${body}
     // file:// (downloaded zip use case) can't register a SW — skip silently
     if (location.protocol === "file:") return;
 
-    // Auto-reload when a new SW takes control (version update).
+    // A deploy while the app is open installs a new SW in the background;
+    // sw.js skipWaiting()+clients.claim() then seizes the page and fires
+    // controllerchange. Reloading here is only safe when the user has no
+    // work open — an unconditional reload threw away a freshly generated
+    // timetable and dumped the user back on the start screen (reported on
+    // the demo school, 2026-06-11). With a school loaded we skip the
+    // reload entirely: the SW is network-first and every module URL is
+    // version-pinned (?v=), so the running page keeps working; the new
+    // version applies on the next visit.
+    function hasOpenWork() {
+      try {
+        return !!(window.APP && window.APP.school);
+      } catch (_) { return false; }
+    }
     let refreshing = false;
     navigator.serviceWorker.addEventListener("controllerchange", () => {
       if (refreshing) return;
+      if (hasOpenWork()) {
+        console.info("[chronexa] new SW active — reload deferred (work open)");
+        try {
+          (window._chrxNotify || console.info)(
+            "Chronexa was updated in the background — it loads on your next visit."
+          );
+        } catch (_) {}
+        return;
+      }
       refreshing = true;
-      console.info("[chronexa] new SW active — reloading…");
-      window.location.reload();
+      console.info("[chronexa] new SW active — reloading in 300ms…");
+      setTimeout(() => window.location.reload(), 300);
     });
 
     navigator.serviceWorker
@@ -15058,6 +15106,12 @@ ${body}
           if (!nw) return;
           nw.addEventListener("statechange", () => {
             if (nw.state === "installed" && navigator.serviceWorker.controller) {
+              if (hasOpenWork()) {
+                // Don't hot-swap under the user's feet — see controllerchange
+                // guard above. The update applies on the next visit.
+                console.info("[chronexa] new version cached — activation deferred (work open)");
+                return;
+              }
               // New version is waiting — tell it to take over immediately.
               console.info("[chronexa] new version cached — triggering SKIP_WAITING");
               nw.postMessage("SKIP_WAITING");
@@ -19870,6 +19924,7 @@ window.StartScreen = (function () {
     if (!global.CreateNew?.createBlank) return { error: "CreateNew not loaded" };
     global.CreateNew.createBlank({ schoolName: opts.schoolName || choice.label });
     const school = APP.school;
+    school.schemaVersion = school.schemaVersion || 1;
     if (choice.id === "blank") {
       return { ok: true, choice: "blank" };
     }
@@ -21623,6 +21678,8 @@ window.StartScreen = (function () {
   APP.io.applySchool  = applySchool;
 })();
 
+// Chronexa Web
+
 /* ─── FILE: js/ui/io/export_timetable_xml.js ─── */
 /* Round-trip Classic Timetable XML export.
  *
@@ -22406,6 +22463,8 @@ window.StartScreen = (function () {
   APP.snapshot = { save, saveAs, open, listSnapshots, openVersionHistory, diffSummary };
 })();
 
+// Chronexa Web
+
 /* ─── FILE: js/ui/io/import_basic_xml.js ─── */
 /* Classic "Basic data export" importer.
  * Accepts a JSON blob (file or pasted text) containing school identity,
@@ -22515,6 +22574,8 @@ window.StartScreen = (function () {
   window.addEventListener("app:import-classic-basic", () => run());
 })();
 
+// Chronexa Web
+
 /* ─── FILE: js/ui/io/import_bell_times.js ─── */
 /* Classic "Bell times export" importer.
  * Accepts JSON with period rows: [{ name, short, starttime, endtime, period }]
@@ -22600,6 +22661,8 @@ window.StartScreen = (function () {
   window.ImportBellTimes = { run, parse };
   window.addEventListener("app:import-classic-bell-times", () => run());
 })();
+
+// Chronexa Web
 
 /* ─── FILE: js/ui/io/import_clipboard.js ─── */
 /* Clipboard importer — reads navigator.clipboard text, auto-detects TSV/CSV,
@@ -27060,6 +27123,8 @@ window.StartScreen = (function () {
   });
 })();
 
+// Chronexa Web
+
 /* ─── FILE: js/ui/print_preview/templates/timetable_for_each_student.js ─── */
 /* Per-student timetable — one A4 portrait per enrolled student.
  *
@@ -27378,6 +27443,8 @@ window.StartScreen = (function () {
   });
 })();
 
+// Chronexa Web
+
 /* ─── FILE: js/ui/print_preview/templates/lesson_grid.js ─── */
 /* Lesson grid — one A4 landscape page listing every lesson row (subject,
  * class, teacher, periods/week, day/period if pinned). Mirrors the CLASSIC
@@ -27451,6 +27518,8 @@ window.StartScreen = (function () {
     render,
   });
 })();
+
+// Chronexa Web
 
 /* ─── FILE: js/ui/print_preview/templates/classwise_with_table.js ─── */
 /* Class-wise timetable + companion table.
@@ -27941,6 +28010,8 @@ window.StartScreen = (function () {
   });
 })();
 
+// Chronexa Web
+
 /* ─── FILE: js/ui/print_preview/templates/summary_of_teachers.js ─── */
 /* Summary of teachers — single A4 landscape with one row per teacher.
  *
@@ -28004,6 +28075,8 @@ window.StartScreen = (function () {
   });
 })();
 
+// Chronexa Web
+
 /* ─── FILE: js/ui/print_preview/templates/summary_of_classrooms.js ─── */
 /* Summary of classrooms — single A4 landscape with one row per classroom.
  *
@@ -28064,6 +28137,8 @@ window.StartScreen = (function () {
     render,
   });
 })();
+
+// Chronexa Web
 
 /* ─── FILE: js/ui/print_preview/templates/wall_poster_teachers.js ─── */
 /* Wall poster — teachers (landscape).
@@ -28134,6 +28209,8 @@ window.StartScreen = (function () {
   });
 })();
 
+// Chronexa Web
+
 /* ─── FILE: js/ui/print_preview/templates/list_of_teachers.js ─── */
 /* List of teachers — directory page with name, abbreviation, periods/week,
  * subjects taught, and primary classes assigned.
@@ -28202,6 +28279,8 @@ window.StartScreen = (function () {
   });
 })();
 
+// Chronexa Web
+
 /* ─── FILE: js/ui/print_preview/templates/list_of_classes.js ─── */
 /* "List of classes" report template — final missing Classic parity item.
  * Registers via window.APP.printTemplates.register(...).
@@ -28269,6 +28348,8 @@ window.StartScreen = (function () {
     render,
   });
 })();
+
+// Chronexa Web
 
 /* ─── FILE: js/ui/print_preview/templates/custom_slots.js ─── */
 /* Custom 1 / Custom 2 / Custom 3 — empty user-editable report slots.
@@ -29497,6 +29578,8 @@ window.StartScreen = (function () {
   APP.io.compareWithFile = trigger;
 })();
 
+// Chronexa Web
+
 /* ─── FILE: js/ui/io/import_cardrelationships_har.js ─── */
 /* CardRelationships HAR Importer.
  *
@@ -29817,6 +29900,8 @@ window.StartScreen = (function () {
 
   global.Snapshots = { take, restore, remove, list: load, listForSchool, showHistory };
 })(window);
+
+// Chronexa Web
 
 /* ─── FILE: js/ui/components/lessons_grid_matrix.js ─── */
 /* Lessons grid matrix editor — bulk-entry class×subject weekly count.
@@ -30590,6 +30675,8 @@ window.StartScreen = (function () {
   global.ColorTaxonomy = { autoColor, harmonize, resolveCardColor, colorForId, hslToHex, openDialog };
 })(window);
 
+// Chronexa Web
+
 /* ─── FILE: js/ui/components/master_solver_wizard.js ─── */
 /* Master Solver Wizard — one-click "make it work" pipeline.
  *
@@ -31308,6 +31395,8 @@ window.StartScreen = (function () {
   global.HelpCenter = { open, TOPICS };
 })(window);
 
+// Chronexa Web
+
 /* ─── FILE: js/ui/components/auto_save.js ─── */
 /* Auto-save — silent localStorage snapshots every 60 seconds.
  *
@@ -31464,6 +31553,8 @@ window.StartScreen = (function () {
 
   window.AutoSave = { save, restore, discard: discardSaved };
 })();
+
+// Chronexa Web
 
 /* ─── FILE: js/ui/components/solver_presets.js ─── */
 /* Solver presets — quick "Fast / Balanced / Best / Custom" picker.
@@ -31752,6 +31843,8 @@ window.StartScreen = (function () {
   global.PerDayBellOverride = { open };
 })(window);
 
+// Chronexa Web
+
 /* ─── FILE: js/ui/components/entity_field_gaps.js ─── */
 /* Entity field gaps from the W15 live Classic walk.
  *
@@ -31968,6 +32061,8 @@ window.StartScreen = (function () {
   global.EntityFieldGaps = { decorate };
 })(window);
 
+// Chronexa Web
+
 /* ─── FILE: js/ui/components/advisor.js ─── */
 /* Advisor — analyses the current timetable + surfaces improvement opportunities.
  *
@@ -32157,6 +32252,8 @@ window.StartScreen = (function () {
   window.addEventListener("app:advisor", () => open());
   window.Advisor = { open, collectSuggestions };
 })();
+
+// Chronexa Web
 
 /* ─── FILE: js/solver/improve_mode.js ─── */
 /* Improve mode — third solver mode alongside Test + Generate.
@@ -32437,7 +32534,7 @@ window.StartScreen = (function () {
   function evalRule(rule, ctx) {
     if (!rule || !rule.expr) return 0;
     const v = evalNode(rule.expr, ctx);
-    if (typeof v === "boolean") return v ? (rule.weight || 1) : 0;
+    if (typeof v === "boolean") return v ? (rule.weight != null ? rule.weight : 1) : 0;
     if (typeof v === "number") return v * (rule.weight != null ? rule.weight : 1);
     return 0;
   }
@@ -32490,6 +32587,8 @@ window.StartScreen = (function () {
 
   global.ScoreExpr = { evalNode, evalRule, scoreSchool, PRESETS };
 })(window);
+
+// Chronexa Web
 
 /* ─── FILE: js/ui/print_preview/print_preview.js ─── */
 /* Print preview — swaps the ribbon into preview mode, renders one of 5
@@ -33406,6 +33505,8 @@ window.StartScreen = (function () {
   };
 })();
 
+// Chronexa Web
+
 /* ─── FILE: js/ui/substitution/candidate_ranker.js ─── */
 /**
  * Candidate ranker — pure scoring algorithm.
@@ -33571,6 +33672,8 @@ window.StartScreen = (function () {
 
   window.SubstitutionRanker = { rankAll, reassign };
 })();
+
+// Chronexa Web
 
 /* ─── FILE: js/ui/substitution/absence_input.js ─── */
 /**

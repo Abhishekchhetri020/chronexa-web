@@ -85,11 +85,32 @@
     // file:// (downloaded zip use case) can't register a SW — skip silently
     if (location.protocol === "file:") return;
 
-    // Auto-reload when a new SW takes control (version update).
-    // Small delay lets the new cache settle before reload.
+    // A deploy while the app is open installs a new SW in the background;
+    // sw.js skipWaiting()+clients.claim() then seizes the page and fires
+    // controllerchange. Reloading here is only safe when the user has no
+    // work open — an unconditional reload threw away a freshly generated
+    // timetable and dumped the user back on the start screen (reported on
+    // the demo school, 2026-06-11). With a school loaded we skip the
+    // reload entirely: the SW is network-first and every module URL is
+    // version-pinned (?v=), so the running page keeps working; the new
+    // version applies on the next visit.
+    function hasOpenWork() {
+      try {
+        return !!(window.APP && window.APP.school);
+      } catch (_) { return false; }
+    }
     let refreshing = false;
     navigator.serviceWorker.addEventListener("controllerchange", () => {
       if (refreshing) return;
+      if (hasOpenWork()) {
+        console.info("[chronexa] new SW active — reload deferred (work open)");
+        try {
+          (window._chrxNotify || console.info)(
+            "Chronexa was updated in the background — it loads on your next visit."
+          );
+        } catch (_) {}
+        return;
+      }
       refreshing = true;
       console.info("[chronexa] new SW active — reloading in 300ms…");
       setTimeout(() => window.location.reload(), 300);
@@ -104,6 +125,12 @@
           if (!nw) return;
           nw.addEventListener("statechange", () => {
             if (nw.state === "installed" && navigator.serviceWorker.controller) {
+              if (hasOpenWork()) {
+                // Don't hot-swap under the user's feet — see controllerchange
+                // guard above. The update applies on the next visit.
+                console.info("[chronexa] new version cached — activation deferred (work open)");
+                return;
+              }
               // New version is waiting — tell it to take over immediately.
               console.info("[chronexa] new version cached — triggering SKIP_WAITING");
               nw.postMessage("SKIP_WAITING");
