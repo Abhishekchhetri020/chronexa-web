@@ -4683,8 +4683,19 @@ export function solve(school, options = {}) {
       timedOut: false,
       // Stagnation bail (only meaningful when repair can pick up the slack):
       // give up on this BT run when no new placement depth is reached for
-      // this long, freeing the budget for repair/LNS.
-      stagnationMs: useIterativeRepair ? Math.max(800, timeLimitSec * 1000 * btShare * 0.25) : -1,
+      // this long, freeing the budget for repair/LNS. SMALL budgets only —
+      // measured on demo_sample-school.xml at 120s × 8 branches, long
+      // plateaus often break after >13.5s, and the UI's best-of-N branch
+      // statistic rewards exactly those deep lucky runs (best-of-8 went
+      // 2 → 13 unplaced with the bail active at 120s). At interactive
+      // budgets (window <= 3s) repair finishes near-instantly once given
+      // the budget, so bailing is pure win there (2-20x wall-time).
+      // options.stagnationMs overrides (0 or negative disables).
+      stagnationMs: options.stagnationMs != null
+        ? (options.stagnationMs > 0 ? options.stagnationMs : -1)
+        : (useIterativeRepair && timeLimitSec * 1000 * btShare * 0.25 <= 3000
+            ? Math.max(800, timeLimitSec * 1000 * btShare * 0.25)
+            : -1),
       stagnationBail: false,
       runMaxAssigned: state.assignedLessonCount,
       madeProgress: false,

@@ -15,7 +15,7 @@
  */
 
 const CACHE_PREFIX = "chronexa-";
-const APP_VER = "20260611-p130-solver-perf";
+const APP_VER = "20260611-p131-stagnation-gate";
 const CACHE_NAME = CACHE_PREFIX + APP_VER;
 
 // Minimal app shell for offline support.
