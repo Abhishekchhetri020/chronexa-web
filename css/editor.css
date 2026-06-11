@@ -2,7 +2,12 @@
 .chrx-editor{font-family:var(--chrx-font-sans);color:var(--chrx-fg);background:var(--chrx-bg-canvas);border-radius:var(--chrx-radius-lg);display:flex;flex-direction:column;gap:var(--chrx-space-2)}
 .chrx-editor-empty{padding:var(--chrx-space-6);text-align:center;color:var(--chrx-fg-secondary);font-size:var(--chrx-font-body)}
 .chrx-grid-scroll{overflow:auto;max-height:calc(100vh - 260px);border:1px solid var(--chrx-line);border-radius:var(--chrx-radius-md);background:var(--chrx-bg-tile);box-shadow:var(--chrx-shadow-tile)}
-.chrx-grid{display:flex;flex-direction:column;min-width:max-content}
+/* Auto-fit grid: rows fill the scroll viewport width so the timetable
+   spreads edge-to-edge for ANY period count (5/6/7/8/9…). When the columns
+   genuinely can't fit at the readable minimum cell width, .chrx-grid-scroll
+   takes over with a horizontal scrollbar. --chrx-cell-min is the per-period
+   floor below which we scroll instead of shrinking further. */
+.chrx-grid{display:flex;flex-direction:column;width:100%;min-width:100%;--chrx-cell-min:34px}
 .chrx-day-tabs{display:none;gap:var(--chrx-space-1);padding:0 var(--chrx-space-1)}
 .chrx-editor-tools{display:flex;align-items:center;gap:6px;padding:6px 8px;border:1px solid var(--chrx-line);border-radius:var(--chrx-radius-md);background:rgba(255,255,255,.88);box-shadow:0 1px 2px rgba(15,23,42,.06);position:sticky;top:0;z-index:calc(var(--chrx-z-grid) + 3)}
 .chrx-editor-tool{height:28px;padding:0 10px;border:1px solid var(--chrx-line);border-radius:6px;background:var(--chrx-bg-tile);color:var(--chrx-fg);font-size:var(--chrx-font-eye);font-weight:var(--chrx-fw-semibold);cursor:pointer;white-space:nowrap}
@@ -20,13 +25,13 @@
 .chrx-h-day{border-right-width:2px}
 .chrx-rowlabel-main{display:inline-block;transform-origin:left center;white-space:nowrap}
 .chrx-rowlabel-sub{display:none}
-.chrx-day-head-group,.chrx-day-body-group{width:calc(var(--chrx-periods, 8) * 40px);min-width:calc(var(--chrx-periods, 8) * 40px);border-right:2px solid var(--chrx-line)}
+.chrx-day-head-group,.chrx-day-body-group{flex:1 1 0;min-width:0;border-right:2px solid var(--chrx-line)}
 .chrx-day-head-group{display:flex;flex-direction:column}
-.chrx-period-head-row,.chrx-day-body-group{display:grid;grid-template-columns:repeat(var(--chrx-periods, 8), 40px)}
+.chrx-period-head-row,.chrx-day-body-group{display:grid;grid-template-columns:repeat(var(--chrx-periods, 8), minmax(var(--chrx-cell-min,34px), 1fr))}
 .chrx-h-day{min-width:0;text-align:center;font-weight:var(--chrx-fw-semibold);font-size:var(--chrx-font-small);background:var(--chrx-bg-tile);border-right:0;border-bottom:1px solid var(--chrx-line);padding:2px 0}
-.chrx-h-period{width:40px;min-width:40px;text-align:center;border-right:1px solid var(--chrx-bg-grid-line);padding:2px 0;color:var(--chrx-fg-tertiary);font-size:var(--chrx-font-eye)}
+.chrx-h-period{width:auto;min-width:0;text-align:center;border-right:1px solid var(--chrx-bg-grid-line);padding:2px 0;color:var(--chrx-fg-tertiary);font-size:var(--chrx-font-eye)}
 .chrx-h-period.is-synthetic{color:rgba(100,116,139,.55);background:repeating-linear-gradient(45deg,rgba(148,163,184,.10) 0 4px,transparent 4px 8px)}
-.chrx-slot{width:40px;min-width:40px;border-right:1px solid var(--chrx-bg-grid-line);position:relative}
+.chrx-slot{width:auto;min-width:0;border-right:1px solid var(--chrx-bg-grid-line);position:relative}
 .chrx-slot[data-period="8"]{border-right:2px solid var(--chrx-line)}
 .chrx-slot{transition:outline-color var(--chrx-duration-fast) var(--chrx-ease),background var(--chrx-duration-fast) var(--chrx-ease)}
 body.chrx-card-in-hand .chrx-slot:not(.out-of-bell){outline:2px dashed var(--chrx-green);outline-offset:-3px;background:var(--chrx-green-bg);cursor:copy}
