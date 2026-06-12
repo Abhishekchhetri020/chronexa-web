@@ -43,7 +43,7 @@
       el("label", { style: "min-width:140px;font-size:13px;color:#475569;font-weight:500" }, label),
       control);
     // Append into the sheet body (before footer if there is one)
-    const footer = sheet.querySelector("footer, .chrx-ent-sheet__foot");
+    const footer = sheet.querySelector("footer, .chrx-ent-sheet__foot, .chrx-ent-form__foot");
     if (footer) footer.parentNode.insertBefore(row, footer);
     else sheet.appendChild(row);
   }
@@ -76,6 +76,10 @@
 
   function decorate(sheetEl) {
     if (!sheetEl || sheetEl.dataset.chrxFieldGapsDone) return;
+    
+    const sheetTitle = (sheetEl.querySelector(".chrx-ent-sheet__head h3, header h2, header h3")?.textContent || "").toLowerCase();
+    if (!sheetTitle.startsWith("new ") && !sheetTitle.startsWith("edit ")) return;
+
     const dlg = sheetEl.closest(".chrx-ent-dialog");
     if (!dlg) return;
     const kind = inferEntity(dlg);
