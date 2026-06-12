@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-06-12T09:56:05Z
+/* Chronexa bundle — generated 2026-06-12T10:13:34Z
  *      164 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -2876,7 +2876,7 @@ window.Inspector = (function () {
         color: s.color || "",
         contractWeight: s.contractWeight != null ? s.contractWeight : 1,
         pictureUrl: s.pictureUrl || "", _ref: s,
-        _timeOff: norm, _nP: nP,
+        _timeOff: norm, _nP: nP, _nD: nD,
       };
     });
   }
@@ -2889,23 +2889,7 @@ window.Inspector = (function () {
     { key:"short", label:"Short" },
     { key:"contractWeight", label:"Weight" },
     { key:"timeOff", label:"Time off", sortable:false,
-      render:(r) => {
-        const wrap = D.el("div", { class:"chrx-subj-tobar", "aria-hidden":"true" });
-        for (let p = 0; p < r._nP; p++) {
-          let maxState = 0;
-          if (r._timeOff) {
-            for (let d = 0; d < r._timeOff.length; d++) {
-              if (r._timeOff[d][p] > maxState) maxState = r._timeOff[d][p];
-            }
-          }
-          wrap.appendChild(D.el("span", {
-            class: "chrx-subj-tobar__dot",
-            "data-state": String(maxState),
-          }));
-        }
-        return wrap;
-      },
-    },
+      render:(r) => D.buildTimeOffMini(r._timeOff, r._nD, r._nP) },
   ]; }
 
   function openEdit(r) {
@@ -4256,14 +4240,18 @@ window.Inspector = (function () {
   }
 
   function rows() {
+    const s = window.APP && window.APP.school;
+    const nP = (s && s.bell && s.bell.periods && s.bell.periods.length) || 8;
+    const nD = ((s && s._idx && s._idx.days) || ["Mon","Tue","Wed","Thu","Fri","Sat"]).length;
     return ((window.APP.school?.teachers) || []).map(t => {
       const split = t.firstName != null || t.lastName != null
         ? { first: t.firstName || "", last: t.lastName || "" }
         : splitName(t.name);
+
       return {
         id: t.id,
         firstName: split.first,
-        lastName:  split.last,
+        lastName: split.last,
         abbr: t.abbr || "",
         color: t.color || "",
         timeOff: t.timeOff || {},
@@ -4271,6 +4259,8 @@ window.Inspector = (function () {
         maxConsec: t.maxConsecutivePeriods != null ? t.maxConsecutivePeriods : "",
         constraintsN: constraintsCount(t),
         _ref: t,
+        _nP: nP,
+        _nD: nD,
       };
     });
   }
@@ -4283,7 +4273,7 @@ window.Inspector = (function () {
       render:(r)=>D.el("span", { class:"chrx-ent-swatch-dot",
         style:`background:${r.color || "transparent"}` }) },
     { key:"timeOff",   label:"Time off", sortable:false,
-      render:(r)=>D.buildTimeOffMini(r.timeOff, 6, 8) },
+      render:(r)=>D.buildTimeOffMini(r.timeOff, r._nD, r._nP) },
     { key:"maxGaps",   label:"Max gaps" },
     { key:"maxConsec", label:"Max consec." },
     { key:"constraintsN", label:"Constraints" },

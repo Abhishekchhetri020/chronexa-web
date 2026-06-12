@@ -303,15 +303,7 @@
 .chrx-ent-tomatrix__c.is-placed      { box-shadow: inset 0 0 0 2px rgba(255,255,255,0.7); }
 
 /* ---------- Subject time-off bar (in the Subjects grid column) ---------- */
-.chrx-subj-tobar { display: flex; gap: 2px; align-items: center; }
-.chrx-subj-tobar__dot {
-  width: 7px; height: 16px;
-  border-radius: 2px;
-  background: var(--chrx-green);
-  flex-shrink: 0;
-}
-.chrx-subj-tobar__dot[data-state="1"] { background: var(--chrx-blue); }
-.chrx-subj-tobar__dot[data-state="2"] { background: var(--chrx-red); }
+
 
 /* ---------- Time-off matrix decoration (tip, legend, quick actions) ---------- */
 .chrx-timeoff-body { display: flex; flex-direction: column; gap: 8px; }

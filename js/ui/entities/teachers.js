@@ -19,14 +19,18 @@
   }
 
   function rows() {
+    const s = window.APP && window.APP.school;
+    const nP = (s && s.bell && s.bell.periods && s.bell.periods.length) || 8;
+    const nD = ((s && s._idx && s._idx.days) || ["Mon","Tue","Wed","Thu","Fri","Sat"]).length;
     return ((window.APP.school?.teachers) || []).map(t => {
       const split = t.firstName != null || t.lastName != null
         ? { first: t.firstName || "", last: t.lastName || "" }
         : splitName(t.name);
+
       return {
         id: t.id,
         firstName: split.first,
-        lastName:  split.last,
+        lastName: split.last,
         abbr: t.abbr || "",
         color: t.color || "",
         timeOff: t.timeOff || {},
@@ -34,6 +38,8 @@
         maxConsec: t.maxConsecutivePeriods != null ? t.maxConsecutivePeriods : "",
         constraintsN: constraintsCount(t),
         _ref: t,
+        _nP: nP,
+        _nD: nD,
       };
     });
   }
@@ -46,7 +52,7 @@
       render:(r)=>D.el("span", { class:"chrx-ent-swatch-dot",
         style:`background:${r.color || "transparent"}` }) },
     { key:"timeOff",   label:"Time off", sortable:false,
-      render:(r)=>D.buildTimeOffMini(r.timeOff, 6, 8) },
+      render:(r)=>D.buildTimeOffMini(r.timeOff, r._nD, r._nP) },
     { key:"maxGaps",   label:"Max gaps" },
     { key:"maxConsec", label:"Max consec." },
     { key:"constraintsN", label:"Constraints" },

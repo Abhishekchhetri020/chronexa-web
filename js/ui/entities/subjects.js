@@ -25,7 +25,7 @@
         color: s.color || "",
         contractWeight: s.contractWeight != null ? s.contractWeight : 1,
         pictureUrl: s.pictureUrl || "", _ref: s,
-        _timeOff: norm, _nP: nP,
+        _timeOff: norm, _nP: nP, _nD: nD,
       };
     });
   }
@@ -38,23 +38,7 @@
     { key:"short", label:"Short" },
     { key:"contractWeight", label:"Weight" },
     { key:"timeOff", label:"Time off", sortable:false,
-      render:(r) => {
-        const wrap = D.el("div", { class:"chrx-subj-tobar", "aria-hidden":"true" });
-        for (let p = 0; p < r._nP; p++) {
-          let maxState = 0;
-          if (r._timeOff) {
-            for (let d = 0; d < r._timeOff.length; d++) {
-              if (r._timeOff[d][p] > maxState) maxState = r._timeOff[d][p];
-            }
-          }
-          wrap.appendChild(D.el("span", {
-            class: "chrx-subj-tobar__dot",
-            "data-state": String(maxState),
-          }));
-        }
-        return wrap;
-      },
-    },
+      render:(r) => D.buildTimeOffMini(r._timeOff, r._nD, r._nP) },
   ]; }
 
   function openEdit(r) {
