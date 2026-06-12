@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-06-12T05:54:20Z
+/* Chronexa bundle — generated 2026-06-12T08:47:07Z
  *      164 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -12493,6 +12493,8 @@ ${body}
     let paused = false;
     let buf = [];
     let cancelled = false;
+    let lastResult = null;
+    let lastSnapshot = null; // best mid-run placement (Accept-partial)
 
     // Worker path is always relative to the page (not the bundle/script).
     const url = "js/solver/worker.js?v=" + (window.APP_VER || "");
@@ -12503,12 +12505,17 @@ ${body}
       if (cancelled) return;
       if (paused && m.type === "progress") { buf.push(m); return; }
       if (m.type === "done") {
+        lastResult = m.result;
         sub.emit({ type: "done", result: m.result });
         worker.terminate();
       } else if (m.type === "error") {
         sub.emit({ type: "error", message: m.message || "worker error" });
         worker.terminate();
       } else if (m.type === "progress") {
+        if (m.snapshot && m.snapshot.assignment &&
+            (!lastSnapshot || (m.snapshot.placed || 0) > lastSnapshot.placed)) {
+          lastSnapshot = m.snapshot;
+        }
         sub.emit(m);
       }
     };
@@ -12519,6 +12526,23 @@ ${body}
     return {
       mode: "browser",
       subscribe: sub.subscribe,
+      getPartial() {
+        if (lastResult) return lastResult;
+        if (!lastSnapshot) return null;
+        return {
+          status: "PARTIAL",
+          partial: true,
+          assignment: lastSnapshot.assignment,
+          stats: {
+            placed: lastSnapshot.placed,
+            unplaced: lastSnapshot.unplaced,
+            hardConflicts: lastSnapshot.unplaced,
+            softScore: 0,
+            durationMs: 0,
+          },
+          violations: [],
+        };
+      },
       cancel() {
         cancelled = true;
         try { worker.terminate(); } catch {}
@@ -12817,6 +12841,10 @@ ${body}
     let bestResult = null;
     let bestScore = Infinity; // lower is better (soft score = penalty)
     let bestPlaced = 0;
+    // Best mid-run placement snapshot across all branches (solver attaches
+    // `snapshot` to progress events every ~2s). This is what "Accept partial
+    // result" applies when no branch has finished yet.
+    let bestPartial = null;
 
     // Aggregate progress across all branches
     const branchProgress = new Array(N).fill(null);
@@ -12914,6 +12942,10 @@ ${body}
         if (cancelled) return;
 
         if (m.type === "progress") {
+          if (m.snapshot && m.snapshot.assignment &&
+              (!bestPartial || (m.snapshot.placed || 0) > bestPartial.placed)) {
+            bestPartial = { ...m.snapshot, _branch: branchIdx };
+          }
           // Track placed count from progress
           branchProgress[branchIdx] = {
             ...m,
@@ -12944,6 +12976,26 @@ ${body}
       mode: "browser-multi",
       branches: N,
       subscribe: sub.subscribe,
+      // Best result available RIGHT NOW: a finished branch's full result if
+      // any, else the best mid-run snapshot, else null. SolveResponse-shaped
+      // so the result panel can apply it directly.
+      getPartial() {
+        if (bestResult) return bestResult;
+        if (!bestPartial) return null;
+        return {
+          status: "PARTIAL",
+          partial: true,
+          assignment: bestPartial.assignment,
+          stats: {
+            placed: bestPartial.placed,
+            unplaced: bestPartial.unplaced,
+            hardConflicts: bestPartial.unplaced,
+            softScore: 0,
+            durationMs: 0,
+          },
+          violations: [],
+        };
+      },
       cancel() {
         cancelled = true;
         cleanup();
@@ -13285,6 +13337,12 @@ ${body}
     return n;
   }
 
+  function svg(tag, attrs) {
+    const n = document.createElementNS("http://www.w3.org/2000/svg", tag);
+    if (attrs) for (const k in attrs) n.setAttribute(k, attrs[k]);
+    return n;
+  }
+
   function fmtInt(n) {
     if (n == null || !isFinite(n)) return "—";
     return Number(n).toLocaleString();
@@ -13293,6 +13351,52 @@ ${body}
     const s = Math.max(0, Math.round((ms || 0) / 1000));
     const m = Math.floor(s / 60), r = s % 60;
     return m + ":" + String(r).padStart(2, "0");
+  }
+
+  /** Build the SVG progress ring (96×96). Returns { svg, circle, pctText }. */
+  function buildRing() {
+    const size = 96, stroke = 6, radius = (size - stroke) / 2;
+    const circ = 2 * Math.PI * radius;
+
+    const root = svg("svg", {
+      class: "csu-ring__svg",
+      width: String(size), height: String(size),
+      viewBox: "0 0 " + size + " " + size
+    });
+
+    const bg = svg("circle", {
+      cx: String(size / 2), cy: String(size / 2), r: String(radius),
+      fill: "none",
+      stroke: "var(--chrx-line-soft, rgba(0,0,0,0.06))",
+      "stroke-width": String(stroke)
+    });
+
+    const fg = svg("circle", {
+      class: "csu-ring__circle",
+      cx: String(size / 2), cy: String(size / 2), r: String(radius),
+      fill: "none",
+      stroke: "var(--chrx-accent, #007AFF)",
+      "stroke-width": String(stroke),
+      "stroke-linecap": "round",
+      "stroke-dasharray": String(circ),
+      "stroke-dashoffset": String(circ),
+      transform: "rotate(-90 " + (size / 2) + " " + (size / 2) + ")"
+    });
+
+    const pct = svg("text", {
+      class: "csu-ring__pct",
+      x: String(size / 2), y: String(size / 2),
+      "text-anchor": "middle",
+      "dominant-baseline": "central",
+      fill: "var(--chrx-fg, #111)"
+    });
+    pct.textContent = "0%";
+
+    root.appendChild(bg);
+    root.appendChild(fg);
+    root.appendChild(pct);
+
+    return { svg: root, circle: fg, pctText: pct, circumference: circ };
   }
 
   function build() {
@@ -13304,8 +13408,15 @@ ${body}
       "aria-labelledby": "csu-progress-title",
     });
 
+    // ---- header with progress ring
+    const ring = buildRing();
+    const ringWrap = el("div", { class: "csu-ring" });
+    ringWrap.appendChild(ring.svg);
+
     const title = el("h2", { class: "csu-dialog__title", id: "csu-progress-title" }, "Generating timetable…");
     const sub = el("p", { class: "csu-dialog__sub", id: "csu-progress-sub" }, "Cycle 1 · in browser worker");
+    const titleArea = el("div", { class: "csu-progress__title-text" }, title, sub);
+    const header = el("div", { class: "csu-progress__header" }, ringWrap, titleArea);
 
     // ---- progress bars
     const bar1Fill = el("div", { class: "csu-bar__fill", style: "width:0%" });
@@ -13313,53 +13424,64 @@ ${body}
     const bar2Fill = el("div", { class: "csu-bar__fill csu-bar__fill--accent2", style: "width:0%" });
     const bar2 = el("div", { class: "csu-bar" }, el("div", { class: "csu-bar__label" }, "Current branch"), el("div", { class: "csu-bar__track" }, bar2Fill));
 
-    // ---- stat tiles
-    const tiles = el("div", { class: "csu-tiles" });
-    function tile(id, label) {
-      const v = el("div", { class: "csu-tile__value", id }, "—");
-      const t = el("div", { class: "csu-tile" },
-        el("div", { class: "csu-tile__label" }, label),
-        v,
-      );
-      tiles.appendChild(t);
+    // ---- stat tiles: 2-row layout (3 key + 3 secondary)
+    const tilesKey = el("div", { class: "csu-tiles csu-tiles--key" });
+    const tilesSec = el("div", { class: "csu-tiles csu-tiles--secondary" });
+
+    function tile(parent, id, label, icon) {
+      const v = el("div", { class: "csu-tile__value", id: id }, "—");
+      const ic = el("span", { class: "csu-tile__icon" }, icon);
+      const lb = el("div", { class: "csu-tile__label" }, label);
+      const t = el("div", { class: "csu-tile" }, ic, v, lb);
+      parent.appendChild(t);
       return v;
     }
-    const tSpeed   = tile("csu-stat-speed",   "Schedules / sec");
-    const tIter    = tile("csu-stat-iter",    "Iterations");
-    const tHard    = tile("csu-stat-hard",    "Hard conflicts");
-    const tSoft    = tile("csu-stat-soft",    "Soft score");
-    const tElapsed = tile("csu-stat-elapsed", "Time");
-    const tStuck   = tile("csu-stat-stuck",   "Stuck counter");
+    // Key metrics (top row — larger)
+    const tHard    = tile(tilesKey, "csu-stat-hard",    "Conflicts",  "⚡");
+    const tElapsed = tile(tilesKey, "csu-stat-elapsed", "Time",       "⏱");
+    const tSoft    = tile(tilesKey, "csu-stat-soft",    "Soft score", "◎");
+    // Secondary metrics (bottom row — smaller)
+    const tSpeed   = tile(tilesSec, "csu-stat-speed",   "Schedules / sec", "▸");
+    const tIter    = tile(tilesSec, "csu-stat-iter",    "Iterations",      "↻");
+    const tStuck   = tile(tilesSec, "csu-stat-stuck",   "Phase",           "◆");
+
+    const tilesWrap = el("div", { class: "csu-tiles-wrap" }, tilesKey, tilesSec);
 
     // ---- heatmap
     const heat = el("div", { class: "csu-heatmap", "aria-hidden": "true" });
 
-    // ---- live fault list (Top-30 #4). Populated from progress payload's
-    // latestViolations array which the solver now ships every ~500ms with
-    // a rotating window of currently-unassigned lessons.
-    const faultsHead = el("div", { class: "csu-faults__head" }, "Currently stuck");
+    // ---- branch race lanes (populated dynamically in open())
+    const branches = el("div", { class: "csu-branches" });
+
+    // ---- live fault list
+    const placingHead = el("div", { class: "csu-faults__head" }, "Currently placing");
+    const placingLabel = el("div", { class: "csu-faults__placing" }, "—");
+    
+    const faultsHead = el("div", { class: "csu-faults__head", style: "margin-top: 12px;" }, "Currently stuck");
     const faultsList = el("ul", { class: "csu-faults__list" });
     const faultsEmpty = el("li", { class: "csu-faults__empty" }, "—");
     faultsList.appendChild(faultsEmpty);
-    const faults = el("section", { class: "csu-faults" }, faultsHead, faultsList);
+    const faults = el("section", { class: "csu-faults" }, placingHead, placingLabel, faultsHead, faultsList);
 
-    // ---- buttons
-    const pauseBtn  = el("button", { type: "button", class: "chrx-btn", onclick: doPauseResume }, "Pause");
-    const cancelBtn = el("button", { type: "button", class: "chrx-btn chrx-btn--danger", onclick: doCancel }, "Cancel");
-    const acceptBtn = el("button", { type: "button", class: "chrx-btn chrx-btn--primary", onclick: doAcceptPartial }, "Accept partial result");
-    const actions = el("div", { class: "csu-dialog__actions" }, pauseBtn, acceptBtn, cancelBtn);
+    // ---- buttons with visual hierarchy
+    const cancelBtn = el("button", { type: "button", class: "chrx-btn csu-btn--ghost", onclick: doCancel }, "Cancel");
+    const pauseBtn  = el("button", { type: "button", class: "chrx-btn csu-btn--secondary", onclick: doPauseResume }, "Pause");
+    const acceptBtn = el("button", { type: "button", class: "chrx-btn csu-btn--gradient", onclick: doAcceptPartial }, "Accept partial result");
+    const actions = el("div", { class: "csu-dialog__actions" }, cancelBtn, pauseBtn, acceptBtn);
 
-    dlg.append(title, sub, bar1, bar2, tiles, heat, faults, actions);
+    dlg.append(header, bar1, bar2, tilesWrap, heat, branches, faults, actions);
     host.appendChild(dlg);
     document.body.appendChild(host);
 
     refs = {
       title, sub, bar1Fill, bar2Fill, tSpeed, tIter, tHard, tSoft, tElapsed, tStuck,
-      heat, faultsList, pauseBtn, cancelBtn, acceptBtn,
+      heat, faultsList, placingLabel, pauseBtn, cancelBtn, acceptBtn,
+      ringCircle: ring.circle, ringPct: ring.pctText, ringCircumference: ring.circumference,
+      branches,
     };
   }
 
-  // Render up to 5 violations as <li> rows. Uses textContent (no innerHTML)
+  // Render up to 3 violations as <li> rows. Uses textContent (no innerHTML)
   // so descriptions with HTML-special chars don't break or inject markup.
   function renderFaults(items) {
     if (!refs || !refs.faultsList) return;
@@ -13372,7 +13494,7 @@ ${body}
       list.appendChild(empty);
       return;
     }
-    for (const v of items.slice(0, 5)) {
+    for (const v of items.slice(0, 3)) {
       const li = document.createElement("li");
       const severity = (v && v.severity) === "soft" ? "soft" : "hard";
       li.className = "csu-faults__item csu-faults__item--" + severity;
@@ -13396,6 +13518,38 @@ ${body}
     }
   }
 
+  /** Build branch race lanes if the source has multiple branches. */
+  function buildBranches(count) {
+    const wrap = refs.branches;
+    wrap.innerHTML = "";
+    if (!count || count <= 1) { wrap.style.display = "none"; return; }
+    wrap.style.display = "";
+    for (let i = 0; i < count; i++) {
+      const fill = el("div", { class: "csu-branch__fill", "data-branch": String(i), style: "width:0%" });
+      const label = el("span", { class: "csu-branch__label" }, "Branch " + (i + 1));
+      const track = el("div", { class: "csu-branch__track" }, fill);
+      wrap.appendChild(el("div", { class: "csu-branch" }, label, track));
+    }
+  }
+
+  function updateRing(placed, total) {
+    if (!refs || !refs.ringCircle) return;
+    const pct = total > 0 ? Math.min(1, placed / total) : 0;
+    const offset = refs.ringCircumference * (1 - pct);
+    refs.ringCircle.setAttribute("stroke-dashoffset", String(offset));
+    refs.ringPct.textContent = Math.round(pct * 100) + "%";
+  }
+
+  function updateBranches(branchProgress) {
+    if (!refs || !refs.branches || !branchProgress) return;
+    const fills = refs.branches.querySelectorAll(".csu-branch__fill");
+    for (let i = 0; i < fills.length && i < branchProgress.length; i++) {
+      const bp = branchProgress[i];
+      const pct = bp && bp.total > 0 ? Math.min(100, (bp.placed / bp.total) * 100) : 0;
+      fills[i].style.width = pct.toFixed(1) + "%";
+    }
+  }
+
   function pulseHeatmap(iter) {
     if (!refs || !refs.heat) return;
     const cells = refs.heat.children;
@@ -13405,7 +13559,7 @@ ${body}
       const d = (i - head + cells.length) % cells.length;
       const intensity = Math.max(0, 1 - d / 6);
       const cell = cells[i];
-      if (intensity > 0) cell.style.background = `rgba(0, 100, 224, ${0.10 + 0.45 * intensity})`;
+      if (intensity > 0) cell.style.background = "rgba(0, 100, 224, " + (0.10 + 0.45 * intensity) + ")";
       else cell.style.background = "";
     }
   }
@@ -13430,18 +13584,26 @@ ${body}
   }
   function doAcceptPartial() {
     if (!state) return;
-    // For browser: terminate() loses the in-flight assignment — we have no
-    // partial in the progress payload. Treat Accept-Partial as "stop and use
-    // whatever the last `done` event delivered". If nothing arrived yet, we
-    // emit a no-op cancel.
+    // Branch workers attach a best-so-far placement snapshot to progress
+    // events (~every 2s); the source exposes the best one via getPartial().
+    // Prefer a real `done` result if one raced in, then the partial, then
+    // (truly nothing yet) tell the user instead of silently cancelling.
+    const partial = (state.source && typeof state.source.getPartial === "function")
+      ? state.source.getPartial()
+      : null;
+    const result = state.lastResult || partial;
+    if (!result || !result.assignment || !result.assignment.length) {
+      if (refs && refs.acceptBtn) {
+        refs.acceptBtn.textContent = "No partial yet — try in a few seconds";
+        setTimeout(() => {
+          if (refs && refs.acceptBtn) refs.acceptBtn.textContent = "Accept partial result";
+        }, 2500);
+      }
+      return;
+    }
     state.terminating = "accept";
     try { state.source.cancel(); } catch {}
-    // If a `done` event raced in just before, lastResult will be set.
-    if (state.lastResult) {
-      closeAndCallback(state.lastResult, "done");
-    } else {
-      closeAndCallback(null, "cancel");
-    }
+    closeAndCallback(result, "done");
   }
 
   function closeAndCallback(result, kind) {
@@ -13475,12 +13637,16 @@ ${body}
       lastSpeed: 0,
     };
 
+    // Build branch lanes if applicable
+    const branchCount = (opts.source && opts.source.branches) || 0;
+    buildBranches(branchCount);
+
     // Reset DOM
     refs.title.textContent = state.mode === "test" ? "Testing timetable…" : "Generating timetable…";
     const modeLabel = (opts.source && opts.source.mode === "cloud")
       ? "cloud (OR-Tools)"
       : (opts.source && opts.source.branches)
-        ? `${opts.source.branches} branches · browser`
+        ? opts.source.branches + " branches · browser"
         : "browser worker";
     refs.sub.textContent = "Cycle 1 · " + modeLabel;
     refs.bar1Fill.style.width = "0%";
@@ -13493,6 +13659,7 @@ ${body}
     refs.tSoft.textContent = "—";
     refs.tElapsed.textContent = "0:00";
     refs.tStuck.textContent = "—";
+    updateRing(0, state.totalLessons || 1);
 
     host.classList.add("is-open");
     host.setAttribute("aria-hidden", "false");
@@ -13520,13 +13687,32 @@ ${body}
       refs.tHard.textContent    = fmtInt(ev.hardConflicts);
       refs.tSoft.textContent    = fmtInt(ev.softScore);
       refs.tElapsed.textContent = fmtTime(dt);
+
+      // Update the SVG progress ring — use placed/total if available,
+      // else approximate from time-based overall progress.
+      if (ev.placed != null && state.totalLessons > 0) {
+        updateRing(ev.placed, state.totalLessons);
+      } else {
+        // Fallback: ring tracks overall time progress
+        updateRing(p1 * state.totalLessons, state.totalLessons || 1);
+      }
+
+      // Update branch lane widths if branch progress data is available
+      if (Array.isArray(ev.branchProgress)) {
+        updateBranches(ev.branchProgress);
+      }
+
       pulseHeatmap(iter);
+      if (refs.placingLabel) {
+        refs.placingLabel.textContent = ev.currentlyPlacing || "—";
+      }
       if (Array.isArray(ev.latestViolations)) renderFaults(ev.latestViolations);
     } else if (ev.type === "done") {
       state.lastResult = ev.result;
       // Bar fills to 100% before we transition.
       refs.bar1Fill.style.width = "100%";
       refs.bar2Fill.style.width = "100%";
+      updateRing(1, 1);
       closeAndCallback(ev.result, "done");
     } else if (ev.type === "error") {
       refs.sub.textContent = "Error — " + (ev.message || "unknown");
@@ -14033,15 +14219,22 @@ ${body}
     if (!Array.isArray(raw)) return [];
     const out = [];
     for (const v of raw) {
-      const title = (v.description || v.ruleId || "Violation").split(":")[0];
+      // Human descriptions are "Label — detail". Title = label, body = the
+      // detail — so the row no longer repeats the same line twice (and raw
+      // lesson-id descriptions from older results still degrade gracefully).
+      const desc = v.description || v.ruleId || "Violation";
+      const sep = desc.indexOf(" — ");
+      const title = sep > 0 ? desc.slice(0, sep) : desc.split(":")[0];
+      let body = sep > 0 ? desc.slice(sep + 3) : (desc === title ? "" : desc);
+      if (body === title) body = "";
       out.push({
         id: v.ruleId || (title + "/" + (out.length + 1)),
         ruleId: v.ruleId,
         kind: inferKind(v.ruleId),
         level: inferLevel(v.ruleId),
         title,
-        body: v.description || "",
-        cardId: inferCardId(v.description || ""),
+        body,
+        cardId: v.lessonId || inferCardId(v.description || ""),
       });
     }
     return out;
@@ -15190,6 +15383,7 @@ window.Editor = (function () {
     wire(rootEl);
     syncCardInHandClass();
     autoFitRowLabels(rootEl);
+    syncUnplacedCount(S);
     updateClassPanel(S);
     if (window.ConstraintExplainer && typeof window.ConstraintExplainer.attachTooltip === "function") {
       window.ConstraintExplainer.attachTooltip(rootEl);
@@ -15301,12 +15495,14 @@ window.Editor = (function () {
   function html(S, rows, periods, mobileDay, cardLookup) {
     const headerHtml = headerRowHtml(periods, mobileDay);
     const dayTabsHtml = dayTabsHtml_(mobileDay);
-    const toolsHtml = toolsHtml_(S);
 
     const bodyHtml = rows.map(row => rowHtml(S, row, periods, mobileDay, cardLookup)).join("");
 
+    // The in-grid tools row was removed — it duplicated the step-6 header
+    // buttons (perspective/color/density, wired in main.js) and cost the
+    // grid a full row of height. The live unplaced count syncs into the
+    // header's #editor-unplaced-count span instead (see render()).
     return `
-      ${toolsHtml}
       ${dayTabsHtml}
       <div class="chrx-grid-scroll">
         <div class="chrx-grid" style="--chrx-periods:${periods.length || 8}">
@@ -15317,20 +15513,12 @@ window.Editor = (function () {
     `;
   }
 
-  function toolsHtml_(S) {
-    const editor = window.APP.editor || {};
-    const perspective = editor.perspective || "class";
-    const colorBy = editor.colorBy || "subject";
-    const density = editor.density || "compact";
-    const pending = pendingCount(S);
-    return `
-      <div class="chrx-editor-tools" aria-label="Editor tools">
-        <button type="button" class="chrx-editor-tool" data-editor-tool="perspective">${esc(PERSPECTIVE_LABEL[perspective] || "By Class")}</button>
-        <button type="button" class="chrx-editor-tool" data-editor-tool="color">${esc(COLOR_LABEL[colorBy] || "Color: Subject")}</button>
-        <button type="button" class="chrx-editor-tool" data-editor-tool="density">${density === "compact" ? "Compact" : "Comfortable"}</button>
-        <span class="chrx-editor-tool__count">${pending} unplaced</span>
-      </div>
-    `;
+  function syncUnplacedCount(S) {
+    const elc = document.getElementById("editor-unplaced-count");
+    if (!elc) return;
+    const n = pendingCount(S);
+    elc.textContent = n === 0 ? "All placed ✓" : n + " unplaced";
+    elc.style.color = n === 0 ? "var(--chrx-green, #16a34a)" : "";
   }
 
   const PERSPECTIVES = ["class", "teacher", "room", "subject"];
@@ -15456,6 +15644,9 @@ window.Editor = (function () {
     const compact = window.APP.editor.density === "compact";
     const densityClass = compact ? " chrx-vkarta--compact" : "";
 
+    // No native title attribute — ConstraintExplainer renders the single
+    // rich hover tooltip (info header + violations). A title here made the
+    // browser's native tooltip overlap the explainer with duplicate text.
     return `
       <div class="chrx-vkarta${locked}${densityClass}"
            data-card-id="${cardId}"
@@ -15463,8 +15654,7 @@ window.Editor = (function () {
            data-day="${day}"
            data-period="${period}"
            data-classroom-id="${esc(card.classroomId || "")}"
-           style="--chrx-card-hue:${hue}"
-           title="${esc(subjShort + (teacherShort ? ' · ' + teacherShort : '') + (roomShort ? ' · ' + roomShort : ''))}">
+           style="--chrx-card-hue:${hue}">
         <div class="chrx-vk-line1">${esc(subjShort)}</div>
         ${compact ? "" : `<div class="chrx-vk-line2">${esc(line2)}</div>`}
         ${compact ? "" : `<div class="chrx-vk-line3">${esc(line3)}</div>`}
@@ -15732,12 +15922,12 @@ window.Editor = (function () {
     panel.innerHTML = `
       <div class="chrx-card-panel__eyebrow">${opts && opts.source === "pending" ? "Pending card" : "Card detail"}</div>
       <div class="chrx-card-panel__title">${esc(subjectName)}</div>
-      <dl class="chrx-card-panel__facts">
-        <div><dt>Class</dt><dd>${esc(classNames || "—")}</dd></div>
-        <div><dt>Teacher</dt><dd>${esc(teacherNames || "—")}</dd></div>
-        <div><dt>Room</dt><dd>${esc(room ? room.name : "No room")}</dd></div>
-        <div><dt>Slot</dt><dd>${esc(position)}</dd></div>
-      </dl>
+      <div class="chrx-card-panel__chips">
+        <span class="chrx-card-panel__chip" title="Class">🏫 ${esc(classNames || "—")}</span>
+        <span class="chrx-card-panel__chip" title="Teacher">👤 ${esc(teacherNames || "—")}</span>
+        <span class="chrx-card-panel__chip" title="Room">📍 ${esc(room ? room.name : "—")}</span>
+        <span class="chrx-card-panel__chip" title="Slot">📅 ${esc(position)}</span>
+      </div>
       <div class="chrx-card-panel__progress"><span style="width:${Math.min(100, need ? placed / need * 100 : 0)}%"></span></div>
       <div class="chrx-card-panel__foot">${placed}/${need || 0} placed · ${esc(status.text)}</div>
     `;
@@ -16091,6 +16281,31 @@ window.Editor = (function () {
     },
   };
 
+  document.addEventListener("editor:focusCard", function(e) {
+    const detail = e.detail;
+    if (!detail || !detail.cardId) return;
+    
+    const cardEl = document.querySelector(`.chrx-vkarta[data-card-id="${detail.cardId}"]`);
+    if (cardEl) {
+      cardEl.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+      
+      const rowEl = cardEl.closest(".chrx-row");
+      if (rowEl) {
+        rowEl.style.backgroundColor = "var(--chrx-slate-100)";
+        setTimeout(() => rowEl.style.backgroundColor = "", 2000);
+      }
+      
+      const oldBoxShadow = cardEl.style.boxShadow;
+      cardEl.style.boxShadow = "0 0 0 4px var(--chrx-red)";
+      setTimeout(() => cardEl.style.boxShadow = oldBoxShadow, 2000);
+      
+      const lessonId = cardEl.dataset.lessonId;
+      if (lessonId && typeof showCardPanel === "function") {
+        showCardPanel(lessonId, { source: cardEl.closest('.chrx-pending-strip') ? "pending" : "grid" });
+      }
+    }
+  });
+
   return { render, setPerspective };
 })();
 
@@ -16321,26 +16536,53 @@ window.PendingStrip = (function () {
 
   function groupHtml(g) {
     if (!g.cards.length) return "";
+    // Stack same-lesson cards into piles: e.g. 3 Maths for V B = one pile with "×3" badge.
+    const stacks = stackByLesson(g.cards);
     return `
       <div class="chrx-pending-group">
         <div class="chrx-pending-grouplabel">${esc(g.label)} <span class="chrx-pending-count">${g.cards.length}</span></div>
         <div class="chrx-pending-cards">
-          ${g.cards.map(c => pendingCardHtml(c)).join("")}
+          ${stacks.map(s => stackHtml(s)).join("")}
         </div>
       </div>
     `;
   }
 
-  function pendingCardHtml(p) {
+  /** Group an array of cards by lessonId, preserving order of first appearance. */
+  function stackByLesson(cards) {
+    const byLesson = Object.create(null);
+    const order = [];
+    for (const c of cards) {
+      if (!byLesson[c.lessonId]) {
+        byLesson[c.lessonId] = [];
+        order.push(c.lessonId);
+      }
+      byLesson[c.lessonId].push(c);
+    }
+    return order.map(lid => byLesson[lid]);
+  }
+
+  /** Render a stack of same-lesson cards as a single pile with a count badge. */
+  function stackHtml(cards) {
+    const top = cards[0];
+    const count = cards.length;
+    const depth = Math.min(count - 1, 3); // visual stack depth caps at 3 shadow layers
+    const stackClass = count > 1 ? " chrx-vk-stack" : "";
+    const badge = count > 1 ? `<span class="chrx-vk-badge">×${count}</span>` : "";
+    // Store all card IDs so the click handler can pick them off one by one.
+    const allIds = cards.map(c => c.cardId).join(",");
     return `
-      <div class="chrx-vkarta chrx-vk-pending"
-           data-card-id="${esc(p.cardId)}"
-           data-lesson-id="${esc(p.lessonId)}"
-           style="--chrx-card-hue:${p.hue}"
-           title="${esc(p.title)}">
-        <div class="chrx-vk-line1">${esc(p.subjShort)}</div>
-        <div class="chrx-vk-line2">${esc(p.classShort)}</div>
-        <div class="chrx-vk-line3">${esc(p.teacherShort)}</div>
+      <div class="chrx-vkarta chrx-vk-pending${stackClass}"
+           data-card-id="${esc(top.cardId)}"
+           data-lesson-id="${esc(top.lessonId)}"
+           data-stack-ids="${esc(allIds)}"
+           data-stack-depth="${depth}"
+           style="--chrx-card-hue:${top.hue};--chrx-stack-depth:${depth}"
+           title="${esc(top.title)}">
+        <div class="chrx-vk-line1">${esc(top.subjShort)}</div>
+        <div class="chrx-vk-line2">${esc(top.classShort)}</div>
+        <div class="chrx-vk-line3">${esc(top.teacherShort)}</div>
+        ${badge}
       </div>
     `;
   }
@@ -18819,15 +19061,15 @@ window.ConstraintExplainer = (function () {
     const res = window.APP && window.APP.lastSolverResult;
     const list = res && res.violations;
     if (!list || !list.length) return null;
-    // Solver emits "Lesson <id> (<subjectId>) could not be placed: …".
-    // For lessons with periodsPerWeek > 1 the id may be `<lessonId>#<n>`,
-    // so we accept both an exact match and a `${lessonId}#` prefix match.
+    // Solver violations carry a structured lessonId (source id). Older
+    // results used "Lesson <id> …" descriptions — keep that as a fallback.
     let count = 0;
     for (const v of list) {
-      const d = v && v.description;
-      if (!d) continue;
-      if (d.indexOf(`Lesson ${lessonId} `) === 0 ||
-          d.indexOf(`Lesson ${lessonId}#`) === 0) {
+      if (!v) continue;
+      if (v.lessonId === lessonId) { count++; continue; }
+      const d = v.description;
+      if (d && (d.indexOf(`Lesson ${lessonId} `) === 0 ||
+                d.indexOf(`Lesson ${lessonId}#`) === 0)) {
         count++;
       }
     }
@@ -18929,18 +19171,9 @@ window.ConstraintExplainer = (function () {
   }
 
   function onKeyDown(ev) {
-    if (ev.key === "Shift" && currentTarget) {
-      // Re-render so OK cells show the explanation too.
-      showFor(currentTarget, null, null);
-    }
     if (ev.key === "Escape") hideTooltip();
   }
-  function onKeyUp(ev) {
-    if (ev.key === "Shift" && currentTarget) {
-      // Re-evaluate — may hide if cell was OK.
-      showFor(currentTarget, null, null);
-    }
-  }
+  function onKeyUp() { /* Shift toggle obsolete — tooltip always shows */ }
 
   function showFor(vk, mouseX, mouseY) {
     if (!vk || !document.body.contains(vk)) { hideTooltip(); return; }
@@ -18953,11 +19186,11 @@ window.ConstraintExplainer = (function () {
     const period = parseInt(vk.dataset.period, 10);
     const data = explainCell(cardId, day, period);
 
-    const shiftHeld = isShiftHeld();
-    if (data.severity === "ok" && !shiftHeld) {
-      hideTooltip();
-      return;
-    }
+    // This tooltip is now the ONLY hover surface for a card (the native
+    // title attribute was removed — it overlapped this one with the same
+    // text). So always show, with a card-info header; the violations
+    // section appears only when the cell is actually flagged.
+    data.info = cardInfoFor(vk.dataset.lessonId || lessonIdFromCardId(cardId));
 
     tooltipEl.innerHTML = renderTooltipHtml(data);
 
@@ -19006,11 +19239,24 @@ window.ConstraintExplainer = (function () {
     tooltipEl.style.display = "none";
   }
 
-  let _shiftHeld = false;
-  function isShiftHeld() { return _shiftHeld; }
-  document.addEventListener("keydown", e => { if (e.key === "Shift") _shiftHeld = true; });
-  document.addEventListener("keyup",   e => { if (e.key === "Shift") _shiftHeld = false; });
-  window.addEventListener("blur",     () => { _shiftHeld = false; });
+  /** Subject / class / teacher / room facts for the tooltip header. */
+  function cardInfoFor(lessonId) {
+    const S = window.APP && window.APP.school;
+    const L = S && S._idx ? S._idx.lessonById[lessonId] : null;
+    if (!L) return null;
+    const subj = S._idx.subjectById[L.subjectId];
+    return {
+      subject: subj ? (subj.name || subj.abbr) : "?",
+      classes: (L.classIds || []).map(id => S._idx.classById[id])
+        .filter(Boolean).map(c => c.name || c.id).join(", "),
+      teachers: (L.teacherIds || []).map(id => S._idx.teacherById[id])
+        .filter(Boolean).map(t => t.abbr || t.name).join(", "),
+      room: (() => {
+        const r = L.preferredRoomId ? S._idx.classroomById[L.preferredRoomId] : null;
+        return r ? r.name : "";
+      })(),
+    };
+  }
 
   function renderTooltipHtml(data) {
     const sev = data.severity;
@@ -19018,7 +19264,23 @@ window.ConstraintExplainer = (function () {
       ? { label: "Hard conflict", bg: "#dc2626" }
       : sev === "soft"
       ? { label: "Soft penalty",  bg: "#d97706" }
-      : { label: "OK",            bg: "#16a34a" };
+      : null;
+
+    // Card-info header — always present (this is the only hover tooltip).
+    const info = data.info;
+    const infoHtml = info ? [
+      `<div style="padding:8px 10px 7px;${sev !== "ok" ? "border-bottom:1px solid rgba(255,255,255,.1);" : ""}">`,
+        `<div style="font-weight:700;font-size:12.5px;margin-bottom:3px;">${escHtml(info.subject)}</div>`,
+        `<div style="display:flex;flex-wrap:wrap;gap:4px 10px;color:#cbd5e1;font-size:10.5px;">`,
+          info.classes  ? `<span>🏫 ${escHtml(info.classes)}</span>`  : ``,
+          info.teachers ? `<span>👤 ${escHtml(info.teachers)}</span>` : ``,
+          info.room     ? `<span>📍 ${escHtml(info.room)}</span>`     : ``,
+        `</div>`,
+      `</div>`,
+    ].join("") : "";
+
+    if (sev === "ok") return infoHtml || `<div style="padding:8px 10px;">—</div>`;
+
     const reasons = (data.reasons && data.reasons.length)
       ? data.reasons
       : ["No violations detected at this cell."];
@@ -19029,19 +19291,18 @@ window.ConstraintExplainer = (function () {
        </li>`
     ).join("");
     return [
-      `<div style="display:flex;align-items:center;gap:6px;padding:7px 10px 6px;border-bottom:1px solid rgba(255,255,255,.1);">`,
+      infoHtml,
+      `<div style="display:flex;align-items:center;gap:6px;padding:7px 10px 6px;">`,
         `<span style="display:inline-block;padding:2px 6px;border-radius:3px;background:${badge.bg};color:#fff;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.3px;">${escHtml(badge.label)}</span>`,
-        `<span style="color:#cbd5e1;font-size:10.5px;">${escHtml(reasons.length === 1 && sev === "ok" ? "" : reasons.length + " reason" + (reasons.length === 1 ? "" : "s"))}</span>`,
+        `<span style="color:#cbd5e1;font-size:10.5px;">${escHtml(reasons.length + " reason" + (reasons.length === 1 ? "" : "s"))}</span>`,
       `</div>`,
-      `<ul style="list-style:none;margin:0;padding:6px 10px 4px;">${bullets}</ul>`,
-      sev === "ok"
-        ? ``
-        : `<div style="padding:4px 10px 8px;border-top:1px solid rgba(255,255,255,.08);">
-             <button type="button" class="chrx-explainer-fix-btn"
-                     style="background:rgba(59,130,246,.15);color:#93c5fd;border:1px solid rgba(59,130,246,.3);border-radius:4px;padding:3px 8px;font-size:10.5px;font-weight:600;cursor:pointer;">
-               🛠 Fix automatically (beta)
-             </button>
-           </div>`,
+      `<ul style="list-style:none;margin:0;padding:0 10px 4px;">${bullets}</ul>`,
+      `<div style="padding:4px 10px 8px;border-top:1px solid rgba(255,255,255,.08);">
+         <button type="button" class="chrx-explainer-fix-btn"
+                 style="background:rgba(59,130,246,.15);color:#93c5fd;border:1px solid rgba(59,130,246,.3);border-radius:4px;padding:3px 8px;font-size:10.5px;font-weight:600;cursor:pointer;">
+           🛠 Fix automatically (beta)
+         </button>
+       </div>`,
     ].join("");
   }
 

@@ -45,6 +45,10 @@
     let bestResult = null;
     let bestScore = Infinity; // lower is better (soft score = penalty)
     let bestPlaced = 0;
+    // Best mid-run placement snapshot across all branches (solver attaches
+    // `snapshot` to progress events every ~2s). This is what "Accept partial
+    // result" applies when no branch has finished yet.
+    let bestPartial = null;
 
     // Aggregate progress across all branches
     const branchProgress = new Array(N).fill(null);
@@ -142,6 +146,10 @@
         if (cancelled) return;
 
         if (m.type === "progress") {
+          if (m.snapshot && m.snapshot.assignment &&
+              (!bestPartial || (m.snapshot.placed || 0) > bestPartial.placed)) {
+            bestPartial = { ...m.snapshot, _branch: branchIdx };
+          }
           // Track placed count from progress
           branchProgress[branchIdx] = {
             ...m,
@@ -172,6 +180,26 @@
       mode: "browser-multi",
       branches: N,
       subscribe: sub.subscribe,
+      // Best result available RIGHT NOW: a finished branch's full result if
+      // any, else the best mid-run snapshot, else null. SolveResponse-shaped
+      // so the result panel can apply it directly.
+      getPartial() {
+        if (bestResult) return bestResult;
+        if (!bestPartial) return null;
+        return {
+          status: "PARTIAL",
+          partial: true,
+          assignment: bestPartial.assignment,
+          stats: {
+            placed: bestPartial.placed,
+            unplaced: bestPartial.unplaced,
+            hardConflicts: bestPartial.unplaced,
+            softScore: 0,
+            durationMs: 0,
+          },
+          violations: [],
+        };
+      },
       cancel() {
         cancelled = true;
         cleanup();

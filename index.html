@@ -181,17 +181,17 @@
     <!-- Entity toolbar: Classic-style icon strip -->
     <div id="entity-toolbar-mount"></div>
 
-    <div class="flex items-center justify-between mb-2">
-      <div>
-        <h2 class="text-xl sm:text-2xl font-bold text-blue-900">🪄 Timetable Editor</h2>
-        <p class="text-sm text-slate-600">Click a card to pick it up. Click an empty slot to place it. Cards in the bottom strip are unplaced — drag them onto the grid.</p>
+    <div class="flex items-center justify-between mb-1" style="gap:8px;flex-wrap:wrap;">
+      <div class="flex items-center gap-2" style="min-width:0;">
+        <h2 class="text-base font-bold text-blue-900" style="white-space:nowrap;">🪄 Editor</h2>
+        <span id="editor-unplaced-count" class="text-xs text-slate-500 font-medium" style="white-space:nowrap;">— unplaced</span>
       </div>
-      <div class="flex gap-2">
-        <button id="editor-lesson-grid" class="px-3 py-1.5 text-xs rounded border border-blue-300 bg-blue-50 text-blue-900 hover:bg-blue-100" title="Open the class × subject lesson matrix">📋 Lesson grid…</button>
-        <button id="editor-density" class="px-3 py-1.5 text-xs rounded border border-slate-300 hover:bg-slate-100" title="Toggle card density">Compact</button>
-        <button id="editor-toggle-skin" class="px-3 py-1.5 text-xs rounded border border-slate-300 hover:bg-slate-100">Classic skin</button>
-        <button id="editor-color-by" class="px-3 py-1.5 text-xs rounded border border-slate-300 hover:bg-slate-100" title="Change card color grouping">Color: Subject</button>
-        <button id="editor-perspective" class="px-3 py-1.5 text-xs rounded bg-slate-100 hover:bg-slate-200">By Class</button>
+      <div class="flex gap-1.5 flex-wrap">
+        <button id="editor-lesson-grid" class="px-2 py-1 text-xs rounded border border-blue-300 bg-blue-50 text-blue-900 hover:bg-blue-100" title="Open the class × subject lesson matrix">📋 Lessons</button>
+        <button id="editor-density" class="px-2 py-1 text-xs rounded border border-slate-300 hover:bg-slate-100" title="Toggle card density">Compact</button>
+        <button id="editor-toggle-skin" class="px-2 py-1 text-xs rounded border border-slate-300 hover:bg-slate-100">Classic skin</button>
+        <button id="editor-color-by" class="px-2 py-1 text-xs rounded border border-slate-300 hover:bg-slate-100" title="Change card color grouping">Color: Subject</button>
+        <button id="editor-perspective" class="px-2 py-1 text-xs rounded bg-slate-100 hover:bg-slate-200">By Class</button>
       </div>
     </div>
 

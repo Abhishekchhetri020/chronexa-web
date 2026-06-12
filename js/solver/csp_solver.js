@@ -2889,8 +2889,14 @@ function selectByMrvDegree(model, state, unassigned, unassignedCount, seed, dept
     const deg = model.lessonAdjacencyDegree[l];
     // ML: learned difficulty boosts priority (lower score = higher priority)
     const learnedPriority = learning ? learning.getVariablePriority(model, l) : 0;
-    // Combined score: MRV (domain) - learned_priority_bonus + degree tiebreak
-    const score = dom - learnedPriority * 0.5;  // each learned backtrack = 0.5 domain reduction
+    // Joint-lesson boost: multi-class / multi-teacher lessons (e.g. Sports
+    // Meet Practice spanning 4 classes + 12 teachers) are the most constrained
+    // cards in the school. Pinning them first lets everything else fill around
+    // them. Each extra class/teacher beyond 1 counts as 2 fewer domain slots.
+    const jointBoost = (Math.max(0, model.lessonClassCount[l] - 1) +
+                        Math.max(0, model.lessonTeacherCount[l] - 1)) * 2;
+    // Combined score: MRV (domain) - learned_priority_bonus - joint_boost + degree tiebreak
+    const score = dom - learnedPriority * 0.5 - jointBoost;
     const tie = mix32tie(seed, depth, l);
     const better =
       score < bestScore ||
@@ -3043,6 +3049,47 @@ function addToUnassigned(arr, count, value) { arr[count] = value; return count +
 // Backtracking search
 // ---------------------------------------------------------------------------
 
+// Best-so-far assignment in SolveResponse.assignment[] shape. Attached
+// (throttled) to progress events so "Accept partial result" in the UI has an
+// actual placement to apply mid-run — previously progress carried only
+// counters and the button could silently no-op.
+function buildAssignmentSnapshot(model, assignedArr, slotArr, roomArr) {
+  const assignment = [];
+  for (let i = 0; i < model.lessonCount; i++) {
+    if (!assignedArr[i]) continue;
+    const slot = slotArr[i];
+    if (slot < 0) continue;
+    const l = model.lessons[i];
+    assignment.push({
+      lessonId: l.srcId,
+      day: model.slotDay[slot],
+      period: model.slotPeriod[slot] + 1, // 1-based per DATA_SHAPES
+      classroomId: roomArr[i] >= 0 ? model.roomIds[roomArr[i]] : null,
+      teacherId: l.teacherIds[0],
+      classIds: l.classIds,
+    });
+  }
+  return assignment;
+}
+
+const SNAPSHOT_EVERY_MS = 2000;
+
+// Attach a snapshot to `payload` when due (>=2s since the last one on this
+// ctx and at least one lesson placed). `assignedArr/slotArr/roomArr` select
+// which state arrays to serialize (BT uses best*, repair uses live).
+function maybeAttachSnapshot(ctx, model, payload, assignedArr, slotArr, roomArr, placedCount) {
+  if (!placedCount) return;
+  const now = performance.now();
+  if (ctx._lastSnapshotMs != null && now - ctx._lastSnapshotMs < SNAPSHOT_EVERY_MS) return;
+  ctx._lastSnapshotMs = now;
+  const assignment = buildAssignmentSnapshot(model, assignedArr, slotArr, roomArr);
+  payload.snapshot = {
+    assignment,
+    placed: assignment.length,
+    unplaced: model.lessonCount - assignment.length,
+  };
+}
+
 function maybeEmitProgress(ctx, state, unassignedCount0, initiallyInfeasibleCount, t0) {
   if (!ctx.onProgress) return;
   const now = performance.now();
@@ -3091,8 +3138,14 @@ function maybeEmitProgress(ctx, state, unassignedCount0, initiallyInfeasibleCoun
       durationMs: Math.round(now - t0),
       placed: assignedCount,
       unplaced: state.lessonAssigned.length - assignedCount,
+      currentlyPlacing: ctx.currentlyPlacingLabel || null
     };
     if (latestViolations) payload.latestViolations = latestViolations;
+    if (ctx.model) {
+      maybeAttachSnapshot(ctx, ctx.model, payload,
+        state.bestLessonAssigned, state.bestLessonAssignedSlot, state.bestLessonAssignedRoom,
+        state.bestAssignedEntries);
+    }
     ctx.onProgress(payload);
   } catch {}
 }
@@ -3166,6 +3219,9 @@ function backtrack(model, state, unassigned, unassignedCount, ctx) {
   // set (treat as unplaceable for this branch) and recurse.
   const selected = selectByMrvDegree(model, state, unassigned, unassignedCount, ctx.branchSeed, ctx.depth, ctx.learning, ctx.domCache);
   if (selected < 0) return;
+  if (ctx.lessonLabels && selected >= 0) {
+    ctx.currentlyPlacingLabel = ctx.lessonLabels[selected];
+  }
 
   const candidates = ctx.candidateScratch;
   let feasibleCount = fillFeasibleCandidates(model, state, selected, candidates);
@@ -3696,14 +3752,22 @@ function iterativeRepair(model, state, deadlineMs, ctx) {
         // Emit a progress event so the UI updates.
         if (ctx && ctx.onProgress) {
           try {
-            ctx.onProgress({
+            const payload = {
               iter: (ctx.nodesVisited | 0) + totalGained,
               softScore: 0,
               hardConflicts: unplaced.length - passGained,
               backtracks: ctx.backtracks | 0,
               durationMs: Math.round(performance.now() - ctx.t0),
               phase: "repair",
-            });
+              placed: state.assignedLessonCount,
+              unplaced: model.lessonCount - state.assignedLessonCount,
+            };
+            // Live state during repair is always a valid (canPlace-gated)
+            // partial placement — snapshot it for Accept-partial.
+            maybeAttachSnapshot(ctx, model, payload,
+              state.lessonAssigned, state.lessonAssignedSlot, state.lessonAssignedRoom,
+              state.assignedLessonCount);
+            ctx.onProgress(payload);
           } catch {}
         }
       }
@@ -3933,14 +3997,18 @@ function largeNeighborhoodSearch(model, state, deadlineMs, ctx) {
       // Emit a progress event so the UI / harness can see LNS working.
       if (ctx.onProgress) {
         try {
-          ctx.onProgress({
+          const payload = {
             iter: (ctx.nodesVisited | 0) + iterations,
             softScore: bestSoft,
             hardConflicts: model.lessonCount - bestCount,
             backtracks: ctx.backtracks | 0,
             durationMs: Math.round(performance.now() - ctx.t0),
             phase: "lns",
-          });
+            placed: bestCount,
+            unplaced: model.lessonCount - bestCount,
+          };
+          maybeAttachSnapshot(ctx, model, payload, bestAssigned, bestSlot, bestRoom, bestCount);
+          ctx.onProgress(payload);
         } catch {}
       }
     } else if (accept) {
@@ -4996,23 +5064,46 @@ export function solve(school, options = {}) {
     }
   }
 
-  // Build violation list for unplaced and infeasible lessons.
+  // Build violation list for unplaced and infeasible lessons. Descriptions
+  // are human-readable ("Sports Meet Practice · III A/IV B · Mr. X — weekly
+  // session 2 of 3 …"), NOT raw lesson ids — the verification panel shows
+  // them verbatim. Structured fields (lessonId = source id, sessionIndex)
+  // ride along for deep-linking and tooltip matching.
   let hardConflicts = 0;
+  const srcSessionTotals = Object.create(null);
+  for (let i = 0; i < model.lessonCount; i++) {
+    const sid = model.lessons[i].srcId;
+    srcSessionTotals[sid] = (srcSessionTotals[sid] || 0) + 1;
+  }
+  function unplacedViolation(idx, detail) {
+    const l = model.lessons[idx];
+    const total = srcSessionTotals[l.srcId] || 1;
+    const m = /#(\d+)$/.exec(l.id);
+    const session = m ? (m[1] | 0) : 1;
+    const sessionPart = total > 1 ? `weekly session ${session} of ${total} ` : "";
+    return {
+      lessonId: l.srcId,
+      sessionIndex: session,
+      sessionsTotal: total,
+      description: `${lessonLabels[idx]} — ${sessionPart}${detail}`,
+    };
+  }
   for (const idx of initiallyInfeasible) {
     const l = model.lessons[idx];
-    const reason = l.requiredRoomType ? "required_room_type_unmet" : "no_feasible_slot";
+    const reasonHuman = l.requiredRoomType
+      ? `needs a "${l.requiredRoomType}" room but the school has none`
+      : "has no possible slot at all (check teacher availability and locks)";
     violations.push({
-      ruleId: reason === "required_room_type_unmet" ? "HARD_required_room_type" : "HARD_unplaced_lesson",
-      description: `Lesson ${l.id} (${l.subjectId}) could not be placed: ${reason}`,
+      ruleId: l.requiredRoomType ? "HARD_required_room_type" : "HARD_unplaced_lesson",
+      ...unplacedViolation(idx, `could not be placed: ${reasonHuman}`),
     });
     hardConflicts += 1;
   }
   for (let i = 0; i < model.lessonCount; i++) {
     if (!globalBest.state.bestLessonAssigned[i] && !initiallyInfeasibleSet.has(i)) {
-      const l = model.lessons[i];
       violations.push({
         ruleId: "HARD_unplaced_lesson",
-        description: `Lesson ${l.id} (${l.subjectId}) had no feasible slot during search`,
+        ...unplacedViolation(i, "could not be fitted — every slot it can use is taken"),
       });
       hardConflicts += 1;
     }

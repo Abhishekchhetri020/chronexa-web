@@ -1,7 +1,7 @@
 /* Chronexa editor. Tokens from chronexa-theme.css. */
 .chrx-editor{font-family:var(--chrx-font-sans);color:var(--chrx-fg);background:var(--chrx-bg-canvas);border-radius:var(--chrx-radius-lg);display:flex;flex-direction:column;gap:var(--chrx-space-2)}
 .chrx-editor-empty{padding:var(--chrx-space-6);text-align:center;color:var(--chrx-fg-secondary);font-size:var(--chrx-font-body)}
-.chrx-grid-scroll{overflow:auto;max-height:calc(100vh - 260px);border:1px solid var(--chrx-line);border-radius:var(--chrx-radius-md);background:var(--chrx-bg-tile);box-shadow:var(--chrx-shadow-tile)}
+.chrx-grid-scroll{overflow:auto;max-height:calc(100vh - 160px);border:1px solid var(--chrx-line);border-radius:var(--chrx-radius-md);background:var(--chrx-bg-tile);box-shadow:var(--chrx-shadow-tile)}
 /* Auto-fit grid: rows fill the scroll viewport width so the timetable
    spreads edge-to-edge for ANY period count (5/6/7/8/9…). When the columns
    genuinely can't fit at the readable minimum cell width, .chrx-grid-scroll
@@ -78,9 +78,16 @@ body.chrx-card-in-hand .chrx-slot.empty.out-of-bell{outline:1px solid var(--chrx
 .chrx-pending-group{display:flex;flex-direction:column;gap:2px;min-width:120px}
 .chrx-pending-grouplabel{font-size:var(--chrx-font-eye);color:var(--chrx-fg-secondary);font-weight:var(--chrx-fw-semibold);text-transform:uppercase;letter-spacing:.04em}
 .chrx-pending-count{display:inline-block;background:var(--chrx-bg-tile-thin);border-radius:var(--chrx-radius-pill);padding:0 4px;margin-left:2px;color:var(--chrx-fg-tertiary)}
-.chrx-pending-cards{display:flex;gap:4px}
+.chrx-pending-cards{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start}
 .chrx-pending-empty{color:var(--chrx-fg-tertiary);font-size:var(--chrx-font-small);padding:var(--chrx-space-3)}
 .chrx-vk-pending{position:static;width:56px;height:40px;inset:auto;flex:0 0 56px}
+/* Stacked cards: same-lesson cards rendered as a single pile with depth shadows */
+.chrx-vk-stack{position:relative;margin-bottom:calc(var(--chrx-stack-depth, 0) * 2px)}
+.chrx-vk-stack::before,.chrx-vk-stack::after{content:"";position:absolute;left:2px;right:-2px;bottom:-2px;height:100%;border-radius:inherit;background:hsl(var(--chrx-card-hue,210) 30% 80% / .55);z-index:-1;pointer-events:none}
+.chrx-vk-stack[data-stack-depth="2"]::after,.chrx-vk-stack[data-stack-depth="3"]::after{bottom:-4px;left:4px;right:-4px;background:hsl(var(--chrx-card-hue,210) 25% 75% / .35)}
+.chrx-vk-stack[data-stack-depth="1"]::after{display:none}
+/* Count badge */
+.chrx-vk-badge{position:absolute;top:-4px;right:-4px;min-width:18px;height:16px;line-height:16px;padding:0 4px;border-radius:var(--chrx-radius-pill,999px);background:var(--chrx-accent,#007AFF);color:#fff;font-size:9px;font-weight:700;text-align:center;z-index:2;box-shadow:0 1px 3px rgba(0,0,0,.2)}
 .chrx-vk-taken{opacity:.35;pointer-events:none}
 .chrx-row--selected .chrx-rowlabel{background:var(--chrx-accent-bg);color:var(--chrx-accent);box-shadow:inset 3px 0 0 var(--chrx-accent)}
 .chrx-row--selected .chrx-slot{background:rgba(14,165,233,.05)}
@@ -131,14 +138,17 @@ body.chrx-card-in-hand .chrx-slot.empty.out-of-bell{outline:1px solid var(--chrx
 body.chrx-card-in-hand .chrx-class-panel{display:none}
 .chrx-card-panel{background:rgba(255,255,255,.96);color:#111827;padding:12px;font-family:var(--chrx-font-sans)}
 .chrx-card-panel__eyebrow{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#64748b;font-weight:800}
-.chrx-card-panel__title{font-size:18px;line-height:1.1;font-weight:800;margin:4px 0 10px;color:#0f172a}
-.chrx-card-panel__facts{display:grid;gap:6px;margin:0 0 10px}
-.chrx-card-panel__facts div{display:grid;grid-template-columns:52px 1fr;gap:8px}
-.chrx-card-panel__facts dt{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#64748b;font-weight:800}
-.chrx-card-panel__facts dd{margin:0;font-size:12px;font-weight:650;color:#1f2937;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.chrx-card-panel__progress{height:6px;border-radius:999px;background:#e5e7eb;overflow:hidden;margin-bottom:8px}
+.chrx-card-panel__title{font-size:14px;line-height:1.15;font-weight:800;margin:2px 0 6px;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Two-column chip layout — no scrolling needed in 260px inspector */
+.chrx-card-panel__chips{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin:0 0 8px}
+.chrx-card-panel__chip{display:flex;align-items:center;gap:3px;font-size:10.5px;font-weight:600;color:#1f2937;background:rgba(241,245,249,.8);border-radius:4px;padding:3px 5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chrx-card-panel__facts{display:grid;gap:4px;margin:0 0 8px}
+.chrx-card-panel__facts div{display:grid;grid-template-columns:44px 1fr;gap:4px}
+.chrx-card-panel__facts dt{font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:#64748b;font-weight:800}
+.chrx-card-panel__facts dd{margin:0;font-size:11px;font-weight:650;color:#1f2937;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chrx-card-panel__progress{height:4px;border-radius:999px;background:#e5e7eb;overflow:hidden;margin-bottom:6px}
 .chrx-card-panel__progress span{display:block;height:100%;border-radius:inherit;background:#0ea5e9}
-.chrx-card-panel__foot{font-size:11px;line-height:1.35;color:#475569}
+.chrx-card-panel__foot{font-size:10px;line-height:1.3;color:#475569}
 .chrx-card-panel[data-state="green"]{border-color:rgba(34,197,94,.5)}
 .chrx-card-panel[data-state="green"] .chrx-card-panel__progress span{background:#22c55e}
 .chrx-card-panel[data-state="amber"]{border-color:rgba(245,158,11,.58)}

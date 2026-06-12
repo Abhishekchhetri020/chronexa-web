@@ -58,15 +58,22 @@
     if (!Array.isArray(raw)) return [];
     const out = [];
     for (const v of raw) {
-      const title = (v.description || v.ruleId || "Violation").split(":")[0];
+      // Human descriptions are "Label — detail". Title = label, body = the
+      // detail — so the row no longer repeats the same line twice (and raw
+      // lesson-id descriptions from older results still degrade gracefully).
+      const desc = v.description || v.ruleId || "Violation";
+      const sep = desc.indexOf(" — ");
+      const title = sep > 0 ? desc.slice(0, sep) : desc.split(":")[0];
+      let body = sep > 0 ? desc.slice(sep + 3) : (desc === title ? "" : desc);
+      if (body === title) body = "";
       out.push({
         id: v.ruleId || (title + "/" + (out.length + 1)),
         ruleId: v.ruleId,
         kind: inferKind(v.ruleId),
         level: inferLevel(v.ruleId),
         title,
-        body: v.description || "",
-        cardId: inferCardId(v.description || ""),
+        body,
+        cardId: v.lessonId || inferCardId(v.description || ""),
       });
     }
     return out;

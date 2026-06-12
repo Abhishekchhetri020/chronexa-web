@@ -40,6 +40,12 @@
     return n;
   }
 
+  function svg(tag, attrs) {
+    const n = document.createElementNS("http://www.w3.org/2000/svg", tag);
+    if (attrs) for (const k in attrs) n.setAttribute(k, attrs[k]);
+    return n;
+  }
+
   function fmtInt(n) {
     if (n == null || !isFinite(n)) return "—";
     return Number(n).toLocaleString();
@@ -48,6 +54,52 @@
     const s = Math.max(0, Math.round((ms || 0) / 1000));
     const m = Math.floor(s / 60), r = s % 60;
     return m + ":" + String(r).padStart(2, "0");
+  }
+
+  /** Build the SVG progress ring (96×96). Returns { svg, circle, pctText }. */
+  function buildRing() {
+    const size = 96, stroke = 6, radius = (size - stroke) / 2;
+    const circ = 2 * Math.PI * radius;
+
+    const root = svg("svg", {
+      class: "csu-ring__svg",
+      width: String(size), height: String(size),
+      viewBox: "0 0 " + size + " " + size
+    });
+
+    const bg = svg("circle", {
+      cx: String(size / 2), cy: String(size / 2), r: String(radius),
+      fill: "none",
+      stroke: "var(--chrx-line-soft, rgba(0,0,0,0.06))",
+      "stroke-width": String(stroke)
+    });
+
+    const fg = svg("circle", {
+      class: "csu-ring__circle",
+      cx: String(size / 2), cy: String(size / 2), r: String(radius),
+      fill: "none",
+      stroke: "var(--chrx-accent, #007AFF)",
+      "stroke-width": String(stroke),
+      "stroke-linecap": "round",
+      "stroke-dasharray": String(circ),
+      "stroke-dashoffset": String(circ),
+      transform: "rotate(-90 " + (size / 2) + " " + (size / 2) + ")"
+    });
+
+    const pct = svg("text", {
+      class: "csu-ring__pct",
+      x: String(size / 2), y: String(size / 2),
+      "text-anchor": "middle",
+      "dominant-baseline": "central",
+      fill: "var(--chrx-fg, #111)"
+    });
+    pct.textContent = "0%";
+
+    root.appendChild(bg);
+    root.appendChild(fg);
+    root.appendChild(pct);
+
+    return { svg: root, circle: fg, pctText: pct, circumference: circ };
   }
 
   function build() {
@@ -59,8 +111,15 @@
       "aria-labelledby": "csu-progress-title",
     });
 
+    // ---- header with progress ring
+    const ring = buildRing();
+    const ringWrap = el("div", { class: "csu-ring" });
+    ringWrap.appendChild(ring.svg);
+
     const title = el("h2", { class: "csu-dialog__title", id: "csu-progress-title" }, "Generating timetable…");
     const sub = el("p", { class: "csu-dialog__sub", id: "csu-progress-sub" }, "Cycle 1 · in browser worker");
+    const titleArea = el("div", { class: "csu-progress__title-text" }, title, sub);
+    const header = el("div", { class: "csu-progress__header" }, ringWrap, titleArea);
 
     // ---- progress bars
     const bar1Fill = el("div", { class: "csu-bar__fill", style: "width:0%" });
@@ -68,53 +127,64 @@
     const bar2Fill = el("div", { class: "csu-bar__fill csu-bar__fill--accent2", style: "width:0%" });
     const bar2 = el("div", { class: "csu-bar" }, el("div", { class: "csu-bar__label" }, "Current branch"), el("div", { class: "csu-bar__track" }, bar2Fill));
 
-    // ---- stat tiles
-    const tiles = el("div", { class: "csu-tiles" });
-    function tile(id, label) {
-      const v = el("div", { class: "csu-tile__value", id }, "—");
-      const t = el("div", { class: "csu-tile" },
-        el("div", { class: "csu-tile__label" }, label),
-        v,
-      );
-      tiles.appendChild(t);
+    // ---- stat tiles: 2-row layout (3 key + 3 secondary)
+    const tilesKey = el("div", { class: "csu-tiles csu-tiles--key" });
+    const tilesSec = el("div", { class: "csu-tiles csu-tiles--secondary" });
+
+    function tile(parent, id, label, icon) {
+      const v = el("div", { class: "csu-tile__value", id: id }, "—");
+      const ic = el("span", { class: "csu-tile__icon" }, icon);
+      const lb = el("div", { class: "csu-tile__label" }, label);
+      const t = el("div", { class: "csu-tile" }, ic, v, lb);
+      parent.appendChild(t);
       return v;
     }
-    const tSpeed   = tile("csu-stat-speed",   "Schedules / sec");
-    const tIter    = tile("csu-stat-iter",    "Iterations");
-    const tHard    = tile("csu-stat-hard",    "Hard conflicts");
-    const tSoft    = tile("csu-stat-soft",    "Soft score");
-    const tElapsed = tile("csu-stat-elapsed", "Time");
-    const tStuck   = tile("csu-stat-stuck",   "Stuck counter");
+    // Key metrics (top row — larger)
+    const tHard    = tile(tilesKey, "csu-stat-hard",    "Conflicts",  "⚡");
+    const tElapsed = tile(tilesKey, "csu-stat-elapsed", "Time",       "⏱");
+    const tSoft    = tile(tilesKey, "csu-stat-soft",    "Soft score", "◎");
+    // Secondary metrics (bottom row — smaller)
+    const tSpeed   = tile(tilesSec, "csu-stat-speed",   "Schedules / sec", "▸");
+    const tIter    = tile(tilesSec, "csu-stat-iter",    "Iterations",      "↻");
+    const tStuck   = tile(tilesSec, "csu-stat-stuck",   "Phase",           "◆");
+
+    const tilesWrap = el("div", { class: "csu-tiles-wrap" }, tilesKey, tilesSec);
 
     // ---- heatmap
     const heat = el("div", { class: "csu-heatmap", "aria-hidden": "true" });
 
-    // ---- live fault list (Top-30 #4). Populated from progress payload's
-    // latestViolations array which the solver now ships every ~500ms with
-    // a rotating window of currently-unassigned lessons.
-    const faultsHead = el("div", { class: "csu-faults__head" }, "Currently stuck");
+    // ---- branch race lanes (populated dynamically in open())
+    const branches = el("div", { class: "csu-branches" });
+
+    // ---- live fault list
+    const placingHead = el("div", { class: "csu-faults__head" }, "Currently placing");
+    const placingLabel = el("div", { class: "csu-faults__placing" }, "—");
+    
+    const faultsHead = el("div", { class: "csu-faults__head", style: "margin-top: 12px;" }, "Currently stuck");
     const faultsList = el("ul", { class: "csu-faults__list" });
     const faultsEmpty = el("li", { class: "csu-faults__empty" }, "—");
     faultsList.appendChild(faultsEmpty);
-    const faults = el("section", { class: "csu-faults" }, faultsHead, faultsList);
+    const faults = el("section", { class: "csu-faults" }, placingHead, placingLabel, faultsHead, faultsList);
 
-    // ---- buttons
-    const pauseBtn  = el("button", { type: "button", class: "chrx-btn", onclick: doPauseResume }, "Pause");
-    const cancelBtn = el("button", { type: "button", class: "chrx-btn chrx-btn--danger", onclick: doCancel }, "Cancel");
-    const acceptBtn = el("button", { type: "button", class: "chrx-btn chrx-btn--primary", onclick: doAcceptPartial }, "Accept partial result");
-    const actions = el("div", { class: "csu-dialog__actions" }, pauseBtn, acceptBtn, cancelBtn);
+    // ---- buttons with visual hierarchy
+    const cancelBtn = el("button", { type: "button", class: "chrx-btn csu-btn--ghost", onclick: doCancel }, "Cancel");
+    const pauseBtn  = el("button", { type: "button", class: "chrx-btn csu-btn--secondary", onclick: doPauseResume }, "Pause");
+    const acceptBtn = el("button", { type: "button", class: "chrx-btn csu-btn--gradient", onclick: doAcceptPartial }, "Accept partial result");
+    const actions = el("div", { class: "csu-dialog__actions" }, cancelBtn, pauseBtn, acceptBtn);
 
-    dlg.append(title, sub, bar1, bar2, tiles, heat, faults, actions);
+    dlg.append(header, bar1, bar2, tilesWrap, heat, branches, faults, actions);
     host.appendChild(dlg);
     document.body.appendChild(host);
 
     refs = {
       title, sub, bar1Fill, bar2Fill, tSpeed, tIter, tHard, tSoft, tElapsed, tStuck,
-      heat, faultsList, pauseBtn, cancelBtn, acceptBtn,
+      heat, faultsList, placingLabel, pauseBtn, cancelBtn, acceptBtn,
+      ringCircle: ring.circle, ringPct: ring.pctText, ringCircumference: ring.circumference,
+      branches,
     };
   }
 
-  // Render up to 5 violations as <li> rows. Uses textContent (no innerHTML)
+  // Render up to 3 violations as <li> rows. Uses textContent (no innerHTML)
   // so descriptions with HTML-special chars don't break or inject markup.
   function renderFaults(items) {
     if (!refs || !refs.faultsList) return;
@@ -127,7 +197,7 @@
       list.appendChild(empty);
       return;
     }
-    for (const v of items.slice(0, 5)) {
+    for (const v of items.slice(0, 3)) {
       const li = document.createElement("li");
       const severity = (v && v.severity) === "soft" ? "soft" : "hard";
       li.className = "csu-faults__item csu-faults__item--" + severity;
@@ -151,6 +221,38 @@
     }
   }
 
+  /** Build branch race lanes if the source has multiple branches. */
+  function buildBranches(count) {
+    const wrap = refs.branches;
+    wrap.innerHTML = "";
+    if (!count || count <= 1) { wrap.style.display = "none"; return; }
+    wrap.style.display = "";
+    for (let i = 0; i < count; i++) {
+      const fill = el("div", { class: "csu-branch__fill", "data-branch": String(i), style: "width:0%" });
+      const label = el("span", { class: "csu-branch__label" }, "Branch " + (i + 1));
+      const track = el("div", { class: "csu-branch__track" }, fill);
+      wrap.appendChild(el("div", { class: "csu-branch" }, label, track));
+    }
+  }
+
+  function updateRing(placed, total) {
+    if (!refs || !refs.ringCircle) return;
+    const pct = total > 0 ? Math.min(1, placed / total) : 0;
+    const offset = refs.ringCircumference * (1 - pct);
+    refs.ringCircle.setAttribute("stroke-dashoffset", String(offset));
+    refs.ringPct.textContent = Math.round(pct * 100) + "%";
+  }
+
+  function updateBranches(branchProgress) {
+    if (!refs || !refs.branches || !branchProgress) return;
+    const fills = refs.branches.querySelectorAll(".csu-branch__fill");
+    for (let i = 0; i < fills.length && i < branchProgress.length; i++) {
+      const bp = branchProgress[i];
+      const pct = bp && bp.total > 0 ? Math.min(100, (bp.placed / bp.total) * 100) : 0;
+      fills[i].style.width = pct.toFixed(1) + "%";
+    }
+  }
+
   function pulseHeatmap(iter) {
     if (!refs || !refs.heat) return;
     const cells = refs.heat.children;
@@ -160,7 +262,7 @@
       const d = (i - head + cells.length) % cells.length;
       const intensity = Math.max(0, 1 - d / 6);
       const cell = cells[i];
-      if (intensity > 0) cell.style.background = `rgba(0, 100, 224, ${0.10 + 0.45 * intensity})`;
+      if (intensity > 0) cell.style.background = "rgba(0, 100, 224, " + (0.10 + 0.45 * intensity) + ")";
       else cell.style.background = "";
     }
   }
@@ -185,18 +287,26 @@
   }
   function doAcceptPartial() {
     if (!state) return;
-    // For browser: terminate() loses the in-flight assignment — we have no
-    // partial in the progress payload. Treat Accept-Partial as "stop and use
-    // whatever the last `done` event delivered". If nothing arrived yet, we
-    // emit a no-op cancel.
+    // Branch workers attach a best-so-far placement snapshot to progress
+    // events (~every 2s); the source exposes the best one via getPartial().
+    // Prefer a real `done` result if one raced in, then the partial, then
+    // (truly nothing yet) tell the user instead of silently cancelling.
+    const partial = (state.source && typeof state.source.getPartial === "function")
+      ? state.source.getPartial()
+      : null;
+    const result = state.lastResult || partial;
+    if (!result || !result.assignment || !result.assignment.length) {
+      if (refs && refs.acceptBtn) {
+        refs.acceptBtn.textContent = "No partial yet — try in a few seconds";
+        setTimeout(() => {
+          if (refs && refs.acceptBtn) refs.acceptBtn.textContent = "Accept partial result";
+        }, 2500);
+      }
+      return;
+    }
     state.terminating = "accept";
     try { state.source.cancel(); } catch {}
-    // If a `done` event raced in just before, lastResult will be set.
-    if (state.lastResult) {
-      closeAndCallback(state.lastResult, "done");
-    } else {
-      closeAndCallback(null, "cancel");
-    }
+    closeAndCallback(result, "done");
   }
 
   function closeAndCallback(result, kind) {
@@ -230,12 +340,16 @@
       lastSpeed: 0,
     };
 
+    // Build branch lanes if applicable
+    const branchCount = (opts.source && opts.source.branches) || 0;
+    buildBranches(branchCount);
+
     // Reset DOM
     refs.title.textContent = state.mode === "test" ? "Testing timetable…" : "Generating timetable…";
     const modeLabel = (opts.source && opts.source.mode === "cloud")
       ? "cloud (OR-Tools)"
       : (opts.source && opts.source.branches)
-        ? `${opts.source.branches} branches · browser`
+        ? opts.source.branches + " branches · browser"
         : "browser worker";
     refs.sub.textContent = "Cycle 1 · " + modeLabel;
     refs.bar1Fill.style.width = "0%";
@@ -248,6 +362,7 @@
     refs.tSoft.textContent = "—";
     refs.tElapsed.textContent = "0:00";
     refs.tStuck.textContent = "—";
+    updateRing(0, state.totalLessons || 1);
 
     host.classList.add("is-open");
     host.setAttribute("aria-hidden", "false");
@@ -275,13 +390,32 @@
       refs.tHard.textContent    = fmtInt(ev.hardConflicts);
       refs.tSoft.textContent    = fmtInt(ev.softScore);
       refs.tElapsed.textContent = fmtTime(dt);
+
+      // Update the SVG progress ring — use placed/total if available,
+      // else approximate from time-based overall progress.
+      if (ev.placed != null && state.totalLessons > 0) {
+        updateRing(ev.placed, state.totalLessons);
+      } else {
+        // Fallback: ring tracks overall time progress
+        updateRing(p1 * state.totalLessons, state.totalLessons || 1);
+      }
+
+      // Update branch lane widths if branch progress data is available
+      if (Array.isArray(ev.branchProgress)) {
+        updateBranches(ev.branchProgress);
+      }
+
       pulseHeatmap(iter);
+      if (refs.placingLabel) {
+        refs.placingLabel.textContent = ev.currentlyPlacing || "—";
+      }
       if (Array.isArray(ev.latestViolations)) renderFaults(ev.latestViolations);
     } else if (ev.type === "done") {
       state.lastResult = ev.result;
       // Bar fills to 100% before we transition.
       refs.bar1Fill.style.width = "100%";
       refs.bar2Fill.style.width = "100%";
+      updateRing(1, 1);
       closeAndCallback(ev.result, "done");
     } else if (ev.type === "error") {
       refs.sub.textContent = "Error — " + (ev.message || "unknown");

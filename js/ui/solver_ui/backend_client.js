@@ -55,6 +55,8 @@
     let paused = false;
     let buf = [];
     let cancelled = false;
+    let lastResult = null;
+    let lastSnapshot = null; // best mid-run placement (Accept-partial)
 
     // Worker path is always relative to the page (not the bundle/script).
     const url = "js/solver/worker.js?v=" + (window.APP_VER || "");
@@ -65,12 +67,17 @@
       if (cancelled) return;
       if (paused && m.type === "progress") { buf.push(m); return; }
       if (m.type === "done") {
+        lastResult = m.result;
         sub.emit({ type: "done", result: m.result });
         worker.terminate();
       } else if (m.type === "error") {
         sub.emit({ type: "error", message: m.message || "worker error" });
         worker.terminate();
       } else if (m.type === "progress") {
+        if (m.snapshot && m.snapshot.assignment &&
+            (!lastSnapshot || (m.snapshot.placed || 0) > lastSnapshot.placed)) {
+          lastSnapshot = m.snapshot;
+        }
         sub.emit(m);
       }
     };
@@ -81,6 +88,23 @@
     return {
       mode: "browser",
       subscribe: sub.subscribe,
+      getPartial() {
+        if (lastResult) return lastResult;
+        if (!lastSnapshot) return null;
+        return {
+          status: "PARTIAL",
+          partial: true,
+          assignment: lastSnapshot.assignment,
+          stats: {
+            placed: lastSnapshot.placed,
+            unplaced: lastSnapshot.unplaced,
+            hardConflicts: lastSnapshot.unplaced,
+            softScore: 0,
+            durationMs: 0,
+          },
+          violations: [],
+        };
+      },
       cancel() {
         cancelled = true;
         try { worker.terminate(); } catch {}

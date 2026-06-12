@@ -92,15 +92,15 @@ window.ConstraintExplainer = (function () {
     const res = window.APP && window.APP.lastSolverResult;
     const list = res && res.violations;
     if (!list || !list.length) return null;
-    // Solver emits "Lesson <id> (<subjectId>) could not be placed: …".
-    // For lessons with periodsPerWeek > 1 the id may be `<lessonId>#<n>`,
-    // so we accept both an exact match and a `${lessonId}#` prefix match.
+    // Solver violations carry a structured lessonId (source id). Older
+    // results used "Lesson <id> …" descriptions — keep that as a fallback.
     let count = 0;
     for (const v of list) {
-      const d = v && v.description;
-      if (!d) continue;
-      if (d.indexOf(`Lesson ${lessonId} `) === 0 ||
-          d.indexOf(`Lesson ${lessonId}#`) === 0) {
+      if (!v) continue;
+      if (v.lessonId === lessonId) { count++; continue; }
+      const d = v.description;
+      if (d && (d.indexOf(`Lesson ${lessonId} `) === 0 ||
+                d.indexOf(`Lesson ${lessonId}#`) === 0)) {
         count++;
       }
     }
@@ -202,18 +202,9 @@ window.ConstraintExplainer = (function () {
   }
 
   function onKeyDown(ev) {
-    if (ev.key === "Shift" && currentTarget) {
-      // Re-render so OK cells show the explanation too.
-      showFor(currentTarget, null, null);
-    }
     if (ev.key === "Escape") hideTooltip();
   }
-  function onKeyUp(ev) {
-    if (ev.key === "Shift" && currentTarget) {
-      // Re-evaluate — may hide if cell was OK.
-      showFor(currentTarget, null, null);
-    }
-  }
+  function onKeyUp() { /* Shift toggle obsolete — tooltip always shows */ }
 
   function showFor(vk, mouseX, mouseY) {
     if (!vk || !document.body.contains(vk)) { hideTooltip(); return; }
@@ -226,11 +217,11 @@ window.ConstraintExplainer = (function () {
     const period = parseInt(vk.dataset.period, 10);
     const data = explainCell(cardId, day, period);
 
-    const shiftHeld = isShiftHeld();
-    if (data.severity === "ok" && !shiftHeld) {
-      hideTooltip();
-      return;
-    }
+    // This tooltip is now the ONLY hover surface for a card (the native
+    // title attribute was removed — it overlapped this one with the same
+    // text). So always show, with a card-info header; the violations
+    // section appears only when the cell is actually flagged.
+    data.info = cardInfoFor(vk.dataset.lessonId || lessonIdFromCardId(cardId));
 
     tooltipEl.innerHTML = renderTooltipHtml(data);
 
@@ -279,11 +270,24 @@ window.ConstraintExplainer = (function () {
     tooltipEl.style.display = "none";
   }
 
-  let _shiftHeld = false;
-  function isShiftHeld() { return _shiftHeld; }
-  document.addEventListener("keydown", e => { if (e.key === "Shift") _shiftHeld = true; });
-  document.addEventListener("keyup",   e => { if (e.key === "Shift") _shiftHeld = false; });
-  window.addEventListener("blur",     () => { _shiftHeld = false; });
+  /** Subject / class / teacher / room facts for the tooltip header. */
+  function cardInfoFor(lessonId) {
+    const S = window.APP && window.APP.school;
+    const L = S && S._idx ? S._idx.lessonById[lessonId] : null;
+    if (!L) return null;
+    const subj = S._idx.subjectById[L.subjectId];
+    return {
+      subject: subj ? (subj.name || subj.abbr) : "?",
+      classes: (L.classIds || []).map(id => S._idx.classById[id])
+        .filter(Boolean).map(c => c.name || c.id).join(", "),
+      teachers: (L.teacherIds || []).map(id => S._idx.teacherById[id])
+        .filter(Boolean).map(t => t.abbr || t.name).join(", "),
+      room: (() => {
+        const r = L.preferredRoomId ? S._idx.classroomById[L.preferredRoomId] : null;
+        return r ? r.name : "";
+      })(),
+    };
+  }
 
   function renderTooltipHtml(data) {
     const sev = data.severity;
@@ -291,7 +295,23 @@ window.ConstraintExplainer = (function () {
       ? { label: "Hard conflict", bg: "#dc2626" }
       : sev === "soft"
       ? { label: "Soft penalty",  bg: "#d97706" }
-      : { label: "OK",            bg: "#16a34a" };
+      : null;
+
+    // Card-info header — always present (this is the only hover tooltip).
+    const info = data.info;
+    const infoHtml = info ? [
+      `<div style="padding:8px 10px 7px;${sev !== "ok" ? "border-bottom:1px solid rgba(255,255,255,.1);" : ""}">`,
+        `<div style="font-weight:700;font-size:12.5px;margin-bottom:3px;">${escHtml(info.subject)}</div>`,
+        `<div style="display:flex;flex-wrap:wrap;gap:4px 10px;color:#cbd5e1;font-size:10.5px;">`,
+          info.classes  ? `<span>🏫 ${escHtml(info.classes)}</span>`  : ``,
+          info.teachers ? `<span>👤 ${escHtml(info.teachers)}</span>` : ``,
+          info.room     ? `<span>📍 ${escHtml(info.room)}</span>`     : ``,
+        `</div>`,
+      `</div>`,
+    ].join("") : "";
+
+    if (sev === "ok") return infoHtml || `<div style="padding:8px 10px;">—</div>`;
+
     const reasons = (data.reasons && data.reasons.length)
       ? data.reasons
       : ["No violations detected at this cell."];
@@ -302,19 +322,18 @@ window.ConstraintExplainer = (function () {
        </li>`
     ).join("");
     return [
-      `<div style="display:flex;align-items:center;gap:6px;padding:7px 10px 6px;border-bottom:1px solid rgba(255,255,255,.1);">`,
+      infoHtml,
+      `<div style="display:flex;align-items:center;gap:6px;padding:7px 10px 6px;">`,
         `<span style="display:inline-block;padding:2px 6px;border-radius:3px;background:${badge.bg};color:#fff;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.3px;">${escHtml(badge.label)}</span>`,
-        `<span style="color:#cbd5e1;font-size:10.5px;">${escHtml(reasons.length === 1 && sev === "ok" ? "" : reasons.length + " reason" + (reasons.length === 1 ? "" : "s"))}</span>`,
+        `<span style="color:#cbd5e1;font-size:10.5px;">${escHtml(reasons.length + " reason" + (reasons.length === 1 ? "" : "s"))}</span>`,
       `</div>`,
-      `<ul style="list-style:none;margin:0;padding:6px 10px 4px;">${bullets}</ul>`,
-      sev === "ok"
-        ? ``
-        : `<div style="padding:4px 10px 8px;border-top:1px solid rgba(255,255,255,.08);">
-             <button type="button" class="chrx-explainer-fix-btn"
-                     style="background:rgba(59,130,246,.15);color:#93c5fd;border:1px solid rgba(59,130,246,.3);border-radius:4px;padding:3px 8px;font-size:10.5px;font-weight:600;cursor:pointer;">
-               🛠 Fix automatically (beta)
-             </button>
-           </div>`,
+      `<ul style="list-style:none;margin:0;padding:0 10px 4px;">${bullets}</ul>`,
+      `<div style="padding:4px 10px 8px;border-top:1px solid rgba(255,255,255,.08);">
+         <button type="button" class="chrx-explainer-fix-btn"
+                 style="background:rgba(59,130,246,.15);color:#93c5fd;border:1px solid rgba(59,130,246,.3);border-radius:4px;padding:3px 8px;font-size:10.5px;font-weight:600;cursor:pointer;">
+           🛠 Fix automatically (beta)
+         </button>
+       </div>`,
     ].join("");
   }
 

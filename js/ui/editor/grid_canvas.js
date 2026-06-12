@@ -34,6 +34,7 @@ window.Editor = (function () {
     wire(rootEl);
     syncCardInHandClass();
     autoFitRowLabels(rootEl);
+    syncUnplacedCount(S);
     updateClassPanel(S);
     if (window.ConstraintExplainer && typeof window.ConstraintExplainer.attachTooltip === "function") {
       window.ConstraintExplainer.attachTooltip(rootEl);
@@ -145,12 +146,14 @@ window.Editor = (function () {
   function html(S, rows, periods, mobileDay, cardLookup) {
     const headerHtml = headerRowHtml(periods, mobileDay);
     const dayTabsHtml = dayTabsHtml_(mobileDay);
-    const toolsHtml = toolsHtml_(S);
 
     const bodyHtml = rows.map(row => rowHtml(S, row, periods, mobileDay, cardLookup)).join("");
 
+    // The in-grid tools row was removed — it duplicated the step-6 header
+    // buttons (perspective/color/density, wired in main.js) and cost the
+    // grid a full row of height. The live unplaced count syncs into the
+    // header's #editor-unplaced-count span instead (see render()).
     return `
-      ${toolsHtml}
       ${dayTabsHtml}
       <div class="chrx-grid-scroll">
         <div class="chrx-grid" style="--chrx-periods:${periods.length || 8}">
@@ -161,20 +164,12 @@ window.Editor = (function () {
     `;
   }
 
-  function toolsHtml_(S) {
-    const editor = window.APP.editor || {};
-    const perspective = editor.perspective || "class";
-    const colorBy = editor.colorBy || "subject";
-    const density = editor.density || "compact";
-    const pending = pendingCount(S);
-    return `
-      <div class="chrx-editor-tools" aria-label="Editor tools">
-        <button type="button" class="chrx-editor-tool" data-editor-tool="perspective">${esc(PERSPECTIVE_LABEL[perspective] || "By Class")}</button>
-        <button type="button" class="chrx-editor-tool" data-editor-tool="color">${esc(COLOR_LABEL[colorBy] || "Color: Subject")}</button>
-        <button type="button" class="chrx-editor-tool" data-editor-tool="density">${density === "compact" ? "Compact" : "Comfortable"}</button>
-        <span class="chrx-editor-tool__count">${pending} unplaced</span>
-      </div>
-    `;
+  function syncUnplacedCount(S) {
+    const elc = document.getElementById("editor-unplaced-count");
+    if (!elc) return;
+    const n = pendingCount(S);
+    elc.textContent = n === 0 ? "All placed ✓" : n + " unplaced";
+    elc.style.color = n === 0 ? "var(--chrx-green, #16a34a)" : "";
   }
 
   const PERSPECTIVES = ["class", "teacher", "room", "subject"];
@@ -300,6 +295,9 @@ window.Editor = (function () {
     const compact = window.APP.editor.density === "compact";
     const densityClass = compact ? " chrx-vkarta--compact" : "";
 
+    // No native title attribute — ConstraintExplainer renders the single
+    // rich hover tooltip (info header + violations). A title here made the
+    // browser's native tooltip overlap the explainer with duplicate text.
     return `
       <div class="chrx-vkarta${locked}${densityClass}"
            data-card-id="${cardId}"
@@ -307,8 +305,7 @@ window.Editor = (function () {
            data-day="${day}"
            data-period="${period}"
            data-classroom-id="${esc(card.classroomId || "")}"
-           style="--chrx-card-hue:${hue}"
-           title="${esc(subjShort + (teacherShort ? ' · ' + teacherShort : '') + (roomShort ? ' · ' + roomShort : ''))}">
+           style="--chrx-card-hue:${hue}">
         <div class="chrx-vk-line1">${esc(subjShort)}</div>
         ${compact ? "" : `<div class="chrx-vk-line2">${esc(line2)}</div>`}
         ${compact ? "" : `<div class="chrx-vk-line3">${esc(line3)}</div>`}
@@ -576,12 +573,12 @@ window.Editor = (function () {
     panel.innerHTML = `
       <div class="chrx-card-panel__eyebrow">${opts && opts.source === "pending" ? "Pending card" : "Card detail"}</div>
       <div class="chrx-card-panel__title">${esc(subjectName)}</div>
-      <dl class="chrx-card-panel__facts">
-        <div><dt>Class</dt><dd>${esc(classNames || "—")}</dd></div>
-        <div><dt>Teacher</dt><dd>${esc(teacherNames || "—")}</dd></div>
-        <div><dt>Room</dt><dd>${esc(room ? room.name : "No room")}</dd></div>
-        <div><dt>Slot</dt><dd>${esc(position)}</dd></div>
-      </dl>
+      <div class="chrx-card-panel__chips">
+        <span class="chrx-card-panel__chip" title="Class">🏫 ${esc(classNames || "—")}</span>
+        <span class="chrx-card-panel__chip" title="Teacher">👤 ${esc(teacherNames || "—")}</span>
+        <span class="chrx-card-panel__chip" title="Room">📍 ${esc(room ? room.name : "—")}</span>
+        <span class="chrx-card-panel__chip" title="Slot">📅 ${esc(position)}</span>
+      </div>
       <div class="chrx-card-panel__progress"><span style="width:${Math.min(100, need ? placed / need * 100 : 0)}%"></span></div>
       <div class="chrx-card-panel__foot">${placed}/${need || 0} placed · ${esc(status.text)}</div>
     `;
@@ -934,6 +931,31 @@ window.Editor = (function () {
       if (p) p.remove();
     },
   };
+
+  document.addEventListener("editor:focusCard", function(e) {
+    const detail = e.detail;
+    if (!detail || !detail.cardId) return;
+    
+    const cardEl = document.querySelector(`.chrx-vkarta[data-card-id="${detail.cardId}"]`);
+    if (cardEl) {
+      cardEl.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+      
+      const rowEl = cardEl.closest(".chrx-row");
+      if (rowEl) {
+        rowEl.style.backgroundColor = "var(--chrx-slate-100)";
+        setTimeout(() => rowEl.style.backgroundColor = "", 2000);
+      }
+      
+      const oldBoxShadow = cardEl.style.boxShadow;
+      cardEl.style.boxShadow = "0 0 0 4px var(--chrx-red)";
+      setTimeout(() => cardEl.style.boxShadow = oldBoxShadow, 2000);
+      
+      const lessonId = cardEl.dataset.lessonId;
+      if (lessonId && typeof showCardPanel === "function") {
+        showCardPanel(lessonId, { source: cardEl.closest('.chrx-pending-strip') ? "pending" : "grid" });
+      }
+    }
+  });
 
   return { render, setPerspective };
 })();

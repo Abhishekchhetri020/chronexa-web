@@ -53,26 +53,53 @@ window.PendingStrip = (function () {
 
   function groupHtml(g) {
     if (!g.cards.length) return "";
+    // Stack same-lesson cards into piles: e.g. 3 Maths for V B = one pile with "×3" badge.
+    const stacks = stackByLesson(g.cards);
     return `
       <div class="chrx-pending-group">
         <div class="chrx-pending-grouplabel">${esc(g.label)} <span class="chrx-pending-count">${g.cards.length}</span></div>
         <div class="chrx-pending-cards">
-          ${g.cards.map(c => pendingCardHtml(c)).join("")}
+          ${stacks.map(s => stackHtml(s)).join("")}
         </div>
       </div>
     `;
   }
 
-  function pendingCardHtml(p) {
+  /** Group an array of cards by lessonId, preserving order of first appearance. */
+  function stackByLesson(cards) {
+    const byLesson = Object.create(null);
+    const order = [];
+    for (const c of cards) {
+      if (!byLesson[c.lessonId]) {
+        byLesson[c.lessonId] = [];
+        order.push(c.lessonId);
+      }
+      byLesson[c.lessonId].push(c);
+    }
+    return order.map(lid => byLesson[lid]);
+  }
+
+  /** Render a stack of same-lesson cards as a single pile with a count badge. */
+  function stackHtml(cards) {
+    const top = cards[0];
+    const count = cards.length;
+    const depth = Math.min(count - 1, 3); // visual stack depth caps at 3 shadow layers
+    const stackClass = count > 1 ? " chrx-vk-stack" : "";
+    const badge = count > 1 ? `<span class="chrx-vk-badge">×${count}</span>` : "";
+    // Store all card IDs so the click handler can pick them off one by one.
+    const allIds = cards.map(c => c.cardId).join(",");
     return `
-      <div class="chrx-vkarta chrx-vk-pending"
-           data-card-id="${esc(p.cardId)}"
-           data-lesson-id="${esc(p.lessonId)}"
-           style="--chrx-card-hue:${p.hue}"
-           title="${esc(p.title)}">
-        <div class="chrx-vk-line1">${esc(p.subjShort)}</div>
-        <div class="chrx-vk-line2">${esc(p.classShort)}</div>
-        <div class="chrx-vk-line3">${esc(p.teacherShort)}</div>
+      <div class="chrx-vkarta chrx-vk-pending${stackClass}"
+           data-card-id="${esc(top.cardId)}"
+           data-lesson-id="${esc(top.lessonId)}"
+           data-stack-ids="${esc(allIds)}"
+           data-stack-depth="${depth}"
+           style="--chrx-card-hue:${top.hue};--chrx-stack-depth:${depth}"
+           title="${esc(top.title)}">
+        <div class="chrx-vk-line1">${esc(top.subjShort)}</div>
+        <div class="chrx-vk-line2">${esc(top.classShort)}</div>
+        <div class="chrx-vk-line3">${esc(top.teacherShort)}</div>
+        ${badge}
       </div>
     `;
   }
