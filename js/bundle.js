@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-06-12T10:13:34Z
+/* Chronexa bundle — generated 2026-06-12T10:16:49Z
  *      164 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -3439,6 +3439,9 @@ window.Inspector = (function () {
   if (!D) return;
 
   function rows() {
+    const s = window.APP && window.APP.school;
+    const nP = (s && s.bell && s.bell.periods && s.bell.periods.length) || 8;
+    const nD = ((s && s._idx && s._idx.days) || ["Mon","Tue","Wed","Thu","Fri","Sat"]).length;
     const idxT = window.APP.school?._idx?.teacherById || {};
     const idxR = window.APP.school?._idx?.classroomById || {};
     return ((window.APP.school?.classes) || []).map(c => ({
@@ -3447,7 +3450,9 @@ window.Inspector = (function () {
       classrooms: (c.classroomIds || c._classroomIds || [])
         .map(id => idxR[id]?.name).filter(Boolean).join(", "),
       bell: c.bell || "default", color: c.color || "",
-      divCount: (c.divisions || []).length || 0, _ref: c,
+      divCount: (c.divisions || []).length || 0,
+      timeOff: c.timeOff || {},
+      _ref: c, _nP: nP, _nD: nD,
     }));
   }
 
@@ -3460,6 +3465,8 @@ window.Inspector = (function () {
     { key:"color", label:"Color", sortable:false,
       render:(r)=>D.el("span", { class:"chrx-ent-swatch-dot",
         style:`background:${r.color || "transparent"}` }) },
+    { key:"timeOff", label:"Time off", sortable:false,
+      render:(r)=>D.buildTimeOffMini(r.timeOff, r._nD, r._nP) },
     { key:"divCount", label:"Divisions" },
   ]; }
 
@@ -3923,6 +3930,9 @@ window.Inspector = (function () {
   if (!D) return;
 
   function rows() {
+    const s = window.APP && window.APP.school;
+    const nP = (s && s.bell && s.bell.periods && s.bell.periods.length) || 8;
+    const nD = ((s && s._idx && s._idx.days) || ["Mon","Tue","Wed","Thu","Fri","Sat"]).length;
     const idxS = window.APP.school?._idx?.subjectById || {};
     return ((window.APP.school?.classrooms) || []).map(rm => ({
       id: rm.id, name: rm.name || "", short: rm.abbr || rm.short || "",
@@ -3932,7 +3942,9 @@ window.Inspector = (function () {
       isShared: rm.isShared ? "Yes" : "",
       subjectsFor: (rm.allowedSubjectIds || [])
         .map(id => idxS[id]?.abbr || idxS[id]?.name).filter(Boolean).join(", "),
-      bell: rm.bell || "default", _ref: rm,
+      bell: rm.bell || "default",
+      timeOff: rm.timeOff || {},
+      _ref: rm, _nP: nP, _nD: nD,
     }));
   }
 
@@ -3944,6 +3956,8 @@ window.Inspector = (function () {
     { key:"color", label:"Color", sortable:false,
       render:(r)=>D.el("span", { class:"chrx-ent-swatch-dot",
         style:`background:${r.color || "transparent"}` }) },
+    { key:"timeOff", label:"Time off", sortable:false,
+      render:(r)=>D.buildTimeOffMini(r.timeOff, r._nD, r._nP) },
     { key:"needsSupervision", label:"Supervised" },
     { key:"isShared", label:"Shared" },
     { key:"subjectsFor", label:"For subjects" },

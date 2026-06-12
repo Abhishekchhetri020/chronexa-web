@@ -5,6 +5,9 @@
   if (!D) return;
 
   function rows() {
+    const s = window.APP && window.APP.school;
+    const nP = (s && s.bell && s.bell.periods && s.bell.periods.length) || 8;
+    const nD = ((s && s._idx && s._idx.days) || ["Mon","Tue","Wed","Thu","Fri","Sat"]).length;
     const idxS = window.APP.school?._idx?.subjectById || {};
     return ((window.APP.school?.classrooms) || []).map(rm => ({
       id: rm.id, name: rm.name || "", short: rm.abbr || rm.short || "",
@@ -14,7 +17,9 @@
       isShared: rm.isShared ? "Yes" : "",
       subjectsFor: (rm.allowedSubjectIds || [])
         .map(id => idxS[id]?.abbr || idxS[id]?.name).filter(Boolean).join(", "),
-      bell: rm.bell || "default", _ref: rm,
+      bell: rm.bell || "default",
+      timeOff: rm.timeOff || {},
+      _ref: rm, _nP: nP, _nD: nD,
     }));
   }
 
@@ -26,6 +31,8 @@
     { key:"color", label:"Color", sortable:false,
       render:(r)=>D.el("span", { class:"chrx-ent-swatch-dot",
         style:`background:${r.color || "transparent"}` }) },
+    { key:"timeOff", label:"Time off", sortable:false,
+      render:(r)=>D.buildTimeOffMini(r.timeOff, r._nD, r._nP) },
     { key:"needsSupervision", label:"Supervised" },
     { key:"isShared", label:"Shared" },
     { key:"subjectsFor", label:"For subjects" },

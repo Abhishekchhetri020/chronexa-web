@@ -5,6 +5,9 @@
   if (!D) return;
 
   function rows() {
+    const s = window.APP && window.APP.school;
+    const nP = (s && s.bell && s.bell.periods && s.bell.periods.length) || 8;
+    const nD = ((s && s._idx && s._idx.days) || ["Mon","Tue","Wed","Thu","Fri","Sat"]).length;
     const idxT = window.APP.school?._idx?.teacherById || {};
     const idxR = window.APP.school?._idx?.classroomById || {};
     return ((window.APP.school?.classes) || []).map(c => ({
@@ -13,7 +16,9 @@
       classrooms: (c.classroomIds || c._classroomIds || [])
         .map(id => idxR[id]?.name).filter(Boolean).join(", "),
       bell: c.bell || "default", color: c.color || "",
-      divCount: (c.divisions || []).length || 0, _ref: c,
+      divCount: (c.divisions || []).length || 0,
+      timeOff: c.timeOff || {},
+      _ref: c, _nP: nP, _nD: nD,
     }));
   }
 
@@ -26,6 +31,8 @@
     { key:"color", label:"Color", sortable:false,
       render:(r)=>D.el("span", { class:"chrx-ent-swatch-dot",
         style:`background:${r.color || "transparent"}` }) },
+    { key:"timeOff", label:"Time off", sortable:false,
+      render:(r)=>D.buildTimeOffMini(r.timeOff, r._nD, r._nP) },
     { key:"divCount", label:"Divisions" },
   ]; }
 
