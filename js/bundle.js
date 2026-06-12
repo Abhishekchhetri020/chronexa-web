@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-06-11T20:09:18Z
+/* Chronexa bundle — generated 2026-06-12T05:54:20Z
  *      164 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -15868,12 +15868,12 @@ window.Editor = (function () {
         if (slot.classList.contains("chrx-slot--highlight-place") || slot.classList.contains("chrx-slot--highlight-swap")) {
           const occupants = slot.querySelectorAll(".chrx-vkarta");
           if (occupants.length) {
-            const v = window.CardInHand.classifySlot ? window.CardInHand.classifySlot(slot) : { validity: "green" };
-            if (v.validity === "red") {
-              window.CardInHand.showCollisionMenu(slot, v);
-            } else {
-              window.CardInHand.commit(d, p, slot, { displace: true });
-            }
+            // Swap: the picked card takes this slot and the card sitting here
+            // moves to the cursor. swap() refuses (and opens the collision
+            // menu) if the picked card would be a hard conflict here once the
+            // displaced card is removed — e.g. its teacher is busy elsewhere.
+            const targetVk = ev.target.closest(".chrx-vkarta");
+            window.CardInHand.swap(d, p, slot, targetVk ? targetVk.dataset.lessonId : null);
           } else {
             window.CardInHand.commit(d, p, slot);
           }
@@ -17017,6 +17017,17 @@ window.PendingStrip = (function () {
     const slot = el && el.closest ? el.closest(".chrx-slot") : null;
     return slot && !slot.classList.contains("out-of-bell") ? slot : null;
   }
+
+  // The specific card directly under the cursor (group-split aware), so a
+  // drop onto a shared cell swaps the half-class card being pointed at — not
+  // an arbitrary occupant. Hides the drag ghost first so elementFromPoint
+  // reads the card underneath it.
+  function vkartaAt(x, y) {
+    if (ghost) ghost.style.visibility = "hidden";
+    const el = document.elementFromPoint(x, y);
+    if (ghost) ghost.style.visibility = "";
+    return el && el.closest ? el.closest(".chrx-vkarta") : null;
+  }
   
   function paint(x, y) {
     const slot = slotAt(x, y);
@@ -17045,8 +17056,16 @@ window.PendingStrip = (function () {
     const slot = slotAt(e.clientX, e.clientY);
     if (!slot) return cancel();
     const d = parseInt(slot.dataset.day, 10), p = parseInt(slot.dataset.period, 10);
+    // Drop onto an occupied slot → swap: the dragged card takes the slot and
+    // the displaced card attaches to the cursor so you can keep dragging it.
+    // swap() falls back to the collision menu if the dragged card can't fit
+    // cleanly here (a real conflict the user must resolve).
+    if (targetCardsForSlot(slot).length) {
+      const targetVk = vkartaAt(e.clientX, e.clientY);
+      return swap(d, p, slot, targetVk ? targetVk.dataset.lessonId : null, { x: e.clientX, y: e.clientY });
+    }
     const v = classifySlot(slot);
-    if (v.validity === "red" || targetCardsForSlot(slot).length) return showCollisionMenu(slot, v, e.clientX, e.clientY);
+    if (v.validity === "red") return showCollisionMenu(slot, v, e.clientX, e.clientY);
     commit(d, p, slot);
   }
   function onKey(e) {
@@ -17705,25 +17724,39 @@ window.PendingStrip = (function () {
     
     if (!rowKey) return;
     
+    const S2 = window.APP && window.APP.school;
     const slots = document.querySelectorAll(`.chrx-editor .chrx-row[data-row="${rowKey}"] .chrx-slot:not(.out-of-bell)`);
     for (const slot of slots) {
       const d = parseInt(slot.dataset.day, 10);
       const p = parseInt(slot.dataset.period, 10);
       if (Number.isNaN(d) || Number.isNaN(p)) continue;
-      
+
       if (!inHand.fromPending && inHand.originDay === d && inHand.originPeriod === p) continue;
-      
-      const v = classifySlot(slot);
-      slot.setAttribute("data-validity-highlight", v.validity);
-      
+
       const occupants = targetCardsForSlot(slot);
       if (occupants.length === 0) {
-        slot.classList.add("chrx-slot--highlight-place");
+        // Empty slot — highlight only where the card can actually land. A
+        // hard-conflict slot (e.g. the teacher is busy this period) is left
+        // unmarked so the lit-up cells mean "you can place here".
+        const v = classifySlot(slot);
+        slot.setAttribute("data-validity-highlight", v.validity);
+        if (v.validity !== "red") slot.classList.add("chrx-slot--highlight-place");
       } else {
-        slot.classList.add("chrx-slot--highlight-swap");
-        slot.querySelectorAll(".chrx-vkarta").forEach(vk => {
-          vk.classList.add("chrx-vkarta--highlight-swap-target");
-        });
+        // Occupied slot — highlight as swappable only if the picked card fits
+        // here once the occupant is removed (mirrors swap()'s feasibility).
+        const cardB = occupants[0];
+        const prefiltered = S2 ? S2.cards.filter(c =>
+          c.day === d && c.period === p && c.lessonId !== cardB.lessonId) : [];
+        const vA = window.Placement
+          ? window.Placement.classify(inHand.lessonId, d, p, classroomForSlot(inHand.lessonId, slot), prefiltered)
+          : { validity: "green" };
+        slot.setAttribute("data-validity-highlight", vA.validity);
+        if (vA.validity !== "red") {
+          slot.classList.add("chrx-slot--highlight-swap");
+          slot.querySelectorAll(".chrx-vkarta").forEach(vk => {
+            vk.classList.add("chrx-vkarta--highlight-swap-target");
+          });
+        }
       }
     }
   }
@@ -17739,55 +17772,86 @@ window.PendingStrip = (function () {
     return [];
   }
 
-  function swap(dayB, periodB, slotB) {
+  // S.cards mutation helpers used by the swap/displacement path. (commit()
+  // manipulates S.cards inline; executeDisplacement needs room-aware versions.
+  // grid_canvas.js has its own same-named helpers in a separate IIFE scope —
+  // these are this module's copies so executeDisplacement resolves them.)
+  function removeCardFromSchool(lessonId, day, period) {
+    const S = window.APP && window.APP.school;
+    if (!S || !S.cards) return;
+    const i = S.cards.findIndex(c => c.lessonId === lessonId && c.day === day && c.period === period);
+    if (i !== -1) S.cards.splice(i, 1);
+  }
+  function placeCardOnSchool(lessonId, day, period, classroomId) {
+    const S = window.APP && window.APP.school;
+    if (!S) return;
+    if (!S.cards) S.cards = [];
+    if (S.cards.some(c => c.lessonId === lessonId && c.day === day && c.period === period)) return;
+    const lesson = S._idx ? S._idx.lessonById[lessonId] : null;
+    const cid = classroomId !== undefined ? classroomId : (lesson ? lesson.preferredRoomId : null);
+    S.cards.push({ lessonId, day, period, classroomId: cid });
+  }
+
+  // Place the card in hand (cardA) onto an occupied slot, sending the card
+  // there (cardB) to the cursor. `targetLessonId` selects which occupant to
+  // displace on a group-split slot; `dropXY` carries the drop point so a drag
+  // swap re-attaches the displaced card's ghost at the cursor.
+  function swap(dayB, periodB, slotB, targetLessonId, dropXY) {
     if (!inHand || !slotB) return cancel();
-    
+
     const S = window.APP && window.APP.school;
     if (!S) return cancel();
-    
+
     const occupants = targetCardsForSlot(slotB);
     if (!occupants.length) {
+      // No card here after all → a plain placement.
       return commit(dayB, periodB, slotB);
     }
-    
+
     const cardA = inHand;
-    const cardB = occupants[0];
-    
-    if (cardA.fromPending) {
-      const v = classifySlot(slotB);
-      if (v.validity === "red") {
-        return showCollisionMenu(slotB, v);
-      }
-      const classroomIdB = classroomForSlot(cardA.lessonId, slotB);
-      return executeDisplacement(cardA, dayB, periodB, classroomIdB, cardB);
-    }
-    
+    // Displace the specific card the user dropped on; fall back to the first.
+    let cardB = targetLessonId ? occupants.find(o => o.lessonId === targetLessonId) : null;
+    if (!cardB) cardB = occupants[0];
+
     const classroomIdB = classroomForSlot(cardA.lessonId, slotB);
-    
-    // Classify cardA at slotB, prefiltering target occupant cardB to avoid false double-booking warnings
-    const prefiltered = S.cards.filter(c => c.day === dayB && c.period === periodB && c.lessonId !== cardB.lessonId);
-    const vA = window.Placement ? window.Placement.classify(cardA.lessonId, dayB, periodB, classroomIdB, prefiltered) : { validity: "green", reasons: [] };
-    
+
+    // Is cardA feasible here once cardB is removed? Other occupants of a
+    // group-split slot remain in `prefiltered`, so a swap that would still
+    // collide with a co-tenant (or with cardA's own teacher being busy
+    // elsewhere this period) classifies red and is refused.
+    const prefiltered = S.cards.filter(c =>
+      c.day === dayB && c.period === periodB && c.lessonId !== cardB.lessonId);
+    const vA = window.Placement
+      ? window.Placement.classify(cardA.lessonId, dayB, periodB, classroomIdB, prefiltered)
+      : { validity: "green", reasons: [] };
+
     if (vA.validity === "red") {
+      // Can't swap cleanly — surface the collision menu so the user can still
+      // force/replace if they insist.
       return showCollisionMenu(slotB, vA);
     }
-    
-    executeDisplacement(cardA, dayB, periodB, classroomIdB, cardB);
+
+    executeDisplacement(cardA, dayB, periodB, classroomIdB, cardB, { dropXY });
   }
 
   function executeDisplacement(cardA, dayB, periodB, classroomIdB, cardB, options) {
     const S = window.APP && window.APP.school;
     if (!S) return;
-    
+
     const lessonIdA = cardA.lessonId;
     const lessonIdB = cardB.lessonId;
     const dayA = cardA.originDay;
     const periodA = cardA.originPeriod;
     const classroomIdA = cardB.classroomId || classroomForSlot(lessonIdB, null);
-    
+
     const isMoveA = !cardA.fromPending && Number.isFinite(dayA) && Number.isFinite(periodA);
     const forced = !!(options && options.force);
-    
+    // Carry the displaced card in the SAME interaction mode the user is in:
+    // a drag swap re-attaches a ghost at the drop point so they keep dragging;
+    // a click swap re-selects it (highlights light up) so they click to place.
+    const reMode = cardA.mode || "click";
+    const dropXY = options && options.dropXY;
+
     const slotBElement = document.querySelector(`.chrx-editor .chrx-slot[data-day="${dayB}"][data-period="${periodB}"]`);
     const rowKeyB = slotBElement?.dataset.row;
 
@@ -17798,7 +17862,7 @@ window.PendingStrip = (function () {
       removeCardFromSchool(lessonIdB, dayB, periodB);
       placeCardOnSchool(lessonIdA, dayB, periodB, classroomIdB);
     }
-    
+
     function revertDisplacement() {
       removeCardFromSchool(lessonIdA, dayB, periodB);
       placeCardOnSchool(lessonIdB, dayB, periodB, classroomIdA);
@@ -17807,25 +17871,33 @@ window.PendingStrip = (function () {
       }
     }
 
+    function pickUpDisplaced() {
+      const detail = {
+        cardId: `placed_${lessonIdB}_${dayB}_${periodB}`,
+        lessonId: lessonIdB,
+        day: dayB,
+        period: periodB,
+        originClassroomId: classroomIdA,
+        rowKey: rowKeyB,
+        mode: reMode,
+      };
+      if (reMode === "drag" && dropXY) { detail.sourceX = dropXY.x; detail.sourceY = dropXY.y; }
+      // Tear down the picked card's in-hand visuals (old ghost / highlights /
+      // listeners) before carrying the displaced one. cleanup() does not touch
+      // school.cards — the swap was already committed by applyDisplacement().
+      cleanup();
+      pickup(detail);
+    }
+
     const auditCommit = window.APP && window.APP.audit && typeof window.APP.audit.commit === "function";
     if (auditCommit) {
       window.APP.audit.commit({
-        label: "Displace card",
+        label: "Swap cards",
         do() {
           applyDisplacement();
           document.dispatchEvent(new CustomEvent("editor:place", { detail: { lessonId: lessonIdA, day: dayB, period: periodB, forced } }));
           rerender();
-          
-          const cardIdB = `placed_${lessonIdB}_${dayB}_${periodB}`;
-          window.CardInHand.pickup({
-            cardId: cardIdB,
-            lessonId: lessonIdB,
-            day: dayB,
-            period: periodB,
-            originClassroomId: classroomIdA,
-            rowKey: rowKeyB,
-            mode: "click"
-          });
+          pickUpDisplaced();
         },
         undo() {
           window.CardInHand._cleanup();
@@ -17841,17 +17913,7 @@ window.PendingStrip = (function () {
       applyDisplacement();
       document.dispatchEvent(new CustomEvent("editor:place", { detail: { lessonId: lessonIdA, day: dayB, period: periodB, forced } }));
       rerender();
-      
-      const cardIdB = `placed_${lessonIdB}_${dayB}_${periodB}`;
-      window.CardInHand.pickup({
-        cardId: cardIdB,
-        lessonId: lessonIdB,
-        day: dayB,
-        period: periodB,
-        originClassroomId: classroomIdA,
-        rowKey: rowKeyB,
-        mode: "click"
-      });
+      pickUpDisplaced();
     }
   }
 

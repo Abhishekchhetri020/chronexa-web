@@ -712,12 +712,12 @@ window.Editor = (function () {
         if (slot.classList.contains("chrx-slot--highlight-place") || slot.classList.contains("chrx-slot--highlight-swap")) {
           const occupants = slot.querySelectorAll(".chrx-vkarta");
           if (occupants.length) {
-            const v = window.CardInHand.classifySlot ? window.CardInHand.classifySlot(slot) : { validity: "green" };
-            if (v.validity === "red") {
-              window.CardInHand.showCollisionMenu(slot, v);
-            } else {
-              window.CardInHand.commit(d, p, slot, { displace: true });
-            }
+            // Swap: the picked card takes this slot and the card sitting here
+            // moves to the cursor. swap() refuses (and opens the collision
+            // menu) if the picked card would be a hard conflict here once the
+            // displaced card is removed — e.g. its teacher is busy elsewhere.
+            const targetVk = ev.target.closest(".chrx-vkarta");
+            window.CardInHand.swap(d, p, slot, targetVk ? targetVk.dataset.lessonId : null);
           } else {
             window.CardInHand.commit(d, p, slot);
           }
