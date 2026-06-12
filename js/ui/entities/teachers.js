@@ -93,11 +93,11 @@
       }
     }
 
-    const fFirst = D.el("input", { type:"text", value:draft.firstName, maxlength:"40",
+    const fFirst = D.el("input", { type:"text", value:draft.firstName, required:"required", maxlength:"40",
       oninput:(e) => { draft.firstName = e.target.value; updateAutoAbbr(); } });
-    const fLast = D.el("input", { type:"text", value:draft.lastName, required:"required",
+    const fLast = D.el("input", { type:"text", value:draft.lastName,
       maxlength:"40", oninput:(e) => { draft.lastName = e.target.value; updateAutoAbbr(); } });
-    const fAbbr = D.el("input", { type:"text", value:draft.abbr, maxlength:"10",
+    const fAbbr = D.el("input", { type:"text", value:draft.abbr, maxlength:"30",
       oninput:(e) => {
         draft.abbr = e.target.value;
         abbrManuallySet = true;
@@ -164,7 +164,7 @@
       oninput: e => draft.printColor = e.target.value });
 
     function save() {
-      if (!draft.lastName.trim()) { fLast.focus(); return false; }
+      if (!draft.firstName.trim() && !draft.lastName.trim()) { fFirst.focus(); return false; }
       // Auto-assign abbreviation if empty
       if (!draft.abbr.trim()) draft.abbr = autoAbbr(draft.firstName, draft.lastName);
       // Auto-assign unique color if none selected
@@ -176,7 +176,7 @@
         const t = r._ref;
         const before = { ...t };
         t.firstName = draft.firstName.trim() || undefined;
-        t.lastName  = draft.lastName.trim();
+        t.lastName  = draft.lastName.trim() || undefined;
         t.name = fullName;
         t.abbr = draft.abbr.trim() || undefined;
         t.color = draft.color || undefined;
@@ -189,7 +189,7 @@
       } else {
         const nt = { id:D.uid("t"),
           firstName:draft.firstName.trim() || undefined,
-          lastName:draft.lastName.trim(),
+          lastName:draft.lastName.trim() || undefined,
           name: fullName,
           abbr:draft.abbr.trim() || undefined,
           color:draft.color || undefined,

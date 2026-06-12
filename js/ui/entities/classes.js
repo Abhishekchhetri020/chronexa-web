@@ -84,7 +84,7 @@
           fShort.value = auto;
         }
       }});
-    const fShort = D.el("input", { type:"text", value:draft.short, maxlength:"10",
+    const fShort = D.el("input", { type:"text", value:draft.short, maxlength:"30",
       oninput:(e) => {
         draft.short = e.target.value;
         abbrManuallySet = true;

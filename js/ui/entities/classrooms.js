@@ -55,7 +55,7 @@
 
     const fName = D.el("input", { type:"text", value:draft.name, required:"required",
       maxlength:"40", oninput:(e)=>draft.name = e.target.value });
-    const fShort = D.el("input", { type:"text", value:draft.short, maxlength:"10",
+    const fShort = D.el("input", { type:"text", value:draft.short, maxlength:"30",
       oninput:(e)=>draft.short = e.target.value });
     const fBuilding = D.el("input", { type:"text", value:draft.building,
       oninput:(e)=>draft.building = e.target.value });

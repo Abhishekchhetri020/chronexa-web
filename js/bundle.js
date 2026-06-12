@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-06-12T10:16:49Z
+/* Chronexa bundle — generated 2026-06-12T10:22:04Z
  *      164 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -2924,7 +2924,7 @@ window.Inspector = (function () {
           fShort.value = auto;
         }
       }});
-    const fShort = D.el("input", { type:"text", value:draft.short, maxlength:"10",
+    const fShort = D.el("input", { type:"text", value:draft.short, maxlength:"30",
       oninput:(e) => {
         draft.short = e.target.value;
         abbrManuallySet = true;
@@ -3518,7 +3518,7 @@ window.Inspector = (function () {
           fShort.value = auto;
         }
       }});
-    const fShort = D.el("input", { type:"text", value:draft.short, maxlength:"10",
+    const fShort = D.el("input", { type:"text", value:draft.short, maxlength:"30",
       oninput:(e) => {
         draft.short = e.target.value;
         abbrManuallySet = true;
@@ -3980,7 +3980,7 @@ window.Inspector = (function () {
 
     const fName = D.el("input", { type:"text", value:draft.name, required:"required",
       maxlength:"40", oninput:(e)=>draft.name = e.target.value });
-    const fShort = D.el("input", { type:"text", value:draft.short, maxlength:"10",
+    const fShort = D.el("input", { type:"text", value:draft.short, maxlength:"30",
       oninput:(e)=>draft.short = e.target.value });
     const fBuilding = D.el("input", { type:"text", value:draft.building,
       oninput:(e)=>draft.building = e.target.value });
@@ -4328,11 +4328,11 @@ window.Inspector = (function () {
       }
     }
 
-    const fFirst = D.el("input", { type:"text", value:draft.firstName, maxlength:"40",
+    const fFirst = D.el("input", { type:"text", value:draft.firstName, required:"required", maxlength:"40",
       oninput:(e) => { draft.firstName = e.target.value; updateAutoAbbr(); } });
-    const fLast = D.el("input", { type:"text", value:draft.lastName, required:"required",
+    const fLast = D.el("input", { type:"text", value:draft.lastName,
       maxlength:"40", oninput:(e) => { draft.lastName = e.target.value; updateAutoAbbr(); } });
-    const fAbbr = D.el("input", { type:"text", value:draft.abbr, maxlength:"10",
+    const fAbbr = D.el("input", { type:"text", value:draft.abbr, maxlength:"30",
       oninput:(e) => {
         draft.abbr = e.target.value;
         abbrManuallySet = true;
@@ -4399,7 +4399,7 @@ window.Inspector = (function () {
       oninput: e => draft.printColor = e.target.value });
 
     function save() {
-      if (!draft.lastName.trim()) { fLast.focus(); return false; }
+      if (!draft.firstName.trim() && !draft.lastName.trim()) { fFirst.focus(); return false; }
       // Auto-assign abbreviation if empty
       if (!draft.abbr.trim()) draft.abbr = autoAbbr(draft.firstName, draft.lastName);
       // Auto-assign unique color if none selected
@@ -4411,7 +4411,7 @@ window.Inspector = (function () {
         const t = r._ref;
         const before = { ...t };
         t.firstName = draft.firstName.trim() || undefined;
-        t.lastName  = draft.lastName.trim();
+        t.lastName  = draft.lastName.trim() || undefined;
         t.name = fullName;
         t.abbr = draft.abbr.trim() || undefined;
         t.color = draft.color || undefined;
@@ -4424,7 +4424,7 @@ window.Inspector = (function () {
       } else {
         const nt = { id:D.uid("t"),
           firstName:draft.firstName.trim() || undefined,
-          lastName:draft.lastName.trim(),
+          lastName:draft.lastName.trim() || undefined,
           name: fullName,
           abbr:draft.abbr.trim() || undefined,
           color:draft.color || undefined,
