@@ -1,0 +1,112 @@
+/* ───── Landing-page ambient background animation ─────
+ * Subtle "schedules in motion" effect for the start screen.
+ * Similar in feel to Antigravity's radial dot pattern (ambient motion,
+ * soft color, depth without distraction), but uses Chronexa's product
+ * language: mini timetable cards in the brand palette drifting gently
+ * behind the hero / actions / features content.
+ *
+ * Design notes:
+ *   - Particles avoid the center 28-72% width (where the .chrx-start
+ *     content column lives), so they frame the content rather than
+ *     fight it for attention.
+ *   - Two keyframe variants (drift-a, drift-b) so motion is varied
+ *     across particles; an opacity pulse adds a "live" rhythm.
+ *   - Colors are Chronexa brand: deep teal, amber/gold, slate,
+ *     warm gray, off-white — all at low alpha so they sit BEHIND
+ *     the cream background, not on top of it.
+ *   - Some particles have a thin inner bar (~40%) that suggests a
+ *     lesson card with a single line of text inside.
+ *   - All particles are pointer-events:none, will-change is set for
+ *     compositor promotion, and contain:strict keeps layout/paint
+ *     scoped to the animation root.
+ *   - prefers-reduced-motion: hides the entire layer — content is
+ *     fully usable with motion disabled.
+ */
+
+#step-1 { position: relative; }
+
+#step-1 .chrx-landing-anim {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  contain: strict;
+}
+
+#step-1 .chrx-landing-anim .cla {
+  position: absolute;
+  border-radius: 4px;
+  pointer-events: none;
+  will-change: transform, opacity;
+  transform: translate3d(0, 0, 0);
+}
+
+/* Foreground content sits above the animation layer */
+#step-1 .chrx-start,
+#step-1 .chrx-start * {
+  /* nothing — inherit position normally */
+}
+#step-1 .chrx-start {
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Motion ──────────────────────────────────────────── */
+
+@keyframes cla-drift-a {
+  0%   { transform: translate3d(0, 0, 0) rotate(var(--r0, 0deg)); }
+  50%  { transform: translate3d(var(--dx, 8px), var(--dy, -18px), 0)
+                     rotate(calc(var(--r0, 0deg) + var(--rs, 2deg))); }
+  100% { transform: translate3d(0, 0, 0) rotate(var(--r0, 0deg)); }
+}
+
+@keyframes cla-drift-b {
+  0%   { transform: translate3d(0, 0, 0) rotate(var(--r0, 0deg)); }
+  33%  { transform: translate3d(calc(var(--dx, -6px) * 0.4),
+                               var(--dy, -22px), 0)
+                     rotate(calc(var(--r0, 0deg) + var(--rs, -2deg))); }
+  66%  { transform: translate3d(var(--dx, -6px), 0, 0)
+                     rotate(var(--r0, 0deg)); }
+  100% { transform: translate3d(0, 0, 0) rotate(var(--r0, 0deg)); }
+}
+
+@keyframes cla-pulse {
+  0%, 100% { opacity: var(--lo, 0.30); }
+  50%      { opacity: var(--hi, 0.62); }
+}
+
+.cla {
+  animation:
+    cla-drift-a var(--dur, 30s) ease-in-out infinite,
+    cla-pulse    var(--pdur, 18s) ease-in-out infinite;
+  animation-delay: var(--adelay, 0s), var(--pdelay, 0s);
+}
+
+.cla--b {
+  animation:
+    cla-drift-b var(--dur, 30s) ease-in-out infinite,
+    cla-pulse    var(--pdur, 18s) ease-in-out infinite;
+  animation-delay: var(--adelay, 0s), var(--pdelay, 0s);
+}
+
+/* ── Inner "text line" decoration on some cards ──────── */
+
+.cla--line::after {
+  content: "";
+  position: absolute;
+  left: 5px;
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 2px;
+  border-radius: 1px;
+  background: currentColor;
+  opacity: 0.55;
+}
+
+/* ── Reduced motion: hide the whole layer ────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  #step-1 .chrx-landing-anim { display: none; }
+}
