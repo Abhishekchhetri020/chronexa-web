@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-06-13T19:40:18Z
+/* Chronexa bundle — generated 2026-06-13T20:38:21Z
  *      164 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -311,6 +311,8 @@ window.parseTimetableXml = (function () {
         classId: attr(g, "classid") || "",
         entireClass: attr(g, "entireclass") === "1",
         divisionTag: parseInt(attr(g, "divisiontag"), 10) || 0,
+        studentCount: attr(g, "studentcount") || undefined,
+        studentIds: (attr(g, "studentids") || "").split(",").filter(Boolean),
       };
       if (!obj.id) return;
       groups.push(obj);
@@ -420,6 +422,7 @@ window.parseTimetableXml = (function () {
       fixedDay: l.fixedDay,
       fixedPeriod: l.fixedPeriod,
       isLabDouble: l.isLabDouble,
+      _lessonRoomIds: l._lessonRoomIds,
     }));
     const cleanClasses = classes.map(c => ({
       id: c.id, name: c.name, sections: c.sections,
@@ -7664,8 +7667,9 @@ window.Inspector = (function () {
 /* ─── FILE: js/ui/entities/groups.js ─── */
 /* Groups CRUD dialog. window.EntityGroups.open()
  * A group is a sub-grouping of a class — either the full class
- * (entireclass=true) or a fraction taking an elective. Fields:
- * classid, entireclass, divisionTag, name. */
+ * (entireClass=true) or a fraction taking an elective. Canonical fields:
+ * classId, entireClass, divisionTag, name. Legacy lowercase fields remain
+ * readable so older in-browser projects can be repaired on their next edit. */
 (function (global) {
   "use strict";
   const D = window.EntityDialog;
@@ -7678,14 +7682,16 @@ window.Inspector = (function () {
   }
 
   function classMap() { return window.APP.school?._idx?.classById || {}; }
+  function classId(g) { return g.classId || g.classid || ""; }
+  function entireClass(g) { return !!(g.entireClass || g.entireclass); }
 
   function rows() {
     const cm = classMap();
     return ensure().map(g => ({
       id: g.id, name: g.name || "(unnamed)",
-      classname: cm[g.classid]?.name || "(unassigned)",
+      classname: cm[classId(g)]?.name || "(unassigned)",
       divisionTag: g.divisionTag || "",
-      entire: g.entireclass ? "✔" : "—",
+      entire: entireClass(g) ? "✔" : "—",
       _ref: g,
     }));
   }
@@ -7713,19 +7719,19 @@ window.Inspector = (function () {
     const isNew = !r;
     const ref = r ? r._ref : null;
     const draft = isNew
-      ? { name:"", classid:"", entireclass:false, divisionTag:"" }
-      : { name:ref.name || "", classid:ref.classid || "",
-          entireclass:!!ref.entireclass,
+      ? { name:"", classId:"", entireClass:false, divisionTag:"" }
+      : { name:ref.name || "", classId:classId(ref),
+          entireClass:entireClass(ref),
           divisionTag:ref.divisionTag || "" };
 
     const fName = D.el("input", { type:"text", value:draft.name, required:"required",
       maxlength:"30", oninput:(e)=>draft.name = e.target.value });
-    const fClass = makeClassSelect(draft.classid, v => draft.classid = v);
+    const fClass = makeClassSelect(draft.classId, v => draft.classId = v);
     const fEntire = D.el("input", { type:"checkbox",
-      checked: draft.entireclass ? "checked" : null,
-      onchange:(e)=>draft.entireclass = e.target.checked });
-    const fDiv = D.el("input", { type:"text", value:draft.divisionTag,
-      maxlength:"20", placeholder:"e.g. mu / da",
+      checked: draft.entireClass ? "checked" : null,
+      onchange:(e)=>draft.entireClass = e.target.checked });
+    const fDiv = D.el("input", { type:"number", min:"0", max:"65534", value:draft.divisionTag,
+      placeholder:"e.g. 1",
       oninput:(e)=>draft.divisionTag = e.target.value });
 
     D.buildEditSheet({
@@ -7738,17 +7744,19 @@ window.Inspector = (function () {
       ],
       onSave:()=>{
         if (!draft.name.trim()) { fName.focus(); return; }
-        if (!draft.classid) { fClass.focus(); return; }
+        if (!draft.classId) { fClass.focus(); return; }
         const all = ensure();
         const payload = {
           name: draft.name.trim(),
-          classid: draft.classid,
-          entireclass: !!draft.entireclass,
-          divisionTag: draft.divisionTag.trim() || undefined,
+          classId: draft.classId,
+          entireClass: !!draft.entireClass,
+          divisionTag: parseInt(draft.divisionTag, 10) || 0,
         };
         if (!isNew) {
           const before = { ...ref };
           Object.assign(ref, payload);
+          delete ref.classid;
+          delete ref.entireclass;
           window.APP.audit.append({ entity:"groups", op:"update",
             before, after:{...ref} });
         } else {
@@ -7757,6 +7765,7 @@ window.Inspector = (function () {
           window.APP.audit.append({ entity:"groups", op:"add", after:{...payload} });
         }
         D.closeSheet(); D.refresh(rows());
+        document.dispatchEvent(new CustomEvent("entity:changed", { detail: { entity:"groups" } }));
       },
     });
   }
@@ -7777,6 +7786,7 @@ window.Inspector = (function () {
             window.APP.audit.append({ entity:"groups", op:"remove",
               before:{...removed} });
             D.refresh(rows());
+            document.dispatchEvent(new CustomEvent("entity:changed", { detail: { entity:"groups" } }));
           }
         }
       },
@@ -22315,6 +22325,27 @@ window.StartScreen = (function () {
     lines.push("  </classes>");
     return lines.join("\n");
   }
+  function renderGroupsBlock(school) {
+    const lines = [];
+    lines.push('  <groups options="canadd,export:silent" columns="id,classid,name,entireclass,divisiontag,studentcount,studentids">');
+    for (const g of (school.groups || [])) {
+      const classId = g.classId || g.classid || "";
+      const entire = g.entireClass || g.entireclass ? "1" : "0";
+      const divisionTag = g.divisionTag == null ? 0 : g.divisionTag;
+      const studentCount = g.studentCount == null ? "" : g.studentCount;
+      const studentIds = Array.isArray(g.studentIds) ? g.studentIds.join(",") : (g.studentIds || "");
+      lines.push(`    <group id="${xmlEscape(g.id)}" classid="${xmlEscape(classId)}" name="${xmlEscape(g.name || "")}" entireclass="${entire}" divisiontag="${xmlEscape(divisionTag)}" studentcount="${xmlEscape(studentCount)}" studentids="${xmlEscape(studentIds)}"/>`);
+    }
+    lines.push("  </groups>");
+    return lines.join("\n");
+  }
+  function lessonRoomIds(lesson) {
+    if (Array.isArray(lesson.classroomIdsExpanded) && lesson.classroomIdsExpanded.length)
+      return lesson.classroomIdsExpanded;
+    if (Array.isArray(lesson._lessonRoomIds) && lesson._lessonRoomIds.length)
+      return lesson._lessonRoomIds;
+    return lesson.preferredRoomId ? [lesson.preferredRoomId] : [];
+  }
   function renderLessonsBlock(school) {
     const lines = [];
     lines.push('  <lessons options="canadd,export:silent" columns="id,subjectid,classids,groupids,teacherids,classroomids,periodspercard,periodsperweek,daysdefid,weeksdefid,termsdefid,seminargroup,capacity,partner_id">');
@@ -22322,7 +22353,7 @@ window.StartScreen = (function () {
       const cls = (l.classIds || []).join(",");
       const tch = (l.teacherIds || []).join(",");
       const grp = (l.groupIds || []).join(",");
-      const rooms = (l._lessonRoomIds && l._lessonRoomIds.length ? l._lessonRoomIds.join(",") : (l.preferredRoomId || ""));
+      const rooms = lessonRoomIds(l).join(",");
       const ppc = l.isLabDouble ? 2 : 1;
       const daysDefId = l.daysDefId || "DAY_ANY";
       const weeksDefId = l.weeksDefId || "WEEK_ALL";
@@ -22351,6 +22382,7 @@ window.StartScreen = (function () {
     src = replaceBlock(src, "teachers",   renderTeachersBlock(school));
     src = replaceBlock(src, "classrooms", renderClassroomsBlock(school));
     src = replaceBlock(src, "classes",    renderClassesBlock(school));
+    src = replaceBlock(src, "groups",     renderGroupsBlock(school));
     src = replaceBlock(src, "lessons",    renderLessonsBlock(school));
     src = replaceBlock(src, "cards",      renderCardsBlock(school));
     return src;
@@ -22432,17 +22464,20 @@ window.StartScreen = (function () {
       out.push(`    <class id="${xmlEscape(c.id)}" name="${xmlEscape(c.name)}" short="${xmlEscape(c.name)}" classroomids="" teacherid="" grade="" partner_id=""/>`);
     out.push("  </classes>");
 
+    out.push(renderGroupsBlock(school));
+
     // Lessons
     out.push('  <lessons options="canadd,export:silent" columns="id,subjectid,classids,groupids,teacherids,classroomids,periodspercard,periodsperweek,daysdefid,weeksdefid,termsdefid,seminargroup,capacity,partner_id">');
     for (const l of (school.lessons || [])) {
       const cls = (l.classIds || []).join(",");
       const tch = (l.teacherIds || []).join(",");
-      const rooms = l.preferredRoomId || "";
+      const grp = (l.groupIds || []).join(",");
+      const rooms = lessonRoomIds(l).join(",");
       const ppc = l.isLabDouble ? 2 : 1;
       const daysDefId = l.daysDefId || "DAY_ANY";
       const weeksDefId = l.weeksDefId || "WEEK_ALL";
       const termsDefId = l.termsDefId || "TERM_YR";
-      out.push(`    <lesson id="${xmlEscape(l.id)}" classids="${cls}" subjectid="${xmlEscape(l.subjectId || "")}" periodspercard="${ppc}" periodsperweek="${l.periodsPerWeek || 0}" teacherids="${tch}" classroomids="${rooms}" groupids="" seminargroup="" termsdefid="${xmlEscape(termsDefId)}" weeksdefid="${xmlEscape(weeksDefId)}" daysdefid="${xmlEscape(daysDefId)}" capacity="*" partner_id=""/>`);
+      out.push(`    <lesson id="${xmlEscape(l.id)}" classids="${xmlEscape(cls)}" subjectid="${xmlEscape(l.subjectId || "")}" periodspercard="${ppc}" periodsperweek="${l.periodsPerWeek || 0}" teacherids="${xmlEscape(tch)}" classroomids="${xmlEscape(rooms)}" groupids="${xmlEscape(grp)}" seminargroup="" termsdefid="${xmlEscape(termsDefId)}" weeksdefid="${xmlEscape(weeksDefId)}" daysdefid="${xmlEscape(daysDefId)}" capacity="*" partner_id=""/>`);
     }
     out.push("  </lessons>");
 
@@ -22486,6 +22521,7 @@ window.StartScreen = (function () {
   APP.io.exportFromTemplate   = exportFromTemplate;
   APP.io.exportSynthesized    = exportSynthesized;
   APP.io.renderCardsBlock     = renderCardsBlock;
+  APP.io.renderGroupsBlock    = renderGroupsBlock;
 })();
 
 /* ─── FILE: js/ui/io/export_excel.js ─── */
@@ -30444,18 +30480,15 @@ window.StartScreen = (function () {
 // Chronexa Web
 
 /* ─── FILE: js/ui/components/lessons_grid_matrix.js ─── */
-/* Lessons grid matrix editor — bulk-entry class×subject weekly count.
+/* Smart Lesson Grid — class × subject curriculum-load editor.
  *
- * Ports Swift's LessonGridMatrix.swift. School admin opens a matrix where
- * rows = classes, columns = subjects, each cell = weekly lesson count.
- * Type a number → create/update lesson row. Empty cell → delete lesson.
+ * A cell can contain one or more lesson streams. Streams may address the
+ * whole class or one group inside a division. Group streams in the same
+ * division run in parallel, so their contribution is the maximum group load,
+ * not the sum. All edits happen against a draft and reach the timetable only
+ * when Save is pressed.
  *
- * This is 10× faster than the per-lesson dialog when setting up a new
- * school: a typical class has 6-9 subjects, GDGPSD has 23 classes ×
- * 44 subjects = 1,012 cells to consider. The matrix surfaces all of
- * them in one view.
- *
- * window.LessonsGridMatrix.open(school?) — modal grid editor.
+ * window.LessonsGridMatrix.open(school?) — modal editor.
  */
 (function (global) {
   "use strict";
@@ -30465,6 +30498,8 @@ window.StartScreen = (function () {
     if (attrs) for (const k in attrs) {
       const v = attrs[k]; if (v == null) continue;
       if (k === "class") n.className = v;
+      else if (k === "text") n.textContent = v;
+      else if (k === "checked" || k === "selected" || k === "disabled" || k === "readonly") n[k] = !!v;
       else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
       else n.setAttribute(k, v);
     }
@@ -30473,296 +30508,799 @@ window.StartScreen = (function () {
     return n;
   }
 
-  function findLesson(school, classId, subjectId) {
-    return (school.lessons || []).find(l =>
-      (l.classIds || []).includes(classId) && l.subjectId === subjectId);
+  function cloneRows(rows) {
+    return JSON.parse(JSON.stringify(rows || []));
   }
 
-  // ── Smart-grid helpers (aSc parity+) ──────────────────────────────────────
+  function uid(prefix) {
+    return (prefix || "L_") + Math.random().toString(36).slice(2, 10);
+  }
 
-  // Total weekly load per teacher id = Σ periodsPerWeek of every lesson they
-  // teach. Shown beside each teacher in the assignment dropdown so the admin
-  // balances workload as they assign (aSc shows the bare number; we add a bar).
+  function positiveCount(lesson) {
+    return Math.max(0, Number(lesson && lesson.periodsPerWeek) || 0);
+  }
+
+  function expectedSessionCount(lesson) {
+    const periods = positiveCount(lesson);
+    if (!periods) return 0;
+    const length = Math.max(1, Number(lesson.lessonLength) || (lesson.isLabDouble ? 2 : 1));
+    return Math.max(1, Math.round(periods / length));
+  }
+
+  function lessonsForCell(school, classId, subjectId) {
+    return (school.lessons || []).filter(l =>
+      positiveCount(l) > 0 &&
+      (l.classIds || []).includes(classId) &&
+      l.subjectId === subjectId);
+  }
+
+  function groupClassId(group) {
+    return group && (group.classId || group.classid) || "";
+  }
+
+  function groupIsEntire(group) {
+    return !!(group && (group.entireClass || group.entireclass));
+  }
+
+  function groupIndex(school) {
+    const byId = Object.create(null);
+    for (const g of (school.groups || [])) byId[g.id] = g;
+    return byId;
+  }
+
+  function classGroups(school, classId, includeEntire) {
+    return (school.groups || []).filter(g =>
+      groupClassId(g) === classId && (includeEntire || !groupIsEntire(g)));
+  }
+
+  function groupProfile(school, lesson, classId, byId) {
+    byId = byId || groupIndex(school);
+    const matching = (lesson.groupIds || [])
+      .map(id => byId[id])
+      .filter(g => g && groupClassId(g) === classId);
+    if (!matching.length || matching.some(groupIsEntire)) {
+      return { whole: true, division: null, groupIds: [] };
+    }
+    const division = String(matching[0].divisionTag == null ? 0 : matching[0].divisionTag);
+    const groupIds = matching
+      .filter(g => String(g.divisionTag == null ? 0 : g.divisionTag) === division)
+      .map(g => g.id);
+    return groupIds.length
+      ? { whole: false, division, groupIds }
+      : { whole: true, division: null, groupIds: [] };
+  }
+
+  /* Compute one class's effective weekly load.
+   *
+   * Whole-class streams add normally. For a division, each group's lesson
+   * counts add along that group's stream and the division contributes the
+   * largest group stream. Teacherless shortage follows the same rule.
+   */
+  function classMetrics(school, classId, sourceLessons) {
+    const byId = groupIndex(school);
+    const divisions = new Map();
+    const starred = new Set();
+    let total = 0;
+    let teacherShortfall = 0;
+
+    for (const lesson of (sourceLessons || school.lessons || [])) {
+      if (!(lesson.classIds || []).includes(classId)) continue;
+      const count = positiveCount(lesson);
+      if (!count) continue;
+      const profile = groupProfile(school, lesson, classId, byId);
+      const teacherless = !(lesson.teacherIds || []).length;
+      if (profile.whole) {
+        total += count;
+        if (teacherless) teacherShortfall += count;
+        continue;
+      }
+      let d = divisions.get(profile.division);
+      if (!d) {
+        d = { loads: new Map(), missing: new Map(), lessonIds: new Set() };
+        divisions.set(profile.division, d);
+      }
+      d.lessonIds.add(lesson.id);
+      for (const gid of profile.groupIds) {
+        d.loads.set(gid, (d.loads.get(gid) || 0) + count);
+        if (teacherless) d.missing.set(gid, (d.missing.get(gid) || 0) + count);
+      }
+    }
+
+    for (const d of divisions.values()) {
+      total += Math.max(0, ...d.loads.values());
+      teacherShortfall += Math.max(0, ...d.missing.values());
+      if (d.loads.size >= 2) d.lessonIds.forEach(id => starred.add(id));
+    }
+    return { total, teacherShortfall, starred, divisions };
+  }
+
+  function buildParallelModel(school) {
+    const byClass = new Map();
+    const starred = new Set();
+    for (const c of (school.classes || [])) {
+      const m = classMetrics(school, c.id);
+      byClass.set(c.id, m);
+      m.starred.forEach(id => starred.add(id));
+    }
+    return { byClass, starred };
+  }
+
+  function cellEffectiveCount(school, classId, subjectId) {
+    return classMetrics(school, classId, lessonsForCell(school, classId, subjectId)).total;
+  }
+
   function teacherLoadMap(school) {
     const m = Object.create(null);
     for (const l of (school.lessons || [])) {
-      const n = l.periodsPerWeek || 0;
+      const n = positiveCount(l);
       for (const tid of (l.teacherIds || [])) m[tid] = (m[tid] || 0) + n;
     }
     return m;
   }
 
-  // Periods a full week can hold = periodsPerDay × daysPerWeek. The per-class Σ
-  // should reach this; short = red, over = red.
+  function teacherIsQualified(teacher, subjectId) {
+    const q = teacher && teacher.qualifiedSubjectIds;
+    return !Array.isArray(q) || !q.length || q.includes(subjectId);
+  }
+
+  function bestTeacherForLesson(school, lesson, loads) {
+    loads = loads || teacherLoadMap(school);
+    const teachers = (school.teachers || []).filter(t => teacherIsQualified(t, lesson.subjectId));
+    teachers.sort((a, b) => {
+      return (loads[a.id] || 0) - (loads[b.id] || 0) ||
+        String(a.name || a.short || a.id).localeCompare(String(b.name || b.short || b.id));
+    });
+    return teachers[0] || null;
+  }
+
   function requiredPeriods(school) {
-    const ppd = (school.bell && Array.isArray(school.bell.periods))
-      ? school.bell.periods.length
-      : (school.periodsPerDay | 0) || 8;
-    const days = Math.max(1, Math.min(6, (school.daysPerWeek | 0) || 6));
+    const bell = school.bell && Array.isArray(school.bell.periods) ? school.bell.periods : [];
+    const teaching = bell.length ? bell.filter(p => p.isTeaching !== false).length : 0;
+    const ppd = teaching || (school.periodsPerDay | 0) || bell.length || 8;
+    const days = Math.max(1, Math.min(7, (school.daysPerWeek | 0) || 6));
     return ppd * days;
   }
 
-  // Parallel-elective detection without a formal division model: two lessons of
-  // the SAME class whose placed cards land in the SAME {day,period} run in
-  // parallel for different groups (Sanskrit|Urdu). They must be counted ONCE in
-  // the class total (the star rule), not summed. Returns a Set of lessonIds that
-  // are "secondary" (already represented by another lesson in their parallel
-  // group) so the row total skips them, plus a Set of ALL parallel lessonIds
-  // (to render the star).
-  function parallelInfo(school) {
-    const cards = school.cards || [];
-    const byClassSlot = new Map();         // `${classId}@${d}_${p}` → [lessonId,…]
-    const lessonById = Object.create(null);
-    for (const l of (school.lessons || [])) lessonById[l.id] = l;
-    for (const c of cards) {
-      const l = lessonById[c.lessonId];
-      if (!l) continue;
-      for (const cid of (l.classIds || [])) {
-        const k = cid + "@" + c.day + "_" + c.period;
-        (byClassSlot.get(k) || byClassSlot.set(k, []).get(k)).push(c.lessonId);
-      }
+  function createDraft(school) {
+    return {
+      ...school,
+      lessons: cloneRows(school.lessons),
+      cards: cloneRows(school.cards),
+      groups: cloneRows(school.groups),
+    };
+  }
+
+  function cleanDraft(draft) {
+    const lessons = (draft.lessons || []).filter(l => positiveCount(l) > 0);
+    const limit = Object.create(null);
+    for (const l of lessons) limit[l.id] = expectedSessionCount(l);
+    const seen = Object.create(null);
+    const cards = [];
+    for (const card of (draft.cards || [])) {
+      if (limit[card.lessonId] == null) continue;
+      seen[card.lessonId] = (seen[card.lessonId] || 0) + 1;
+      if (seen[card.lessonId] <= limit[card.lessonId]) cards.push(card);
     }
-    const starred = new Set();             // any lesson that shares a slot
-    const secondary = new Set();           // skip in the row sum
-    for (const ids of byClassSlot.values()) {
-      const uniq = [...new Set(ids)];
-      if (uniq.length >= 2) {
-        uniq.forEach(id => starred.add(id));
-        uniq.slice(1).forEach(id => secondary.add(id));  // keep first, skip rest
-      }
-    }
-    return { starred, secondary };
+    return { lessons, cards };
+  }
+
+  function commitDraft(school, draft) {
+    const cleaned = cleanDraft(draft);
+    school.lessons = cloneRows(cleaned.lessons);
+    school.cards = cloneRows(cleaned.cards);
+    if (window.CreateNew?.refreshIndex) window.CreateNew.refreshIndex();
+    return cleaned;
   }
 
   function open(school) {
     school = school || (window.APP && window.APP.school);
-    if (!school) { (window._chrxNotify || console.log)("Open a timetable first.", "error"); return; }
+    if (!school) { notify("Open a timetable first.", "error"); return; }
     ensureStyles();
 
     const classes = school.classes || [];
     const subjects = school.subjects || [];
     const teachers = school.teachers || [];
+    const classrooms = school.classrooms || [];
     if (!classes.length || !subjects.length) {
-      (window._chrxNotify || console.log)("Add classes and subjects first.", "warn"); return;
+      notify("Add classes and subjects first.", "warn"); return;
     }
 
-    const required = requiredPeriods(school);
-    let loadMap = teacherLoadMap(school);
-    const { starred, secondary } = parallelInfo(school);
-    let selected = null;            // { classId, subjectId }
-
-    // Track whether the user changed anything so close-without-save can warn.
+    const draft = createDraft(school);
+    const required = requiredPeriods(draft);
+    const initialLessons = JSON.stringify(draft.lessons);
+    const initialCards = JSON.stringify(draft.cards);
+    const cellMap = new Map();
+    let selected = null;
+    let rowClipboard = null;
     let dirty = false;
-    function tryClose() {
-      if (!dirty || confirm("Discard changes to the lesson matrix?")) root.remove();
-    }
+
     const root = el("div", { class: "chrx-matrix-root",
       onclick: e => { if (e.target === root) tryClose(); } });
     const panel = el("div", { class: "chrx-matrix-panel" });
+    const title = el("h2", null, "Lessons Grid");
+    const summary = el("div", { class: "chrx-matrix-summary" });
+    const inspector = el("section", { class: "chrx-matrix-inspector" });
+    const tbody = el("tbody");
 
     panel.appendChild(el("header", null,
-      el("h2", null, `📋 Lessons matrix — type weekly counts`),
-      el("button", { class: "chrx-matrix-close", "aria-label": "Close", onclick: tryClose }, "×"),
-    ));
+      el("div", { class: "chrx-matrix-heading" },
+        title,
+        el("span", { class: "chrx-matrix-subtitle" }, "Class curriculum, staffing, groups and rooms")),
+      el("div", { class: "chrx-matrix-header-actions" },
+        el("button", { onclick: autoAssignTeacherless, title: "Assign the best qualified low-load teacher to every teacherless stream" }, "Auto-assign gaps"),
+        el("button", { onclick: () => showPivot("subject") }, "By subject"),
+        el("button", { onclick: () => showPivot("teacher") }, "By teacher"),
+        el("button", { onclick: () => showPivot("classroom") }, "By classroom"),
+        el("button", { class: "chrx-matrix-close", "aria-label": "Close", onclick: tryClose }, "×"))));
     panel.appendChild(el("div", { class: "chrx-matrix-hint" },
-      "Type a number to set the weekly count. Click a cell to assign its teacher. Red number = no teacher yet. ★ = parallel elective (counted once). Σ shows class total / capacity."));
-
-    // Selection bar (aSc-style): shows the clicked cell and its teacher picker
-    // with live per-teacher load.
-    const selBar = el("div", { class: "chrx-matrix-selbar" });
-    panel.appendChild(selBar);
-    renderSelBar();
+      "Red badge = periods without a teacher. ★ = formal parallel group stream, counted once per division. Click a subject heading for bulk counts."));
+    panel.appendChild(summary);
+    panel.appendChild(inspector);
 
     const wrap = el("div", { class: "chrx-matrix-wrap" });
     const tbl = el("table", { class: "chrx-matrix-table" });
-    // Header
     const headRow = el("tr");
     headRow.appendChild(el("th", { class: "chrx-matrix-corner" }, "Class \\ Subject"));
     subjects.forEach(s => {
-      const th = el("th", { class: "chrx-matrix-subhead", style: s.color ? `border-bottom:3px solid ${s.color}` : "" },
-        s.short || s.name?.slice(0, 6) || "?");
-      th.title = s.name;
+      const th = el("th", {
+        class: "chrx-matrix-subhead",
+        style: s.color ? `border-bottom:3px solid ${s.color}` : "",
+        onclick: () => bulkSubjectCount(s.id),
+        title: `${s.name || s.short || "Subject"} · click to set count across classes`,
+      }, s.short || s.abbr || s.name?.slice(0, 6) || "?");
       headRow.appendChild(th);
     });
-    headRow.appendChild(el("th", { class: "chrx-matrix-rowtotal" }, "Σ"));
+    headRow.appendChild(el("th", { class: "chrx-matrix-rowtotal" }, "Load"));
     tbl.appendChild(el("thead", null, headRow));
-
-    const tbody = el("tbody");
-    const cellMap = new Map(); // key = `${classId}_${subjectId}` → input
-    classes.forEach(c => {
-      const tr = el("tr");
-      tr.appendChild(el("td", { class: "chrx-matrix-classhead", style: c.color ? `border-left:4px solid ${c.color}` : "" },
-        c.name || c.short || "?"));
-      subjects.forEach(s => {
-        const lesson = findLesson(school, c.id, s.id);
-        const count = lesson ? (lesson.periodsPerWeek || 0) : "";
-        const input = el("input", { type: "text", inputmode: "numeric",
-          value: String(count), maxlength: "2",
-          onfocus: () => selectCell(c.id, s.id),
-          oninput: e => {
-            dirty = true;
-            e.target.value = e.target.value.replace(/[^0-9]/g, "").slice(0, 2);
-            updateRowTotal(c.id); paintCell(td, c.id, s.id);
-          },
-          onkeydown: e => {
-            if (e.key === "Tab") return;
-            if (e.key === "ArrowRight" || e.key === "Enter") { e.preventDefault(); moveCell(c.id, s.id, 1, 0); }
-            if (e.key === "ArrowLeft") { e.preventDefault(); moveCell(c.id, s.id, -1, 0); }
-            if (e.key === "ArrowDown") { e.preventDefault(); moveCell(c.id, s.id, 0, 1); }
-            if (e.key === "ArrowUp") { e.preventDefault(); moveCell(c.id, s.id, 0, -1); }
-            if ((e.ctrlKey || e.metaKey) && e.key === "s") { e.preventDefault(); save(); }
-          },
-        });
-        cellMap.set(c.id + "_" + s.id, input);
-        const td = el("td", { class: "chrx-matrix-cell", "data-class": c.id, "data-subject": s.id }, input);
-        tr.appendChild(td);
-        paintCell(td, c.id, s.id);
-      });
-      tr.appendChild(el("td", { class: "chrx-matrix-rowtotal", "data-class": c.id }, "0"));
-      tbody.appendChild(tr);
-    });
     tbl.appendChild(tbody);
     wrap.appendChild(tbl);
     panel.appendChild(wrap);
 
     panel.appendChild(el("footer", null,
       el("button", { class: "chrx-matrix-cancel", onclick: tryClose }, "Cancel"),
-      el("button", { class: "chrx-matrix-save", onclick: save }, "💾 Save matrix"),
-    ));
+      el("button", { class: "chrx-matrix-save", onclick: () => save() }, "Save Lesson Grid")));
 
     root.appendChild(panel);
     document.body.appendChild(root);
+    renderTable();
+    refreshAll();
 
-    function moveCell(classId, subjectId, dx, dy) {
+    function notify(message, level) {
+      (window._chrxNotify || console.log)(message, level);
+    }
+
+    function markDirty() {
+      dirty = true;
+    }
+
+    function tryClose() {
+      if (!dirty || confirm("Discard unsaved Lesson Grid changes?")) root.remove();
+    }
+
+    function createStream(classId, subjectId, count) {
+      const lesson = {
+        id: uid("L_"),
+        subjectId,
+        teacherIds: [],
+        classIds: [classId],
+        groupIds: [],
+        periodsPerWeek: Math.max(1, Number(count) || 1),
+        lessonLength: 1,
+      };
+      draft.lessons.push(lesson);
+      markDirty();
+      return lesson;
+    }
+
+    function renderTable() {
+      tbody.innerHTML = "";
+      cellMap.clear();
+      classes.forEach(c => {
+        const tr = el("tr");
+        const classHead = el("td", {
+          class: "chrx-matrix-classhead",
+          style: c.color ? `border-left:4px solid ${c.color}` : "",
+          onclick: () => selectRow(c.id),
+          title: "Select class row for copy/paste tools",
+        }, c.name || c.short || "?");
+        tr.appendChild(classHead);
+        subjects.forEach(s => {
+          const td = el("td", {
+            class: "chrx-matrix-cell",
+            "data-class": c.id,
+            "data-subject": s.id,
+            onclick: e => {
+              if (e.target.tagName !== "INPUT") selectCell(c.id, s.id);
+            },
+          });
+          const input = el("input", {
+            type: "text", inputmode: "numeric", maxlength: "2",
+            onfocus: () => selectCell(c.id, s.id),
+            oninput: e => updateCellCount(c.id, s.id, e.target),
+            onkeydown: e => navigateCell(e, c.id, s.id),
+          });
+          td.appendChild(input);
+          tr.appendChild(td);
+          cellMap.set(c.id + "_" + s.id, { td, input, classId: c.id, subjectId: s.id });
+        });
+        tr.appendChild(el("td", { class: "chrx-matrix-rowtotal", "data-class": c.id }));
+        tbody.appendChild(tr);
+      });
+    }
+
+    function navigateCell(e, classId, subjectId) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault(); save(); return;
+      }
+      const keys = { ArrowRight: [1, 0], Enter: [1, 0], ArrowLeft: [-1, 0], ArrowDown: [0, 1], ArrowUp: [0, -1] };
+      const move = keys[e.key];
+      if (!move) return;
+      e.preventDefault();
       const ci = classes.findIndex(x => x.id === classId);
       const si = subjects.findIndex(x => x.id === subjectId);
-      const ni = Math.max(0, Math.min(classes.length - 1, ci + dy));
-      const nj = Math.max(0, Math.min(subjects.length - 1, si + dx));
-      const next = cellMap.get(classes[ni].id + "_" + subjects[nj].id);
-      next?.focus();
-      next?.select();
+      const ni = Math.max(0, Math.min(classes.length - 1, ci + move[1]));
+      const nj = Math.max(0, Math.min(subjects.length - 1, si + move[0]));
+      const next = cellMap.get(classes[ni].id + "_" + subjects[nj].id)?.input;
+      next?.focus(); next?.select();
     }
 
-    function updateRowTotal(classId) {
-      let total = 0;
-      subjects.forEach(s => {
-        const v = parseInt(cellMap.get(classId + "_" + s.id)?.value || "0", 10) || 0;
-        if (!v) return;
-        const lesson = findLesson(school, classId, s.id);
-        // Parallel electives (Sanskrit|Urdu) share a slot → count ONCE: skip the
-        // secondary lesson(s) so the class total isn't double-counted.
-        if (lesson && secondary.has(lesson.id)) return;
-        total += v;
-      });
-      const cell = panel.querySelector(`.chrx-matrix-rowtotal[data-class="${classId}"]`);
-      if (cell) {
-        cell.textContent = `${total}/${required}`;
-        cell.classList.toggle("is-bad", total !== required);
+    function updateCellCount(classId, subjectId, input) {
+      input.value = input.value.replace(/[^0-9]/g, "").slice(0, 2);
+      let streams = lessonsForCell(draft, classId, subjectId);
+      if (!streams.length && Number(input.value) > 0) streams = [createStream(classId, subjectId, input.value)];
+      if (streams.length === 1 && (streams[0].classIds || []).length === 1) {
+        streams[0].periodsPerWeek = Number(input.value) || 0;
+        markDirty();
       }
+      refreshAll({ keepInput: input });
     }
-    classes.forEach(c => updateRowTotal(c.id));
 
-    // Paint one cell's teacher colour strip, red "no-teacher" state, and ★.
-    function paintCell(td, classId, subjectId) {
-      const v = parseInt(cellMap.get(classId + "_" + subjectId)?.value || "0", 10) || 0;
-      const lesson = findLesson(school, classId, subjectId);
-      const tids = (lesson && lesson.teacherIds) || [];
-      const t = tids.length ? teachers.find(x => x.id === tids[0]) : null;
-      td.style.boxShadow = t && t.color ? `inset 4px 0 0 ${t.color}` : "";
-      td.classList.toggle("is-short", v > 0 && tids.length === 0);
-      let star = td.querySelector(".chrx-matrix-star");
-      const isStar = !!(lesson && starred.has(lesson.id));
-      if (isStar && !star) td.appendChild(el("span", { class: "chrx-matrix-star" }, "★"));
-      else if (!isStar && star) star.remove();
+    function selectRow(classId) {
+      const firstSubject = subjects[0];
+      if (firstSubject) selectCell(classId, firstSubject.id);
     }
 
     function selectCell(classId, subjectId) {
       selected = { classId, subjectId };
-      panel.querySelectorAll("td.chrx-matrix-cell.is-selected")
-        .forEach(td => td.classList.remove("is-selected"));
-      const td = panel.querySelector(
-        `td.chrx-matrix-cell[data-class="${classId}"][data-subject="${subjectId}"]`);
-      if (td) td.classList.add("is-selected");
-      renderSelBar();
+      refreshSelection();
+      renderInspector();
     }
 
-    function renderSelBar() {
-      selBar.innerHTML = "";
+    function refreshSelection() {
+      panel.querySelectorAll(".chrx-matrix-cell.is-selected").forEach(td => td.classList.remove("is-selected"));
+      if (!selected) return;
+      cellMap.get(selected.classId + "_" + selected.subjectId)?.td.classList.add("is-selected");
+    }
+
+    function refreshAll(opts) {
+      const model = buildParallelModel(draft);
+      const loads = teacherLoadMap(draft);
+      let totalShortfall = 0;
+      let balanced = 0;
+
+      for (const c of classes) {
+        const metrics = model.byClass.get(c.id) || { total: 0, teacherShortfall: 0 };
+        totalShortfall += metrics.teacherShortfall;
+        if (metrics.total === required) balanced++;
+        const totalCell = panel.querySelector(`.chrx-matrix-rowtotal[data-class="${c.id}"]`);
+        if (totalCell) {
+          totalCell.innerHTML = "";
+          totalCell.appendChild(el("span", { class: metrics.total === required ? "is-balanced" : "is-capacity-bad" },
+            `${metrics.total}/${required}`));
+          if (metrics.teacherShortfall) totalCell.appendChild(el("span", { class: "chrx-matrix-shortage" },
+            `${metrics.teacherShortfall} no teacher`));
+        }
+      }
+
+      for (const entry of cellMap.values()) {
+        const streams = lessonsForCell(draft, entry.classId, entry.subjectId);
+        const value = streams.length ? cellEffectiveCount(draft, entry.classId, entry.subjectId) : "";
+        if (opts?.keepInput !== entry.input) entry.input.value = String(value);
+        const safeSingle = streams.length <= 1 && (!streams[0] || (streams[0].classIds || []).length === 1);
+        entry.input.readOnly = !safeSingle;
+        entry.input.title = safeSingle ? "Type weekly count" : "Multiple/shared streams: edit in the inspector";
+        entry.td.classList.toggle("is-short", streams.some(l => !(l.teacherIds || []).length));
+        entry.td.classList.toggle("is-multi", streams.length > 1);
+        const colors = [];
+        for (const l of streams) for (const tid of (l.teacherIds || [])) {
+          const t = teachers.find(x => x.id === tid);
+          if (t?.color && !colors.includes(t.color)) colors.push(t.color);
+        }
+        entry.td.style.setProperty("--teacher-strip", colors.length
+          ? `linear-gradient(to bottom,${colors.map((c, i) => `${c} ${i * 100 / colors.length}% ${(i + 1) * 100 / colors.length}%`).join(",")})`
+          : "transparent");
+        entry.td.querySelectorAll(".chrx-matrix-star,.chrx-matrix-multi").forEach(n => n.remove());
+        if (streams.some(l => model.starred.has(l.id))) entry.td.appendChild(el("span", { class: "chrx-matrix-star" }, "★"));
+        if (streams.length > 1) entry.td.appendChild(el("span", { class: "chrx-matrix-multi" }, `×${streams.length}`));
+      }
+
+      summary.innerHTML = "";
+      summary.appendChild(el("span", { class: totalShortfall ? "chrx-summary-danger" : "chrx-summary-ok" },
+        totalShortfall ? `${totalShortfall} periods without teachers` : "All lesson streams have teachers"));
+      summary.appendChild(el("span", null, `${balanced}/${classes.length} classes match weekly capacity`));
+      summary.appendChild(el("span", null, `${draft.lessons.filter(l => positiveCount(l) > 0).length} lesson streams`));
+      summary.appendChild(el("span", null, `${Object.keys(loads).length}/${teachers.length} teachers assigned`));
+      refreshSelection();
+      if (selected) renderInspector();
+    }
+
+    function renderInspector() {
+      inspector.innerHTML = "";
       if (!selected) {
-        selBar.appendChild(el("span", { class: "chrx-matrix-selhint" },
-          "Click a cell to assign its teacher — the dropdown shows each teacher's current load."));
+        inspector.appendChild(el("div", { class: "chrx-matrix-empty-inspector" },
+          "Select a cell to manage its lesson streams, teachers, groups and classrooms."));
         return;
       }
       const c = classes.find(x => x.id === selected.classId);
       const s = subjects.find(x => x.id === selected.subjectId);
-      const lesson = findLesson(school, selected.classId, selected.subjectId);
-      selBar.appendChild(el("span", { class: "chrx-matrix-sellabel" },
-        `${(s && s.name) || "?"} · ${(c && c.name) || "?"}`));
-      const sel = el("select", { class: "chrx-matrix-teachersel",
-        onchange: e => assignTeacher(e.target.value) });
-      sel.appendChild(el("option", { value: "" }, "— no teacher —"));
-      const curr = (lesson && (lesson.teacherIds || [])[0]) || "";
-      teachers.slice()
-        .sort((a, b) => (loadMap[a.id] || 0) - (loadMap[b.id] || 0))
-        .forEach(t => {
-          const opt = el("option", { value: t.id },
-            `${t.name || t.abbr || "?"}  ·  ${loadMap[t.id] || 0} pd/wk`);
-          if (t.id === curr) opt.selected = true;
-          sel.appendChild(opt);
-        });
-      selBar.appendChild(sel);
-      if (!lesson) selBar.appendChild(el("span", { class: "chrx-matrix-selnote" },
-        "type a weekly count first, then pick a teacher"));
-    }
-
-    function assignTeacher(tid) {
-      if (!selected) return;
-      let lesson = findLesson(school, selected.classId, selected.subjectId);
-      const input = cellMap.get(selected.classId + "_" + selected.subjectId);
-      const v = parseInt((input && input.value) || "0", 10) || 0;
-      if (!lesson) {
-        if (v <= 0) { renderSelBar(); return; }
-        lesson = { id: "L_" + Math.random().toString(36).slice(2, 8),
-          subjectId: selected.subjectId, teacherIds: [], classIds: [selected.classId],
-          periodsPerWeek: v, durationPeriods: 1 };
-        school.lessons.push(lesson);
+      const streams = lessonsForCell(draft, selected.classId, selected.subjectId);
+      const top = el("div", { class: "chrx-matrix-inspector-top" },
+        el("div", null,
+          el("strong", null, `${s?.name || "Subject"} · ${c?.name || "Class"}`),
+          el("span", null, `${streams.length} stream${streams.length === 1 ? "" : "s"} · effective load ${cellEffectiveCount(draft, selected.classId, selected.subjectId)}`)),
+        el("div", { class: "chrx-matrix-inspector-actions" },
+          el("button", { onclick: copyRow }, "Copy row"),
+          el("button", { onclick: pasteRow, disabled: !rowClipboard }, "Paste counts"),
+          el("button", { onclick: jumpToGrid }, "Jump to timetable"),
+          el("button", { class: "is-primary", onclick: addParallelStream }, "Add stream")));
+      inspector.appendChild(top);
+      if (!streams.length) {
+        inspector.appendChild(el("div", { class: "chrx-matrix-empty-inspector" },
+          "Type a count in the cell or add a stream, then assign teachers, a group and a classroom."));
+        return;
       }
-      lesson.teacherIds = tid ? [tid] : [];
-      dirty = true;
-      loadMap = teacherLoadMap(school);   // loads shift → refresh dropdown numbers
-      const td = panel.querySelector(
-        `td.chrx-matrix-cell[data-class="${selected.classId}"][data-subject="${selected.subjectId}"]`);
-      if (td) paintCell(td, selected.classId, selected.subjectId);
-      renderSelBar();
+      const list = el("div", { class: "chrx-matrix-stream-list" });
+      streams.forEach((lesson, index) => list.appendChild(renderStream(lesson, index, streams.length)));
+      inspector.appendChild(list);
     }
 
-    function save() {
-      let added = 0, updated = 0, removed = 0;
-      classes.forEach(c => subjects.forEach(s => {
-        const input = cellMap.get(c.id + "_" + s.id);
-        const v = parseInt(input?.value || "0", 10) || 0;
-        const existing = findLesson(school, c.id, s.id);
-        if (v > 0 && !existing) {
-          school.lessons.push({
-            id: "L_" + Math.random().toString(36).slice(2, 8),
-            subjectId: s.id, teacherIds: [], classIds: [c.id],
-            periodsPerWeek: v, durationPeriods: 1,
-          });
-          added++;
-        } else if (v > 0 && existing && existing.periodsPerWeek !== v) {
-          existing.periodsPerWeek = v;
-          updated++;
-        } else if (v === 0 && existing) {
-          const idx = school.lessons.indexOf(existing);
-          if (idx >= 0) school.lessons.splice(idx, 1);
-          removed++;
-        }
-      }));
-      if (window.CreateNew?.refreshIndex) window.CreateNew.refreshIndex();
-      if (window.APP?.audit?.append) window.APP.audit.append({ entity: "lessons", op: "matrix-save", added, updated, removed });
-      (window._chrxNotify || console.log)(`📋 Matrix saved · +${added} new · ~${updated} updated · -${removed} removed`);
-      root.remove();
+    function renderStream(lesson, index, streamCount) {
+      const shared = (lesson.classIds || []).length > 1;
+      const row = el("article", { class: "chrx-matrix-stream" });
+      const rowHead = el("div", { class: "chrx-matrix-stream-head" },
+        el("strong", null, `Stream ${index + 1}${shared ? " · shared across classes" : ""}`),
+        el("div", null,
+          el("button", { onclick: () => assignBest(lesson) }, "Suggest teacher"),
+          el("button", { class: "is-danger", disabled: shared,
+            title: shared ? "Edit shared multi-class lessons from the full Lessons dialog" : "Remove stream",
+            onclick: () => { lesson.periodsPerWeek = 0; markDirty(); refreshAll(); } }, "Remove")));
+      row.appendChild(rowHead);
+
+      const fields = el("div", { class: "chrx-matrix-stream-fields" });
+      const count = el("input", { type: "number", min: "0", max: "99", value: positiveCount(lesson),
+        disabled: shared,
+        onchange: e => { lesson.periodsPerWeek = Math.max(0, Number(e.target.value) || 0); markDirty(); refreshAll(); } });
+      fields.appendChild(field("Periods/week", count));
+
+      const groups = classGroups(draft, selected.classId, false);
+      const groupSel = el("select", { disabled: shared,
+        onchange: e => {
+          const gid = e.target.value;
+          lesson.groupIds = gid ? [gid] : [];
+          lesson.classGroupMap = gid ? { [selected.classId]: gid } : undefined;
+          markDirty(); refreshAll();
+        } }, el("option", { value: "" }, "Entire class"));
+      for (const g of groups) {
+        const opt = el("option", { value: g.id, selected: (lesson.groupIds || []).includes(g.id) },
+          `${g.name || g.id} · division ${g.divisionTag == null ? 0 : g.divisionTag}`);
+        groupSel.appendChild(opt);
+      }
+      fields.appendChild(field("Group / division", groupSel));
+
+      const teacherSel = el("select", { multiple: "multiple", size: "4",
+        onchange: () => {
+          lesson.teacherIds = Array.from(teacherSel.selectedOptions).map(o => o.value);
+          refreshExpandedRoom(lesson);
+          markDirty(); refreshAll();
+        } });
+      const loads = teacherLoadMap(draft);
+      teachers.slice().sort((a, b) =>
+        (teacherIsQualified(a, lesson.subjectId) ? 0 : 1) - (teacherIsQualified(b, lesson.subjectId) ? 0 : 1) ||
+        (loads[a.id] || 0) - (loads[b.id] || 0)).forEach(t => {
+          teacherSel.appendChild(el("option", {
+            value: t.id, selected: (lesson.teacherIds || []).includes(t.id),
+          }, `${teacherIsQualified(t, lesson.subjectId) ? "✓" : "!"} ${t.name || t.short || t.id} · ${loads[t.id] || 0} pd/wk`));
+        });
+      fields.appendChild(field("Teachers", teacherSel));
+
+      const roomSel = el("select", {
+        onchange: e => { setRoomMode(lesson, e.target.value); markDirty(); refreshAll(); },
+      }, el("option", { value: "" }, "No classroom preference"));
+      [
+        ["expand:home", "Home classroom"],
+        ["expand:teacher", "Teacher's classrooms"],
+        ["expand:subject", "Subject's classrooms"],
+        ["expand:shared", "Shared rooms"],
+      ].forEach(([value, label]) => roomSel.appendChild(el("option", {
+        value, selected: lesson.classroomIdsExpansion === value.slice(7),
+      }, label)));
+      classrooms.forEach(r => roomSel.appendChild(el("option", {
+        value: "room:" + r.id, selected: lesson.preferredRoomId === r.id,
+      }, r.name || r.short || r.id)));
+      fields.appendChild(field("Classroom", roomSel));
+      row.appendChild(fields);
+
+      if (streamCount > 1 || (lesson.groupIds || []).length) {
+        const labels = (lesson.groupIds || []).map(id => (draft.groups || []).find(g => g.id === id)?.name || id);
+        row.appendChild(el("div", { class: "chrx-matrix-stream-note" },
+          labels.length ? `Parallel group: ${labels.join(", ")}` : "Whole-class stream"));
+      }
+      return row;
     }
+
+    function field(label, control) {
+      return el("label", { class: "chrx-matrix-field" }, el("span", null, label), control);
+    }
+
+    function setRoomMode(lesson, value) {
+      lesson.preferredRoomId = undefined;
+      lesson.classroomIdsExpansion = undefined;
+      lesson.classroomIdsExpanded = undefined;
+      lesson.classroomIdsByCard = undefined;
+      if (value.startsWith("room:")) lesson.preferredRoomId = value.slice(5);
+      else if (value.startsWith("expand:")) {
+        const mode = value.slice(7);
+        lesson.classroomIdsExpansion = mode;
+        lesson.classroomIdsExpanded = expandRooms(mode, lesson);
+      }
+    }
+
+    function refreshExpandedRoom(lesson) {
+      if (lesson.classroomIdsExpansion) {
+        lesson.classroomIdsExpanded = expandRooms(lesson.classroomIdsExpansion, lesson);
+      }
+    }
+
+    function expandRooms(mode, lesson) {
+      if (mode === "shared") return classrooms.filter(r => r.isShared).map(r => r.id);
+      if (mode === "subject") return classrooms.filter(r => (r.allowedSubjectIds || []).includes(lesson.subjectId)).map(r => r.id);
+      if (mode === "teacher") {
+        const ids = new Set();
+        for (const tid of (lesson.teacherIds || [])) {
+          const t = teachers.find(x => x.id === tid);
+          for (const rid of (t?.classroomIds || [])) ids.add(rid);
+        }
+        return [...ids];
+      }
+      if (mode === "home") {
+        const ids = new Set();
+        for (const cid of (lesson.classIds || [])) {
+          const cls = classes.find(x => x.id === cid);
+          for (const rid of (cls?.classroomIds || cls?._classroomIds || [])) ids.add(rid);
+        }
+        return [...ids];
+      }
+      return [];
+    }
+
+    function addParallelStream() {
+      if (!selected) return;
+      const existing = lessonsForCell(draft, selected.classId, selected.subjectId);
+      if (!existing.length) {
+        createStream(selected.classId, selected.subjectId, 1);
+        refreshAll();
+        return;
+      }
+
+      const groups = classGroups(draft, selected.classId, false);
+      const byDivision = new Map();
+      for (const g of groups) {
+        const key = String(g.divisionTag == null ? 0 : g.divisionTag);
+        if (!byDivision.has(key)) byDivision.set(key, []);
+        byDivision.get(key).push(g);
+      }
+      const used = new Set(existing.flatMap(l => l.groupIds || []));
+      const firstProfile = groupProfile(draft, existing[0], selected.classId);
+      let divisionGroups;
+      if (!firstProfile.whole) divisionGroups = byDivision.get(firstProfile.division) || [];
+      else divisionGroups = [...byDivision.values()].find(list => list.length >= 2) || [];
+      const available = divisionGroups.find(g => !used.has(g.id));
+      if (!available || (firstProfile.whole && divisionGroups.length < 2)) {
+        notify("Create at least two groups in one division before adding another parallel stream.", "warn");
+        return;
+      }
+
+      // "Divide class into groups": convert the original whole-class stream
+      // into the first group before adding the second, preserving effective load.
+      if (existing.length === 1 && firstProfile.whole) {
+        const firstGroup = divisionGroups[0];
+        existing[0].groupIds = [firstGroup.id];
+        existing[0].classGroupMap = { [selected.classId]: firstGroup.id };
+        used.add(firstGroup.id);
+      }
+      const nextGroup = divisionGroups.find(g => !used.has(g.id));
+      if (!nextGroup) {
+        notify("Every group in this division already has a stream.", "warn");
+        return;
+      }
+      const lesson = createStream(selected.classId, selected.subjectId, positiveCount(existing[0]));
+      lesson.groupIds = [nextGroup.id];
+      lesson.classGroupMap = { [selected.classId]: nextGroup.id };
+      refreshAll();
+    }
+
+    function assignBest(lesson) {
+      const teacher = bestTeacherForLesson(draft, lesson);
+      if (!teacher) { notify("No teachers are available.", "warn"); return; }
+      lesson.teacherIds = [teacher.id];
+      refreshExpandedRoom(lesson);
+      markDirty(); refreshAll();
+    }
+
+    function autoAssignTeacherless() {
+      const loads = teacherLoadMap(draft);
+      let assigned = 0;
+      for (const lesson of draft.lessons) {
+        if (!positiveCount(lesson) || (lesson.teacherIds || []).length) continue;
+        const teacher = bestTeacherForLesson(draft, lesson, loads);
+        if (!teacher) continue;
+        lesson.teacherIds = [teacher.id];
+        refreshExpandedRoom(lesson);
+        loads[teacher.id] = (loads[teacher.id] || 0) + positiveCount(lesson);
+        assigned++;
+      }
+      if (assigned) markDirty();
+      refreshAll();
+      notify(assigned ? `Assigned teachers to ${assigned} lesson streams.` : "No teacherless lesson streams found.");
+    }
+
+    function bulkSubjectCount(subjectId) {
+      const subject = subjects.find(s => s.id === subjectId);
+      const answer = prompt(`Set ${subject?.name || "subject"} periods/week for every class. Multi-stream cells are preserved.`, "0");
+      if (answer == null) return;
+      const count = Math.max(0, Math.min(99, Number(answer) || 0));
+      let changed = 0, skipped = 0;
+      for (const c of classes) {
+        const streams = lessonsForCell(draft, c.id, subjectId);
+        if (streams.length > 1 || (streams[0] && (streams[0].classIds || []).length > 1)) { skipped++; continue; }
+        const lesson = streams[0] || (count ? createStream(c.id, subjectId, count) : null);
+        if (lesson) { lesson.periodsPerWeek = count; changed++; }
+      }
+      if (changed) markDirty();
+      refreshAll();
+      notify(`Updated ${changed} cells${skipped ? ` · preserved ${skipped} multi-stream cells` : ""}.`);
+    }
+
+    function copyRow() {
+      if (!selected) return;
+      rowClipboard = {
+        sourceClassId: selected.classId,
+        counts: Object.fromEntries(subjects.map(s => [s.id, cellEffectiveCount(draft, selected.classId, s.id)])),
+      };
+      renderInspector();
+      notify("Copied class-row counts. Teacher, group and room assignments are intentionally not copied.");
+    }
+
+    function pasteRow() {
+      if (!selected || !rowClipboard) return;
+      let changed = 0, skipped = 0;
+      for (const s of subjects) {
+        const count = rowClipboard.counts[s.id] || 0;
+        const streams = lessonsForCell(draft, selected.classId, s.id);
+        if (streams.length > 1 || (streams[0] && (streams[0].classIds || []).length > 1)) { skipped++; continue; }
+        const lesson = streams[0] || (count ? createStream(selected.classId, s.id, count) : null);
+        if (lesson) { lesson.periodsPerWeek = count; changed++; }
+      }
+      if (changed) markDirty();
+      refreshAll();
+      notify(`Pasted ${changed} counts${skipped ? ` · preserved ${skipped} multi-stream cells` : ""}.`);
+    }
+
+    function jumpToGrid() {
+      if (!selected) return;
+      const targetClass = selected.classId;
+      save({ close: true });
+      window.APP.editor = window.APP.editor || {};
+      window.APP.editor.perspective = "class";
+      window.APP.editor.selectedClassId = targetClass;
+      document.dispatchEvent(new CustomEvent("entity:changed", { detail: { entity: "lessons", source: "lesson-grid-jump" } }));
+    }
+
+    function save(opts) {
+      const beforeLessons = JSON.parse(initialLessons);
+      const beforeCards = JSON.parse(initialCards);
+      const cleaned = commitDraft(school, draft);
+      const changed = JSON.stringify(cleaned.lessons) !== initialLessons || JSON.stringify(cleaned.cards) !== initialCards;
+      if (changed && window.APP?.audit?.append) {
+        window.APP.audit.append({
+          entity: "lessons", op: "lesson-grid-save",
+          before: { lessons: beforeLessons.length, cards: beforeCards.length },
+          after: { lessons: cleaned.lessons.length, cards: cleaned.cards.length },
+        });
+      }
+      document.dispatchEvent(new CustomEvent("entity:changed", { detail: { entity: "lessons", source: "lesson-grid" } }));
+      notify(`Lesson Grid saved · ${cleaned.lessons.length} streams · ${cleaned.cards.length} placed cards.`);
+      dirty = false;
+      if (opts?.close !== false) root.remove();
+    }
+
+    function showPivot(mode) {
+      const overlay = el("div", { class: "chrx-matrix-pivot-root",
+        onclick: e => { if (e.target === overlay) overlay.remove(); } });
+      const box = el("div", { class: "chrx-matrix-pivot" });
+      const labels = { subject: "Subject-wise load", teacher: "Teacher-wise load", classroom: "Classroom-wise load" };
+      box.appendChild(el("header", null,
+        el("h3", null, labels[mode]),
+        el("button", { class: "chrx-matrix-close", onclick: () => overlay.remove() }, "×")));
+      const table = el("table", { class: "chrx-matrix-pivot-table" });
+      if (mode === "subject") renderSubjectPivot(table);
+      else if (mode === "teacher") renderTeacherPivot(table);
+      else renderClassroomPivot(table);
+      box.appendChild(el("div", { class: "chrx-matrix-pivot-wrap" }, table));
+      overlay.appendChild(box);
+      root.appendChild(overlay);
+    }
+
+    function renderSubjectPivot(table) {
+      const head = el("tr", null, el("th", null, "Subject"));
+      classes.forEach(c => head.appendChild(el("th", null, c.short || c.name)));
+      head.appendChild(el("th", null, "Σ"));
+      table.appendChild(el("thead", null, head));
+      const body = el("tbody");
+      for (const s of subjects) {
+        const tr = el("tr", null, el("th", null, s.name || s.short));
+        let total = 0;
+        for (const c of classes) {
+          const n = cellEffectiveCount(draft, c.id, s.id); total += n;
+          tr.appendChild(el("td", null, n ? String(n) : ""));
+        }
+        tr.appendChild(el("td", { class: "is-total" }, String(total)));
+        body.appendChild(tr);
+      }
+      table.appendChild(body);
+    }
+
+    function renderTeacherPivot(table) {
+      const head = el("tr", null, el("th", null, "Teacher"));
+      subjects.forEach(s => head.appendChild(el("th", null, s.short || s.abbr || s.name)));
+      head.appendChild(el("th", null, "Σ"));
+      table.appendChild(el("thead", null, head));
+      const body = el("tbody");
+      for (const t of teachers) {
+        const tr = el("tr", null, el("th", null, t.name || t.short));
+        let total = 0;
+        for (const s of subjects) {
+          const n = draft.lessons.filter(l => l.subjectId === s.id && (l.teacherIds || []).includes(t.id))
+            .reduce((sum, l) => sum + positiveCount(l), 0);
+          total += n; tr.appendChild(el("td", null, n ? String(n) : ""));
+        }
+        tr.appendChild(el("td", { class: "is-total" }, String(total)));
+        body.appendChild(tr);
+      }
+      table.appendChild(body);
+    }
+
+    function renderClassroomPivot(table) {
+      const head = el("tr", null, el("th", null, "Classroom"));
+      subjects.forEach(s => head.appendChild(el("th", null, s.short || s.abbr || s.name)));
+      head.appendChild(el("th", null, "Σ"));
+      table.appendChild(el("thead", null, head));
+      const body = el("tbody");
+      for (const room of classrooms) {
+        const tr = el("tr", null, el("th", null, room.name || room.short));
+        let total = 0;
+        for (const s of subjects) {
+          const n = draft.lessons.filter(l => l.subjectId === s.id && lessonRoomIds(l).includes(room.id))
+            .reduce((sum, l) => sum + positiveCount(l), 0);
+          total += n; tr.appendChild(el("td", null, n ? String(n) : ""));
+        }
+        tr.appendChild(el("td", { class: "is-total" }, String(total)));
+        body.appendChild(tr);
+      }
+      table.appendChild(body);
+    }
+
+    function lessonRoomIds(lesson) {
+      const ids = new Set();
+      if (lesson.preferredRoomId) ids.add(lesson.preferredRoomId);
+      for (const id of (lesson.classroomIdsExpanded || [])) ids.add(id);
+      for (const row of (lesson.classroomIdsByCard || [])) for (const id of (row || [])) ids.add(id);
+      return [...ids];
+    }
+  }
+
+  function notify(message, level) {
+    (window._chrxNotify || console.log)(message, level);
   }
 
   function ensureStyles() {
@@ -30770,44 +31308,44 @@ window.StartScreen = (function () {
     const s = document.createElement("style");
     s.id = "chrx-matrix-styles";
     s.textContent = `
-.chrx-matrix-root{position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:flex-start;justify-content:center;padding:18px;z-index:1000;overflow:auto}
-.chrx-matrix-panel{background:#fff;border-radius:12px;width:min(1200px,98vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3);font-family:-apple-system,BlinkMacSystemFont,sans-serif;color:#0f172a}
-.chrx-matrix-panel header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid #e2e8f0}
-.chrx-matrix-panel h2{margin:0;font-size:16px;color:#1e3a8a}
-.chrx-matrix-close{background:none;border:0;font-size:22px;cursor:pointer;color:#64748b}
-.chrx-matrix-hint{padding:6px 16px;background:#fef9c3;color:#854d0e;font-size:12px;border-bottom:1px solid #fde68a}
-.chrx-matrix-wrap{flex:1;overflow:auto;padding:0 12px 12px}
-.chrx-matrix-table{border-collapse:collapse;font-size:11px}
-.chrx-matrix-table th,.chrx-matrix-table td{border:1px solid #e2e8f0;padding:0;text-align:center}
-.chrx-matrix-corner{position:sticky;left:0;top:0;z-index:3;background:#1e3a8a;color:#fff;font-weight:600;font-size:11px;padding:6px 8px;white-space:nowrap;min-width:120px;text-align:left}
-.chrx-matrix-subhead{position:sticky;top:0;z-index:2;background:#f1f5f9;color:#1e3a8a;font-weight:600;padding:6px 4px;writing-mode:vertical-rl;text-orientation:mixed;min-width:24px;height:80px}
-.chrx-matrix-classhead{position:sticky;left:0;z-index:1;background:#f8fafc;font-weight:600;padding:4px 8px;text-align:left;white-space:nowrap;min-width:120px}
-.chrx-matrix-cell{background:#fff}
-.chrx-matrix-cell input{width:36px;height:24px;border:0;text-align:center;font-size:12px;font-family:inherit;background:transparent;outline:none}
-.chrx-matrix-cell input:focus{background:#dbeafe}
-.chrx-matrix-rowtotal{background:#f1f5f9;font-weight:600;color:#475569;padding:4px 8px;font-size:11px;min-width:24px}
-.chrx-matrix-panel footer{display:flex;justify-content:flex-end;gap:8px;padding:10px 16px;border-top:1px solid #e2e8f0}
-.chrx-matrix-save{background:#10b981;color:#fff;border:0;padding:6px 16px;border-radius:6px;font-weight:600;cursor:pointer}
-.chrx-matrix-cancel{background:#fff;color:#0f172a;border:1px solid #cbd5e1;padding:6px 16px;border-radius:6px;cursor:pointer}
-.chrx-matrix-cell{position:relative}
-.chrx-matrix-cell.is-selected{outline:2px solid #2563eb;outline-offset:-2px;z-index:1}
-.chrx-matrix-cell.is-short input{color:#dc2626;font-weight:700}
-.chrx-matrix-star{position:absolute;top:0;right:1px;font-size:8px;line-height:1;color:#b45309;pointer-events:none}
-.chrx-matrix-rowtotal{white-space:nowrap}
-.chrx-matrix-rowtotal.is-bad{color:#dc2626}
-.chrx-matrix-selbar{display:flex;align-items:center;gap:10px;padding:8px 16px;border-bottom:1px solid #e2e8f0;background:#f8fafc;min-height:38px;flex-wrap:wrap}
-.chrx-matrix-selhint{color:#64748b;font-size:12px}
-.chrx-matrix-sellabel{font-weight:700;color:#1e3a8a;font-size:13px}
-.chrx-matrix-teachersel{padding:4px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;font-family:inherit;min-width:220px;background:#fff;cursor:pointer}
-.chrx-matrix-selnote{color:#b45309;font-size:11px}
+.chrx-matrix-root{position:fixed;inset:0;background:rgba(15,23,42,.58);display:flex;align-items:flex-start;justify-content:center;padding:18px;z-index:1000;overflow:auto;font-family:-apple-system,BlinkMacSystemFont,sans-serif;color:#0f172a}
+.chrx-matrix-panel{background:#fff;border-radius:16px;width:min(1500px,98vw);max-height:94vh;display:flex;flex-direction:column;box-shadow:0 24px 70px rgba(0,0,0,.32);overflow:hidden}
+.chrx-matrix-panel header,.chrx-matrix-pivot header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid #e2e8f0;gap:12px}
+.chrx-matrix-heading{display:flex;align-items:baseline;gap:10px}.chrx-matrix-panel h2,.chrx-matrix-pivot h3{margin:0;font-size:17px;color:#1e3a8a}.chrx-matrix-subtitle{font-size:11px;color:#64748b}
+.chrx-matrix-header-actions,.chrx-matrix-inspector-actions,.chrx-matrix-stream-head>div{display:flex;gap:6px;flex-wrap:wrap}.chrx-matrix-header-actions button,.chrx-matrix-inspector-actions button,.chrx-matrix-stream-head button{border:1px solid #cbd5e1;background:#fff;border-radius:7px;padding:5px 9px;font-size:11px;cursor:pointer}.chrx-matrix-header-actions button:hover,.chrx-matrix-inspector-actions button:hover{background:#eff6ff}.chrx-matrix-inspector-actions .is-primary{background:#2563eb;color:#fff;border-color:#2563eb}.chrx-matrix-stream-head .is-danger{color:#b91c1c}.chrx-matrix-header-actions button:disabled,.chrx-matrix-inspector-actions button:disabled,.chrx-matrix-stream-head button:disabled{opacity:.4;cursor:not-allowed}
+.chrx-matrix-close{background:none!important;border:0!important;font-size:22px!important;cursor:pointer;color:#64748b;padding:0 4px!important}
+.chrx-matrix-hint{padding:6px 16px;background:#fef9c3;color:#854d0e;font-size:11px;border-bottom:1px solid #fde68a}
+.chrx-matrix-summary{display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding:7px 16px;border-bottom:1px solid #e2e8f0;background:#f8fafc;font-size:11px;color:#475569}.chrx-summary-danger{color:#b91c1c;font-weight:700}.chrx-summary-ok{color:#15803d;font-weight:700}
+.chrx-matrix-inspector{border-bottom:1px solid #cbd5e1;background:#f8fafc;max-height:260px;overflow:auto}.chrx-matrix-empty-inspector{padding:12px 16px;font-size:12px;color:#64748b}.chrx-matrix-inspector-top{position:sticky;top:0;z-index:2;background:#f8fafc;display:flex;align-items:center;justify-content:space-between;padding:8px 16px;border-bottom:1px solid #e2e8f0;gap:12px}.chrx-matrix-inspector-top>div:first-child{display:flex;flex-direction:column;gap:2px}.chrx-matrix-inspector-top span{font-size:11px;color:#64748b}
+.chrx-matrix-stream-list{padding:8px;display:grid;grid-template-columns:repeat(auto-fit,minmax(410px,1fr));gap:8px}.chrx-matrix-stream{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:8px;box-shadow:0 1px 2px rgba(15,23,42,.05)}.chrx-matrix-stream-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:7px;font-size:12px}.chrx-matrix-stream-fields{display:grid;grid-template-columns:90px minmax(130px,1fr) minmax(180px,1.6fr) minmax(150px,1fr);gap:7px}.chrx-matrix-field{display:flex;flex-direction:column;gap:3px;font-size:10px;color:#64748b}.chrx-matrix-field input,.chrx-matrix-field select{min-width:0;border:1px solid #cbd5e1;border-radius:6px;padding:4px;background:#fff;font:inherit;color:#0f172a}.chrx-matrix-stream-note{margin-top:5px;font-size:10px;color:#7c3aed}
+.chrx-matrix-wrap{flex:1;overflow:auto;padding:0 12px 12px}.chrx-matrix-table{border-collapse:separate;border-spacing:0;font-size:11px}.chrx-matrix-table th,.chrx-matrix-table td{border-right:1px solid #cbd5e1;border-bottom:1px solid #cbd5e1;padding:0;text-align:center}.chrx-matrix-corner{position:sticky;left:0;top:0;z-index:5;background:#1e3a8a;color:#fff;font-weight:600;font-size:11px;padding:7px 9px;white-space:nowrap;min-width:120px;text-align:left}.chrx-matrix-subhead{position:sticky;top:0;z-index:3;background:#f1f5f9;color:#1e3a8a;font-weight:600;padding:6px 4px;writing-mode:vertical-rl;text-orientation:mixed;min-width:30px;height:82px;cursor:pointer}.chrx-matrix-subhead:hover{background:#dbeafe}.chrx-matrix-classhead{position:sticky;left:0;z-index:2;background:#f8fafc;font-weight:600;padding:4px 8px;text-align:left!important;white-space:nowrap;min-width:120px;cursor:pointer}.chrx-matrix-classhead:hover{background:#dbeafe}
+.chrx-matrix-cell{background:#fff;position:relative;box-shadow:inset 4px 0 0 transparent}.chrx-matrix-cell:before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--teacher-strip,transparent)}.chrx-matrix-cell input{width:38px;height:27px;border:0;text-align:center;font-size:12px;font-family:inherit;background:transparent;outline:none}.chrx-matrix-cell input:focus{background:#dbeafe}.chrx-matrix-cell input[readonly]{cursor:pointer;color:#4338ca;font-weight:700}.chrx-matrix-cell.is-selected{outline:2px solid #2563eb;outline-offset:-2px;z-index:1}.chrx-matrix-cell.is-short input{color:#dc2626;font-weight:700}.chrx-matrix-star{position:absolute;top:1px;right:2px;font-size:8px;line-height:1;color:#b45309;pointer-events:none}.chrx-matrix-multi{position:absolute;bottom:1px;right:2px;font-size:7px;line-height:1;color:#4338ca;pointer-events:none}.chrx-matrix-rowtotal{background:#f1f5f9;font-weight:600;color:#475569;padding:3px 7px!important;font-size:10px;min-width:72px;white-space:nowrap}.chrx-matrix-rowtotal span{display:block}.chrx-matrix-rowtotal .is-balanced{color:#15803d}.chrx-matrix-rowtotal .is-capacity-bad{color:#b45309}.chrx-matrix-shortage{color:#dc2626;font-size:8px}
+.chrx-matrix-panel footer{display:flex;justify-content:flex-end;gap:8px;padding:10px 16px;border-top:1px solid #e2e8f0}.chrx-matrix-save{background:#10b981;color:#fff;border:0;padding:7px 17px;border-radius:7px;font-weight:600;cursor:pointer}.chrx-matrix-cancel{background:#fff;color:#0f172a;border:1px solid #cbd5e1;padding:7px 17px;border-radius:7px;cursor:pointer}
+.chrx-matrix-pivot-root{position:fixed;inset:0;background:rgba(15,23,42,.45);display:flex;justify-content:center;align-items:flex-start;padding:48px;z-index:1010}.chrx-matrix-pivot{background:#fff;border-radius:14px;width:min(1200px,94vw);max-height:84vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3)}.chrx-matrix-pivot-wrap{overflow:auto;padding:10px}.chrx-matrix-pivot-table{border-collapse:collapse;font-size:10px}.chrx-matrix-pivot-table th,.chrx-matrix-pivot-table td{border:1px solid #cbd5e1;padding:4px 7px;text-align:right;white-space:nowrap}.chrx-matrix-pivot-table th{background:#f1f5f9;color:#1e3a8a;text-align:left;position:sticky;left:0}.chrx-matrix-pivot-table thead th{top:0;z-index:2}.chrx-matrix-pivot-table .is-total{font-weight:700;background:#ecfdf5}
+@media(max-width:900px){.chrx-matrix-stream-fields{grid-template-columns:1fr 1fr}.chrx-matrix-inspector-top{align-items:flex-start;flex-direction:column}.chrx-matrix-heading{flex-direction:column;gap:2px}.chrx-matrix-header-actions button:not(.chrx-matrix-close){display:none}}
     `;
     document.head.appendChild(s);
   }
 
-  // Wire to event
   window.addEventListener("app:lessons-matrix", () => open());
 
-  global.LessonsGridMatrix = { open };
+  global.LessonsGridMatrix = {
+    open,
+    __test: {
+      lessonsForCell,
+      groupProfile,
+      classMetrics,
+      buildParallelModel,
+      cellEffectiveCount,
+      teacherLoadMap,
+      bestTeacherForLesson,
+      requiredPeriods,
+      expectedSessionCount,
+      createDraft,
+      cleanDraft,
+      commitDraft,
+    },
+  };
 })(window);
 
 /* ─── FILE: js/ui/components/approbation_matrix.js ─── */

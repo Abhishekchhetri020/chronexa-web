@@ -187,6 +187,8 @@ window.parseTimetableXml = (function () {
         classId: attr(g, "classid") || "",
         entireClass: attr(g, "entireclass") === "1",
         divisionTag: parseInt(attr(g, "divisiontag"), 10) || 0,
+        studentCount: attr(g, "studentcount") || undefined,
+        studentIds: (attr(g, "studentids") || "").split(",").filter(Boolean),
       };
       if (!obj.id) return;
       groups.push(obj);
@@ -296,6 +298,7 @@ window.parseTimetableXml = (function () {
       fixedDay: l.fixedDay,
       fixedPeriod: l.fixedPeriod,
       isLabDouble: l.isLabDouble,
+      _lessonRoomIds: l._lessonRoomIds,
     }));
     const cleanClasses = classes.map(c => ({
       id: c.id, name: c.name, sections: c.sections,

@@ -92,6 +92,27 @@
     lines.push("  </classes>");
     return lines.join("\n");
   }
+  function renderGroupsBlock(school) {
+    const lines = [];
+    lines.push('  <groups options="canadd,export:silent" columns="id,classid,name,entireclass,divisiontag,studentcount,studentids">');
+    for (const g of (school.groups || [])) {
+      const classId = g.classId || g.classid || "";
+      const entire = g.entireClass || g.entireclass ? "1" : "0";
+      const divisionTag = g.divisionTag == null ? 0 : g.divisionTag;
+      const studentCount = g.studentCount == null ? "" : g.studentCount;
+      const studentIds = Array.isArray(g.studentIds) ? g.studentIds.join(",") : (g.studentIds || "");
+      lines.push(`    <group id="${xmlEscape(g.id)}" classid="${xmlEscape(classId)}" name="${xmlEscape(g.name || "")}" entireclass="${entire}" divisiontag="${xmlEscape(divisionTag)}" studentcount="${xmlEscape(studentCount)}" studentids="${xmlEscape(studentIds)}"/>`);
+    }
+    lines.push("  </groups>");
+    return lines.join("\n");
+  }
+  function lessonRoomIds(lesson) {
+    if (Array.isArray(lesson.classroomIdsExpanded) && lesson.classroomIdsExpanded.length)
+      return lesson.classroomIdsExpanded;
+    if (Array.isArray(lesson._lessonRoomIds) && lesson._lessonRoomIds.length)
+      return lesson._lessonRoomIds;
+    return lesson.preferredRoomId ? [lesson.preferredRoomId] : [];
+  }
   function renderLessonsBlock(school) {
     const lines = [];
     lines.push('  <lessons options="canadd,export:silent" columns="id,subjectid,classids,groupids,teacherids,classroomids,periodspercard,periodsperweek,daysdefid,weeksdefid,termsdefid,seminargroup,capacity,partner_id">');
@@ -99,7 +120,7 @@
       const cls = (l.classIds || []).join(",");
       const tch = (l.teacherIds || []).join(",");
       const grp = (l.groupIds || []).join(",");
-      const rooms = (l._lessonRoomIds && l._lessonRoomIds.length ? l._lessonRoomIds.join(",") : (l.preferredRoomId || ""));
+      const rooms = lessonRoomIds(l).join(",");
       const ppc = l.isLabDouble ? 2 : 1;
       const daysDefId = l.daysDefId || "DAY_ANY";
       const weeksDefId = l.weeksDefId || "WEEK_ALL";
@@ -128,6 +149,7 @@
     src = replaceBlock(src, "teachers",   renderTeachersBlock(school));
     src = replaceBlock(src, "classrooms", renderClassroomsBlock(school));
     src = replaceBlock(src, "classes",    renderClassesBlock(school));
+    src = replaceBlock(src, "groups",     renderGroupsBlock(school));
     src = replaceBlock(src, "lessons",    renderLessonsBlock(school));
     src = replaceBlock(src, "cards",      renderCardsBlock(school));
     return src;
@@ -209,17 +231,20 @@
       out.push(`    <class id="${xmlEscape(c.id)}" name="${xmlEscape(c.name)}" short="${xmlEscape(c.name)}" classroomids="" teacherid="" grade="" partner_id=""/>`);
     out.push("  </classes>");
 
+    out.push(renderGroupsBlock(school));
+
     // Lessons
     out.push('  <lessons options="canadd,export:silent" columns="id,subjectid,classids,groupids,teacherids,classroomids,periodspercard,periodsperweek,daysdefid,weeksdefid,termsdefid,seminargroup,capacity,partner_id">');
     for (const l of (school.lessons || [])) {
       const cls = (l.classIds || []).join(",");
       const tch = (l.teacherIds || []).join(",");
-      const rooms = l.preferredRoomId || "";
+      const grp = (l.groupIds || []).join(",");
+      const rooms = lessonRoomIds(l).join(",");
       const ppc = l.isLabDouble ? 2 : 1;
       const daysDefId = l.daysDefId || "DAY_ANY";
       const weeksDefId = l.weeksDefId || "WEEK_ALL";
       const termsDefId = l.termsDefId || "TERM_YR";
-      out.push(`    <lesson id="${xmlEscape(l.id)}" classids="${cls}" subjectid="${xmlEscape(l.subjectId || "")}" periodspercard="${ppc}" periodsperweek="${l.periodsPerWeek || 0}" teacherids="${tch}" classroomids="${rooms}" groupids="" seminargroup="" termsdefid="${xmlEscape(termsDefId)}" weeksdefid="${xmlEscape(weeksDefId)}" daysdefid="${xmlEscape(daysDefId)}" capacity="*" partner_id=""/>`);
+      out.push(`    <lesson id="${xmlEscape(l.id)}" classids="${xmlEscape(cls)}" subjectid="${xmlEscape(l.subjectId || "")}" periodspercard="${ppc}" periodsperweek="${l.periodsPerWeek || 0}" teacherids="${xmlEscape(tch)}" classroomids="${xmlEscape(rooms)}" groupids="${xmlEscape(grp)}" seminargroup="" termsdefid="${xmlEscape(termsDefId)}" weeksdefid="${xmlEscape(weeksDefId)}" daysdefid="${xmlEscape(daysDefId)}" capacity="*" partner_id=""/>`);
     }
     out.push("  </lessons>");
 
@@ -263,4 +288,5 @@
   APP.io.exportFromTemplate   = exportFromTemplate;
   APP.io.exportSynthesized    = exportSynthesized;
   APP.io.renderCardsBlock     = renderCardsBlock;
+  APP.io.renderGroupsBlock    = renderGroupsBlock;
 })();

@@ -1,7 +1,8 @@
 /* Groups CRUD dialog. window.EntityGroups.open()
  * A group is a sub-grouping of a class — either the full class
- * (entireclass=true) or a fraction taking an elective. Fields:
- * classid, entireclass, divisionTag, name. */
+ * (entireClass=true) or a fraction taking an elective. Canonical fields:
+ * classId, entireClass, divisionTag, name. Legacy lowercase fields remain
+ * readable so older in-browser projects can be repaired on their next edit. */
 (function (global) {
   "use strict";
   const D = window.EntityDialog;
@@ -14,14 +15,16 @@
   }
 
   function classMap() { return window.APP.school?._idx?.classById || {}; }
+  function classId(g) { return g.classId || g.classid || ""; }
+  function entireClass(g) { return !!(g.entireClass || g.entireclass); }
 
   function rows() {
     const cm = classMap();
     return ensure().map(g => ({
       id: g.id, name: g.name || "(unnamed)",
-      classname: cm[g.classid]?.name || "(unassigned)",
+      classname: cm[classId(g)]?.name || "(unassigned)",
       divisionTag: g.divisionTag || "",
-      entire: g.entireclass ? "✔" : "—",
+      entire: entireClass(g) ? "✔" : "—",
       _ref: g,
     }));
   }
@@ -49,19 +52,19 @@
     const isNew = !r;
     const ref = r ? r._ref : null;
     const draft = isNew
-      ? { name:"", classid:"", entireclass:false, divisionTag:"" }
-      : { name:ref.name || "", classid:ref.classid || "",
-          entireclass:!!ref.entireclass,
+      ? { name:"", classId:"", entireClass:false, divisionTag:"" }
+      : { name:ref.name || "", classId:classId(ref),
+          entireClass:entireClass(ref),
           divisionTag:ref.divisionTag || "" };
 
     const fName = D.el("input", { type:"text", value:draft.name, required:"required",
       maxlength:"30", oninput:(e)=>draft.name = e.target.value });
-    const fClass = makeClassSelect(draft.classid, v => draft.classid = v);
+    const fClass = makeClassSelect(draft.classId, v => draft.classId = v);
     const fEntire = D.el("input", { type:"checkbox",
-      checked: draft.entireclass ? "checked" : null,
-      onchange:(e)=>draft.entireclass = e.target.checked });
-    const fDiv = D.el("input", { type:"text", value:draft.divisionTag,
-      maxlength:"20", placeholder:"e.g. mu / da",
+      checked: draft.entireClass ? "checked" : null,
+      onchange:(e)=>draft.entireClass = e.target.checked });
+    const fDiv = D.el("input", { type:"number", min:"0", max:"65534", value:draft.divisionTag,
+      placeholder:"e.g. 1",
       oninput:(e)=>draft.divisionTag = e.target.value });
 
     D.buildEditSheet({
@@ -74,17 +77,19 @@
       ],
       onSave:()=>{
         if (!draft.name.trim()) { fName.focus(); return; }
-        if (!draft.classid) { fClass.focus(); return; }
+        if (!draft.classId) { fClass.focus(); return; }
         const all = ensure();
         const payload = {
           name: draft.name.trim(),
-          classid: draft.classid,
-          entireclass: !!draft.entireclass,
-          divisionTag: draft.divisionTag.trim() || undefined,
+          classId: draft.classId,
+          entireClass: !!draft.entireClass,
+          divisionTag: parseInt(draft.divisionTag, 10) || 0,
         };
         if (!isNew) {
           const before = { ...ref };
           Object.assign(ref, payload);
+          delete ref.classid;
+          delete ref.entireclass;
           window.APP.audit.append({ entity:"groups", op:"update",
             before, after:{...ref} });
         } else {
@@ -93,6 +98,7 @@
           window.APP.audit.append({ entity:"groups", op:"add", after:{...payload} });
         }
         D.closeSheet(); D.refresh(rows());
+        document.dispatchEvent(new CustomEvent("entity:changed", { detail: { entity:"groups" } }));
       },
     });
   }
@@ -113,6 +119,7 @@
             window.APP.audit.append({ entity:"groups", op:"remove",
               before:{...removed} });
             D.refresh(rows());
+            document.dispatchEvent(new CustomEvent("entity:changed", { detail: { entity:"groups" } }));
           }
         }
       },
