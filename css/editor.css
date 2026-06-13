@@ -22,6 +22,14 @@
 .chrx-grid .chrx-row{min-height:36px}
 /* Compact density: subject-only cards → shorter rows for max classes on screen. */
 .chrx-editor--compact .chrx-row{height:24px;min-height:24px}
+/* The header stacks TWO lines (day name ~21px + period numbers ~20px ≈ 41px).
+   The compact rule above also matches the header (it has .chrx-row), shrinking
+   it to 24px so the period row spilled ~17px onto the first data row — the
+   first row/column looked "hidden". Pin the header tall enough for both lines
+   regardless of density (equal specificity to the compact rule, wins on order),
+   and clip any residual overflow so it can never bleed into row 1. */
+.chrx-grid .chrx-row-head{height:42px;min-height:42px}
+.chrx-day-head-group{overflow:hidden}
 /* Day group separator — slightly stronger vertical line at day boundary so the
    eye groups periods. Classic uses the same visual cue. */
 .chrx-h-day{border-right-width:2px}
