@@ -30,10 +30,12 @@
 .chrx-period-head-row,.chrx-day-body-group{display:grid;grid-template-columns:repeat(var(--chrx-periods, 8), minmax(var(--chrx-cell-min,34px), 1fr))}
 .chrx-h-day{min-width:0;text-align:center;font-weight:var(--chrx-fw-semibold);font-size:var(--chrx-font-small);background:var(--chrx-bg-tile);border-right:0;border-bottom:1px solid var(--chrx-line);padding:2px 0}
 .chrx-h-period{width:auto;min-width:0;text-align:center;border-right:1px solid var(--chrx-bg-grid-line);padding:2px 2px;color:var(--chrx-fg-tertiary);font-size:10px;letter-spacing:0;overflow:hidden;white-space:nowrap}
-.chrx-h-period[data-period="8"]{border-right:2px solid var(--chrx-line)}
 .chrx-h-period.is-synthetic{color:rgba(100,116,139,.55);background:repeating-linear-gradient(45deg,rgba(148,163,184,.10) 0 4px,transparent 4px 8px)}
 .chrx-slot{width:auto;min-width:0;border-right:1px solid var(--chrx-bg-grid-line);position:relative}
-.chrx-slot[data-period="8"]{border-right:2px solid var(--chrx-line)}
+/* Day-boundary separator comes from .chrx-day-head-group/.chrx-day-body-group's
+   2px right border — period-count-agnostic. The old hardcoded [data-period="8"]
+   rules drew a spurious heavy line mid-day on 9-period schools and were
+   redundant for 7/8-period ones; removed. */
 .chrx-slot{transition:outline-color var(--chrx-duration-fast) var(--chrx-ease),background var(--chrx-duration-fast) var(--chrx-ease)}
 body.chrx-card-in-hand .chrx-slot:not(.out-of-bell){outline:2px dashed var(--chrx-green);outline-offset:-3px;background:var(--chrx-green-bg);cursor:copy}
 body.chrx-card-in-hand .chrx-slot:not(.empty):not(.out-of-bell){outline-color:#ef4444;background:rgba(239,68,68,.10);cursor:alias}
