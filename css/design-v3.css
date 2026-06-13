@@ -388,9 +388,14 @@ body::before{
 }
 .chrx-vkarta:active{cursor:grabbing; transform:scale(1) translateY(0) !important;}
 .chrx-vk-line1{
-  font-family:var(--chrx-font-display); font-weight:700; font-size:13px;
-  letter-spacing:-.01em; line-height:1.1; color:#ffffff !important;
+  font-family:var(--chrx-font-display); font-weight:700; font-size:11.5px;
+  letter-spacing:-.01em; line-height:1.04; color:#ffffff !important;
   text-align:left !important; width:100% !important;
+  /* Wrap the subject to up to 2 lines and fit it (aSc-style), instead of a
+     single clipped line — so "Sports Meet", "Foundation English" etc. read
+     in full inside the card. */
+  display:-webkit-box !important; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+  overflow:hidden; word-break:break-word;
 }
 .chrx-vk-line2,.chrx-vk-line3{
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
@@ -723,7 +728,61 @@ input:focus,select:focus,textarea:focus{
   overflow: visible !important; /* allow badge + stack shadows to paint outside */
 }
 
-/* Split slot layout for multiple cards */
+/* Two cards in one cell → DIAGONAL split (aSc-faithful, done cleaner).
+   Each card fills the whole cell but is clip-path'd to a complementary
+   triangle, so the two colours meet along a single "/" diagonal with ZERO
+   overlap — replacing the old crammed side-by-side micro-cards that read as
+   "overlapping" (e.g. a double-booked teacher's Wed/Thu cells). The first
+   card takes the upper-left triangle (text hugs top-left); the second takes
+   the lower-right (text hugs bottom-right). A 1px white diagonal keeps the
+   seam crisp. */
+.chrx-slot--split2 {
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+.chrx-slot--split2 .chrx-vkarta {
+  position: absolute !important;
+  inset: 0 !important;
+  width: auto !important;
+  height: auto !important;
+  border-radius: 0 !important;
+  border-left: 0 !important;
+}
+.chrx-slot--split2 .chrx-vkarta:nth-child(1) {
+  clip-path: polygon(0 0, 100% 0, 0 100%) !important;
+  align-items: flex-start !important;
+  justify-content: flex-start !important;
+  padding: 1px 3px !important;
+}
+.chrx-slot--split2 .chrx-vkarta:nth-child(2) {
+  clip-path: polygon(100% 0, 100% 100%, 0 100%) !important;
+  align-items: flex-end !important;
+  justify-content: flex-end !important;
+  text-align: right !important;
+  padding: 1px 3px !important;
+}
+.chrx-slot--split2 .chrx-vk-line1 {
+  font-size: 9px !important;
+  line-height: 1 !important;
+  width: auto !important;
+  font-weight: 700 !important;
+}
+.chrx-slot--split2 .chrx-vk-line2,
+.chrx-slot--split2 .chrx-vk-line3 { display: none !important; }
+.chrx-slot--split2::after {
+  content: "" !important;
+  position: absolute !important;
+  inset: 0 !important;
+  pointer-events: none !important;
+  z-index: 3 !important;
+  background: linear-gradient(to top right,
+    transparent calc(50% - 0.6px),
+    rgba(255,255,255,.6) calc(50% - 0.6px),
+    rgba(255,255,255,.6) calc(50% + 0.6px),
+    transparent calc(50% + 0.6px)) !important;
+}
+
+/* Split slot layout for THREE OR MORE cards (rare) — micro-card grid. */
 .chrx-slot--split {
   display: grid !important;
   grid-template-columns: repeat(auto-fit, minmax(16px, 1fr)) !important;

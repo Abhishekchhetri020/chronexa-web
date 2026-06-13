@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-06-13T10:52:45Z
+/* Chronexa bundle — generated 2026-06-13T11:57:53Z
  *      164 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -15585,7 +15585,12 @@ window.Editor = (function () {
         if (cards && cards.length > 0) {
           const oob = outOfBell ? " out-of-bell" : "";
           const cardListHtml = cards.map(c => vkartaHtml(S, c, d, p.index, row.key)).join("");
-          const splitClass = cards.length > 1 ? " chrx-slot--split" : "";
+          // Exactly two cards share a cell (a group-split, or a conflict in
+          // teacher/room view) → render as a clean DIAGONAL split (aSc-style)
+          // via chrx-slot--split2. Three or more fall back to the micro-card
+          // grid (chrx-slot--split).
+          const splitClass = cards.length === 2 ? " chrx-slot--split2"
+                           : cards.length > 2  ? " chrx-slot--split" : "";
           slots.push(
             `<div class="chrx-slot${oob}${splitClass}" data-day="${d}" data-period="${p.index}" data-row="${esc(row.key)}">${cardListHtml}</div>`
           );
