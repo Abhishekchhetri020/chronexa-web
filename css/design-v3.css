@@ -385,6 +385,13 @@ body::before{
              box-shadow var(--chrx-duration-fast) var(--chrx-ease);
   will-change:transform, box-shadow;
 }
+/* aSc card anatomy: when a card carries a secondary field (teacher / room /
+   subject perspectives), the prominent label sits TOP-left and the smaller
+   info sits BOTTOM-left — not centred. Single-field cards (By-Class subject
+   code) stay vertically centred. Uses :has() so no JS/markup change needed. */
+.chrx-vkarta:has(.chrx-vk-line2){ justify-content:space-between !important; }
+.chrx-vkarta:has(.chrx-vk-line2) .chrx-vk-line1{ margin-bottom:auto; }
+.chrx-vkarta .chrx-vk-line2{ margin-top:auto; }
 .chrx-vkarta:hover{
   transform:scale(1.02) translateY(-1.5px) !important;
   box-shadow:0 4px 12px rgba(26,23,20,.18), 0 1px 2px hsl(var(--hue) 60% 28%/.2) !important;
