@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-06-13T12:19:31Z
+/* Chronexa bundle — generated 2026-06-13T12:27:35Z
  *      164 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -15279,15 +15279,47 @@ ${body}
       } catch (_) { return false; }
     }
     let refreshing = false;
+    // Show a non-destructive "New version — Reload" banner instead of silently
+    // deferring. Before this, a deploy while a school was open left the user
+    // on the cached old build with no signal — so shipped fixes looked like
+    // they "didn't deploy" until a manual hard-refresh. The banner lets the
+    // user pick the moment to reload into the new version (their work is
+    // autosaved, and the solve result is snapshotted on apply).
+    let updateBannerShown = false;
+    function showUpdateBanner(waitingWorker) {
+      if (updateBannerShown || document.getElementById("chrx-update-banner")) return;
+      updateBannerShown = true;
+      const bar = document.createElement("div");
+      bar.id = "chrx-update-banner";
+      bar.style.cssText = [
+        "position:fixed", "left:50%", "bottom:18px", "transform:translateX(-50%)",
+        "z-index:10050", "display:flex", "align-items:center", "gap:12px",
+        "background:#0d4f54", "color:#f6f1e6", "padding:9px 12px 9px 16px",
+        "border-radius:999px", "box-shadow:0 8px 28px rgba(15,23,42,.35)",
+        "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
+        "font-size:13px", "font-weight:500",
+      ].join(";");
+      bar.innerHTML =
+        '<span>🔄 A new version of Chronexa is ready.</span>' +
+        '<button type="button" data-reload style="background:#f6f1e6;color:#0d4f54;border:0;border-radius:999px;padding:5px 14px;font-weight:700;font-size:12.5px;cursor:pointer;">Reload</button>' +
+        '<button type="button" data-later style="background:transparent;color:rgba(246,241,230,.7);border:0;font-size:12.5px;cursor:pointer;">Later</button>';
+      bar.querySelector("[data-reload]").onclick = () => {
+        refreshing = true;
+        // Activate the waiting worker, then reload when it takes control.
+        try { if (waitingWorker) waitingWorker.postMessage("SKIP_WAITING"); } catch (_) {}
+        setTimeout(() => window.location.reload(), 120);
+      };
+      bar.querySelector("[data-later]").onclick = () => bar.remove();
+      document.body.appendChild(bar);
+    }
+
     navigator.serviceWorker.addEventListener("controllerchange", () => {
       if (refreshing) return;
       if (hasOpenWork()) {
-        console.info("[chronexa] new SW active — reload deferred (work open)");
-        try {
-          (window._chrxNotify || console.info)(
-            "Chronexa was updated in the background — it loads on your next visit."
-          );
-        } catch (_) {}
+        // A background SW took control while work is open — don't yank the
+        // page; the banner (shown on updatefound) lets the user reload when
+        // ready.
+        console.info("[chronexa] new SW active — reload deferred (work open); banner offered");
         return;
       }
       refreshing = true;
@@ -15298,6 +15330,16 @@ ${body}
     navigator.serviceWorker
       .register("./sw.js")
       .then((reg) => {
+        // A new version may ALREADY be waiting from a prior session (the
+        // common "stale tab" case) — surface the banner straight away so the
+        // user isn't silently stuck on old code.
+        if (reg.waiting && navigator.serviceWorker.controller) {
+          if (hasOpenWork()) showUpdateBanner(reg.waiting);
+          else { reg.waiting.postMessage("SKIP_WAITING"); }
+        }
+        // Poll for a newer SW every 60s so a deploy is noticed without a
+        // manual refresh.
+        setInterval(() => { try { reg.update(); } catch (_) {} }, 60000);
         // Auto-update on subsequent visits
         reg.addEventListener("updatefound", () => {
           const nw = reg.installing;
@@ -15305,12 +15347,13 @@ ${body}
           nw.addEventListener("statechange", () => {
             if (nw.state === "installed" && navigator.serviceWorker.controller) {
               if (hasOpenWork()) {
-                // Don't hot-swap under the user's feet — see controllerchange
-                // guard above. The update applies on the next visit.
-                console.info("[chronexa] new version cached — activation deferred (work open)");
+                // Don't hot-swap under the user's feet — offer a Reload banner
+                // so they pick the moment (their work is preserved).
+                console.info("[chronexa] new version cached — offering Reload banner (work open)");
+                showUpdateBanner(nw);
                 return;
               }
-              // New version is waiting — tell it to take over immediately.
+              // No work open — take over immediately.
               console.info("[chronexa] new version cached — triggering SKIP_WAITING");
               nw.postMessage("SKIP_WAITING");
             }
