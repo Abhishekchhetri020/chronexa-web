@@ -84,8 +84,11 @@
 
       const w = ghost.offsetWidth || 60, h = ghost.offsetHeight || 24;
       dx = (w / 2) | 0; dy = (h / 2) | 0;
-      px = (typeof d.sourceX === "number") ? d.sourceX : (window.event ? window.event.clientX : 0);
-      py = (typeof d.sourceY === "number") ? d.sourceY : (window.event ? window.event.clientY : 0);
+      // All callers pass sourceX/sourceY; the old `window.event` fallback was
+      // non-standard (undefined in modern browsers) — drop to a plain 0 origin
+      // (the first mousemove corrects it). BUG_REPORT_2026-06-13 S1.1.
+      px = (typeof d.sourceX === "number") ? d.sourceX : 0;
+      py = (typeof d.sourceY === "number") ? d.sourceY : 0;
       apply();
       paintAllSlots();
       document.addEventListener("mousemove", onMove, true);

@@ -1244,11 +1244,18 @@
     const body = D.el("div", { style: "min-width:340px" });
 
     function applyChange(mutate) {
-      for (const r of selectedRows) {
-        const before = { ...r._ref };
-        mutate(r._ref);
-        window.APP.audit.append({ entity:"lessons", op:"bulk-change", before, after:{...r._ref} });
-      }
+      // Make bulk edits UNDOABLE: audit.append only logs, it never pushes onto
+      // the undo stack, so Ctrl+Z did nothing after a bulk change (a mistake on
+      // 100 lessons was unrecoverable). audit.commit runs do() and registers an
+      // undo()/redo() pair. Snapshot each row before mutating; undo restores
+      // those fields. (BUG_REPORT_2026-06-13 S2.6 — confirmed.)
+      const targets = selectedRows.map(r => r._ref).filter(Boolean);
+      const befores = targets.map(ref => ({ ...ref }));
+      window.APP.audit.commit({
+        label: "Bulk edit " + targets.length + " lesson" + (targets.length === 1 ? "" : "s"),
+        do() { targets.forEach(mutate); },
+        undo() { targets.forEach((ref, i) => Object.assign(ref, befores[i])); },
+      });
       D.closeSubSheet();
       D.refresh(rows());
       window.dispatchEvent(new CustomEvent("entity:changed", { detail: { entity: "lessons" } }));
