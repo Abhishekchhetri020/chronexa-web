@@ -631,6 +631,15 @@ window.Editor = (function () {
 
   function handleEditorTool(kind, host) {
     window.APP.editor = window.APP.editor || {};
+    // A card held in hand is bound to the current perspective's row layout.
+    // Releasing it before a perspective/colour/density change avoids a lingering
+    // drag ghost and a validity heatmap painted against the wrong rows after the
+    // grid is rebuilt. (BUG_REPORT_2026-06-13 S0.2.)
+    if ((kind === "perspective" || kind === "color" || kind === "density") &&
+        window.APP.editor.cardInHand &&
+        window.CardInHand && typeof window.CardInHand.cancel === "function") {
+      window.CardInHand.cancel();
+    }
     if (kind === "perspective") {
       const cur = window.APP.editor.perspective || "class";
       const next = PERSPECTIVES[(PERSPECTIVES.indexOf(cur) + 1) % PERSPECTIVES.length];
