@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-06-12T15:53:00Z
+/* Chronexa bundle — generated 2026-06-13T10:52:45Z
  *      164 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -16314,16 +16314,15 @@ window.Editor = (function () {
 
 /* ─── FILE: js/ui/editor/canvas_geometry.js ─── */
 /**
- * CanvasGeometry — Classic-faithful pixel geometry + Floor/FD overlay.
+ * CanvasGeometry — Classic-faithful pixel geometry helpers.
  *
  * Exports geometry constants (period width, day gap, row heights, header)
  * and helpers (x_for_day_period, width_for_card, rowHeightFor).
  *
- * Decorates the rendered editor with:
- *   - "Floor" supervision rows when perspective === "room"
- *   - floor supervision rows when perspective === "room"
- * The overlay is gated on `<html data-skin="classic">` and is additive
- * (no source file owned by Agent E is touched).
+ * Decorates the rendered editor with placement-validation halos (data-halo
+ * attribute on each .chrx-vkarta). The halos are gated on
+ * `<html data-skin="classic">` and are additive (no source file owned by
+ * another agent is touched).
  *
  * Agent I — wave-3, chronexa-web.
  */
@@ -16340,7 +16339,6 @@ window.CanvasGeometry = (function () {
     HEADER_HEIGHT: 32,            // period-header strip
     PENDING_STRIP_HEIGHT: 80,
     ROW_LABEL_WIDTH: 130,         // sticky left column
-    FLOOR_LABELS: ["1st Floor", "2nd Floor", "3rd Floor"],
   });
 
   /** Absolute x-offset (px) for cell at (day, period). period is 1-indexed. */
@@ -16374,8 +16372,10 @@ window.CanvasGeometry = (function () {
     rootEl.querySelectorAll(".chrx-floor-row, .chrx-fd-tag").forEach(n => n.remove());
     paintHalos(rootEl);
     if (document.documentElement.getAttribute("data-skin") !== "classic") return;
-    const persp = (window.APP && window.APP.editor && window.APP.editor.perspective) || "class";
-    if (persp === "room") injectFloorRows(rootEl);
+    // No room-perspective floor-row injection: the synthetic "1st/2nd/3rd Floor"
+    // rows with literal "FD" tags were pure decoration with no backing data
+    // (no school.classroomsupervisions[] field exists). Harmless cleanup above
+    // clears any stale nodes from older bundles.
   }
 
   // Verification halo (Top-30 #12). Walks every placed card and asks
@@ -16416,36 +16416,6 @@ window.CanvasGeometry = (function () {
     });
   }
 
-  function injectFloorRows(rootEl) {
-    const head = rootEl.querySelector(".chrx-row-head");
-    if (!head) return;
-    const periodCount = head.querySelectorAll(".chrx-h-period").length;
-    const cells = repeat(
-      `<div class="chrx-slot chrx-floor-slot"><span class="chrx-fd-tag">FD</span></div>`,
-      periodCount);
-    const frag = document.createDocumentFragment();
-    for (const label of GEOMETRY.FLOOR_LABELS) {
-      const row = document.createElement("div");
-      row.className = "chrx-row chrx-floor-row";
-      row.setAttribute("data-row", "floor:" + label);
-      row.innerHTML =
-        `<div class="chrx-rowlabel"><span class="chrx-rowlabel-main">${esc(label)}</span></div>` + cells;
-      frag.appendChild(row);
-    }
-    head.after(frag);
-    // Auto-fit injected floor labels using the grid's computed column width
-    const grid = rootEl.querySelector(".chrx-grid");
-    const colW = grid ? parseFloat(getComputedStyle(grid).getPropertyValue("--chrx-rowlabel-w")) || 52 : 52;
-    const usable = colW - 8;
-    rootEl.querySelectorAll(".chrx-floor-row .chrx-rowlabel-main").forEach(main => {
-      main.style.transform = "none";
-      const textW = main.scrollWidth;
-      if (usable > 0 && textW > usable) {
-        main.style.transform = "scaleX(" + Math.max(0.5, usable / textW).toFixed(3) + ")";
-      }
-    });
-  }
-
   // ─────────── install (wrap Editor.render additively) ───────────
 
   function install() {
@@ -16470,12 +16440,6 @@ window.CanvasGeometry = (function () {
     if (document.readyState === "loading")
       document.addEventListener("DOMContentLoaded", run, { once: true });
     else run();
-  }
-
-  function repeat(s, n) { let o = ""; for (let i = 0; i < n; i++) o += s; return o; }
-  function esc(s) {
-    return String(s == null ? "" : s).replace(/[&<>"']/g,
-      c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
   }
 
   install();
