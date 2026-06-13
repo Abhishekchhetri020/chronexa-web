@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-06-13T18:57:02Z
+/* Chronexa bundle — generated 2026-06-13T19:40:18Z
  *      164 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -30478,6 +30478,62 @@ window.StartScreen = (function () {
       (l.classIds || []).includes(classId) && l.subjectId === subjectId);
   }
 
+  // ── Smart-grid helpers (aSc parity+) ──────────────────────────────────────
+
+  // Total weekly load per teacher id = Σ periodsPerWeek of every lesson they
+  // teach. Shown beside each teacher in the assignment dropdown so the admin
+  // balances workload as they assign (aSc shows the bare number; we add a bar).
+  function teacherLoadMap(school) {
+    const m = Object.create(null);
+    for (const l of (school.lessons || [])) {
+      const n = l.periodsPerWeek || 0;
+      for (const tid of (l.teacherIds || [])) m[tid] = (m[tid] || 0) + n;
+    }
+    return m;
+  }
+
+  // Periods a full week can hold = periodsPerDay × daysPerWeek. The per-class Σ
+  // should reach this; short = red, over = red.
+  function requiredPeriods(school) {
+    const ppd = (school.bell && Array.isArray(school.bell.periods))
+      ? school.bell.periods.length
+      : (school.periodsPerDay | 0) || 8;
+    const days = Math.max(1, Math.min(6, (school.daysPerWeek | 0) || 6));
+    return ppd * days;
+  }
+
+  // Parallel-elective detection without a formal division model: two lessons of
+  // the SAME class whose placed cards land in the SAME {day,period} run in
+  // parallel for different groups (Sanskrit|Urdu). They must be counted ONCE in
+  // the class total (the star rule), not summed. Returns a Set of lessonIds that
+  // are "secondary" (already represented by another lesson in their parallel
+  // group) so the row total skips them, plus a Set of ALL parallel lessonIds
+  // (to render the star).
+  function parallelInfo(school) {
+    const cards = school.cards || [];
+    const byClassSlot = new Map();         // `${classId}@${d}_${p}` → [lessonId,…]
+    const lessonById = Object.create(null);
+    for (const l of (school.lessons || [])) lessonById[l.id] = l;
+    for (const c of cards) {
+      const l = lessonById[c.lessonId];
+      if (!l) continue;
+      for (const cid of (l.classIds || [])) {
+        const k = cid + "@" + c.day + "_" + c.period;
+        (byClassSlot.get(k) || byClassSlot.set(k, []).get(k)).push(c.lessonId);
+      }
+    }
+    const starred = new Set();             // any lesson that shares a slot
+    const secondary = new Set();           // skip in the row sum
+    for (const ids of byClassSlot.values()) {
+      const uniq = [...new Set(ids)];
+      if (uniq.length >= 2) {
+        uniq.forEach(id => starred.add(id));
+        uniq.slice(1).forEach(id => secondary.add(id));  // keep first, skip rest
+      }
+    }
+    return { starred, secondary };
+  }
+
   function open(school) {
     school = school || (window.APP && window.APP.school);
     if (!school) { (window._chrxNotify || console.log)("Open a timetable first.", "error"); return; }
@@ -30485,9 +30541,15 @@ window.StartScreen = (function () {
 
     const classes = school.classes || [];
     const subjects = school.subjects || [];
+    const teachers = school.teachers || [];
     if (!classes.length || !subjects.length) {
       (window._chrxNotify || console.log)("Add classes and subjects first.", "warn"); return;
     }
+
+    const required = requiredPeriods(school);
+    let loadMap = teacherLoadMap(school);
+    const { starred, secondary } = parallelInfo(school);
+    let selected = null;            // { classId, subjectId }
 
     // Track whether the user changed anything so close-without-save can warn.
     let dirty = false;
@@ -30503,7 +30565,13 @@ window.StartScreen = (function () {
       el("button", { class: "chrx-matrix-close", "aria-label": "Close", onclick: tryClose }, "×"),
     ));
     panel.appendChild(el("div", { class: "chrx-matrix-hint" },
-      "Type a number to set weekly lesson count. Blank = no lesson. Click subject header to set defaults. Save button below — or Ctrl+S."));
+      "Type a number to set the weekly count. Click a cell to assign its teacher. Red number = no teacher yet. ★ = parallel elective (counted once). Σ shows class total / capacity."));
+
+    // Selection bar (aSc-style): shows the clicked cell and its teacher picker
+    // with live per-teacher load.
+    const selBar = el("div", { class: "chrx-matrix-selbar" });
+    panel.appendChild(selBar);
+    renderSelBar();
 
     const wrap = el("div", { class: "chrx-matrix-wrap" });
     const tbl = el("table", { class: "chrx-matrix-table" });
@@ -30530,7 +30598,12 @@ window.StartScreen = (function () {
         const count = lesson ? (lesson.periodsPerWeek || 0) : "";
         const input = el("input", { type: "text", inputmode: "numeric",
           value: String(count), maxlength: "2",
-          oninput: e => { dirty = true; e.target.value = e.target.value.replace(/[^0-9]/g, "").slice(0, 2); updateRowTotal(c.id); },
+          onfocus: () => selectCell(c.id, s.id),
+          oninput: e => {
+            dirty = true;
+            e.target.value = e.target.value.replace(/[^0-9]/g, "").slice(0, 2);
+            updateRowTotal(c.id); paintCell(td, c.id, s.id);
+          },
           onkeydown: e => {
             if (e.key === "Tab") return;
             if (e.key === "ArrowRight" || e.key === "Enter") { e.preventDefault(); moveCell(c.id, s.id, 1, 0); }
@@ -30541,7 +30614,9 @@ window.StartScreen = (function () {
           },
         });
         cellMap.set(c.id + "_" + s.id, input);
-        tr.appendChild(el("td", { class: "chrx-matrix-cell" }, input));
+        const td = el("td", { class: "chrx-matrix-cell", "data-class": c.id, "data-subject": s.id }, input);
+        tr.appendChild(td);
+        paintCell(td, c.id, s.id);
       });
       tr.appendChild(el("td", { class: "chrx-matrix-rowtotal", "data-class": c.id }, "0"));
       tbody.appendChild(tr);
@@ -30572,12 +30647,94 @@ window.StartScreen = (function () {
       let total = 0;
       subjects.forEach(s => {
         const v = parseInt(cellMap.get(classId + "_" + s.id)?.value || "0", 10) || 0;
+        if (!v) return;
+        const lesson = findLesson(school, classId, s.id);
+        // Parallel electives (Sanskrit|Urdu) share a slot → count ONCE: skip the
+        // secondary lesson(s) so the class total isn't double-counted.
+        if (lesson && secondary.has(lesson.id)) return;
         total += v;
       });
-      const cell = panel.querySelector(`[data-class="${classId}"]`);
-      if (cell) cell.textContent = String(total);
+      const cell = panel.querySelector(`.chrx-matrix-rowtotal[data-class="${classId}"]`);
+      if (cell) {
+        cell.textContent = `${total}/${required}`;
+        cell.classList.toggle("is-bad", total !== required);
+      }
     }
     classes.forEach(c => updateRowTotal(c.id));
+
+    // Paint one cell's teacher colour strip, red "no-teacher" state, and ★.
+    function paintCell(td, classId, subjectId) {
+      const v = parseInt(cellMap.get(classId + "_" + subjectId)?.value || "0", 10) || 0;
+      const lesson = findLesson(school, classId, subjectId);
+      const tids = (lesson && lesson.teacherIds) || [];
+      const t = tids.length ? teachers.find(x => x.id === tids[0]) : null;
+      td.style.boxShadow = t && t.color ? `inset 4px 0 0 ${t.color}` : "";
+      td.classList.toggle("is-short", v > 0 && tids.length === 0);
+      let star = td.querySelector(".chrx-matrix-star");
+      const isStar = !!(lesson && starred.has(lesson.id));
+      if (isStar && !star) td.appendChild(el("span", { class: "chrx-matrix-star" }, "★"));
+      else if (!isStar && star) star.remove();
+    }
+
+    function selectCell(classId, subjectId) {
+      selected = { classId, subjectId };
+      panel.querySelectorAll("td.chrx-matrix-cell.is-selected")
+        .forEach(td => td.classList.remove("is-selected"));
+      const td = panel.querySelector(
+        `td.chrx-matrix-cell[data-class="${classId}"][data-subject="${subjectId}"]`);
+      if (td) td.classList.add("is-selected");
+      renderSelBar();
+    }
+
+    function renderSelBar() {
+      selBar.innerHTML = "";
+      if (!selected) {
+        selBar.appendChild(el("span", { class: "chrx-matrix-selhint" },
+          "Click a cell to assign its teacher — the dropdown shows each teacher's current load."));
+        return;
+      }
+      const c = classes.find(x => x.id === selected.classId);
+      const s = subjects.find(x => x.id === selected.subjectId);
+      const lesson = findLesson(school, selected.classId, selected.subjectId);
+      selBar.appendChild(el("span", { class: "chrx-matrix-sellabel" },
+        `${(s && s.name) || "?"} · ${(c && c.name) || "?"}`));
+      const sel = el("select", { class: "chrx-matrix-teachersel",
+        onchange: e => assignTeacher(e.target.value) });
+      sel.appendChild(el("option", { value: "" }, "— no teacher —"));
+      const curr = (lesson && (lesson.teacherIds || [])[0]) || "";
+      teachers.slice()
+        .sort((a, b) => (loadMap[a.id] || 0) - (loadMap[b.id] || 0))
+        .forEach(t => {
+          const opt = el("option", { value: t.id },
+            `${t.name || t.abbr || "?"}  ·  ${loadMap[t.id] || 0} pd/wk`);
+          if (t.id === curr) opt.selected = true;
+          sel.appendChild(opt);
+        });
+      selBar.appendChild(sel);
+      if (!lesson) selBar.appendChild(el("span", { class: "chrx-matrix-selnote" },
+        "type a weekly count first, then pick a teacher"));
+    }
+
+    function assignTeacher(tid) {
+      if (!selected) return;
+      let lesson = findLesson(school, selected.classId, selected.subjectId);
+      const input = cellMap.get(selected.classId + "_" + selected.subjectId);
+      const v = parseInt((input && input.value) || "0", 10) || 0;
+      if (!lesson) {
+        if (v <= 0) { renderSelBar(); return; }
+        lesson = { id: "L_" + Math.random().toString(36).slice(2, 8),
+          subjectId: selected.subjectId, teacherIds: [], classIds: [selected.classId],
+          periodsPerWeek: v, durationPeriods: 1 };
+        school.lessons.push(lesson);
+      }
+      lesson.teacherIds = tid ? [tid] : [];
+      dirty = true;
+      loadMap = teacherLoadMap(school);   // loads shift → refresh dropdown numbers
+      const td = panel.querySelector(
+        `td.chrx-matrix-cell[data-class="${selected.classId}"][data-subject="${selected.subjectId}"]`);
+      if (td) paintCell(td, selected.classId, selected.subjectId);
+      renderSelBar();
+    }
 
     function save() {
       let added = 0, updated = 0, removed = 0;
@@ -30632,6 +30789,17 @@ window.StartScreen = (function () {
 .chrx-matrix-panel footer{display:flex;justify-content:flex-end;gap:8px;padding:10px 16px;border-top:1px solid #e2e8f0}
 .chrx-matrix-save{background:#10b981;color:#fff;border:0;padding:6px 16px;border-radius:6px;font-weight:600;cursor:pointer}
 .chrx-matrix-cancel{background:#fff;color:#0f172a;border:1px solid #cbd5e1;padding:6px 16px;border-radius:6px;cursor:pointer}
+.chrx-matrix-cell{position:relative}
+.chrx-matrix-cell.is-selected{outline:2px solid #2563eb;outline-offset:-2px;z-index:1}
+.chrx-matrix-cell.is-short input{color:#dc2626;font-weight:700}
+.chrx-matrix-star{position:absolute;top:0;right:1px;font-size:8px;line-height:1;color:#b45309;pointer-events:none}
+.chrx-matrix-rowtotal{white-space:nowrap}
+.chrx-matrix-rowtotal.is-bad{color:#dc2626}
+.chrx-matrix-selbar{display:flex;align-items:center;gap:10px;padding:8px 16px;border-bottom:1px solid #e2e8f0;background:#f8fafc;min-height:38px;flex-wrap:wrap}
+.chrx-matrix-selhint{color:#64748b;font-size:12px}
+.chrx-matrix-sellabel{font-weight:700;color:#1e3a8a;font-size:13px}
+.chrx-matrix-teachersel{padding:4px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;font-family:inherit;min-width:220px;background:#fff;cursor:pointer}
+.chrx-matrix-selnote{color:#b45309;font-size:11px}
     `;
     document.head.appendChild(s);
   }
