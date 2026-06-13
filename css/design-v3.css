@@ -431,6 +431,7 @@ body::before{
   text-transform:uppercase; letter-spacing:.12em;
   border-bottom:1px solid var(--line);
 }
+.chrx-h-period { font-size:10px; letter-spacing:0; padding:2px 2px; }
 .chrx-slot.empty{
   background:repeating-linear-gradient(45deg, transparent 0 6px, rgba(26,23,20,.025) 6px 7px);
 }
