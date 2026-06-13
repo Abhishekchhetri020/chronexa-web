@@ -305,25 +305,84 @@
   }
 
   function advance() {
-    // Fire entity:changed so the editor grid + activator refresh with what
-    // the user just added (per task spec).
     document.dispatchEvent(new CustomEvent("entity:changed"));
     if (active < STEPS.length - 1) {
       active++;
       renderPane();
       return;
     }
-    // Last step → Finish. Close the wizard and explicitly nav to editor.
-    close();
-    document.dispatchEvent(new CustomEvent("nav:goto-step", { detail: { step: 6 } }));
+    // Last step → show celebration overlay, then close.
+    renderCelebration();
   }
 
   function onKey(e) {
     if (!host) return;
     if (e.key === "Escape") { e.preventDefault(); close(); return; }
-    // Block bubbling to the underlying step nav while wizard is open
     if (e.key === "ArrowRight") { e.preventDefault(); advance(); }
     if (e.key === "ArrowLeft" && active > 0) { e.preventDefault(); active--; renderPane(); }
+  }
+
+  // ─── Celebration overlay ────────────────────────────────────────────────
+  function renderCelebration() {
+    if (!host) return;
+    const school = (window.APP && window.APP.school) || {};
+    function count(k) { return (school[k] || []).length; }
+    const card = host.querySelector("#chrx-wizard-card");
+    if (!card) return;
+    card.innerHTML = `
+      <div class="chrx-wiz-celebration" aria-live="polite">
+        <div class="chrx-wiz-celebration__confetti" aria-hidden="true">
+          ${["#2f6fed", "#1f8a70", "#c47a18", "#b24b4b", "#7556a8", "#2f6fed", "#1f8a70", "#c47a18"]
+            .map((color, i) => `<span style="--confetti:${color};--r:${i * 45}deg"></span>`).join("")}
+        </div>
+        <div class="chrx-wiz-celebration__burst" aria-hidden="true">✓</div>
+        <h2 class="text-2xl font-bold text-slate-900">Your school is ready</h2>
+        <p class="text-sm text-slate-600 mt-2">You have the foundation. Open the editor to place cards, or keep refining the lesson setup.</p>
+        <div class="chrx-wiz-celebration__summary">
+          ${celebrationTile("Subjects", count("subjects"))}
+          ${celebrationTile("Teachers", count("teachers"))}
+          ${celebrationTile("Classes", count("classes"))}
+          ${celebrationTile("Rooms", count("classrooms"))}
+          ${celebrationTile("Lessons", count("lessons"))}
+        </div>
+        <div class="chrx-wiz-celebration__actions">
+          <button type="button" class="chrx-btn" data-action="add-more">Add more details</button>
+          <button type="button" class="chrx-btn chrx-btn--primary" data-action="open-editor">Open in Editor →</button>
+        </div>
+      </div>
+    `;
+    card.querySelector("[data-action='open-editor']").addEventListener("click", () => {
+      close();
+      document.dispatchEvent(new CustomEvent("nav:goto-step", { detail: { step: 6 } }));
+    });
+    card.querySelector("[data-action='add-more']").addEventListener("click", () => {
+      active = STEPS.length - 1;
+      renderPane();
+    });
+    countUp(card);
+    card.querySelector("[data-action='open-editor']")?.focus();
+  }
+
+  function celebrationTile(label, n) {
+    return `<div class="chrx-wiz-celebration__tile"><b data-target="${n}">0</b><span>${label}</span></div>`;
+  }
+
+  function countUp(card) {
+    const reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    card.querySelectorAll("[data-target]").forEach((node) => {
+      const target = Number(node.dataset.target) || 0;
+      if (reduced || target === 0) {
+        node.textContent = String(target);
+        return;
+      }
+      let current = 0;
+      const step = Math.max(1, Math.ceil(target / 12));
+      const timer = window.setInterval(() => {
+        current = Math.min(target, current + step);
+        node.textContent = String(current);
+        if (current >= target) window.clearInterval(timer);
+      }, 45);
+    });
   }
 
   function escapeHtml(s) {

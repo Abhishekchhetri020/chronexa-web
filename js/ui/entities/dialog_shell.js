@@ -375,11 +375,17 @@
   }
 
   // ---- form helpers (shared by entity modules) ---------------------------
-  function buildField(label, control) {
-    return el("label", { class:"chrx-ent-field" },
+  function buildField(label, control, helpText) {
+    const wrap = el("label", { class:"chrx-ent-field" },
       el("span", { class:"chrx-ent-field__lbl" }, label),
       control,
     );
+    if (helpText && window.HelpTooltip) {
+      const lbl = wrap.querySelector(".chrx-ent-field__lbl");
+      const tip = window.HelpTooltip.create({ text: helpText, heading: label });
+      if (tip && lbl) lbl.appendChild(tip);
+    }
+    return wrap;
   }
 
   function buildSwatchPicker(value, onChange) {
@@ -401,7 +407,7 @@
     const form = el("form", { class:"chrx-ent-form",
       onsubmit:(e)=>{ e.preventDefault(); opts.onSave && opts.onSave(); } });
     (opts.fields || []).forEach(f => {
-      form.appendChild(f.label === null ? f.control : buildField(f.label, f.control));
+      form.appendChild(f.label === null ? f.control : buildField(f.label, f.control, f.helpText));
     });
     form.appendChild(el("div", { class:"chrx-ent-form__foot" },
       el("button", { type:"button", class:"chrx-btn", onclick:()=>{

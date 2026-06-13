@@ -1,0 +1,81 @@
+/**
+ * First-card coachmark — shown once when lessons exist but no cards are placed.
+ *
+ * Exports window.FirstCardCoachmark = { show, schedule, dismiss, shouldShow }.
+ */
+(function (global) {
+  "use strict";
+
+  const SEEN_KEY = "chronexa.coachmark.first-card.v1";
+  let overlay = null;
+  let timer = null;
+
+  function shouldShow() {
+    try {
+      if (global.localStorage.getItem(SEEN_KEY)) return false;
+    } catch (e) {}
+    const school = global.APP && global.APP.school;
+    return !!(school && (school.lessons || []).length && !(school.cards || []).length);
+  }
+
+  function schedule(delay) {
+    global.clearTimeout(timer);
+    timer = global.setTimeout(show, typeof delay === "number" ? delay : 650);
+  }
+
+  function show() {
+    if (overlay || !shouldShow()) return;
+    const editorStep = document.getElementById("step-6");
+    if (!editorStep || editorStep.classList.contains("hidden")) return;
+
+    overlay = document.createElement("div");
+    overlay.className = "chrx-coachmark-overlay";
+    overlay.innerHTML = `
+      <section class="chrx-coachmark-card" role="dialog" aria-modal="true" aria-labelledby="chrx-coachmark-title">
+        <div class="chrx-coachmark-card__eyebrow">First grid visit</div>
+        <button type="button" class="chrx-coachmark-card__close" data-dismiss aria-label="Dismiss coachmark">×</button>
+        <h2 id="chrx-coachmark-title">Place your first card</h2>
+        <p>Drag a lesson from <strong>Pending cards</strong> onto the grid. Placement halos explain the result before you commit.</p>
+        <div class="chrx-coachmark-legend" aria-label="Placement halo legend">
+          <span data-tone="good">Green <small>clear</small></span>
+          <span data-tone="warn">Amber <small>preference</small></span>
+          <span data-tone="bad">Red <small>hard conflict</small></span>
+        </div>
+        <div class="chrx-coachmark-demo" hidden data-demo>
+          <span class="chrx-coachmark-demo__card">MTH · VII A</span>
+          <span class="chrx-coachmark-demo__arrow">→</span>
+          <span class="chrx-coachmark-demo__slot">Drop here</span>
+        </div>
+        <div class="chrx-coachmark-card__actions">
+          <button type="button" class="chrx-btn" data-show>Show me</button>
+          <button type="button" class="chrx-btn chrx-btn--primary" data-dismiss>Got it</button>
+        </div>
+      </section>
+    `;
+    document.body.appendChild(overlay);
+    overlay.querySelectorAll("[data-dismiss]").forEach((button) => button.addEventListener("click", dismiss));
+    overlay.querySelector("[data-show]").addEventListener("click", () => {
+      const demo = overlay && overlay.querySelector("[data-demo]");
+      if (demo) demo.hidden = false;
+    });
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) dismiss();
+    });
+    overlay.querySelector("[data-dismiss].chrx-btn--primary")?.focus();
+  }
+
+  function dismiss() {
+    if (!overlay) return;
+    overlay.classList.add("is-leaving");
+    const doomed = overlay;
+    overlay = null;
+    global.setTimeout(() => doomed.remove(), 180);
+    try { global.localStorage.setItem(SEEN_KEY, "1"); } catch (e) {}
+  }
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && overlay) dismiss();
+  });
+
+  global.FirstCardCoachmark = { show, schedule, dismiss, shouldShow };
+})(window);

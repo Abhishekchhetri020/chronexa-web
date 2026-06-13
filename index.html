@@ -13,6 +13,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Chronexa">
 <link rel="apple-touch-icon" href="assets/icon-192.png">
+<link rel="icon" href="assets/icon-192.png">
 
 <!-- Tailwind via CDN (same pattern as sitting-planner v7) -->
 <script src="https://cdn.tailwindcss.com"></script>
@@ -42,6 +43,7 @@
      Load order: after design-v3 so the cream paper stays the canvas
      and the cells paint on top of it. -->
 <link rel="stylesheet" href="css/landing-pixels.css?v=20260614-p158-lesson-grid-advanced">
+<link rel="stylesheet" href="css/first-five-minutes.css?v=20260614-p159-first-five-minutes">
 
 <!-- Excel + gzip libs for ribbon Export/Snapshot (loaded once) -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
@@ -157,31 +159,34 @@
         <div id="start-recent-list" class="chrx-start-recent__list"></div>
       </section>
 
+      <section class="chrx-demo-school-card" aria-labelledby="demo-school-title">
+        <span class="chrx-demo-school-card__icon" aria-hidden="true">▦</span>
+        <div>
+          <span class="chrx-demo-school-card__kicker">No setup required</span>
+          <h3 id="demo-school-title">Try a complete demo school</h3>
+          <p>Explore real teachers, classes, rooms, lessons, and a solved timetable.</p>
+        </div>
+        <div class="chrx-demo-school-card__actions">
+          <button id="start-sample-info" type="button" class="chrx-btn">Learn more</button>
+          <button id="cta-landing-demo" type="button" class="chrx-btn chrx-btn--primary">Launch demo →</button>
+        </div>
+      </section>
+
       <nav class="chrx-start-links" aria-label="Start links">
-        <button id="cta-load-demo" type="button">Demo</button>
-        <span aria-hidden="true">·</span>
-        <button id="start-sample-info" type="button">Sample school</button>
-        <span aria-hidden="true">·</span>
+        <button id="cta-load-demo" type="button" style="display:none;">Demo</button>
         <a href="https://github.com/Abhishekchhetri020/chronexa-web/blob/main/README.md" target="_blank" rel="noopener">Docs</a>
       </nav>
 
-      <div class="chrx-features">
-        <div class="chrx-feature">
-          <span class="chrx-feature__icon">⚡</span>
-          <h4 class="chrx-feature__title">Runs on your device</h4>
-          <p class="chrx-feature__desc">Solver computes on your CPU via Web Worker — no upload, no server, no tracking.</p>
+      <section class="chrx-landing-demo" aria-labelledby="landing-demo-title">
+        <div class="chrx-landing-demo__head">
+          <div>
+            <span class="chrx-landing-demo__kicker">See it in action</span>
+            <h3 id="landing-demo-title">Watch a timetable solve itself</h3>
+          </div>
+          <span class="chrx-landing-demo__status" data-landing-demo-status aria-live="polite">Preparing preview…</span>
         </div>
-        <div class="chrx-feature">
-          <span class="chrx-feature__icon">↕</span>
-          <h4 class="chrx-feature__title">Drag &amp; drop editor</h4>
-          <p class="chrx-feature__desc">Pick up cards, see conflicts in real-time with green/amber/red halos. Click to inspect.</p>
-        </div>
-        <div class="chrx-feature">
-          <span class="chrx-feature__icon">↘</span>
-          <h4 class="chrx-feature__title">Export everywhere</h4>
-          <p class="chrx-feature__desc">XML, Excel, ICS calendar, PowerSchool, GP-Untis, Atlantis — or print custom templates.</p>
-        </div>
-      </div>
+        <div id="landing-demo-mount" class="chrx-landing-demo__mount"></div>
+      </section>
 
       <div id="xml-status" class="chrx-start-status"></div>
     </div>
@@ -330,7 +335,7 @@
 
 <!-- ─────────────────────── SCRIPTS ─────────────────────── -->
 <!-- Bump APP_VER on every deploy so the browser refetches the JS bundle -->
-<script>window.APP_VER = "20260614-p158-lesson-grid-advanced";</script>
+<script>window.APP_VER = "20260614-p159-first-five-minutes";</script>
 <!-- Nuclear SW migration: if an old cache-first SW is still controlling,
      unregister it and reload to pick up the new network-first SW. -->
 <script>
@@ -389,6 +394,9 @@
     ["ui","teacher_grid"],
     ["ui","room_grid"],
     ["ui","inspector"],
+    ["ui","components/help_tooltip"],
+    ["ui","components/landing_demo"],
+    ["ui","components/first_card_coachmark"],
     ["ui","entities/dialog_shell"],
     ["ui","components/bell_resolver"],
     ["ui","components/time_off_matrix"],
@@ -680,6 +688,7 @@
     }
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bind);
     else bind();
+
   })();
 </script>
 

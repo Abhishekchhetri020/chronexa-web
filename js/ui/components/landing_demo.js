@@ -1,0 +1,135 @@
+/**
+ * Landing demo — a small timetable that places, detects, and resolves cards.
+ *
+ * Exports window.LandingDemo = { mount, destroy }.
+ */
+(function (global) {
+  "use strict";
+
+  const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"];
+  const SUBJECTS = [
+    { abbr: "MTH", color: "#2f6fed" },
+    { abbr: "SCI", color: "#1f8a70" },
+    { abbr: "ENG", color: "#c47a18" },
+    { abbr: "HIS", color: "#b24b4b" },
+    { abbr: "ART", color: "#7556a8" },
+  ];
+  const SOLVED = [
+    [0, 1, 2, 3, 4],
+    [1, 2, 3, 4, 0],
+    [2, 3, 4, 0, 1],
+    [3, 4, 0, 1, 2],
+    [4, 0, 1, 2, 3],
+  ];
+  const active = new Map();
+
+  function mount(container) {
+    if (!container) return;
+    destroy(container);
+
+    container.innerHTML = `
+      <div class="chrx-landing-demo__days" aria-hidden="true">
+        ${DAYS.map((day) => `<span>${day}</span>`).join("")}
+      </div>
+      <div class="chrx-landing-demo__grid" role="img"
+           aria-label="Animated five-day timetable preview that places cards, detects a conflict, and resolves it.">
+        ${Array.from({ length: 25 }, (_, i) => `<div class="chrx-landing-demo__cell" data-cell="${i}"></div>`).join("")}
+      </div>
+    `;
+
+    const reduced = global.matchMedia && global.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduced) {
+      renderSolved(container);
+      setStatus(container, "Solved timetable", "done");
+      return;
+    }
+
+    const state = { timers: [], stopped: false };
+    active.set(container, state);
+    play(container, state);
+  }
+
+  function play(container, state) {
+    if (state.stopped || !container.isConnected) return;
+    reset(container);
+    setStatus(container, "Reading lessons…", "working");
+
+    const placements = [
+      [0, 0], [6, 2], [12, 4], [18, 1], [24, 3],
+      [4, 4], [8, 3], [16, 0], [20, 4],
+    ];
+
+    placements.forEach(([cell, subject], index) => {
+      later(state, 420 + index * 230, () => {
+        place(container, cell, subject);
+        setStatus(container, `${index + 1} of ${placements.length} cards placed`, "working");
+      });
+    });
+
+    later(state, 2700, () => {
+      place(container, 7, 0);
+      place(container, 7, 3, true);
+      container.querySelector('[data-cell="7"]')?.classList.add("is-conflict");
+      setStatus(container, "Conflict found", "conflict");
+    });
+
+    later(state, 3900, () => {
+      renderSolved(container);
+      setStatus(container, "Conflict resolved · timetable ready", "done");
+    });
+
+    later(state, 7600, () => play(container, state));
+  }
+
+  function later(state, delay, fn) {
+    const id = global.setTimeout(() => {
+      state.timers = state.timers.filter((timer) => timer !== id);
+      if (!state.stopped) fn();
+    }, delay);
+    state.timers.push(id);
+  }
+
+  function place(container, cellIndex, subjectIndex, conflict) {
+    const cell = container.querySelector(`[data-cell="${cellIndex}"]`);
+    const subject = SUBJECTS[subjectIndex];
+    if (!cell || !subject) return;
+    const card = document.createElement("span");
+    card.className = "chrx-landing-demo__card" + (conflict ? " is-conflict-card" : "");
+    card.style.setProperty("--demo-card", subject.color);
+    card.textContent = subject.abbr;
+    cell.appendChild(card);
+  }
+
+  function renderSolved(container) {
+    reset(container);
+    SOLVED.flat().forEach((subjectIndex, cellIndex) => place(container, cellIndex, subjectIndex));
+    container.querySelectorAll(".chrx-landing-demo__cell").forEach((cell) => cell.classList.add("is-solved"));
+  }
+
+  function reset(container) {
+    container.querySelectorAll(".chrx-landing-demo__card").forEach((card) => card.remove());
+    container.querySelectorAll(".chrx-landing-demo__cell").forEach((cell) => {
+      cell.classList.remove("is-conflict", "is-solved");
+    });
+  }
+
+  function setStatus(container, text, tone) {
+    const panel = container.closest(".chrx-landing-demo");
+    const status = panel && panel.querySelector("[data-landing-demo-status]");
+    if (!status) return;
+    status.textContent = text;
+    status.dataset.tone = tone || "";
+  }
+
+  function destroy(container) {
+    const state = active.get(container);
+    if (state) {
+      state.stopped = true;
+      state.timers.forEach((timer) => global.clearTimeout(timer));
+      active.delete(container);
+    }
+    if (container) container.innerHTML = "";
+  }
+
+  global.LandingDemo = { mount, destroy };
+})(window);

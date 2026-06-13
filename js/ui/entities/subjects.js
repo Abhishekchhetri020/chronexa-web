@@ -119,11 +119,11 @@
     D.buildEditSheet({
       title: isNew ? "New subject" : `Edit subject — ${r.name}`,
       fields: [
-        { label:"Name", control:fName },
-        { label:"Abbreviation", control:fShort },
-        { label:"Color", control:fColor },
-        { label:"Contract weight", control:fWeight },
-        { label:"Picture URL", control:fPic },
+        { label:"Name", control:fName, helpText:"This is how the subject appears on cards and printouts. Examples: Mathematics, Physical Science." },
+        { label:"Abbreviation", control:fShort, helpText:"Short code used in tight grid cells (e.g. 'MTH'). Auto-generated from the name, but you can override." },
+        { label:"Color", control:fColor, helpText:"Each subject gets a unique color for easy spotting in the editor. Pick a color that teachers will recognize." },
+        { label:"Contract weight", control:fWeight, helpText:"How many teaching periods this subject counts as. Usually 1. Use 0.5 for half-subjects." },
+        { label:"Picture URL", control:fPic, helpText:"Optional: a URL to an image that appears on the subject's cards and printouts." },
       ],
       onSave: save,
       siblingRows: isNew ? null : rows(),

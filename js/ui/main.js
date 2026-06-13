@@ -7,7 +7,7 @@
 
   // ─── Event Delegation for CTA Buttons (P129 Load-Order / DOM Re-render fixes) ───
   document.addEventListener("click", async (e) => {
-    const demoBtn = e.target.closest("#cta-load-demo");
+    const demoBtn = e.target.closest("#cta-load-demo, #cta-landing-demo");
     const buildBtn = e.target.closest("#cta-build-new");
     const infoBtn = e.target.closest("#start-sample-info");
 

@@ -28,7 +28,7 @@
     pendingRoot.hidden = false;
 
     // ─── Empty-school coaching: instead of a blank grid, show "Get started" ─
-    if (isEmptySchool(APP.school)) {
+    if (needsSetupHero(APP.school)) {
       renderEmptyHero(editorRoot);
       pendingRoot.innerHTML = `<div class="p-3 text-sm text-slate-500 text-center">Cards will appear here once you add lessons.</div>`;
       activated = true;
@@ -52,28 +52,40 @@
     activated = true;
     updatePendingCount();
     setBannerOnce();
+    if (global.FirstCardCoachmark && typeof global.FirstCardCoachmark.schedule === "function") {
+      global.FirstCardCoachmark.schedule();
+    }
   }
 
-  function isEmptySchool(school) {
+  function needsSetupHero(school) {
     if (!school) return true;
-    const counts = ["subjects", "teachers", "classes", "classrooms", "lessons"]
-      .map(k => (school[k] || []).length);
-    return counts.every(n => n === 0);
+    return (school.lessons || []).length === 0;
   }
 
   function renderEmptyHero(root) {
     const fire = (kind) => () => window.dispatchEvent(new CustomEvent("app:open-entity", { detail: { kind } }));
-    // Each tile uses theme tokens (no raw Tailwind palette) + the .chrx-lift +
-    // .chrx-press motion utilities. A small accent dot identifies the step
-    // without leaking a different color for every tile.
-    const tile = (icon, num, title, sub, kind) => `
-      <button data-kind="${kind}" class="chrx-hero-tile chrx-lift chrx-press">
-        <span class="chrx-hero-tile__num">${num}</span>
-        <span class="chrx-hero-tile__icon" aria-hidden="true">${icon}</span>
-        <span class="chrx-hero-tile__title">${title}</span>
-        <span class="chrx-hero-tile__sub">${sub}</span>
-        <span class="chrx-hero-tile__arrow" aria-hidden="true">→</span>
-      </button>`;
+    const school = (window.APP && window.APP.school) || {};
+
+    function tile(icon, num, title, sub, kind) {
+      const isGenerate = kind === "_generate";
+      const count = isGenerate ? 0 : (school[kind] || []).length;
+      const hasData = count > 0;
+      const statusLabel = isGenerate ? "Needs lessons" : hasData ? count + " added" : "Not started";
+      const actionLabel = isGenerate ? "Locked" : hasData ? "Manage →" : "Add →";
+
+      return `
+        <button data-kind="${kind}" class="chrx-hero-tile chrx-lift chrx-press" ${hasData ? 'data-completed="true"' : ''} ${isGenerate ? "disabled" : ""}>
+          <span class="chrx-hero-tile__num">${num}</span>
+          <span class="chrx-hero-tile__icon" aria-hidden="true">${icon}</span>
+          <span class="chrx-hero-tile__title">${title}</span>
+          <span class="chrx-hero-tile__sub">${sub}</span>
+          <span class="chrx-hero-tile__status" data-complete="${hasData}">
+            <span>${hasData ? "✓" : "○"} ${statusLabel}</span>
+            <span>${actionLabel}</span>
+          </span>
+        </button>`;
+    }
+
     root.innerHTML = `
       <div class="chrx-hero">
         <div class="chrx-hero__inner">
@@ -83,16 +95,26 @@
             <p class="chrx-hero__sub">Pick a starting point. We recommend this order, but you can jump in anywhere.</p>
           </header>
           <div class="chrx-hero__grid chrx-rise-stagger">
-            ${tile("\u{1F4DA}", "1", "Subjects",   "Maths, Science, English, …",      "subjects")}
-            ${tile("\u{1F468}‍\u{1F3EB}", "2", "Teachers",   "Names, abbreviations, colors",         "teachers")}
-            ${tile("\u{1F465}", "3", "Classes",    "I-A, I-B, VIII-C …",              "classes")}
-            ${tile("\u{1F6AA}", "4", "Classrooms", "Lab, Library, Music Room …",      "classrooms")}
-            ${tile("\u{1F4DD}", "5", "Lessons",    "Who teaches what, how often",          "lessons")}
+            ${tile("📚", "1", "Subjects",   "Maths, Science, English, …",      "subjects")}
+            ${tile("👨‍🏫", "2", "Teachers",   "Names, abbreviations, colors",         "teachers")}
+            ${tile("👥", "3", "Classes",    "I-A, I-B, VIII-C …",              "classes")}
+            ${tile("🚪", "4", "Classrooms", "Lab, Library, Music Room …",      "classrooms")}
+            ${tile("📝", "5", "Lessons",    "Who teaches what, how often",          "lessons")}
             ${tile("⚡",    "6", "Generate",   "Auto-place all cards",                 "_generate")}
           </div>
-          <p class="chrx-hero__tip chrx-fade-in">
-            Tip: every tile opens the same dialog as <em>Specification</em> → <em>(entity)…</em> in the ribbon.
-          </p>
+          <form class="chrx-hero-quickadd chrx-fade-in" data-quick-add>
+            <strong>Quick add</strong>
+            <select name="kind" aria-label="Entity type">
+              <option value="subjects">Subject</option>
+              <option value="teachers">Teacher</option>
+              <option value="classes">Class</option>
+            </select>
+            <input name="name" required maxlength="80" placeholder="Name" aria-label="Name">
+            <input name="abbr" maxlength="12" placeholder="Short code" aria-label="Short code">
+            <button class="chrx-btn chrx-btn--primary" type="submit">Add</button>
+            <p class="chrx-hero-quickadd__message" data-quick-add-message>Add a subject, teacher, or class without leaving this screen.</p>
+          </form>
+          <p class="chrx-hero__tip chrx-fade-in">Build the five inputs above, then lessons become draggable cards in the editor.</p>
         </div>
       </div>`;
     root.querySelectorAll("[data-kind]").forEach(btn => {
@@ -106,6 +128,42 @@
         fire(k)();
       };
     });
+    root.querySelector("[data-quick-add]")?.addEventListener("submit", quickAdd);
+  }
+
+  function quickAdd(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const kind = form.elements.kind.value;
+    const name = form.elements.name.value.trim();
+    const abbr = form.elements.abbr.value.trim();
+    const message = form.querySelector("[data-quick-add-message]");
+    const school = global.APP && global.APP.school;
+    if (!school || !name || !["subjects", "teachers", "classes"].includes(kind)) return;
+    const list = school[kind] || (school[kind] = []);
+    if (list.some((item) => String(item.name || "").toLowerCase() === name.toLowerCase())) {
+      if (message) message.textContent = name + " already exists.";
+      form.elements.name.focus();
+      return;
+    }
+
+    const D = global.EntityDialog;
+    const prefix = kind === "subjects" ? "s" : kind === "teachers" ? "t" : "c";
+    const entity = {
+      id: D && D.uid ? D.uid(prefix) : prefix + "_" + Date.now().toString(36),
+      name,
+      abbr: abbr || undefined,
+      color: D && D.autoPickColor ? D.autoPickColor(kind) : undefined,
+    };
+    if (kind === "teachers") entity.lastName = name;
+    list.push(entity);
+    if (global.CreateNew && global.CreateNew.refreshIndex) global.CreateNew.refreshIndex();
+    if (global.APP.audit && global.APP.audit.append) {
+      global.APP.audit.append({ entity: kind, op: "add", after: { ...entity }, source: "hero-quick-add" });
+    }
+    form.reset();
+    if (message) message.textContent = name + " added.";
+    document.dispatchEvent(new CustomEvent("entity:changed", { detail: { entity: kind, source: "hero-quick-add" } }));
   }
 
   function deactivate() {

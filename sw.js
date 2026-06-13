@@ -15,7 +15,7 @@
  */
 
 const CACHE_PREFIX = "chronexa-";
-const APP_VER = "20260614-p158-lesson-grid-advanced";
+const APP_VER = "20260614-p159-first-five-minutes";
 const CACHE_NAME = CACHE_PREFIX + APP_VER;
 
 // Minimal app shell for offline support.
@@ -33,6 +33,7 @@ const APP_SHELL = [
   "./css/entities.css",
   "./css/ribbon.css",
   "./css/solver_ui.css",
+  "./css/first-five-minutes.css?v=" + APP_VER,
   // Core JS — must be present offline.
   "./js/bundle.js?v=" + APP_VER,
   "./js/solver/worker.js?v=" + APP_VER,

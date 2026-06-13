@@ -222,12 +222,12 @@
     D.buildEditSheet({
       title: isNew ? "New class" : `Edit class — ${r.name}`,
       fields:[
-        { label:"Name", control:fName },
-        { label:"Short", control:fShort },
-        { label:"Class teacher (optional)", control:fTeacherWrap },
-        { label:"Home classrooms (optional)", control:fRoomWrap },
-        { label:"Bell schedule", control:fBell },
-        { label:"Color", control:fColor },
+        { label:"Name", control:fName, helpText:"Full class or section name used in reports, such as Grade 7 A." },
+        { label:"Short", control:fShort, helpText:"Compact grid label, such as VII-A or 7A." },
+        { label:"Class teacher (optional)", control:fTeacherWrap, helpText:"Assign the homeroom or class teacher. This does not automatically create lessons." },
+        { label:"Home classrooms (optional)", control:fRoomWrap, helpText:"Rooms this class normally uses. Lesson-specific room choices can override these." },
+        { label:"Bell schedule", control:fBell, helpText:"Choose a different bell only when this class follows another period schedule." },
+        { label:"Color", control:fColor, helpText:"Used when the editor or printout is colored by class." },
       ],
       onSave: save,
       siblingRows: isNew ? null : rows(),

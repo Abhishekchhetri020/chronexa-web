@@ -1,0 +1,102 @@
+/**
+ * Accessible, field-level help popovers for entity dialogs.
+ *
+ * Exports window.HelpTooltip = { create, close }.
+ */
+(function (global) {
+  "use strict";
+
+  let active = null;
+  let seq = 0;
+
+  function create(opts) {
+    opts = opts || {};
+    const button = document.createElement("button");
+    const popoverId = "chrx-help-popover-" + (++seq);
+    button.type = "button";
+    button.className = "chrx-help-tip";
+    button.setAttribute("aria-label", "Help for " + (opts.heading || "this field"));
+    button.setAttribute("aria-expanded", "false");
+    button.setAttribute("aria-controls", popoverId);
+    button.textContent = "?";
+
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (active && active.button === button) active.pinned = true;
+      else show(button, popoverId, opts, true);
+    });
+    button.addEventListener("mouseenter", () => show(button, popoverId, opts, false));
+    button.addEventListener("mouseleave", () => {
+      global.setTimeout(() => {
+        if (active && active.button === button && !active.pinned && !active.popover.matches(":hover") && document.activeElement !== button) close();
+      }, 100);
+    });
+    button.addEventListener("blur", () => {
+      global.setTimeout(() => {
+        if (active && active.button === button && !active.pinned && !active.popover.matches(":hover")) close();
+      }, 100);
+    });
+    return button;
+  }
+
+  function show(button, popoverId, opts, pinned) {
+    if (active && active.button === button) {
+      if (pinned) active.pinned = true;
+      return;
+    }
+    close();
+
+    const popover = document.createElement("div");
+    popover.id = popoverId;
+    popover.className = "chrx-help-popover";
+    popover.setAttribute("role", "tooltip");
+    if (opts.heading) {
+      const heading = document.createElement("strong");
+      heading.textContent = opts.heading;
+      popover.appendChild(heading);
+    }
+    const body = document.createElement("span");
+    body.textContent = opts.text || "";
+    popover.appendChild(body);
+    popover.addEventListener("mouseleave", () => {
+      if (active && !active.pinned) close();
+    });
+    const layer = button.closest(".chrx-ent-dialog, .chrx-ent-standalone") || document.body;
+    layer.appendChild(popover);
+    button.setAttribute("aria-expanded", "true");
+    active = { button, popover, pinned: !!pinned };
+    position();
+  }
+
+  function position() {
+    if (!active) return;
+    const anchor = active.button.getBoundingClientRect();
+    const popover = active.popover;
+    const width = popover.offsetWidth || 280;
+    const height = popover.offsetHeight || 80;
+    const left = Math.max(12, Math.min(global.innerWidth - width - 12, anchor.left - 12));
+    const below = anchor.bottom + 8;
+    const top = below + height < global.innerHeight - 12 ? below : Math.max(12, anchor.top - height - 8);
+    popover.style.left = left + "px";
+    popover.style.top = top + "px";
+  }
+
+  function close() {
+    if (!active) return;
+    active.button.setAttribute("aria-expanded", "false");
+    active.popover.remove();
+    active = null;
+  }
+
+  document.addEventListener("click", (event) => {
+    if (active && !event.target.closest(".chrx-help-popover") && !event.target.closest(".chrx-help-tip")) close();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") close();
+  });
+  global.addEventListener("resize", position);
+  global.addEventListener("scroll", position, true);
+
+  global.HelpTooltip = { create, close };
+})(window);

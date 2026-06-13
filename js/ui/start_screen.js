@@ -14,6 +14,13 @@ window.StartScreen = (function () {
     wireOpenCard();
     wireSampleInfo();
     renderRecent();
+    mountLandingDemo();
+  }
+
+  function mountLandingDemo() {
+    const mount = document.getElementById("landing-demo-mount");
+    if (!mount || !window.LandingDemo || typeof window.LandingDemo.mount !== "function") return;
+    window.LandingDemo.mount(mount);
   }
 
   function wireOpenCard() {

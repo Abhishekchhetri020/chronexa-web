@@ -1,5 +1,5 @@
-/* Chronexa bundle — generated 2026-06-13T20:38:21Z
- *      164 modules concatenated in document order.
+/* Chronexa bundle — generated 2026-06-13T23:40:05Z
+ *      167 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
 /* ─── FILE: js/ui/state.js ─── */
@@ -1048,6 +1048,330 @@ window.Inspector = (function () {
   return { open, close };
 })();
 
+/* ─── FILE: js/ui/components/help_tooltip.js ─── */
+/**
+ * Accessible, field-level help popovers for entity dialogs.
+ *
+ * Exports window.HelpTooltip = { create, close }.
+ */
+(function (global) {
+  "use strict";
+
+  let active = null;
+  let seq = 0;
+
+  function create(opts) {
+    opts = opts || {};
+    const button = document.createElement("button");
+    const popoverId = "chrx-help-popover-" + (++seq);
+    button.type = "button";
+    button.className = "chrx-help-tip";
+    button.setAttribute("aria-label", "Help for " + (opts.heading || "this field"));
+    button.setAttribute("aria-expanded", "false");
+    button.setAttribute("aria-controls", popoverId);
+    button.textContent = "?";
+
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (active && active.button === button) active.pinned = true;
+      else show(button, popoverId, opts, true);
+    });
+    button.addEventListener("mouseenter", () => show(button, popoverId, opts, false));
+    button.addEventListener("mouseleave", () => {
+      global.setTimeout(() => {
+        if (active && active.button === button && !active.pinned && !active.popover.matches(":hover") && document.activeElement !== button) close();
+      }, 100);
+    });
+    button.addEventListener("blur", () => {
+      global.setTimeout(() => {
+        if (active && active.button === button && !active.pinned && !active.popover.matches(":hover")) close();
+      }, 100);
+    });
+    return button;
+  }
+
+  function show(button, popoverId, opts, pinned) {
+    if (active && active.button === button) {
+      if (pinned) active.pinned = true;
+      return;
+    }
+    close();
+
+    const popover = document.createElement("div");
+    popover.id = popoverId;
+    popover.className = "chrx-help-popover";
+    popover.setAttribute("role", "tooltip");
+    if (opts.heading) {
+      const heading = document.createElement("strong");
+      heading.textContent = opts.heading;
+      popover.appendChild(heading);
+    }
+    const body = document.createElement("span");
+    body.textContent = opts.text || "";
+    popover.appendChild(body);
+    popover.addEventListener("mouseleave", () => {
+      if (active && !active.pinned) close();
+    });
+    const layer = button.closest(".chrx-ent-dialog, .chrx-ent-standalone") || document.body;
+    layer.appendChild(popover);
+    button.setAttribute("aria-expanded", "true");
+    active = { button, popover, pinned: !!pinned };
+    position();
+  }
+
+  function position() {
+    if (!active) return;
+    const anchor = active.button.getBoundingClientRect();
+    const popover = active.popover;
+    const width = popover.offsetWidth || 280;
+    const height = popover.offsetHeight || 80;
+    const left = Math.max(12, Math.min(global.innerWidth - width - 12, anchor.left - 12));
+    const below = anchor.bottom + 8;
+    const top = below + height < global.innerHeight - 12 ? below : Math.max(12, anchor.top - height - 8);
+    popover.style.left = left + "px";
+    popover.style.top = top + "px";
+  }
+
+  function close() {
+    if (!active) return;
+    active.button.setAttribute("aria-expanded", "false");
+    active.popover.remove();
+    active = null;
+  }
+
+  document.addEventListener("click", (event) => {
+    if (active && !event.target.closest(".chrx-help-popover") && !event.target.closest(".chrx-help-tip")) close();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") close();
+  });
+  global.addEventListener("resize", position);
+  global.addEventListener("scroll", position, true);
+
+  global.HelpTooltip = { create, close };
+})(window);
+
+/* ─── FILE: js/ui/components/landing_demo.js ─── */
+/**
+ * Landing demo — a small timetable that places, detects, and resolves cards.
+ *
+ * Exports window.LandingDemo = { mount, destroy }.
+ */
+(function (global) {
+  "use strict";
+
+  const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"];
+  const SUBJECTS = [
+    { abbr: "MTH", color: "#2f6fed" },
+    { abbr: "SCI", color: "#1f8a70" },
+    { abbr: "ENG", color: "#c47a18" },
+    { abbr: "HIS", color: "#b24b4b" },
+    { abbr: "ART", color: "#7556a8" },
+  ];
+  const SOLVED = [
+    [0, 1, 2, 3, 4],
+    [1, 2, 3, 4, 0],
+    [2, 3, 4, 0, 1],
+    [3, 4, 0, 1, 2],
+    [4, 0, 1, 2, 3],
+  ];
+  const active = new Map();
+
+  function mount(container) {
+    if (!container) return;
+    destroy(container);
+
+    container.innerHTML = `
+      <div class="chrx-landing-demo__days" aria-hidden="true">
+        ${DAYS.map((day) => `<span>${day}</span>`).join("")}
+      </div>
+      <div class="chrx-landing-demo__grid" role="img"
+           aria-label="Animated five-day timetable preview that places cards, detects a conflict, and resolves it.">
+        ${Array.from({ length: 25 }, (_, i) => `<div class="chrx-landing-demo__cell" data-cell="${i}"></div>`).join("")}
+      </div>
+    `;
+
+    const reduced = global.matchMedia && global.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduced) {
+      renderSolved(container);
+      setStatus(container, "Solved timetable", "done");
+      return;
+    }
+
+    const state = { timers: [], stopped: false };
+    active.set(container, state);
+    play(container, state);
+  }
+
+  function play(container, state) {
+    if (state.stopped || !container.isConnected) return;
+    reset(container);
+    setStatus(container, "Reading lessons…", "working");
+
+    const placements = [
+      [0, 0], [6, 2], [12, 4], [18, 1], [24, 3],
+      [4, 4], [8, 3], [16, 0], [20, 4],
+    ];
+
+    placements.forEach(([cell, subject], index) => {
+      later(state, 420 + index * 230, () => {
+        place(container, cell, subject);
+        setStatus(container, `${index + 1} of ${placements.length} cards placed`, "working");
+      });
+    });
+
+    later(state, 2700, () => {
+      place(container, 7, 0);
+      place(container, 7, 3, true);
+      container.querySelector('[data-cell="7"]')?.classList.add("is-conflict");
+      setStatus(container, "Conflict found", "conflict");
+    });
+
+    later(state, 3900, () => {
+      renderSolved(container);
+      setStatus(container, "Conflict resolved · timetable ready", "done");
+    });
+
+    later(state, 7600, () => play(container, state));
+  }
+
+  function later(state, delay, fn) {
+    const id = global.setTimeout(() => {
+      state.timers = state.timers.filter((timer) => timer !== id);
+      if (!state.stopped) fn();
+    }, delay);
+    state.timers.push(id);
+  }
+
+  function place(container, cellIndex, subjectIndex, conflict) {
+    const cell = container.querySelector(`[data-cell="${cellIndex}"]`);
+    const subject = SUBJECTS[subjectIndex];
+    if (!cell || !subject) return;
+    const card = document.createElement("span");
+    card.className = "chrx-landing-demo__card" + (conflict ? " is-conflict-card" : "");
+    card.style.setProperty("--demo-card", subject.color);
+    card.textContent = subject.abbr;
+    cell.appendChild(card);
+  }
+
+  function renderSolved(container) {
+    reset(container);
+    SOLVED.flat().forEach((subjectIndex, cellIndex) => place(container, cellIndex, subjectIndex));
+    container.querySelectorAll(".chrx-landing-demo__cell").forEach((cell) => cell.classList.add("is-solved"));
+  }
+
+  function reset(container) {
+    container.querySelectorAll(".chrx-landing-demo__card").forEach((card) => card.remove());
+    container.querySelectorAll(".chrx-landing-demo__cell").forEach((cell) => {
+      cell.classList.remove("is-conflict", "is-solved");
+    });
+  }
+
+  function setStatus(container, text, tone) {
+    const panel = container.closest(".chrx-landing-demo");
+    const status = panel && panel.querySelector("[data-landing-demo-status]");
+    if (!status) return;
+    status.textContent = text;
+    status.dataset.tone = tone || "";
+  }
+
+  function destroy(container) {
+    const state = active.get(container);
+    if (state) {
+      state.stopped = true;
+      state.timers.forEach((timer) => global.clearTimeout(timer));
+      active.delete(container);
+    }
+    if (container) container.innerHTML = "";
+  }
+
+  global.LandingDemo = { mount, destroy };
+})(window);
+
+/* ─── FILE: js/ui/components/first_card_coachmark.js ─── */
+/**
+ * First-card coachmark — shown once when lessons exist but no cards are placed.
+ *
+ * Exports window.FirstCardCoachmark = { show, schedule, dismiss, shouldShow }.
+ */
+(function (global) {
+  "use strict";
+
+  const SEEN_KEY = "chronexa.coachmark.first-card.v1";
+  let overlay = null;
+  let timer = null;
+
+  function shouldShow() {
+    try {
+      if (global.localStorage.getItem(SEEN_KEY)) return false;
+    } catch (e) {}
+    const school = global.APP && global.APP.school;
+    return !!(school && (school.lessons || []).length && !(school.cards || []).length);
+  }
+
+  function schedule(delay) {
+    global.clearTimeout(timer);
+    timer = global.setTimeout(show, typeof delay === "number" ? delay : 650);
+  }
+
+  function show() {
+    if (overlay || !shouldShow()) return;
+    const editorStep = document.getElementById("step-6");
+    if (!editorStep || editorStep.classList.contains("hidden")) return;
+
+    overlay = document.createElement("div");
+    overlay.className = "chrx-coachmark-overlay";
+    overlay.innerHTML = `
+      <section class="chrx-coachmark-card" role="dialog" aria-modal="true" aria-labelledby="chrx-coachmark-title">
+        <div class="chrx-coachmark-card__eyebrow">First grid visit</div>
+        <button type="button" class="chrx-coachmark-card__close" data-dismiss aria-label="Dismiss coachmark">×</button>
+        <h2 id="chrx-coachmark-title">Place your first card</h2>
+        <p>Drag a lesson from <strong>Pending cards</strong> onto the grid. Placement halos explain the result before you commit.</p>
+        <div class="chrx-coachmark-legend" aria-label="Placement halo legend">
+          <span data-tone="good">Green <small>clear</small></span>
+          <span data-tone="warn">Amber <small>preference</small></span>
+          <span data-tone="bad">Red <small>hard conflict</small></span>
+        </div>
+        <div class="chrx-coachmark-demo" hidden data-demo>
+          <span class="chrx-coachmark-demo__card">MTH · VII A</span>
+          <span class="chrx-coachmark-demo__arrow">→</span>
+          <span class="chrx-coachmark-demo__slot">Drop here</span>
+        </div>
+        <div class="chrx-coachmark-card__actions">
+          <button type="button" class="chrx-btn" data-show>Show me</button>
+          <button type="button" class="chrx-btn chrx-btn--primary" data-dismiss>Got it</button>
+        </div>
+      </section>
+    `;
+    document.body.appendChild(overlay);
+    overlay.querySelectorAll("[data-dismiss]").forEach((button) => button.addEventListener("click", dismiss));
+    overlay.querySelector("[data-show]").addEventListener("click", () => {
+      const demo = overlay && overlay.querySelector("[data-demo]");
+      if (demo) demo.hidden = false;
+    });
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) dismiss();
+    });
+    overlay.querySelector("[data-dismiss].chrx-btn--primary")?.focus();
+  }
+
+  function dismiss() {
+    if (!overlay) return;
+    overlay.classList.add("is-leaving");
+    const doomed = overlay;
+    overlay = null;
+    global.setTimeout(() => doomed.remove(), 180);
+    try { global.localStorage.setItem(SEEN_KEY, "1"); } catch (e) {}
+  }
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && overlay) dismiss();
+  });
+
+  global.FirstCardCoachmark = { show, schedule, dismiss, shouldShow };
+})(window);
+
 /* ─── FILE: js/ui/entities/dialog_shell.js ─── */
 /* Chronexa entity-CRUD dialog shell. window.EntityDialog. */
 (function (global) {
@@ -1426,11 +1750,17 @@ window.Inspector = (function () {
   }
 
   // ---- form helpers (shared by entity modules) ---------------------------
-  function buildField(label, control) {
-    return el("label", { class:"chrx-ent-field" },
+  function buildField(label, control, helpText) {
+    const wrap = el("label", { class:"chrx-ent-field" },
       el("span", { class:"chrx-ent-field__lbl" }, label),
       control,
     );
+    if (helpText && window.HelpTooltip) {
+      const lbl = wrap.querySelector(".chrx-ent-field__lbl");
+      const tip = window.HelpTooltip.create({ text: helpText, heading: label });
+      if (tip && lbl) lbl.appendChild(tip);
+    }
+    return wrap;
   }
 
   function buildSwatchPicker(value, onChange) {
@@ -1452,7 +1782,7 @@ window.Inspector = (function () {
     const form = el("form", { class:"chrx-ent-form",
       onsubmit:(e)=>{ e.preventDefault(); opts.onSave && opts.onSave(); } });
     (opts.fields || []).forEach(f => {
-      form.appendChild(f.label === null ? f.control : buildField(f.label, f.control));
+      form.appendChild(f.label === null ? f.control : buildField(f.label, f.control, f.helpText));
     });
     form.appendChild(el("div", { class:"chrx-ent-form__foot" },
       el("button", { type:"button", class:"chrx-btn", onclick:()=>{
@@ -2973,11 +3303,11 @@ window.Inspector = (function () {
     D.buildEditSheet({
       title: isNew ? "New subject" : `Edit subject — ${r.name}`,
       fields: [
-        { label:"Name", control:fName },
-        { label:"Abbreviation", control:fShort },
-        { label:"Color", control:fColor },
-        { label:"Contract weight", control:fWeight },
-        { label:"Picture URL", control:fPic },
+        { label:"Name", control:fName, helpText:"This is how the subject appears on cards and printouts. Examples: Mathematics, Physical Science." },
+        { label:"Abbreviation", control:fShort, helpText:"Short code used in tight grid cells (e.g. 'MTH'). Auto-generated from the name, but you can override." },
+        { label:"Color", control:fColor, helpText:"Each subject gets a unique color for easy spotting in the editor. Pick a color that teachers will recognize." },
+        { label:"Contract weight", control:fWeight, helpText:"How many teaching periods this subject counts as. Usually 1. Use 0.5 for half-subjects." },
+        { label:"Picture URL", control:fPic, helpText:"Optional: a URL to an image that appears on the subject's cards and printouts." },
       ],
       onSave: save,
       siblingRows: isNew ? null : rows(),
@@ -3659,12 +3989,12 @@ window.Inspector = (function () {
     D.buildEditSheet({
       title: isNew ? "New class" : `Edit class — ${r.name}`,
       fields:[
-        { label:"Name", control:fName },
-        { label:"Short", control:fShort },
-        { label:"Class teacher (optional)", control:fTeacherWrap },
-        { label:"Home classrooms (optional)", control:fRoomWrap },
-        { label:"Bell schedule", control:fBell },
-        { label:"Color", control:fColor },
+        { label:"Name", control:fName, helpText:"Full class or section name used in reports, such as Grade 7 A." },
+        { label:"Short", control:fShort, helpText:"Compact grid label, such as VII-A or 7A." },
+        { label:"Class teacher (optional)", control:fTeacherWrap, helpText:"Assign the homeroom or class teacher. This does not automatically create lessons." },
+        { label:"Home classrooms (optional)", control:fRoomWrap, helpText:"Rooms this class normally uses. Lesson-specific room choices can override these." },
+        { label:"Bell schedule", control:fBell, helpText:"Choose a different bell only when this class follows another period schedule." },
+        { label:"Color", control:fColor, helpText:"Used when the editor or printout is colored by class." },
       ],
       onSave: save,
       siblingRows: isNew ? null : rows(),
@@ -4073,17 +4403,17 @@ window.Inspector = (function () {
     D.buildEditSheet({
       title: isNew ? "New classroom" : `Edit classroom — ${r.name}`,
       fields:[
-        { label:"Name", control:fName },
-        { label:"Short", control:fShort },
-        { label:"Building (text)", control:fBuilding },
-        { label:"Building (entity)", control:fBuildingId },
-        { label:"Allowed tags",      control:fAllowedTags },
-        { label:"Capacity", control:fCap },
-        { label:"Color", control:fColor },
-        { label:"Needs supervision", control:fSup },
-        { label:"Shared room", control:fShared },
-        { label:"For subjects", control:fSubjects },
-        { label:"Bell", control:fBell },
+        { label:"Name", control:fName, helpText:"The room name shown in schedules and reports, such as Chemistry Lab." },
+        { label:"Short", control:fShort, helpText:"Compact room code used in timetable cells, such as LAB-2." },
+        { label:"Building (text)", control:fBuilding, helpText:"Free-text building or floor label for quick organization." },
+        { label:"Building (entity)", control:fBuildingId, helpText:"Link this room to a formal building record when your school uses multiple buildings." },
+        { label:"Allowed tags", control:fAllowedTags, helpText:"Only lessons carrying one of these activity tags may use this room." },
+        { label:"Capacity", control:fCap, helpText:"Maximum students the room can safely hold." },
+        { label:"Color", control:fColor, helpText:"Used when the editor or printout is colored by classroom." },
+        { label:"Needs supervision", control:fSup, helpText:"Marks spaces that require an assigned supervisor while occupied." },
+        { label:"Shared room", control:fShared, helpText:"Allows compatible lessons to share the room instead of treating every overlap as a hard conflict." },
+        { label:"For subjects", control:fSubjects, helpText:"Restrict this room to selected subjects, such as Science for a laboratory." },
+        { label:"Bell", control:fBell, helpText:"Use only when lessons in this room follow a different bell schedule." },
       ],
       onSave: save,
       siblingRows: isNew ? null : rows(),
@@ -4448,15 +4778,15 @@ window.Inspector = (function () {
     D.buildEditSheet({
       title: isNew ? "New teacher" : `Edit teacher — ${r.lastName}`,
       fields:[
-        { label:"First name", control:fFirst },
-        { label:"Last name",  control:fLast },
-        { label:"Abbreviation", control:fAbbr },
-        { label:"Color", control:fColor },
-        { label:"Max gaps/day", control:fGaps },
-        { label:"Max consecutive periods", control:fConsec },
-        { label:"Bell schedule", control:fBell },
-        { label:"Preferred classrooms", control:fRoomWrap },
-        { label:"Print color", control:fPrintColor },
+        { label:"First name", control:fFirst, helpText:"Given name used with the last name in lists, search, and reports." },
+        { label:"Last name",  control:fLast, helpText:"Optional family name used to make the teacher easy to identify." },
+        { label:"Abbreviation", control:fAbbr, helpText:"Short code shown inside compact timetable cards, such as RKS or AN." },
+        { label:"Color", control:fColor, helpText:"Makes this teacher easy to identify when the editor is colored by teacher." },
+        { label:"Max gaps/day", control:fGaps, helpText:"Preferred maximum number of free periods between this teacher's lessons in one day." },
+        { label:"Max consecutive periods", control:fConsec, helpText:"Limits how many lessons this teacher should teach without a break." },
+        { label:"Bell schedule", control:fBell, helpText:"Use this only when the teacher follows a different bell schedule from the school default." },
+        { label:"Preferred classrooms", control:fRoomWrap, helpText:"Rooms the solver should prefer when assigning this teacher's lessons." },
+        { label:"Print color", control:fPrintColor, helpText:"Optional color override used only in printed reports." },
       ],
       onSave: save,
       siblingRows: isNew ? null : rows(),
@@ -5434,20 +5764,20 @@ window.Inspector = (function () {
     D.buildEditSheet({
       title: isNew ? "New lesson" : "Edit lesson",
       fields:[
-        { label:"Subject", control:fSubj },
-        { label:"Classes", control:fClassWrap },
-        { label:"Teachers", control:fTeachWrap },
+        { label:"Subject", control:fSubj, helpText:"The subject taught by this lesson. One lesson definition creates its weekly timetable cards." },
+        { label:"Classes", control:fClassWrap, helpText:"Select every class or section that attends this lesson together." },
+        { label:"Teachers", control:fTeachWrap, helpText:"Select the teachers who must be available together for this lesson." },
         { label:null, control:fWildTeachLabel },
-        { label:"Lessons/week",     control:fCountRow },
-        { label:"Classroom",        control:roomBlock },
+        { label:"Lessons/week", control:fCountRow, helpText:"How many periods this lesson needs each week. Length controls single or double-period blocks." },
+        { label:"Classroom", control:roomBlock, helpText:"Choose a preferred room, assign rooms per card, or let the solver select from allowed rooms." },
         { label:null, control:fWildRoomLabel },
-        { label:"Day pattern",      control:fDaysDef },
-        { label:"Week pattern",     control:fWeeksDef },
-        { label:"Term",             control:fTermsDef },
-        { label:"Max students",     control:fMaxStudents },
-        { label:"Activity tags",    control:fTags },
-        { label:"Fixed day (0–5)",  control:fDay },
-        { label:"Fixed period",     control:fPeriod },
+        { label:"Day pattern", control:fDaysDef, helpText:"Optional day-set restriction for split schedules or rotating timetables." },
+        { label:"Week pattern", control:fWeeksDef, helpText:"Optional week-set restriction for alternating or multi-week schedules." },
+        { label:"Term", control:fTermsDef, helpText:"Optional term restriction when this lesson runs only during part of the year." },
+        { label:"Max students", control:fMaxStudents, helpText:"Expected upper student count used for room-capacity checks." },
+        { label:"Activity tags", control:fTags, helpText:"Tags connect lessons to room rules, reporting filters, and custom constraints." },
+        { label:"Fixed day (0–5)", control:fDay, helpText:"Lock the lesson to a weekday: 0 is Monday and 5 is Saturday. Leave blank for the solver to choose." },
+        { label:"Fixed period", control:fPeriod, helpText:"Lock the lesson to a period number. Leave blank for the solver to choose." },
         { label:null, control:cardPreview },
       ],
       onSave:()=>{
@@ -5863,11 +6193,18 @@ window.Inspector = (function () {
     const body = D.el("div", { style: "min-width:340px" });
 
     function applyChange(mutate) {
-      for (const r of selectedRows) {
-        const before = { ...r._ref };
-        mutate(r._ref);
-        window.APP.audit.append({ entity:"lessons", op:"bulk-change", before, after:{...r._ref} });
-      }
+      // Make bulk edits UNDOABLE: audit.append only logs, it never pushes onto
+      // the undo stack, so Ctrl+Z did nothing after a bulk change (a mistake on
+      // 100 lessons was unrecoverable). audit.commit runs do() and registers an
+      // undo()/redo() pair. Snapshot each row before mutating; undo restores
+      // those fields. (BUG_REPORT_2026-06-13 S2.6 — confirmed.)
+      const targets = selectedRows.map(r => r._ref).filter(Boolean);
+      const befores = targets.map(ref => ({ ...ref }));
+      window.APP.audit.commit({
+        label: "Bulk edit " + targets.length + " lesson" + (targets.length === 1 ? "" : "s"),
+        do() { targets.forEach(mutate); },
+        undo() { targets.forEach((ref, i) => Object.assign(ref, befores[i])); },
+      });
       D.closeSubSheet();
       D.refresh(rows());
       window.dispatchEvent(new CustomEvent("entity:changed", { detail: { entity: "lessons" } }));
@@ -14979,25 +15316,84 @@ ${body}
   }
 
   function advance() {
-    // Fire entity:changed so the editor grid + activator refresh with what
-    // the user just added (per task spec).
     document.dispatchEvent(new CustomEvent("entity:changed"));
     if (active < STEPS.length - 1) {
       active++;
       renderPane();
       return;
     }
-    // Last step → Finish. Close the wizard and explicitly nav to editor.
-    close();
-    document.dispatchEvent(new CustomEvent("nav:goto-step", { detail: { step: 6 } }));
+    // Last step → show celebration overlay, then close.
+    renderCelebration();
   }
 
   function onKey(e) {
     if (!host) return;
     if (e.key === "Escape") { e.preventDefault(); close(); return; }
-    // Block bubbling to the underlying step nav while wizard is open
     if (e.key === "ArrowRight") { e.preventDefault(); advance(); }
     if (e.key === "ArrowLeft" && active > 0) { e.preventDefault(); active--; renderPane(); }
+  }
+
+  // ─── Celebration overlay ────────────────────────────────────────────────
+  function renderCelebration() {
+    if (!host) return;
+    const school = (window.APP && window.APP.school) || {};
+    function count(k) { return (school[k] || []).length; }
+    const card = host.querySelector("#chrx-wizard-card");
+    if (!card) return;
+    card.innerHTML = `
+      <div class="chrx-wiz-celebration" aria-live="polite">
+        <div class="chrx-wiz-celebration__confetti" aria-hidden="true">
+          ${["#2f6fed", "#1f8a70", "#c47a18", "#b24b4b", "#7556a8", "#2f6fed", "#1f8a70", "#c47a18"]
+            .map((color, i) => `<span style="--confetti:${color};--r:${i * 45}deg"></span>`).join("")}
+        </div>
+        <div class="chrx-wiz-celebration__burst" aria-hidden="true">✓</div>
+        <h2 class="text-2xl font-bold text-slate-900">Your school is ready</h2>
+        <p class="text-sm text-slate-600 mt-2">You have the foundation. Open the editor to place cards, or keep refining the lesson setup.</p>
+        <div class="chrx-wiz-celebration__summary">
+          ${celebrationTile("Subjects", count("subjects"))}
+          ${celebrationTile("Teachers", count("teachers"))}
+          ${celebrationTile("Classes", count("classes"))}
+          ${celebrationTile("Rooms", count("classrooms"))}
+          ${celebrationTile("Lessons", count("lessons"))}
+        </div>
+        <div class="chrx-wiz-celebration__actions">
+          <button type="button" class="chrx-btn" data-action="add-more">Add more details</button>
+          <button type="button" class="chrx-btn chrx-btn--primary" data-action="open-editor">Open in Editor →</button>
+        </div>
+      </div>
+    `;
+    card.querySelector("[data-action='open-editor']").addEventListener("click", () => {
+      close();
+      document.dispatchEvent(new CustomEvent("nav:goto-step", { detail: { step: 6 } }));
+    });
+    card.querySelector("[data-action='add-more']").addEventListener("click", () => {
+      active = STEPS.length - 1;
+      renderPane();
+    });
+    countUp(card);
+    card.querySelector("[data-action='open-editor']")?.focus();
+  }
+
+  function celebrationTile(label, n) {
+    return `<div class="chrx-wiz-celebration__tile"><b data-target="${n}">0</b><span>${label}</span></div>`;
+  }
+
+  function countUp(card) {
+    const reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    card.querySelectorAll("[data-target]").forEach((node) => {
+      const target = Number(node.dataset.target) || 0;
+      if (reduced || target === 0) {
+        node.textContent = String(target);
+        return;
+      }
+      let current = 0;
+      const step = Math.max(1, Math.ceil(target / 12));
+      const timer = window.setInterval(() => {
+        current = Math.min(target, current + step);
+        node.textContent = String(current);
+        if (current >= target) window.clearInterval(timer);
+      }, 45);
+    });
   }
 
   function escapeHtml(s) {
@@ -15039,7 +15435,7 @@ ${body}
     pendingRoot.hidden = false;
 
     // ─── Empty-school coaching: instead of a blank grid, show "Get started" ─
-    if (isEmptySchool(APP.school)) {
+    if (needsSetupHero(APP.school)) {
       renderEmptyHero(editorRoot);
       pendingRoot.innerHTML = `<div class="p-3 text-sm text-slate-500 text-center">Cards will appear here once you add lessons.</div>`;
       activated = true;
@@ -15063,28 +15459,40 @@ ${body}
     activated = true;
     updatePendingCount();
     setBannerOnce();
+    if (global.FirstCardCoachmark && typeof global.FirstCardCoachmark.schedule === "function") {
+      global.FirstCardCoachmark.schedule();
+    }
   }
 
-  function isEmptySchool(school) {
+  function needsSetupHero(school) {
     if (!school) return true;
-    const counts = ["subjects", "teachers", "classes", "classrooms", "lessons"]
-      .map(k => (school[k] || []).length);
-    return counts.every(n => n === 0);
+    return (school.lessons || []).length === 0;
   }
 
   function renderEmptyHero(root) {
     const fire = (kind) => () => window.dispatchEvent(new CustomEvent("app:open-entity", { detail: { kind } }));
-    // Each tile uses theme tokens (no raw Tailwind palette) + the .chrx-lift +
-    // .chrx-press motion utilities. A small accent dot identifies the step
-    // without leaking a different color for every tile.
-    const tile = (icon, num, title, sub, kind) => `
-      <button data-kind="${kind}" class="chrx-hero-tile chrx-lift chrx-press">
-        <span class="chrx-hero-tile__num">${num}</span>
-        <span class="chrx-hero-tile__icon" aria-hidden="true">${icon}</span>
-        <span class="chrx-hero-tile__title">${title}</span>
-        <span class="chrx-hero-tile__sub">${sub}</span>
-        <span class="chrx-hero-tile__arrow" aria-hidden="true">→</span>
-      </button>`;
+    const school = (window.APP && window.APP.school) || {};
+
+    function tile(icon, num, title, sub, kind) {
+      const isGenerate = kind === "_generate";
+      const count = isGenerate ? 0 : (school[kind] || []).length;
+      const hasData = count > 0;
+      const statusLabel = isGenerate ? "Needs lessons" : hasData ? count + " added" : "Not started";
+      const actionLabel = isGenerate ? "Locked" : hasData ? "Manage →" : "Add →";
+
+      return `
+        <button data-kind="${kind}" class="chrx-hero-tile chrx-lift chrx-press" ${hasData ? 'data-completed="true"' : ''} ${isGenerate ? "disabled" : ""}>
+          <span class="chrx-hero-tile__num">${num}</span>
+          <span class="chrx-hero-tile__icon" aria-hidden="true">${icon}</span>
+          <span class="chrx-hero-tile__title">${title}</span>
+          <span class="chrx-hero-tile__sub">${sub}</span>
+          <span class="chrx-hero-tile__status" data-complete="${hasData}">
+            <span>${hasData ? "✓" : "○"} ${statusLabel}</span>
+            <span>${actionLabel}</span>
+          </span>
+        </button>`;
+    }
+
     root.innerHTML = `
       <div class="chrx-hero">
         <div class="chrx-hero__inner">
@@ -15094,16 +15502,26 @@ ${body}
             <p class="chrx-hero__sub">Pick a starting point. We recommend this order, but you can jump in anywhere.</p>
           </header>
           <div class="chrx-hero__grid chrx-rise-stagger">
-            ${tile("\u{1F4DA}", "1", "Subjects",   "Maths, Science, English, …",      "subjects")}
-            ${tile("\u{1F468}‍\u{1F3EB}", "2", "Teachers",   "Names, abbreviations, colors",         "teachers")}
-            ${tile("\u{1F465}", "3", "Classes",    "I-A, I-B, VIII-C …",              "classes")}
-            ${tile("\u{1F6AA}", "4", "Classrooms", "Lab, Library, Music Room …",      "classrooms")}
-            ${tile("\u{1F4DD}", "5", "Lessons",    "Who teaches what, how often",          "lessons")}
+            ${tile("📚", "1", "Subjects",   "Maths, Science, English, …",      "subjects")}
+            ${tile("👨‍🏫", "2", "Teachers",   "Names, abbreviations, colors",         "teachers")}
+            ${tile("👥", "3", "Classes",    "I-A, I-B, VIII-C …",              "classes")}
+            ${tile("🚪", "4", "Classrooms", "Lab, Library, Music Room …",      "classrooms")}
+            ${tile("📝", "5", "Lessons",    "Who teaches what, how often",          "lessons")}
             ${tile("⚡",    "6", "Generate",   "Auto-place all cards",                 "_generate")}
           </div>
-          <p class="chrx-hero__tip chrx-fade-in">
-            Tip: every tile opens the same dialog as <em>Specification</em> → <em>(entity)…</em> in the ribbon.
-          </p>
+          <form class="chrx-hero-quickadd chrx-fade-in" data-quick-add>
+            <strong>Quick add</strong>
+            <select name="kind" aria-label="Entity type">
+              <option value="subjects">Subject</option>
+              <option value="teachers">Teacher</option>
+              <option value="classes">Class</option>
+            </select>
+            <input name="name" required maxlength="80" placeholder="Name" aria-label="Name">
+            <input name="abbr" maxlength="12" placeholder="Short code" aria-label="Short code">
+            <button class="chrx-btn chrx-btn--primary" type="submit">Add</button>
+            <p class="chrx-hero-quickadd__message" data-quick-add-message>Add a subject, teacher, or class without leaving this screen.</p>
+          </form>
+          <p class="chrx-hero__tip chrx-fade-in">Build the five inputs above, then lessons become draggable cards in the editor.</p>
         </div>
       </div>`;
     root.querySelectorAll("[data-kind]").forEach(btn => {
@@ -15117,6 +15535,42 @@ ${body}
         fire(k)();
       };
     });
+    root.querySelector("[data-quick-add]")?.addEventListener("submit", quickAdd);
+  }
+
+  function quickAdd(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const kind = form.elements.kind.value;
+    const name = form.elements.name.value.trim();
+    const abbr = form.elements.abbr.value.trim();
+    const message = form.querySelector("[data-quick-add-message]");
+    const school = global.APP && global.APP.school;
+    if (!school || !name || !["subjects", "teachers", "classes"].includes(kind)) return;
+    const list = school[kind] || (school[kind] = []);
+    if (list.some((item) => String(item.name || "").toLowerCase() === name.toLowerCase())) {
+      if (message) message.textContent = name + " already exists.";
+      form.elements.name.focus();
+      return;
+    }
+
+    const D = global.EntityDialog;
+    const prefix = kind === "subjects" ? "s" : kind === "teachers" ? "t" : "c";
+    const entity = {
+      id: D && D.uid ? D.uid(prefix) : prefix + "_" + Date.now().toString(36),
+      name,
+      abbr: abbr || undefined,
+      color: D && D.autoPickColor ? D.autoPickColor(kind) : undefined,
+    };
+    if (kind === "teachers") entity.lastName = name;
+    list.push(entity);
+    if (global.CreateNew && global.CreateNew.refreshIndex) global.CreateNew.refreshIndex();
+    if (global.APP.audit && global.APP.audit.append) {
+      global.APP.audit.append({ entity: kind, op: "add", after: { ...entity }, source: "hero-quick-add" });
+    }
+    form.reset();
+    if (message) message.textContent = name + " added.";
+    document.dispatchEvent(new CustomEvent("entity:changed", { detail: { entity: kind, source: "hero-quick-add" } }));
   }
 
   function deactivate() {
@@ -17272,8 +17726,11 @@ window.PendingStrip = (function () {
 
       const w = ghost.offsetWidth || 60, h = ghost.offsetHeight || 24;
       dx = (w / 2) | 0; dy = (h / 2) | 0;
-      px = (typeof d.sourceX === "number") ? d.sourceX : (window.event ? window.event.clientX : 0);
-      py = (typeof d.sourceY === "number") ? d.sourceY : (window.event ? window.event.clientY : 0);
+      // All callers pass sourceX/sourceY; the old `window.event` fallback was
+      // non-standard (undefined in modern browsers) — drop to a plain 0 origin
+      // (the first mousemove corrects it). BUG_REPORT_2026-06-13 S1.1.
+      px = (typeof d.sourceX === "number") ? d.sourceX : 0;
+      py = (typeof d.sourceY === "number") ? d.sourceY : 0;
       apply();
       paintAllSlots();
       document.addEventListener("mousemove", onMove, true);
@@ -19542,6 +19999,13 @@ window.StartScreen = (function () {
     wireOpenCard();
     wireSampleInfo();
     renderRecent();
+    mountLandingDemo();
+  }
+
+  function mountLandingDemo() {
+    const mount = document.getElementById("landing-demo-mount");
+    if (!mount || !window.LandingDemo || typeof window.LandingDemo.mount !== "function") return;
+    window.LandingDemo.mount(mount);
   }
 
   function wireOpenCard() {
@@ -19771,7 +20235,7 @@ window.StartScreen = (function () {
 
   // ─── Event Delegation for CTA Buttons (P129 Load-Order / DOM Re-render fixes) ───
   document.addEventListener("click", async (e) => {
-    const demoBtn = e.target.closest("#cta-load-demo");
+    const demoBtn = e.target.closest("#cta-load-demo, #cta-landing-demo");
     const buildBtn = e.target.closest("#cta-build-new");
     const infoBtn = e.target.closest("#start-sample-info");
 

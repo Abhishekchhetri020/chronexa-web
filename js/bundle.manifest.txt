@@ -7,6 +7,9 @@ js/ui/class_grid.js
 js/ui/teacher_grid.js
 js/ui/room_grid.js
 js/ui/inspector.js
+js/ui/components/help_tooltip.js
+js/ui/components/landing_demo.js
+js/ui/components/first_card_coachmark.js
 js/ui/entities/dialog_shell.js
 js/ui/components/bell_resolver.js
 js/ui/components/time_off_matrix.js
