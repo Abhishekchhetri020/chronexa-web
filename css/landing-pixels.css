@@ -1,0 +1,137 @@
+/* ───── Landing-page pixel-letterform wordmark ─────
+ * A 5-row pixel grid that spells "CHRONEXA" in Chronexa's product
+ * language: every cell is a miniature timetable card. Replaces the
+ * earlier ambient drift with a more deliberate brand mark.
+ *
+ * Design notes
+ *   - 31 cols × 5 rows = 120 actual cells (the gaps are 1-col
+ *     SPACE between letters, not extra cells). ~83 of them are
+ *     "on" (the letter pixels) and the rest are "off" (the
+ *     negative space inside letters: inside of O, the gap in
+ *     A's crossbar, etc.).
+ *   - Cells are 8×8px with a 2px gap (10px stride). Container
+ *     is 310×50px, centered just above the hero (in the empty
+ *     margin-top of .chrx-start). Small enough to never
+ *     compete with the hero, distinct enough to register as
+ *     a brand mark.
+ *   - Brand-coloured, not random. Each letter is a different
+ *     brand hue so the wordmark reads as a colour rhythm:
+ *     teal-amber-rose-gray-slate-teal-amber-rose.
+ *   - Two layered animations:
+ *       1. Breathing pulse: every ON cell scales 1.0↔1.06 and
+ *          fades 0.45↔0.82 over 4s, with a random stagger
+ *          (0..-4s) so the word ripples, not throbs.
+ *       2. Shimmer wave: a diagonal soft-white shine sweeps
+ *          left-to-right across the grid every 12s.
+ *   - Accessibility:
+ *       - container is aria-hidden (decorative, brand mood)
+ *       - pointer-events: none
+ *       - prefers-reduced-motion removes both animations
+ *         (cells stay at a static 0.55 alpha, no shine)
+ *   - The static <h2 class="chrx-start__wordmark">Chronexa</h2>
+ *     in the hero stays as the primary text mark; this is the
+ *     ambient, decorative counterpart.
+ */
+
+#step-1 { position: relative; }
+
+/* The pixel wordmark sits IN-FLOW at the top of .chrx-start, just
+   above the static h2 "Chronexa" title. It's centred horizontally
+   and given a bit of bottom margin so the static h2 below it has
+   breathing room. */
+.chrx-pixels {
+  position: relative;       /* not absolute — we want it in normal flow */
+  width: 310px;
+  height: 50px;
+  margin: 0 auto 20px;       /* centred, with 20px gap to the h2 below */
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  contain: strict;
+}
+
+.chrx-pixels .cp {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-radius: 1.5px;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+.chrx-pixels .cp.on {
+  background: var(--c, rgba(15, 76, 92, 0.55));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 1px 1px rgba(15, 23, 42, 0.05);
+  animation: cp-breathe 4s ease-in-out infinite;
+  animation-delay: var(--d, 0s);
+}
+
+.chrx-pixels .cp.off {
+  background: transparent;
+  visibility: hidden;
+}
+
+@keyframes cp-breathe {
+  0%, 100% {
+    opacity: var(--lo, 0.45);
+    transform: scale(1);
+  }
+  50% {
+    opacity: var(--hi, 0.82);
+    transform: scale(1.06);
+  }
+}
+
+/* Shimmer wave — diagonal soft-white shine sweeping left→right.
+   Starts off the left edge, ends past the right edge, so each
+   cycle has a clean in-and-out. */
+.chrx-pixels::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -40%;
+  width: 40%;
+  height: 100%;
+  background: linear-gradient(
+    110deg,
+    transparent 25%,
+    rgba(255, 255, 255, 0.45) 50%,
+    transparent 75%
+  );
+  pointer-events: none;
+  animation: cp-shimmer 12s linear infinite;
+  mix-blend-mode: screen;
+}
+
+@keyframes cp-shimmer {
+  0%   { left: -40%; }
+  100% { left: 140%; }
+}
+
+/* Sits above the animation layer. The pixel wordmark is in-flow at
+   the top of .chrx-start, so the hero content below it has its
+   natural spacing. No margin override needed. */
+#step-1 .chrx-start {
+  position: relative;
+  z-index: 1;
+}
+
+/* Mobile: shrink the wordmark so it doesn't overflow the viewport. */
+@media (max-width: 480px) {
+  .chrx-pixels {
+    transform: translateX(-50%) scale(0.78);
+    transform-origin: top center;
+  }
+}
+
+/* Accessibility: no motion for users who opted out. Cells stay at
+   a static 0.55 alpha; no shimmer. */
+@media (prefers-reduced-motion: reduce) {
+  .chrx-pixels .cp.on {
+    animation: none;
+    opacity: 0.55;
+  }
+  .chrx-pixels::after { display: none; }
+}
