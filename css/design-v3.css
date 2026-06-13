@@ -360,13 +360,17 @@ body::before{
 /* Editor grid — print-card aesthetic */
 .chrx-vkarta{
   --hue:var(--chrx-card-hue,210);
-  position:absolute; inset:1px !important;
-  background:linear-gradient(180deg, hsl(var(--hue) 82% 51%) 0%, hsl(var(--hue) 74% 43%) 100%) !important;
-  border:1px solid hsl(var(--hue) 75% 32%) !important;
-  border-left: 4px solid hsl(var(--hue) 85% 24%) !important;
+  /* Edge-to-edge mosaic (aSc density): the card fills its whole cell; the
+     grid lines come from the slot's own borders, not gaps between cards.
+     Flat fill + a darker left stripe + squared corners reads as a dense
+     timetable block rather than a floating rounded sticker. */
+  position:absolute; inset:0 !important;
+  background:hsl(var(--hue) 76% 47%) !important;
+  border:0 !important;
+  border-left: 3px solid hsl(var(--hue) 85% 26%) !important;
   color:#ffffff !important;
-  border-radius:1.5px !important;
-  padding:2px 5px !important;
+  border-radius:0 !important;
+  padding:2px 4px !important;
   display:flex !important;
   flex-direction:column !important;
   align-items:flex-start !important;
@@ -376,7 +380,7 @@ body::before{
   letter-spacing:-.005em;
   font-size:var(--chrx-font-small);
   cursor:grab; user-select:none; overflow:hidden;
-  box-shadow:0 1px 0 hsl(var(--hue) 55% 32%/.45), 0 1px 3px rgba(26,23,20,.12);
+  box-shadow:inset 0 0 0 1px hsl(var(--hue) 60% 40%/.35);
   transition:transform var(--chrx-duration-fast) var(--chrx-ease),
              box-shadow var(--chrx-duration-fast) var(--chrx-ease);
   will-change:transform, box-shadow;
