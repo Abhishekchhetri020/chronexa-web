@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-06-13T17:50:53Z
+/* Chronexa bundle — generated 2026-06-13T18:48:17Z
  *      164 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -15440,6 +15440,7 @@ window.Editor = (function () {
     wire(rootEl);
     syncCardInHandClass();
     autoFitRowLabels(rootEl);
+    autoFitSubjectCodes(rootEl);
     syncUnplacedCount(S);
     updateClassPanel(S);
     if (window.ConstraintExplainer && typeof window.ConstraintExplainer.attachTooltip === "function") {
@@ -15707,6 +15708,53 @@ window.Editor = (function () {
     return name[0].toUpperCase() + name.slice(1, 3).toLowerCase();   // Maths → Mat
   }
 
+  // Candidate shorter forms of a subject label, most→least informative, used
+  // when even the preferred code overflows the actual cell width.
+  function codeCandidates(subject) {
+    const name = (subject.name || subject.abbr || "?").trim();
+    const words = name.split(/\s+/).filter(Boolean);
+    const out = [];
+    if (words.length >= 2) out.push(words.map(w => w[0].toUpperCase()).join("").slice(0, 4)); // SMP
+    const w0 = (words[0] || name).replace(/[^A-Za-z0-9]/g, "");
+    for (let len = 4; len >= 2; len--) out.push(w0.slice(0, len));      // Math, Mat, Ma
+    return [...new Set(out.filter(Boolean))];
+  }
+
+  // Post-render pass: the school's abbreviation is preferred, but if it still
+  // overflows the actual cell at the rendered font (e.g. abbr == full name like
+  // "Sports Meet Practice"), swap in the largest candidate code that fits on one
+  // line. Measured with canvas (accurate, reflow-free). By-Class only — other
+  // perspectives carry class lists that legitimately wrap.
+  function autoFitSubjectCodes(rootEl) {
+    if (!rootEl || (window.APP.editor.perspective || "class") !== "class") return;
+    const S = window.APP && window.APP.school;
+    if (!S) return;
+    const slot = rootEl.querySelector(".chrx-slot:not(.empty)");
+    const lines = rootEl.querySelectorAll(".chrx-vk-line1");
+    if (!slot || !lines.length) return;
+    const cs = getComputedStyle(lines[0]);
+    const fam = cs.fontFamily || "sans-serif";
+    const weight = cs.fontWeight || "700";
+    const fontPx = parseFloat(cs.fontSize) || 11.5;
+    const avail = Math.max(10, slot.clientWidth - 7);   // minus border-left + padding
+    const ctx = (autoFitSubjectCodes._c || (autoFitSubjectCodes._c = document.createElement("canvas").getContext("2d")));
+    const wOf = t => { ctx.font = `${weight} ${fontPx}px ${fam}`; return ctx.measureText(t).width; };
+    const cache = new Map();
+    for (const el of lines) {
+      if (wOf(el.textContent) <= avail) continue;       // fits on one line — keep
+      const card = el.closest(".chrx-vkarta");
+      const lesson = card && S._idx.lessonById[card.dataset.lessonId];
+      const subject = lesson && S._idx.subjectById[lesson.subjectId];
+      if (!subject) continue;
+      let pick = cache.get(subject.id);
+      if (pick === undefined) {
+        pick = codeCandidates(subject).find(c => wOf(c) <= avail) || codeCandidates(subject).pop() || el.textContent;
+        cache.set(subject.id, pick);
+      }
+      el.textContent = pick;
+    }
+  }
+
   function vkartaHtml(S, card, day, period, rowKey) {
     const lesson = S._idx.lessonById[card.lessonId];
     const subject = lesson ? S._idx.subjectById[lesson.subjectId] : null;
@@ -15736,16 +15784,19 @@ window.Editor = (function () {
     })();
 
     const hue = cardHue(S, card, lesson, subject);
-    // Co-taught lesson (≥2 teachers) in Color:Teacher mode → a second hue so
-    // the card renders as a diagonal of BOTH teachers' colours (user request).
-    let hue2 = null;
+    // In Color:Teacher mode a lesson with N teachers (Sci Lab = 3 teachers,
+    // Activity = 6+) renders as N diagonal stripes, one band per teacher's
+    // colour (aSc-style). Single-teacher cards stay a flat colour.
+    let stripeBg = null;
     if ((window.APP.editor.colorBy || "subject") === "teacher" &&
         lesson && (lesson.teacherIds || []).length >= 2) {
-      const t2 = S._idx.teacherById[lesson.teacherIds[1]];
-      const h2 = (t2 && hexHue(t2.color));
-      hue2 = (h2 == null ? hashHue(t2 && (t2.abbr || t2.name)) : h2);
+      const hues = lesson.teacherIds.map(tid => {
+        const t = S._idx.teacherById[tid];
+        const h = t && hexHue(t.color);
+        return h == null ? hashHue(t && (t.abbr || t.name || tid)) : h;
+      });
+      stripeBg = teacherStripes(hues);
     }
-    const bicolor = hue2 != null ? " chrx-vkarta--bicolor" : "";
     const cardId = `placed_${card.lessonId}_${day}_${period}`;
     const locked = (card.locked || lesson?.fixedDay != null || lesson?.fixedPeriod != null) ? " locked" : "";
     const persp = window.APP.editor.perspective;
@@ -15776,14 +15827,15 @@ window.Editor = (function () {
     // No native title attribute — ConstraintExplainer renders the single
     // rich hover tooltip (info header + violations). A title here made the
     // browser's native tooltip overlap the explainer with duplicate text.
+    const bgStyle = stripeBg ? `;background:${stripeBg} !important;border-left-color:transparent !important` : "";
     return `
-      <div class="chrx-vkarta${locked}${densityClass}${bicolor}"
+      <div class="chrx-vkarta${locked}${densityClass}"
            data-card-id="${cardId}"
            data-lesson-id="${esc(card.lessonId)}"
            data-day="${day}"
            data-period="${period}"
            data-classroom-id="${esc(card.classroomId || "")}"
-           style="--chrx-card-hue:${hue}${hue2 != null ? `;--chrx-card-hue2:${hue2}` : ""}">
+           style="--chrx-card-hue:${hue}${bgStyle}">
         <div class="chrx-vk-line1">${esc(line1)}</div>
         ${compact || !line2 ? "" : `<div class="chrx-vk-line2">${esc(line2)}</div>`}
       </div>
@@ -16307,6 +16359,16 @@ window.Editor = (function () {
   // Entity dialogs already write a HEX `color` field on each entity; we
   // parse it to HSL hue when present so it composes with the existing
   // --chrx-card-hue CSS variable used by chrx-vkarta.
+  // Diagonal N-colour stripes (one band per teacher) for a co-taught card.
+  function teacherStripes(hues) {
+    const n = hues.length;
+    if (n < 2) return null;
+    const step = 100 / n;
+    const stops = hues.map((h, i) =>
+      `hsl(${h} 70% 47%) ${(i * step).toFixed(2)}% ${((i + 1) * step).toFixed(2)}%`
+    ).join(", ");
+    return `linear-gradient(135deg, ${stops})`;
+  }
   function hashHue(key) {
     if (!key) return 210;
     let h = 0;

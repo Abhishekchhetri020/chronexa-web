@@ -367,10 +367,10 @@ body::before{
   position:absolute; inset:0 !important;
   background:hsl(var(--hue) 76% 47%) !important;
   border:0 !important;
-  border-left: 3px solid hsl(var(--hue) 85% 26%) !important;
+  border-left: 2px solid hsl(var(--hue) 85% 26%) !important;
   color:#ffffff !important;
   border-radius:0 !important;
-  padding:2px 4px !important;
+  padding:2px 3px 2px 2px !important;   /* text hugs the extreme left for max room */
   display:flex !important;
   flex-direction:column !important;
   align-items:flex-start !important;
@@ -748,59 +748,39 @@ input:focus,select:focus,textarea:focus{
   overflow: visible !important; /* allow badge + stack shadows to paint outside */
 }
 
-/* Two cards in one cell → DIAGONAL split (aSc-faithful, done cleaner).
-   Each card fills the whole cell but is clip-path'd to a complementary
-   triangle, so the two colours meet along a single "/" diagonal with ZERO
-   overlap — replacing the old crammed side-by-side micro-cards that read as
-   "overlapping" (e.g. a double-booked teacher's Wed/Thu cells). The first
-   card takes the upper-left triangle (text hugs top-left); the second takes
-   the lower-right (text hugs bottom-right). A 1px white diagonal keeps the
-   seam crisp. */
+/* Two DIFFERENT subjects share a slot (parallel electives like Sanskrit +
+   Urdu) → split the cell into two stacked RECTANGLES (aSc-style), NOT a
+   diagonal. Each subject gets full width / half height with its text at the
+   extreme left. (The diagonal is reserved for ONE subject taught by several
+   teachers — that's rendered as N colour stripes on a single card.) */
 .chrx-slot--split2 {
   padding: 0 !important;
   overflow: hidden !important;
 }
 .chrx-slot--split2 .chrx-vkarta {
   position: absolute !important;
-  inset: 0 !important;
   width: auto !important;
   height: auto !important;
   border-radius: 0 !important;
-  border-left: 0 !important;
-}
-.chrx-slot--split2 .chrx-vkarta:nth-child(1) {
-  clip-path: polygon(0 0, 100% 0, 0 100%) !important;
+  border-left: 2px solid hsl(var(--hue) 85% 26%) !important;
+  clip-path: none !important;
+  justify-content: center !important;
   align-items: flex-start !important;
-  justify-content: flex-start !important;
-  padding: 1px 3px !important;
+  padding: 0 2px !important;
 }
+.chrx-slot--split2 .chrx-vkarta:nth-child(1) { inset: 0 0 50% 0 !important; }
 .chrx-slot--split2 .chrx-vkarta:nth-child(2) {
-  clip-path: polygon(100% 0, 100% 100%, 0 100%) !important;
-  align-items: flex-end !important;
-  justify-content: flex-end !important;
-  text-align: right !important;
-  padding: 1px 3px !important;
+  inset: 50% 0 0 0 !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.6) !important;   /* crisp divider line */
 }
 .chrx-slot--split2 .chrx-vk-line1 {
-  font-size: 9px !important;
+  font-size: 8.5px !important;
   line-height: 1 !important;
-  width: auto !important;
+  width: 100% !important;
   font-weight: 700 !important;
 }
 .chrx-slot--split2 .chrx-vk-line2,
 .chrx-slot--split2 .chrx-vk-line3 { display: none !important; }
-.chrx-slot--split2::after {
-  content: "" !important;
-  position: absolute !important;
-  inset: 0 !important;
-  pointer-events: none !important;
-  z-index: 3 !important;
-  background: linear-gradient(to top right,
-    transparent calc(50% - 0.6px),
-    rgba(255,255,255,.6) calc(50% - 0.6px),
-    rgba(255,255,255,.6) calc(50% + 0.6px),
-    transparent calc(50% + 0.6px)) !important;
-}
 
 /* Split slot layout for THREE OR MORE cards (rare) — micro-card grid. */
 .chrx-slot--split {
