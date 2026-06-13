@@ -287,9 +287,37 @@
     }
   }
 
+  // Is the point over the Pending Cards area (strip, its region, or header)?
+  // Ghost is position:fixed over the cursor, so hide it before hit-testing.
+  function overPending(x, y) {
+    if (ghost) ghost.style.visibility = "hidden";
+    const el = document.elementFromPoint(x, y);
+    if (ghost) ghost.style.visibility = "";
+    return !!(el && el.closest && el.closest(".chrx-pending-strip, #pending-strip-root, .chrx-pending-region"));
+  }
+
+  // Drop a placed card onto the Pending area → unplace it (remove from grid;
+  // it reappears in Pending). A card already from Pending dropped back there is
+  // a no-op (just put the carry down).
+  function unplaceToPending() {
+    const S = window.APP && window.APP.school;
+    if (S && inHand && !inHand.fromPending &&
+        Number.isFinite(inHand.originDay) && Number.isFinite(inHand.originPeriod)) {
+      const i = S.cards.findIndex(c =>
+        c.lessonId === inHand.lessonId && c.day === inHand.originDay && c.period === inHand.originPeriod);
+      if (i !== -1) S.cards.splice(i, 1);
+      document.dispatchEvent(new CustomEvent("editor:place",
+        { detail: { cardId: inHand.cardId, lessonId: inHand.lessonId, unplaced: true } }));
+    }
+    if (window.APP.editor) window.APP.editor.cardInHand = null;
+    cleanup();
+    rerender();
+  }
+
   function onUp(e) {
     if (!ghost) return;
     if (e.target && e.target.closest && e.target.closest(".chrx-collision-menu")) return;
+    if (overPending(e.clientX, e.clientY)) return unplaceToPending();
     const slot = slotAt(e.clientX, e.clientY);
     if (!slot) return cancel();
     const d = parseInt(slot.dataset.day, 10), p = parseInt(slot.dataset.period, 10);

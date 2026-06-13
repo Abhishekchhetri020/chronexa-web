@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-06-13T18:52:58Z
+/* Chronexa bundle — generated 2026-06-13T18:57:02Z
  *      164 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -15442,7 +15442,18 @@ window.Editor = (function () {
     // readable default rows don't cost vertical density when the user wants
     // to see more classes at once.
     rootEl.classList.toggle("chrx-editor--compact", (window.APP.editor.density || "compact") === "compact");
+
+    // Preserve scroll position across the innerHTML rebuild. Without this, a
+    // pickup/place re-render reset the grid to the top — picking a card from a
+    // bottom class (X) bounced the view back to class I/II (reported bug).
+    const prevScroll = rootEl.querySelector(".chrx-grid-scroll");
+    const savedTop = prevScroll ? prevScroll.scrollTop : 0;
+    const savedLeft = prevScroll ? prevScroll.scrollLeft : 0;
+
     rootEl.innerHTML = html(S, rows, periods, mobileDay, cardLookup);
+
+    const newScroll = rootEl.querySelector(".chrx-grid-scroll");
+    if (newScroll) { newScroll.scrollTop = savedTop; newScroll.scrollLeft = savedLeft; }
 
     wire(rootEl);
     syncCardInHandClass();
@@ -17454,9 +17465,37 @@ window.PendingStrip = (function () {
     }
   }
 
+  // Is the point over the Pending Cards area (strip, its region, or header)?
+  // Ghost is position:fixed over the cursor, so hide it before hit-testing.
+  function overPending(x, y) {
+    if (ghost) ghost.style.visibility = "hidden";
+    const el = document.elementFromPoint(x, y);
+    if (ghost) ghost.style.visibility = "";
+    return !!(el && el.closest && el.closest(".chrx-pending-strip, #pending-strip-root, .chrx-pending-region"));
+  }
+
+  // Drop a placed card onto the Pending area → unplace it (remove from grid;
+  // it reappears in Pending). A card already from Pending dropped back there is
+  // a no-op (just put the carry down).
+  function unplaceToPending() {
+    const S = window.APP && window.APP.school;
+    if (S && inHand && !inHand.fromPending &&
+        Number.isFinite(inHand.originDay) && Number.isFinite(inHand.originPeriod)) {
+      const i = S.cards.findIndex(c =>
+        c.lessonId === inHand.lessonId && c.day === inHand.originDay && c.period === inHand.originPeriod);
+      if (i !== -1) S.cards.splice(i, 1);
+      document.dispatchEvent(new CustomEvent("editor:place",
+        { detail: { cardId: inHand.cardId, lessonId: inHand.lessonId, unplaced: true } }));
+    }
+    if (window.APP.editor) window.APP.editor.cardInHand = null;
+    cleanup();
+    rerender();
+  }
+
   function onUp(e) {
     if (!ghost) return;
     if (e.target && e.target.closest && e.target.closest(".chrx-collision-menu")) return;
+    if (overPending(e.clientX, e.clientY)) return unplaceToPending();
     const slot = slotAt(e.clientX, e.clientY);
     if (!slot) return cancel();
     const d = parseInt(slot.dataset.day, 10), p = parseInt(slot.dataset.period, 10);

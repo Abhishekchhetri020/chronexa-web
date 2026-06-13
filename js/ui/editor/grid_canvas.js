@@ -40,7 +40,18 @@ window.Editor = (function () {
     // readable default rows don't cost vertical density when the user wants
     // to see more classes at once.
     rootEl.classList.toggle("chrx-editor--compact", (window.APP.editor.density || "compact") === "compact");
+
+    // Preserve scroll position across the innerHTML rebuild. Without this, a
+    // pickup/place re-render reset the grid to the top — picking a card from a
+    // bottom class (X) bounced the view back to class I/II (reported bug).
+    const prevScroll = rootEl.querySelector(".chrx-grid-scroll");
+    const savedTop = prevScroll ? prevScroll.scrollTop : 0;
+    const savedLeft = prevScroll ? prevScroll.scrollLeft : 0;
+
     rootEl.innerHTML = html(S, rows, periods, mobileDay, cardLookup);
+
+    const newScroll = rootEl.querySelector(".chrx-grid-scroll");
+    if (newScroll) { newScroll.scrollTop = savedTop; newScroll.scrollLeft = savedLeft; }
 
     wire(rootEl);
     syncCardInHandClass();

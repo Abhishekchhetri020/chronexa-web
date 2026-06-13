@@ -15,7 +15,7 @@
  */
 
 const CACHE_PREFIX = "chronexa-";
-const APP_VER = "20260614-p153-smart-grid-fullwidth";
+const APP_VER = "20260614-p154-drag-pending-scrollfix";
 const CACHE_NAME = CACHE_PREFIX + APP_VER;
 
 // Minimal app shell for offline support.
