@@ -7,8 +7,15 @@
 window.Editor = (function () {
   "use strict";
 
-  const NUM_DAYS = 6;
+  const NUM_DAYS = 6; // hard maximum; the school's daysPerWeek drives the real count
   const DAY_LABELS_EN = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+  // The school decides how many weekdays to show (set in School settings at
+  // setup). Clamp to the 6 we have labels for; default to a full week.
+  function dayCount(S) {
+    const n = S && (S.daysPerWeek | 0);
+    return Math.max(1, Math.min(NUM_DAYS, n || NUM_DAYS));
+  }
 
   /** Render into a host element. Re-render is safe (innerHTML replaced). */
   function render(rootEl) {
@@ -51,7 +58,7 @@ window.Editor = (function () {
     for (const c of (S.cards || [])) {
       const day = parseInt(c.day, 10);
       const period = parseInt(c.period, 10);
-      if (!Number.isFinite(day) || day < 0 || day >= NUM_DAYS) continue;
+      if (!Number.isFinite(day) || day < 0 || day >= dayCount(S)) continue;
       if (!visiblePeriodSet.has(period | 0)) continue;
       const lesson = S._idx.lessonById[c.lessonId];
       if (!lesson) continue;
@@ -149,10 +156,11 @@ window.Editor = (function () {
   }
 
   function html(S, rows, periods, mobileDay, cardLookup) {
-    const headerHtml = headerRowHtml(periods, mobileDay);
-    const dayTabsHtml = dayTabsHtml_(mobileDay);
+    const numDays = dayCount(S);
+    const headerHtml = headerRowHtml(periods, mobileDay, numDays);
+    const dayTabsHtml = dayTabsHtml_(mobileDay, numDays);
 
-    const bodyHtml = rows.map(row => rowHtml(S, row, periods, mobileDay, cardLookup)).join("");
+    const bodyHtml = rows.map(row => rowHtml(S, row, periods, mobileDay, cardLookup, numDays)).join("");
 
     // The in-grid tools row was removed — it duplicated the step-6 header
     // buttons (perspective/color/density, wired in main.js) and cost the
@@ -190,16 +198,16 @@ window.Editor = (function () {
     return total;
   }
 
-  function dayTabsHtml_(mobileDay) {
-    const tabs = DAY_LABELS_EN.map((label, d) =>
+  function dayTabsHtml_(mobileDay, numDays) {
+    const tabs = DAY_LABELS_EN.slice(0, numDays || NUM_DAYS).map((label, d) =>
       `<button class="chrx-day-tab ${d === mobileDay ? "active" : ""}" data-day="${d}" type="button">${esc(label)}</button>`
     ).join("");
     return `<div class="chrx-day-tabs" role="tablist">${tabs}</div>`;
   }
 
-  function headerRowHtml(periods, mobileDay) {
+  function headerRowHtml(periods, mobileDay, numDays) {
     const dayBlocks = [];
-    for (let d = 0; d < NUM_DAYS; d++) {
+    for (let d = 0; d < numDays; d++) {
       const cells = periods.map(p =>
         `<div class="chrx-h chrx-h-period${p.synthetic ? " is-synthetic" : ""}" data-day="${d}" data-period="${p.index}">${esc(p.label || ("P" + p.index))}</div>`
       ).join("");
@@ -218,7 +226,7 @@ window.Editor = (function () {
     `;
   }
 
-  function rowHtml(S, row, periods, mobileDay, cardLookup) {
+  function rowHtml(S, row, periods, mobileDay, cardLookup, numDays) {
     const rowBucket = cardLookup[row.key] || null;
     const dayBlocks = [];
     const persp = (window.APP && window.APP.editor && window.APP.editor.perspective) || "class";
@@ -230,7 +238,7 @@ window.Editor = (function () {
         bellPeriodSet = new Set(bell.periods.map(p => p.index | 0));
       }
     }
-    for (let d = 0; d < NUM_DAYS; d++) {
+    for (let d = 0; d < numDays; d++) {
       const slots = [];
       for (let pi = 0; pi < periods.length; pi++) {
         const p = periods[pi];

@@ -7,7 +7,15 @@
    genuinely can't fit at the readable minimum cell width, .chrx-grid-scroll
    takes over with a horizontal scrollbar. --chrx-cell-min is the per-period
    floor below which we scroll instead of shrinking further. */
-.chrx-grid{display:flex;flex-direction:column;width:100%;min-width:100%;--chrx-cell-min:46px}
+.chrx-grid{display:flex;flex-direction:column;width:100%;min-width:100%;--chrx-cell-min:34px}
+/* Smart full-bleed editor: on the editor step the page container drops its
+   max-width and most padding so the grid spreads edge-to-edge (no wasted space
+   on the right), and the gap above the grid is minimised. Cells are 1fr so they
+   auto-fill the reclaimed width for ANY period/day count; --chrx-cell-min is the
+   readable floor below which the grid scrolls instead of shrinking further. */
+main:has(#step-6:not(.hidden)){max-width:none !important;padding:6px 10px 8px !important}
+#step-6 #entity-toolbar-mount{margin-bottom:4px}
+#step-6 .chrx-grid-scroll{max-height:calc(100vh - 120px)}
 /* Editor quick-tools parked in the top app bar (next to the breadcrumb). */
 .chrx-topbar-editor-tools{display:none;align-items:center;gap:6px;flex-wrap:nowrap;margin-left:10px;min-width:0;overflow:hidden}
 .chrx-topbar-editor-tools button{flex:0 0 auto}
