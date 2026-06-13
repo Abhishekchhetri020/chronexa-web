@@ -7,7 +7,7 @@
    genuinely can't fit at the readable minimum cell width, .chrx-grid-scroll
    takes over with a horizontal scrollbar. --chrx-cell-min is the per-period
    floor below which we scroll instead of shrinking further. */
-.chrx-grid{display:flex;flex-direction:column;width:100%;min-width:100%;--chrx-cell-min:34px}
+.chrx-grid{display:flex;flex-direction:column;width:100%;min-width:100%;--chrx-cell-min:40px}
 .chrx-day-tabs{display:none;gap:var(--chrx-space-1);padding:0 var(--chrx-space-1)}
 .chrx-editor-tools{display:flex;align-items:center;gap:6px;padding:6px 8px;border:1px solid var(--chrx-line);border-radius:var(--chrx-radius-md);background:rgba(255,255,255,.88);box-shadow:0 1px 2px rgba(15,23,42,.06);position:sticky;top:0;z-index:calc(var(--chrx-z-grid) + 3)}
 .chrx-editor-tool{height:28px;padding:0 10px;border:1px solid var(--chrx-line);border-radius:6px;background:var(--chrx-bg-tile);color:var(--chrx-fg);font-size:var(--chrx-font-eye);font-weight:var(--chrx-fw-semibold);cursor:pointer;white-space:nowrap}
@@ -29,7 +29,8 @@
 .chrx-day-head-group{display:flex;flex-direction:column}
 .chrx-period-head-row,.chrx-day-body-group{display:grid;grid-template-columns:repeat(var(--chrx-periods, 8), minmax(var(--chrx-cell-min,34px), 1fr))}
 .chrx-h-day{min-width:0;text-align:center;font-weight:var(--chrx-fw-semibold);font-size:var(--chrx-font-small);background:var(--chrx-bg-tile);border-right:0;border-bottom:1px solid var(--chrx-line);padding:2px 0}
-.chrx-h-period{width:auto;min-width:0;text-align:center;border-right:1px solid var(--chrx-bg-grid-line);padding:2px 0;color:var(--chrx-fg-tertiary);font-size:var(--chrx-font-eye)}
+.chrx-h-period{width:auto;min-width:0;text-align:center;border-right:1px solid var(--chrx-bg-grid-line);padding:2px 2px;color:var(--chrx-fg-tertiary);font-size:10px;letter-spacing:0;overflow:hidden;white-space:nowrap}
+.chrx-h-period[data-period="8"]{border-right:2px solid var(--chrx-line)}
 .chrx-h-period.is-synthetic{color:rgba(100,116,139,.55);background:repeating-linear-gradient(45deg,rgba(148,163,184,.10) 0 4px,transparent 4px 8px)}
 .chrx-slot{width:auto;min-width:0;border-right:1px solid var(--chrx-bg-grid-line);position:relative}
 .chrx-slot[data-period="8"]{border-right:2px solid var(--chrx-line)}
@@ -76,7 +77,7 @@ body.chrx-card-in-hand .chrx-slot.empty.out-of-bell{outline:1px solid var(--chrx
 .chrx-pending-tab.active{background:var(--chrx-accent-bg);border-color:var(--chrx-accent);color:var(--chrx-accent)}
 .chrx-pending-scroll{flex:1 1 auto;overflow-x:auto;overflow-y:hidden;display:flex;gap:var(--chrx-space-3);padding:var(--chrx-space-1) var(--chrx-space-3);white-space:nowrap}
 .chrx-pending-group{display:flex;flex-direction:column;gap:2px;min-width:120px}
-.chrx-pending-grouplabel{font-size:var(--chrx-font-eye);color:var(--chrx-fg-secondary);font-weight:var(--chrx-fw-semibold);text-transform:uppercase;letter-spacing:.04em}
+.chrx-pending-grouplabel{font-size:var(--chrx-font-eye);color:var(--chrx-fg-secondary);font-weight:var(--chrx-fw-semibold);text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;display:block}
 .chrx-pending-count{display:inline-block;background:var(--chrx-bg-tile-thin);border-radius:var(--chrx-radius-pill);padding:0 4px;margin-left:2px;color:var(--chrx-fg-tertiary)}
 .chrx-pending-cards{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start}
 .chrx-pending-empty{color:var(--chrx-fg-tertiary);font-size:var(--chrx-font-small);padding:var(--chrx-space-3)}
@@ -93,7 +94,7 @@ body.chrx-card-in-hand .chrx-slot.empty.out-of-bell{outline:1px solid var(--chrx
 .chrx-row--selected .chrx-slot{background:rgba(14,165,233,.05)}
 .chrx-pending-class-filter{height:24px;padding:0 8px;border:1px solid var(--chrx-accent);border-radius:var(--chrx-radius-pill);background:var(--chrx-accent-bg);color:var(--chrx-accent);font-size:var(--chrx-font-eye);font-weight:var(--chrx-fw-semibold);cursor:pointer;white-space:nowrap}
 .chrx-editor-lower{display:grid;grid-template-columns:260px minmax(0,1fr);gap:10px;align-items:stretch}
-.chrx-editor-inspector{min-height:96px;border:1px solid var(--chrx-line);border-radius:var(--chrx-radius-md);background:rgba(255,255,255,.72);overflow:auto}
+.chrx-editor-inspector{min-height:140px;border:1px solid var(--chrx-line);border-radius:var(--chrx-radius-md);background:rgba(255,255,255,.72);overflow:auto}
 .chrx-editor-inspector:empty::before{content:"Select a class or hover a card";display:block;padding:18px 14px;color:var(--chrx-fg-tertiary);font-size:var(--chrx-font-small)}
 .chrx-pending-region{min-width:0}
 /* ─── Classic-style hover info tip (appears at bottom of inspector) ─── */
@@ -136,7 +137,7 @@ body.chrx-card-in-hand .chrx-slot.empty.out-of-bell{outline:1px solid var(--chrx
 .chrx-class-panel__actions button{min-height:28px;border:1px solid var(--chrx-line);border-radius:6px;background:#fff;color:#0f172a;font-size:11px;font-weight:700;cursor:pointer}
 .chrx-class-panel__actions button:hover{background:#f8fafc}
 body.chrx-card-in-hand .chrx-class-panel{display:none}
-.chrx-card-panel{background:rgba(255,255,255,.96);color:#111827;padding:12px;font-family:var(--chrx-font-sans)}
+.chrx-card-panel{background:rgba(255,255,255,.96);color:#111827;padding:12px;font-family:var(--chrx-font-sans);height:auto}
 .chrx-card-panel__eyebrow{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#64748b;font-weight:800}
 .chrx-card-panel__title{font-size:14px;line-height:1.15;font-weight:800;margin:2px 0 6px;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* Two-column chip layout — no scrolling needed in 260px inspector */
