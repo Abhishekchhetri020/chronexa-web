@@ -292,11 +292,20 @@ window.Editor = (function () {
     const hue = cardHue(S, card, lesson, subject);
     const cardId = `placed_${card.lessonId}_${day}_${period}`;
     const locked = (card.locked || lesson?.fixedDay != null || lesson?.fixedPeriod != null) ? " locked" : "";
-    // line 2 differs by perspective: class → teacher, teacher → class, room → class
-    const line2 = window.APP.editor.perspective === "teacher" ? classShort : teacherShort;
-    const line3 = window.APP.editor.perspective === "class" ? roomShort
-                : window.APP.editor.perspective === "teacher" ? roomShort
-                : teacherShort;
+    const persp = window.APP.editor.perspective;
+    // Prominent (line1) text is the field that VARIES within this row — the
+    // row's own dimension is already known, so repeating it big is wasted
+    // space (aSc does the same). In a teacher row every card is that teacher,
+    // so the class is what matters; in a class row the subject varies; etc.
+    //   class   row → subject (classes are fixed) | then teacher, room
+    //   teacher row → class   (teacher is fixed)  | then subject, room
+    //   room    row → subject + class             | then teacher
+    //   subject row → class   (subject is fixed)  | then teacher, room
+    let line1, line2, line3;
+    if (persp === "teacher") { line1 = classShort || subjShort; line2 = subjShort; line3 = roomShort; }
+    else if (persp === "subject") { line1 = classShort || teacherShort; line2 = teacherShort; line3 = roomShort; }
+    else if (persp === "room") { line1 = subjShort; line2 = classShort; line3 = teacherShort; }
+    else { line1 = subjShort; line2 = teacherShort; line3 = roomShort; } // class
     const compact = window.APP.editor.density === "compact";
     const densityClass = compact ? " chrx-vkarta--compact" : "";
 
@@ -311,7 +320,7 @@ window.Editor = (function () {
            data-period="${period}"
            data-classroom-id="${esc(card.classroomId || "")}"
            style="--chrx-card-hue:${hue}">
-        <div class="chrx-vk-line1">${esc(subjShort)}</div>
+        <div class="chrx-vk-line1">${esc(line1)}</div>
         ${compact ? "" : `<div class="chrx-vk-line2">${esc(line2)}</div>`}
         ${compact ? "" : `<div class="chrx-vk-line3">${esc(line3)}</div>`}
       </div>
