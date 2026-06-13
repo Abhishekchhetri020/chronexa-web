@@ -399,7 +399,7 @@ body::before{
      single clipped line — so "Sports Meet", "Foundation English" etc. read
      in full inside the card. */
   display:-webkit-box !important; -webkit-line-clamp:2; -webkit-box-orient:vertical;
-  overflow:hidden; word-break:break-word;
+  overflow:hidden; overflow-wrap:break-word;
 }
 .chrx-vk-line2,.chrx-vk-line3{
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;

@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-06-13T12:09:59Z
+/* Chronexa bundle — generated 2026-06-13T12:19:31Z
  *      164 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -15381,6 +15381,10 @@ window.Editor = (function () {
     const cardLookup = buildCardLookup(S, perspective, visiblePeriodSet);
 
     rootEl.classList.add("chrx-editor");
+    // Compact density → shorter rows (subject-only cards), so the taller
+    // readable default rows don't cost vertical density when the user wants
+    // to see more classes at once.
+    rootEl.classList.toggle("chrx-editor--compact", (window.APP.editor.density || "compact") === "compact");
     rootEl.innerHTML = html(S, rows, periods, mobileDay, cardLookup);
 
     wire(rootEl);
@@ -15622,6 +15626,10 @@ window.Editor = (function () {
     const lesson = S._idx.lessonById[card.lessonId];
     const subject = lesson ? S._idx.subjectById[lesson.subjectId] : null;
     const subjShort = subject ? (subject.abbr || subject.name) : "?";
+    // Full name for the PROMINENT line — wrapped to 2 lines it reads better
+    // than a cramped abbr ("Sports Meet" vs "Spo Me"), aSc-style but breaking
+    // on word boundaries rather than mid-word.
+    const subjFull = subject ? (subject.name || subject.abbr) : "?";
     const teacherShort = (lesson?.teacherIds || [])
       .map(tid => S._idx.teacherById[tid])
       .filter(Boolean)
@@ -15653,11 +15661,14 @@ window.Editor = (function () {
     //   teacher row → class   (teacher is fixed)  | then subject, room
     //   room    row → subject + class             | then teacher
     //   subject row → class   (subject is fixed)  | then teacher, room
-    let line1, line2, line3;
-    if (persp === "teacher") { line1 = classShort || subjShort; line2 = subjShort; line3 = roomShort; }
-    else if (persp === "subject") { line1 = classShort || teacherShort; line2 = teacherShort; line3 = roomShort; }
-    else if (persp === "room") { line1 = subjShort; line2 = classShort; line3 = teacherShort; }
-    else { line1 = subjShort; line2 = teacherShort; line3 = roomShort; } // class
+    // Cell shows the prominent (varying) field + ONE secondary line — aSc-clean.
+    // The room/third field lives in the hover tooltip + card-detail panel, so
+    // the cell isn't a clipped 3-line cram.
+    let line1, line2;
+    if (persp === "teacher") { line1 = classShort || subjShort; line2 = subjShort; }
+    else if (persp === "subject") { line1 = classShort || teacherShort; line2 = teacherShort; }
+    else if (persp === "room") { line1 = subjFull; line2 = classShort; }
+    else { line1 = subjFull; line2 = teacherShort; } // class
     const compact = window.APP.editor.density === "compact";
     const densityClass = compact ? " chrx-vkarta--compact" : "";
 
@@ -15674,7 +15685,6 @@ window.Editor = (function () {
            style="--chrx-card-hue:${hue}">
         <div class="chrx-vk-line1">${esc(line1)}</div>
         ${compact ? "" : `<div class="chrx-vk-line2">${esc(line2)}</div>`}
-        ${compact ? "" : `<div class="chrx-vk-line3">${esc(line3)}</div>`}
       </div>
     `;
   }

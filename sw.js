@@ -15,7 +15,7 @@
  */
 
 const CACHE_PREFIX = "chronexa-";
-const APP_VER = "20260612-p144-card-text";
+const APP_VER = "20260612-p145-aSc-cards";
 const CACHE_NAME = CACHE_PREFIX + APP_VER;
 
 // Minimal app shell for offline support.
