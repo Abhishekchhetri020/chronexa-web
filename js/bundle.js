@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-06-13T17:41:54Z
+/* Chronexa bundle — generated 2026-06-13T17:50:53Z
  *      164 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -15685,10 +15685,33 @@ window.Editor = (function () {
     `;
   }
 
+  // A compact card code for the narrow By-Class cells. Prefer the school's own
+  // short abbreviation; if it's missing or just equals the full name (so it
+  // would wrap/clip in a ~30px cell), derive one: keep already-short names
+  // as-is (GK, E.V.S, I.T), initial-ise multi-word names (Sports Meet
+  // Practice → SMP), and take a 3-letter stem of a single long word
+  // (Maths → Mat). The full name stays in the hover tooltip + card detail, so
+  // nothing is lost — this only governs the at-a-glance text in the cell.
+  function subjectCode(subject) {
+    const name = (subject.name || subject.abbr || "?").trim();
+    const abbr = (subject.abbr || "").trim();
+    // Respect the school's own abbreviation whenever it's a real, distinct code
+    // (the user asked to "use the abbreviations that are already there"). Only
+    // when there's no real abbr — it's missing or just repeats the full name —
+    // do we derive a tidy one so the card doesn't show a clipped full word.
+    if (abbr && abbr !== name) return abbr;
+    const bare = name.replace(/[.\s]/g, "");
+    if (bare.length <= 4) return name;                  // already short: GK, E.V.S, S.S.T
+    const words = name.split(/\s+/).filter(w => !/^(of|the|and|&|period|pd|a)$/i.test(w));
+    if (words.length >= 2) return words.map(w => w[0].toUpperCase()).join("").slice(0, 4);
+    return name[0].toUpperCase() + name.slice(1, 3).toLowerCase();   // Maths → Mat
+  }
+
   function vkartaHtml(S, card, day, period, rowKey) {
     const lesson = S._idx.lessonById[card.lessonId];
     const subject = lesson ? S._idx.subjectById[lesson.subjectId] : null;
     const subjShort = subject ? (subject.abbr || subject.name) : "?";
+    const subjCode = subject ? subjectCode(subject) : "?";
     // Full name for the PROMINENT line — wrapped to 2 lines it reads better
     // than a cramped abbr ("Sports Meet" vs "Spo Me"), aSc-style but breaking
     // on word boundaries rather than mid-word.
@@ -15741,12 +15764,12 @@ window.Editor = (function () {
     if (persp === "teacher") { line1 = classShort || subjShort; line2 = subjShort; }
     else if (persp === "subject") { line1 = classShort || teacherShort; line2 = teacherShort; }
     else if (persp === "room") { line1 = subjFull; line2 = classShort; }
-    // By-Class: the subject's ABBREVIATION alone is enough (the class is the
-    // row, colour already encodes subject/teacher). aSc uses short codes here
-    // for exactly this reason — at ~27px-wide cells the full name can't fit
-    // readably, but the school's own abbr ("Mat", "Eng", "Hin") does. Full
-    // name stays in the hover tooltip + card-detail panel.
-    else { line1 = subjShort; line2 = ""; } // class
+    // By-Class: a compact subject CODE alone is enough (the class is the row,
+    // colour already encodes subject/teacher). aSc uses short codes here for
+    // exactly this reason — at ~30px-wide cells the full name can't fit
+    // readably. subjectCode() uses the school's own abbr when it fits, else
+    // derives a tidy code. Full name stays in the hover tooltip + card detail.
+    else { line1 = subjCode; line2 = ""; } // class
     const compact = window.APP.editor.density === "compact";
     const densityClass = compact ? " chrx-vkarta--compact" : "";
 
