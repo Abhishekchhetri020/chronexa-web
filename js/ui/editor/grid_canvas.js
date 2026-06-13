@@ -339,9 +339,12 @@ window.Editor = (function () {
     if (persp === "teacher") { line1 = classShort || subjShort; line2 = subjShort; }
     else if (persp === "subject") { line1 = classShort || teacherShort; line2 = teacherShort; }
     else if (persp === "room") { line1 = subjFull; line2 = classShort; }
-    // By-Class: the subject name alone is enough (the class is the row, and
-    // colour already encodes subject/teacher) — keep the cell clean, like aSc.
-    else { line1 = subjFull; line2 = ""; } // class
+    // By-Class: the subject's ABBREVIATION alone is enough (the class is the
+    // row, colour already encodes subject/teacher). aSc uses short codes here
+    // for exactly this reason — at ~27px-wide cells the full name can't fit
+    // readably, but the school's own abbr ("Mat", "Eng", "Hin") does. Full
+    // name stays in the hover tooltip + card-detail panel.
+    else { line1 = subjShort; line2 = ""; } // class
     const compact = window.APP.editor.density === "compact";
     const densityClass = compact ? " chrx-vkarta--compact" : "";
 

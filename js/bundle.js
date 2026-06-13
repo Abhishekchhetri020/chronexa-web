@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-06-13T12:58:41Z
+/* Chronexa bundle — generated 2026-06-13T17:41:54Z
  *      164 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -9272,6 +9272,12 @@ window.Inspector = (function () {
     crumbs.appendChild(el("span", { class: "chrx-crumbs__sep" }, "/"));
     crumbs.appendChild(el("span", { class: "chrx-crumbs__current" }, "Editor"));
 
+    // Host for the editor quick-tools (Lessons / density / skin / color /
+    // perspective + unplaced count). main.js moves #editor-quick-tools in here
+    // when the editor is active, so those controls sit next to the breadcrumb
+    // and the grid reclaims that row for taller cards.
+    const editorToolsSlot = el("div", { class: "chrx-topbar-editor-tools", id: "chrx-topbar-editor-slot" });
+
     const search = el("div", { class: "chrx-kbd-search",
       onclick: () => openPalette() });
     search.appendChild(el("span", { class: "chrx-kbd-search__icon" }, "Q"));
@@ -9297,6 +9303,7 @@ window.Inspector = (function () {
     return el("header", { class: "chrx-topbar" },
       sideBtn,
       crumbs,
+      editorToolsSlot,
       el("div", { class: "chrx-topbar__spacer" }),
       search,
       actions,
@@ -15734,9 +15741,12 @@ window.Editor = (function () {
     if (persp === "teacher") { line1 = classShort || subjShort; line2 = subjShort; }
     else if (persp === "subject") { line1 = classShort || teacherShort; line2 = teacherShort; }
     else if (persp === "room") { line1 = subjFull; line2 = classShort; }
-    // By-Class: the subject name alone is enough (the class is the row, and
-    // colour already encodes subject/teacher) — keep the cell clean, like aSc.
-    else { line1 = subjFull; line2 = ""; } // class
+    // By-Class: the subject's ABBREVIATION alone is enough (the class is the
+    // row, colour already encodes subject/teacher). aSc uses short codes here
+    // for exactly this reason — at ~27px-wide cells the full name can't fit
+    // readably, but the school's own abbr ("Mat", "Eng", "Hin") does. Full
+    // name stays in the hover tooltip + card-detail panel.
+    else { line1 = subjShort; line2 = ""; } // class
     const compact = window.APP.editor.density === "compact";
     const densityClass = compact ? " chrx-vkarta--compact" : "";
 
@@ -19750,6 +19760,7 @@ window.StartScreen = (function () {
     for (let i = 1; i <= 6; i++) {
       document.getElementById("step-" + i)?.classList.toggle("hidden", i !== n);
     }
+    relocateEditorTools(n === 6);
     document.querySelectorAll(".step-btn").forEach(b => {
       const active = parseInt(b.dataset.step, 10) === n;
       // step 6 has its own emerald primary; don't paint it blue when active
@@ -19765,6 +19776,19 @@ window.StartScreen = (function () {
     renderActiveStep();
     // notify the editor activator + other listeners
     document.dispatchEvent(new CustomEvent("step:changed", { detail: { step: n } }));
+  }
+
+  // Park the editor quick-tools (Lessons / density / skin / color / perspective
+  // + unplaced count) in the top app bar next to the breadcrumb while the
+  // editor is active, so the grid reclaims that toolbar row for taller cards.
+  // When the editor isn't active the slot is hidden. Idempotent and defensive:
+  // if the topbar slot isn't present, the tools stay in their fallback home.
+  function relocateEditorTools(editorActive) {
+    const tools = document.getElementById("editor-quick-tools");
+    const slot = document.getElementById("chrx-topbar-editor-slot");
+    if (!tools || !slot) return;
+    if (tools.parentElement !== slot) slot.appendChild(tools);
+    slot.style.display = editorActive ? "flex" : "none";
   }
   function renderActiveStep() {
     switch (window.APP.step) {

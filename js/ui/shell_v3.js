@@ -104,6 +104,12 @@
     crumbs.appendChild(el("span", { class: "chrx-crumbs__sep" }, "/"));
     crumbs.appendChild(el("span", { class: "chrx-crumbs__current" }, "Editor"));
 
+    // Host for the editor quick-tools (Lessons / density / skin / color /
+    // perspective + unplaced count). main.js moves #editor-quick-tools in here
+    // when the editor is active, so those controls sit next to the breadcrumb
+    // and the grid reclaims that row for taller cards.
+    const editorToolsSlot = el("div", { class: "chrx-topbar-editor-tools", id: "chrx-topbar-editor-slot" });
+
     const search = el("div", { class: "chrx-kbd-search",
       onclick: () => openPalette() });
     search.appendChild(el("span", { class: "chrx-kbd-search__icon" }, "Q"));
@@ -129,6 +135,7 @@
     return el("header", { class: "chrx-topbar" },
       sideBtn,
       crumbs,
+      editorToolsSlot,
       el("div", { class: "chrx-topbar__spacer" }),
       search,
       actions,

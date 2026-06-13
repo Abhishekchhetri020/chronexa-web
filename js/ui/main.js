@@ -138,6 +138,7 @@
     for (let i = 1; i <= 6; i++) {
       document.getElementById("step-" + i)?.classList.toggle("hidden", i !== n);
     }
+    relocateEditorTools(n === 6);
     document.querySelectorAll(".step-btn").forEach(b => {
       const active = parseInt(b.dataset.step, 10) === n;
       // step 6 has its own emerald primary; don't paint it blue when active
@@ -153,6 +154,19 @@
     renderActiveStep();
     // notify the editor activator + other listeners
     document.dispatchEvent(new CustomEvent("step:changed", { detail: { step: n } }));
+  }
+
+  // Park the editor quick-tools (Lessons / density / skin / color / perspective
+  // + unplaced count) in the top app bar next to the breadcrumb while the
+  // editor is active, so the grid reclaims that toolbar row for taller cards.
+  // When the editor isn't active the slot is hidden. Idempotent and defensive:
+  // if the topbar slot isn't present, the tools stay in their fallback home.
+  function relocateEditorTools(editorActive) {
+    const tools = document.getElementById("editor-quick-tools");
+    const slot = document.getElementById("chrx-topbar-editor-slot");
+    if (!tools || !slot) return;
+    if (tools.parentElement !== slot) slot.appendChild(tools);
+    slot.style.display = editorActive ? "flex" : "none";
   }
   function renderActiveStep() {
     switch (window.APP.step) {

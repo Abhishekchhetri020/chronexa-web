@@ -24,7 +24,7 @@
 <link rel="stylesheet" href="css/solver_ui.css">
 <link rel="stylesheet" href="css/ribbon.css">
 <link rel="stylesheet" href="css/entities.css">
-<link rel="stylesheet" href="css/editor.css?v=20260612-p148-header-fit">
+<link rel="stylesheet" href="css/editor.css?v=20260613-p149-abbr-toolbar-bigcards">
 <link rel="stylesheet" href="css/drag_ux.css">
 <link rel="stylesheet" href="css/teacher_colors.css">
 <link rel="stylesheet" href="css/substitution.css">
@@ -35,7 +35,7 @@
      cascade. Editorial-refined: Fraunces display + Inter Tight body +
      JetBrains Mono stats; paper neutrals + deep teal accent.
      See Chronexa-DESIGN.md and mockups/chronexa-studio-v3.html. -->
-<link rel="stylesheet" href="css/design-v3.css?v=20260612-p148-header-fit">
+<link rel="stylesheet" href="css/design-v3.css?v=20260613-p149-abbr-toolbar-bigcards">
 
 <!-- Excel + gzip libs for ribbon Export/Snapshot (loaded once) -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
@@ -181,18 +181,17 @@
     <!-- Entity toolbar: Classic-style icon strip -->
     <div id="entity-toolbar-mount"></div>
 
-    <div class="flex items-center justify-between mb-1" style="gap:8px;flex-wrap:wrap;">
-      <div class="flex items-center gap-2" style="min-width:0;">
-        <h2 class="text-base font-bold text-blue-900" style="white-space:nowrap;">🪄 Editor</h2>
-        <span id="editor-unplaced-count" class="text-xs text-slate-500 font-medium" style="white-space:nowrap;">— unplaced</span>
-      </div>
-      <div class="flex gap-1.5 flex-wrap">
-        <button id="editor-lesson-grid" class="px-2 py-1 text-xs rounded border border-blue-300 bg-blue-50 text-blue-900 hover:bg-blue-100" title="Open the class × subject lesson matrix">📋 Lessons</button>
-        <button id="editor-density" class="px-2 py-1 text-xs rounded border border-slate-300 hover:bg-slate-100" title="Toggle card density">Compact</button>
-        <button id="editor-toggle-skin" class="px-2 py-1 text-xs rounded border border-slate-300 hover:bg-slate-100">Classic skin</button>
-        <button id="editor-color-by" class="px-2 py-1 text-xs rounded border border-slate-300 hover:bg-slate-100" title="Change card color grouping">Color: Subject</button>
-        <button id="editor-perspective" class="px-2 py-1 text-xs rounded bg-slate-100 hover:bg-slate-200">By Class</button>
-      </div>
+    <!-- Editor quick-tools. Relocated into the top app bar (next to the
+         "Untitled / Editor" breadcrumb) at runtime by main.js so this row
+         doesn't cost the grid vertical space — see relocateEditorTools().
+         It stays here as the fallback home if the topbar slot isn't present. -->
+    <div id="editor-quick-tools" class="flex items-center gap-1.5 flex-wrap mb-1" style="gap:6px;">
+      <span id="editor-unplaced-count" class="text-xs text-slate-500 font-medium" style="white-space:nowrap;">— unplaced</span>
+      <button id="editor-lesson-grid" class="px-2 py-1 text-xs rounded border border-blue-300 bg-blue-50 text-blue-900 hover:bg-blue-100" title="Open the class × subject lesson matrix">📋 Lessons</button>
+      <button id="editor-density" class="px-2 py-1 text-xs rounded border border-slate-300 hover:bg-slate-100" title="Toggle card density">Compact</button>
+      <button id="editor-toggle-skin" class="px-2 py-1 text-xs rounded border border-slate-300 hover:bg-slate-100">Classic skin</button>
+      <button id="editor-color-by" class="px-2 py-1 text-xs rounded border border-slate-300 hover:bg-slate-100" title="Change card color grouping">Color: Subject</button>
+      <button id="editor-perspective" class="px-2 py-1 text-xs rounded bg-slate-100 hover:bg-slate-200">By Class</button>
     </div>
 
     <div id="editor-banner" class="mb-3 px-3 py-2 rounded bg-amber-50 border-l-4 border-amber-400 text-xs text-amber-900 hidden">
@@ -247,7 +246,7 @@
 
 <!-- ─────────────────────── SCRIPTS ─────────────────────── -->
 <!-- Bump APP_VER on every deploy so the browser refetches the JS bundle -->
-<script>window.APP_VER = "20260612-p148-header-fit";</script>
+<script>window.APP_VER = "20260613-p149-abbr-toolbar-bigcards";</script>
 <!-- Nuclear SW migration: if an old cache-first SW is still controlling,
      unregister it and reload to pick up the new network-first SW. -->
 <script>
