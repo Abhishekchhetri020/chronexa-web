@@ -38,6 +38,7 @@ window.Editor = (function () {
     wire(rootEl);
     syncCardInHandClass();
     autoFitRowLabels(rootEl);
+    autoFitLine1(rootEl);
     syncUnplacedCount(S);
     updateClassPanel(S);
     if (window.ConstraintExplainer && typeof window.ConstraintExplainer.attachTooltip === "function") {
@@ -971,6 +972,81 @@ window.Editor = (function () {
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g,
       c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+  }
+
+  // Smart auto-fit for card primary text. The 6-day × 8-period grid has
+  // ~27px-wide cells — narrower than "Maths" at the default 11.5px font —
+  // so without this pass long subject names wrap mid-word as "MA / THS".
+  // Strategy: prefer the full name, shrink the font step-by-step (nowrap so
+  // it never breaks mid-word), and only fall back to the subject's `abbr`
+  // when the full name can't fit readably even at the min size. Last resort
+  // is CSS ellipsis. Idempotent — safe to call on every render.
+  function autoFitLine1(rootEl) {
+    if (!rootEl) return;
+    const S = window.APP && window.APP.school;
+    const lines = rootEl.querySelectorAll(".chrx-vk-line1");
+    if (!lines.length) return;
+
+    const MIN_SIZE = 8;
+    const FUDGE = 0.5;
+
+    for (const el of lines) {
+      // Reset any prior fit state so scrollWidth measures the natural render
+      el.style.fontSize = "";
+      el.style.whiteSpace = "";
+      el.style.textOverflow = "";
+      el.style.overflow = "";
+      delete el.dataset.fit;
+
+      if (el.scrollWidth <= el.clientWidth + FUDGE) continue;
+
+      const card = el.closest(".chrx-vkarta");
+      const lessonId = card ? card.dataset.lessonId : null;
+      const lesson = lessonId && S ? S._idx.lessonById[lessonId] : null;
+      const subject = lesson ? S._idx.subjectById[lesson.subjectId] : null;
+      const abbr = subject ? subject.abbr : null;
+      const original = el.textContent;
+      const startSize = parseFloat(getComputedStyle(el).fontSize) || 11.5;
+
+      // 1) Shrink the current text. nowrap so the text never breaks mid-word.
+      el.style.whiteSpace = "nowrap";
+      let size = startSize;
+      while (size > MIN_SIZE && el.scrollWidth > el.clientWidth + FUDGE) {
+        size -= 0.5;
+        el.style.fontSize = size + "px";
+      }
+      if (el.scrollWidth <= el.clientWidth + FUDGE) {
+        el.dataset.fit = "shrink";
+        continue;
+      }
+
+      // 2) At min size, still overflowing → try the subject's abbreviation
+      if (abbr && abbr !== original) {
+        el.textContent = abbr;
+        el.style.fontSize = "";
+        el.style.whiteSpace = "nowrap";
+        if (el.scrollWidth <= el.clientWidth + FUDGE) {
+          el.dataset.fit = "abbr";
+          continue;
+        }
+        size = startSize;
+        while (size > MIN_SIZE && el.scrollWidth > el.clientWidth + FUDGE) {
+          size -= 0.5;
+          el.style.fontSize = size + "px";
+        }
+        if (el.scrollWidth <= el.clientWidth + FUDGE) {
+          el.dataset.fit = "abbr-shrink";
+          continue;
+        }
+      }
+
+      // 3) Give up — truncate with ellipsis on whatever text we have
+      el.style.fontSize = "";
+      el.style.whiteSpace = "nowrap";
+      el.style.overflow = "hidden";
+      el.style.textOverflow = "ellipsis";
+      el.dataset.fit = "truncate";
+    }
   }
 
   window.EditorCardInspector = {
