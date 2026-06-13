@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-06-13T12:27:35Z
+/* Chronexa bundle — generated 2026-06-13T12:58:41Z
  *      164 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -15626,7 +15626,8 @@ window.Editor = (function () {
     }
     for (let d = 0; d < NUM_DAYS; d++) {
       const slots = [];
-      for (const p of periods) {
+      for (let pi = 0; pi < periods.length; pi++) {
+        const p = periods[pi];
         const cards = rowBucket ? rowBucket[d + "_" + p.index] : null;
         const outOfBell = p.synthetic || (bellPeriodSet && !bellPeriodSet.has(p.index | 0));
         if (cards && cards.length > 0) {
@@ -15638,9 +15639,21 @@ window.Editor = (function () {
           // grid (chrx-slot--split).
           const splitClass = cards.length === 2 ? " chrx-slot--split2"
                            : cards.length > 2  ? " chrx-slot--split" : "";
+          // Lab-double / double-period lesson → span TWO period columns as one
+          // wide block (aSc-style), instead of a single card + an empty cell.
+          // Only when this is a single lab-double card, there's a next period
+          // in this day, and that next cell is free for this row (the lesson
+          // occupies it). Skip the consumed next period so the grid stays
+          // column-aligned with the period header.
+          const firstLesson = cards.length === 1 ? S._idx.lessonById[cards[0].lessonId] : null;
+          const nextP = periods[pi + 1];
+          const nextFree = nextP && !(rowBucket && rowBucket[d + "_" + nextP.index]);
+          const isLab = !!(firstLesson && firstLesson.isLabDouble && nextFree);
+          const spanClass = isLab ? " chrx-slot--span2" : "";
           slots.push(
-            `<div class="chrx-slot${oob}${splitClass}" data-day="${d}" data-period="${p.index}" data-row="${esc(row.key)}">${cardListHtml}</div>`
+            `<div class="chrx-slot${oob}${splitClass}${spanClass}" data-day="${d}" data-period="${p.index}" data-row="${esc(row.key)}">${cardListHtml}</div>`
           );
+          if (isLab) pi++; // the lesson covers the next period too
         } else {
           const oob = outOfBell ? " out-of-bell" : "";
           slots.push(
@@ -15693,6 +15706,16 @@ window.Editor = (function () {
     })();
 
     const hue = cardHue(S, card, lesson, subject);
+    // Co-taught lesson (≥2 teachers) in Color:Teacher mode → a second hue so
+    // the card renders as a diagonal of BOTH teachers' colours (user request).
+    let hue2 = null;
+    if ((window.APP.editor.colorBy || "subject") === "teacher" &&
+        lesson && (lesson.teacherIds || []).length >= 2) {
+      const t2 = S._idx.teacherById[lesson.teacherIds[1]];
+      const h2 = (t2 && hexHue(t2.color));
+      hue2 = (h2 == null ? hashHue(t2 && (t2.abbr || t2.name)) : h2);
+    }
+    const bicolor = hue2 != null ? " chrx-vkarta--bicolor" : "";
     const cardId = `placed_${card.lessonId}_${day}_${period}`;
     const locked = (card.locked || lesson?.fixedDay != null || lesson?.fixedPeriod != null) ? " locked" : "";
     const persp = window.APP.editor.perspective;
@@ -15711,7 +15734,9 @@ window.Editor = (function () {
     if (persp === "teacher") { line1 = classShort || subjShort; line2 = subjShort; }
     else if (persp === "subject") { line1 = classShort || teacherShort; line2 = teacherShort; }
     else if (persp === "room") { line1 = subjFull; line2 = classShort; }
-    else { line1 = subjFull; line2 = teacherShort; } // class
+    // By-Class: the subject name alone is enough (the class is the row, and
+    // colour already encodes subject/teacher) — keep the cell clean, like aSc.
+    else { line1 = subjFull; line2 = ""; } // class
     const compact = window.APP.editor.density === "compact";
     const densityClass = compact ? " chrx-vkarta--compact" : "";
 
@@ -15719,15 +15744,15 @@ window.Editor = (function () {
     // rich hover tooltip (info header + violations). A title here made the
     // browser's native tooltip overlap the explainer with duplicate text.
     return `
-      <div class="chrx-vkarta${locked}${densityClass}"
+      <div class="chrx-vkarta${locked}${densityClass}${bicolor}"
            data-card-id="${cardId}"
            data-lesson-id="${esc(card.lessonId)}"
            data-day="${day}"
            data-period="${period}"
            data-classroom-id="${esc(card.classroomId || "")}"
-           style="--chrx-card-hue:${hue}">
+           style="--chrx-card-hue:${hue}${hue2 != null ? `;--chrx-card-hue2:${hue2}` : ""}">
         <div class="chrx-vk-line1">${esc(line1)}</div>
-        ${compact ? "" : `<div class="chrx-vk-line2">${esc(line2)}</div>`}
+        ${compact || !line2 ? "" : `<div class="chrx-vk-line2">${esc(line2)}</div>`}
       </div>
     `;
   }

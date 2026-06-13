@@ -34,6 +34,10 @@
 .chrx-h-period{width:auto;min-width:0;text-align:center;border-right:1px solid var(--chrx-bg-grid-line);padding:2px 2px;color:var(--chrx-fg-tertiary);font-size:10px;letter-spacing:0;overflow:hidden;white-space:nowrap}
 .chrx-h-period.is-synthetic{color:rgba(100,116,139,.55);background:repeating-linear-gradient(45deg,rgba(148,163,184,.10) 0 4px,transparent 4px 8px)}
 .chrx-slot{width:auto;min-width:0;border-right:1px solid var(--chrx-bg-grid-line);position:relative}
+/* Lab-double / double-period lesson spans two period columns as one wide
+   block (aSc-style). The next period's cell is not rendered (grid_canvas
+   skips it), so the grid stays aligned with the period header. */
+.chrx-slot--span2{grid-column:span 2}
 /* Day-boundary separator comes from .chrx-day-head-group/.chrx-day-body-group's
    2px right border — period-count-agnostic. The old hardcoded [data-period="8"]
    rules drew a spurious heavy line mid-day on 9-period schools and were
