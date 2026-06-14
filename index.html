@@ -25,7 +25,7 @@
 <link rel="stylesheet" href="css/solver_ui.css">
 <link rel="stylesheet" href="css/ribbon.css">
 <link rel="stylesheet" href="css/entities.css">
-<link rel="stylesheet" href="css/editor.css?v=20260614-p158-lesson-grid-advanced">
+<link rel="stylesheet" href="css/editor.css?v=20260614-p160-grid-glowup">
 <link rel="stylesheet" href="css/drag_ux.css">
 <link rel="stylesheet" href="css/teacher_colors.css">
 <link rel="stylesheet" href="css/substitution.css">
@@ -36,7 +36,7 @@
      cascade. Editorial-refined: Fraunces display + Inter Tight body +
      JetBrains Mono stats; paper neutrals + deep teal accent.
      See Chronexa-DESIGN.md and mockups/chronexa-studio-v3.html. -->
-<link rel="stylesheet" href="css/design-v3.css?v=20260614-p158-lesson-grid-advanced">
+<link rel="stylesheet" href="css/design-v3.css?v=20260614-p160-grid-glowup">
 <!-- Landing-page pixel letterform: a 5-row grid of mini timetable cells
      that spell "CHRONEXA" in the upper portion of the start screen.
      Sits behind the hero content, decorative (aria-hidden).
@@ -206,6 +206,7 @@
       <button id="editor-lesson-grid" class="px-2 py-1 text-xs rounded border border-blue-300 bg-blue-50 text-blue-900 hover:bg-blue-100" title="Open the class × subject lesson matrix">📋 Lessons</button>
       <button id="editor-density" class="px-2 py-1 text-xs rounded border border-slate-300 hover:bg-slate-100" title="Toggle card density">Compact</button>
       <button id="editor-toggle-skin" class="px-2 py-1 text-xs rounded border border-slate-300 hover:bg-slate-100">Classic skin</button>
+      <button id="editor-toggle-dark" class="px-2 py-1 text-xs rounded border border-slate-300 hover:bg-slate-100" title="Toggle editor dark mode">🌙 Dark</button>
       <button id="editor-color-by" class="px-2 py-1 text-xs rounded border border-slate-300 hover:bg-slate-100" title="Change card color grouping">Color: Subject</button>
       <button id="editor-perspective" class="px-2 py-1 text-xs rounded bg-slate-100 hover:bg-slate-200">By Class</button>
     </div>
@@ -335,7 +336,7 @@
 
 <!-- ─────────────────────── SCRIPTS ─────────────────────── -->
 <!-- Bump APP_VER on every deploy so the browser refetches the JS bundle -->
-<script>window.APP_VER = "20260614-p159-first-five-minutes";</script>
+<script>window.APP_VER = "20260614-p160-grid-glowup";</script>
 <!-- Nuclear SW migration: if an old cache-first SW is still controlling,
      unregister it and reload to pick up the new network-first SW. -->
 <script>
@@ -721,6 +722,29 @@
   } catch (e) {
     console.warn("[relation-enforcer] relation_enforcer.js module import failed", e);
   }
+</script>
+
+<!-- Plan B: editor dark-mode toggle. Self-contained (no main.js dependency) so
+     it can't collide with concurrent editor wiring. Adds body.chrx-editor-dark;
+     the styling lives in css/design-v3.css. Persists the choice. -->
+<script>
+(function () {
+  "use strict";
+  var KEY = "chronexa.editor.dark";
+  function apply(on) {
+    document.body.classList.toggle("chrx-editor-dark", on);
+    var btn = document.getElementById("editor-toggle-dark");
+    if (btn) btn.textContent = on ? "☀️ Light" : "🌙 Dark";
+  }
+  try { if (localStorage.getItem(KEY) === "1") apply(true); } catch (e) {}
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest && e.target.closest("#editor-toggle-dark");
+    if (!btn) return;
+    var on = !document.body.classList.contains("chrx-editor-dark");
+    apply(on);
+    try { localStorage.setItem(KEY, on ? "1" : "0"); } catch (e2) {}
+  });
+})();
 </script>
 
 </body>

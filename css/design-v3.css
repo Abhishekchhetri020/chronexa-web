@@ -393,9 +393,18 @@ body::before{
 .chrx-vkarta:has(.chrx-vk-line2) .chrx-vk-line1{ margin-bottom:auto; }
 .chrx-vkarta .chrx-vk-line2{ margin-top:auto; }
 .chrx-vkarta:hover{
-  transform:scale(1.02) translateY(-1.5px) !important;
-  box-shadow:0 4px 12px rgba(26,23,20,.18), 0 1px 2px hsl(var(--hue) 60% 28%/.2) !important;
-  z-index:2;
+  /* Physical "lift": the card rises and casts a deeper, layered shadow (a tight
+     contact shadow + two diffuse ambient layers) so it reads as floating above
+     the grid rather than just brightening. */
+  transform:scale(1.03) translateY(-2px) !important;
+  box-shadow:
+    0 1px 2px hsl(var(--hue) 60% 25%/.32),
+    0 6px 14px rgba(26,23,20,.22),
+    0 12px 28px rgba(26,23,20,.16) !important;
+  z-index:4;
+}
+@media (prefers-reduced-motion: reduce){
+  .chrx-vkarta:hover{ transform:none !important; }
 }
 .chrx-vkarta:active{cursor:grabbing; transform:scale(1) translateY(0) !important;}
 .chrx-vk-line1{
@@ -427,11 +436,25 @@ body::before{
    cards' halos and the two halves of a split/conflict slot, reading as
    "overlapping". Inset keeps the mark inside the cell so the grid stays clean
    even where cards are adjacent or a slot is double-booked. */
+/* Multi-layer conflict glow: crisp inner colour ring (keeps the card boundary
+   clean) → a tight coloured edge → a soft outer "danger-zone" diffusion. The
+   conflicting card lifts above its neighbours (z-index) so the glow isn't
+   clipped by adjacent cards. */
 .chrx-vkarta[data-halo="red"]{
-  box-shadow:inset 0 0 0 2px var(--rust), 0 1px 3px rgba(26,23,20,.12);
+  box-shadow:
+    inset 0 0 0 2px var(--rust),
+    0 0 0 1px hsl(8 72% 46% / .55),
+    0 0 9px 1px hsl(8 78% 50% / .45),
+    0 1px 3px rgba(26,23,20,.18);
+  z-index:3;
 }
 .chrx-vkarta[data-halo="amber"]{
-  box-shadow:inset 0 0 0 2px var(--gold), 0 1px 3px rgba(26,23,20,.12);
+  box-shadow:
+    inset 0 0 0 2px var(--gold),
+    0 0 0 1px hsl(40 72% 46% / .5),
+    0 0 9px 1px hsl(44 82% 52% / .4),
+    0 1px 3px rgba(26,23,20,.18);
+  z-index:3;
 }
 
 /* Grid rowlabels + headers — paper aesthetic */
@@ -1226,3 +1249,40 @@ input:focus,select:focus,textarea:focus{
 }
 
 /* Bump APP_VER on every deploy so the browser refetches the JS bundle */
+/* ── Plan B: editor dark mode (OLED canvas, neon halos) ────────────────────
+   body.chrx-editor-dark (toggled by the 🌙 Dark button). Scoped to the grid
+   surface so the rest of the paper UI is untouched. The skin is var-driven, so
+   redefining the palette on .chrx-grid-scroll flips every grid surface; card
+   hues stay vivid (neon on black) and conflict halos glow. */
+body.chrx-editor-dark .chrx-grid-scroll{
+  --paper:#0b0b0d; --paper-2:#101014; --paper-3:#16161c;
+  --ink:#f3f3f6; --ink-2:#cbcbd4; --ink-3:#8a8a95;
+  --line:#26262e; --line-soft:#1b1b21;
+  --chrx-bg:#0b0b0d; --chrx-bg-canvas:#000; --chrx-bg-tile:#0b0b0d;
+  --chrx-bg-panel:#101014; --chrx-bg-grid-line:#222227;
+  --chrx-fg:#f3f3f6; --chrx-fg-secondary:#cbcbd4; --chrx-fg-tertiary:#8a8a95;
+  background:#000 !important; border-color:#222227 !important;
+}
+body.chrx-editor-dark .chrx-grid-scroll .chrx-rowlabel,
+body.chrx-editor-dark .chrx-grid-scroll .chrx-row-head,
+body.chrx-editor-dark .chrx-grid-scroll .chrx-h-day{
+  background:#0b0b0d !important; color:#e9e9ee !important; border-color:#222227 !important;
+}
+body.chrx-editor-dark .chrx-grid-scroll .chrx-h-period{ color:#9a9aa3 !important; }
+/* Cards read as neon on black: a touch more saturation + a faint own-hue glow. */
+body.chrx-editor-dark .chrx-vkarta{
+  background:hsl(var(--hue) 82% 53%) !important;
+  box-shadow:inset 0 0 0 1px hsl(var(--hue) 70% 62% / .4),
+             0 0 7px hsl(var(--hue) 88% 52% / .28) !important;
+}
+body.chrx-editor-dark .chrx-vkarta:hover{
+  box-shadow:0 0 0 1px hsl(var(--hue) 85% 62% / .65),
+             0 0 16px hsl(var(--hue) 92% 56% / .5),
+             0 8px 20px rgba(0,0,0,.6) !important;
+}
+body.chrx-editor-dark .chrx-vkarta[data-halo="red"]{
+  box-shadow:inset 0 0 0 2px #ff5a3c, 0 0 12px 1px hsl(8 92% 56% / .7) !important;
+}
+body.chrx-editor-dark .chrx-vkarta[data-halo="amber"]{
+  box-shadow:inset 0 0 0 2px #ffc04d, 0 0 12px 1px hsl(42 96% 56% / .6) !important;
+}

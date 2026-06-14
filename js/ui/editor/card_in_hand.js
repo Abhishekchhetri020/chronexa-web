@@ -10,8 +10,12 @@
 
   let ghost = null, inHand = null, carryPanel = null, collisionMenu = null;
   let dx = 0, dy = 0, px = 0, py = 0;
+  let rx = 0, ry = 0, renderInit = false;   // eased render position (ghost inertia)
   let rafId = 0, lastValidate = 0, lastSlot = null;
   const VALIDATE_MS = 16;
+  const REDUCED_MOTION = typeof matchMedia === "function" &&
+    matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const EASE = REDUCED_MOTION ? 1 : 0.28;   // 1 = snap (no inertia)
 
   const HUE = { MA:220,MAT:220,MATH:220,MATHS:220,EN:12,ENG:12,ENGL:12,HI:32,HIN:32,HINDI:32,
     SC:150,SCI:150,SCIE:150,SS:50,SST:50,SOC:50,MU:285,MUS:285,AR:330,ART:330,
@@ -89,6 +93,7 @@
       // (the first mousemove corrects it). BUG_REPORT_2026-06-13 S1.1.
       px = (typeof d.sourceX === "number") ? d.sourceX : 0;
       py = (typeof d.sourceY === "number") ? d.sourceY : 0;
+      rx = px; ry = py; renderInit = true;   // start the eased ghost at the pickup point
       apply();
       paintAllSlots();
       document.addEventListener("mousemove", onMove, true);
@@ -234,21 +239,36 @@
   function onMove(e) {
     if (!ghost) return;
     px = e.clientX; py = e.clientY;
+    if (!renderInit) { rx = px; ry = py; renderInit = true; }
     if (dragTooltipEl && dragTooltipEl.style.display !== "none") {
       positionDragTooltip(e.clientX, e.clientY);
     }
     if (!rafId) rafId = requestAnimationFrame(flush);
   }
-  
+
   function flush() {
     rafId = 0;
     if (!ghost) return;
+    // Ease the rendered position toward the cursor so the ghost trails with a
+    // little weight (inertia), and keep animating until it settles — so it
+    // glides to a stop after the pointer halts rather than snapping.
+    rx += (px - rx) * EASE;
+    ry += (py - ry) * EASE;
     apply();
+    if (Math.abs(px - rx) > 0.4 || Math.abs(py - ry) > 0.4) {
+      if (!rafId) rafId = requestAnimationFrame(flush);
+    }
     const now = performance.now();
     if (now - lastValidate >= VALIDATE_MS) { lastValidate = now; paint(px, py); }
   }
-  
-  function apply() { ghost.style.transform = `translate(${px - dx}px, ${py - dy}px)`; }
+
+  function apply() {
+    // Velocity-based tilt (how far the cursor is ahead of the ghost) gives the
+    // card a sense of mass as it swings to follow. Capped + disabled under
+    // reduced-motion.
+    const tilt = REDUCED_MOTION ? 0 : Math.max(-7, Math.min(7, (px - rx) * 0.5));
+    ghost.style.transform = `translate(${rx - dx}px, ${ry - dy}px) rotate(${tilt}deg)`;
+  }
 
   function slotAt(x, y) {
     ghost.style.visibility = "hidden";
@@ -672,6 +692,7 @@
     document.querySelectorAll(".chrx-editor .chrx-slot[data-validity]").forEach(
       s => s.removeAttribute("data-validity"));
     if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
+    renderInit = false;   // next pickup re-seeds the eased ghost position
     if (ghost && ghost.parentNode) ghost.parentNode.removeChild(ghost);
     const banner = document.getElementById("chrx-carry-banner");
     if (banner && banner.parentNode) banner.parentNode.removeChild(banner);
