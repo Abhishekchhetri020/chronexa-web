@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-06-14T12:09:01Z
+/* Chronexa bundle — generated 2026-06-14T12:39:58Z
  *      167 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -35534,6 +35534,56 @@ window.StartScreen = (function () {
     docShell.appendChild(pages[i]);
     const ind = overlay.querySelector(".chrx-pp-indicator");
     if (ind) ind.textContent = `Page ${i + 1} / ${pages.length}`;
+    // Now the page is in the live DOM with real geometry — run the measure-
+    // and-fit pass so cell text shrinks to fit instead of ballooning rows.
+    try { autofitMountedPage(pages[i]); } catch (e) { /* never break preview */ }
+  }
+
+  /* aSc-style shrink-to-fit. The CSS cqi+clamp() in the cell renderer is a
+   * pre-layout *estimate*; once a page is mounted we have real pixel sizes,
+   * so lock every body cell to its layout height (so long content can't
+   * grow the row) and binary-search the font size down until the content
+   * fits the box. Works for both absolute-anchored cells (per-class grids)
+   * and flow cells (summary/aggregate) because overflow is measured via the
+   * descendants' bounding boxes against the cell rect — structure-agnostic.
+   * Runs in the browser only; jsdom has no layout so this is a no-op there. */
+  function autofitMountedPage(pageEl) {
+    if (!pageEl || typeof pageEl.querySelectorAll !== "function") return;
+    const grid = pageEl.querySelector("table.chrx-pivot-grid");
+    if (!grid) return;
+    const tds = grid.querySelectorAll("tbody td");
+    if (!tds.length || tds.length > 1500) return; // safety valve for huge grids
+    tds.forEach(td => {
+      const cell = td.querySelector(".chrx-pivot-cell");
+      if (!cell || cell.dataset.fit) return;
+      const h = parseFloat(td.style.height) || td.clientHeight;
+      if (!h) return;
+      // Lock the cell to its intended height; clip overflow so a long class
+      // list can't push the whole row taller (the ballooning we saw).
+      cell.style.height = h + "px";
+      cell.style.overflow = "hidden";
+      const texts = Array.from(cell.querySelectorAll("div"))
+        .filter(d => d.firstChild && d.textContent.trim());
+      if (!texts.length) { cell.dataset.fit = "1"; return; }
+      const rect = cell.getBoundingClientRect();
+      const overflowing = () => {
+        for (const t of texts) {
+          const r = t.getBoundingClientRect();
+          if (r.right > rect.right + 0.6 || r.bottom > rect.bottom + 0.6) return true;
+        }
+        return false;
+      };
+      if (!overflowing()) { cell.dataset.fit = "1"; return; }
+      const bases = texts.map(t => parseFloat(getComputedStyle(t).fontSize) || 9);
+      let lo = 0.4, hi = 1.0, best = 0.4;
+      for (let it = 0; it < 6; it++) {
+        const mid = (lo + hi) / 2;
+        texts.forEach((t, i) => { t.style.fontSize = (bases[i] * mid).toFixed(2) + "px"; });
+        if (overflowing()) hi = mid; else { best = mid; lo = mid; }
+      }
+      texts.forEach((t, i) => { t.style.fontSize = (bases[i] * best).toFixed(2) + "px"; });
+      cell.dataset.fit = "1";
+    });
   }
 
   // ─── Render templates ────────────────────────────────────────────────────
