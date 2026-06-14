@@ -306,28 +306,34 @@ window.Editor = (function () {
         const outOfBell = p.synthetic || (bellPeriodSet && !bellPeriodSet.has(p.index | 0));
         if (cards && cards.length > 0) {
           const oob = outOfBell ? " out-of-bell" : "";
-          const cardListHtml = cards.map(c => vkartaHtml(S, c, d, p.index, row.key)).join("");
           // Exactly two cards share a cell (a group-split, or a conflict in
           // teacher/room view) → render as a clean DIAGONAL split (aSc-style)
           // via chrx-slot--split2. Three or more fall back to the micro-card
           // grid (chrx-slot--split).
           const splitClass = cards.length === 2 ? " chrx-slot--split2"
                            : cards.length > 2  ? " chrx-slot--split" : "";
-          // Lab-double / double-period lesson → span TWO period columns as one
-          // wide block (aSc-style), instead of a single card + an empty cell.
-          // Only when this is a single lab-double card, there's a next period
-          // in this day, and that next cell is free for this row (the lesson
-          // occupies it). Skip the consumed next period so the grid stays
-          // column-aligned with the period header.
-          const firstLesson = cards.length === 1 ? S._idx.lessonById[cards[0].lessonId] : null;
+          // Double-period BLOCK: aSc stores a 2-period block as TWO consecutive
+          // single cards of the SAME lesson on the same day (e.g. Sports Meet at
+          // periods 1 AND 2). Merge them into one 2-wide block — render the first
+          // spanning two columns and SKIP the second — so it reads as a single
+          // block. (The old logic let each half independently span an adjacent
+          // EMPTY cell, which turned one block into "two double blocks".)
+          // Fallback: a lone lab-double card with an empty next cell still
+          // expands to fill its block.
+          const thisCard = cards.length === 1 ? cards[0] : null;
+          const firstLesson = thisCard ? S._idx.lessonById[thisCard.lessonId] : null;
           const nextP = periods[pi + 1];
-          const nextFree = nextP && !(rowBucket && rowBucket[d + "_" + nextP.index]);
-          const isLab = !!(firstLesson && firstLesson.isLabDouble && nextFree);
+          const nextBucket = (nextP && rowBucket) ? rowBucket[d + "_" + nextP.index] : null;
+          const nextSameLesson = !!(thisCard && nextBucket && nextBucket.length === 1
+            && nextBucket[0].lessonId === thisCard.lessonId);
+          const nextEmpty = !!(nextP && !nextBucket);
+          const isLab = nextSameLesson || !!(firstLesson && firstLesson.isLabDouble && nextEmpty);
           const spanClass = isLab ? " chrx-slot--span2" : "";
+          const cardListHtml = cards.map(c => vkartaHtml(S, c, d, p.index, row.key, isLab ? 2 : 1)).join("");
           slots.push(
             `<div class="chrx-slot${oob}${splitClass}${spanClass}" role="gridcell" data-day="${d}" data-period="${p.index}" data-row="${esc(row.key)}">${cardListHtml}</div>`
           );
-          if (isLab) pi++; // the lesson covers the next period too
+          if (isLab) pi++; // the block covers the next period too — skip it
         } else {
           const oob = outOfBell ? " out-of-bell" : "";
           slots.push(
@@ -421,7 +427,7 @@ window.Editor = (function () {
     }
   }
 
-  function vkartaHtml(S, card, day, period, rowKey) {
+  function vkartaHtml(S, card, day, period, rowKey, blockLen) {
     const lesson = S._idx.lessonById[card.lessonId];
     const subject = lesson ? S._idx.subjectById[lesson.subjectId] : null;
     const subjShort = subject ? (subject.abbr || subject.name) : "?";
@@ -506,6 +512,7 @@ window.Editor = (function () {
            data-lesson-id="${esc(card.lessonId)}"
            data-day="${day}"
            data-period="${period}"
+           data-block-len="${blockLen || 1}"
            data-classroom-id="${esc(card.classroomId || "")}"
            role="button" tabindex="0" aria-label="${esc(ariaLabel)}"
            aria-roledescription="timetable card"
@@ -905,7 +912,8 @@ window.Editor = (function () {
     const day = parseInt(vk.dataset.day, 10);
     const period = parseInt(vk.dataset.period, 10);
     const originClassroomId = vk.dataset.classroomId || undefined;
-    
+    const blockLen = parseInt(vk.dataset.blockLen, 10) || 1;   // double-period block moves as one
+
     const held = window.APP.editor.cardInHand;
     if (held) {
       placeCardOnSchool(held.lessonId, held.originDay, held.originPeriod);
@@ -913,8 +921,9 @@ window.Editor = (function () {
       dispatch("editor:restore", { cardId: held.cardId, lessonId: held.lessonId,
         day: held.originDay, period: held.originPeriod, reason: "second-pickup" });
     }
-    
-    removeCardFromSchool(lessonId, day, period);
+
+    // Lift the whole block out together (each period is a separate card).
+    for (let k = 0; k < blockLen; k++) removeCardFromSchool(lessonId, day, period + k);
     const slot = vk.closest(".chrx-slot");
     if (slot) {
       slot.classList.add("empty");
@@ -923,9 +932,9 @@ window.Editor = (function () {
       slot.dataset.day = String(day);
       slot.dataset.period = String(period);
     }
-    window.APP.editor.cardInHand = { cardId, lessonId, originDay: day, originPeriod: period, originClassroomId, mode: "drag" };
+    window.APP.editor.cardInHand = { cardId, lessonId, originDay: day, originPeriod: period, originClassroomId, blockLen, mode: "drag" };
     syncCardInHandClass();
-    dispatch("editor:pickup", { cardId, lessonId, day, period, originClassroomId, sourceX: startX, sourceY: startY, mode: "drag" });
+    dispatch("editor:pickup", { cardId, lessonId, day, period, originClassroomId, blockLen, sourceX: startX, sourceY: startY, mode: "drag" });
     if (held) {
       const host = vk.closest(".chrx-editor");
       if (host) render(host);

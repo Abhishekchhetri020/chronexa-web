@@ -41,6 +41,7 @@
                originDay: d.day, originPeriod: d.period,
                originClassroomId: d.originClassroomId,
                fromPending: !!d.fromPending,
+               blockLen: Math.max(1, parseInt(d.blockLen, 10) || 1),  // double-period block moves as one
                rowKey: d.rowKey,
                mode: mode };
                
@@ -360,7 +361,9 @@
     // the displaced card attaches to the cursor so you can keep dragging it.
     // swap() falls back to the collision menu if the dragged card can't fit
     // cleanly here (a real conflict the user must resolve).
-    if (targetCardsForSlot(slot).length) {
+    // Single cards swap with the occupant; a multi-period block can't swap
+    // cleanly, so route it to commit (which checks block room + collisions).
+    if (targetCardsForSlot(slot).length && (!inHand || (inHand.blockLen || 1) === 1)) {
       const targetVk = vkartaAt(up.x, up.y);
       return swap(d, p, slot, targetVk ? targetVk.dataset.lessonId : null, { x: up.x, y: up.y });
     }
@@ -405,6 +408,24 @@
     const isSameSlot = isMove && originDay === day && originPeriod === period;
     const lesson = S && S._idx ? S._idx.lessonById[lessonId] : null;
     const cid = slot ? classroomForSlot(lessonId, slot) : (lesson ? lesson.preferredRoomId : undefined);
+    const blockLen = (inHand && inHand.blockLen) || 1;
+
+    // A double-period block must land on blockLen consecutive free, in-bell
+    // periods. If the following period(s) aren't available, snap back. Scope the
+    // lookup to the DROP slot's own row — in By-Class view every class has a
+    // slot at this day/period, so a global query would check the wrong row.
+    const dropRow = slot && slot.closest(".chrx-row");
+    if (slot && blockLen > 1) {
+      for (let k = 1; k < blockLen; k++) {
+        const ns = (dropRow || document).querySelector(
+          `.chrx-slot[data-day="${day}"][data-period="${period + k}"]`);
+        if (!ns || ns.classList.contains("out-of-bell") || ns.querySelector(".chrx-vkarta")) {
+          (window._chrxNotify || function () {})("No room for the 2-period block here.", "warn");
+          cancel();
+          return;
+        }
+      }
+    }
 
     if (!forced && slot) {
       const v = classifySlot(slot);
@@ -435,8 +456,10 @@
     function applyPlacement() {
       if (!S) return;
       if (isMove) {
-        const oi = S.cards.findIndex(c => c.lessonId === lessonId && c.day === originDay && c.period === originPeriod);
-        if (oi !== -1) S.cards.splice(oi, 1);
+        for (let k = 0; k < blockLen; k++) {
+          const oi = S.cards.findIndex(c => c.lessonId === lessonId && c.day === originDay && c.period === originPeriod + k);
+          if (oi !== -1) S.cards.splice(oi, 1);
+        }
       }
       if (replace && targetRemoved.length) {
         for (const removed of targetRemoved) {
@@ -449,13 +472,17 @@
           if (ri !== -1) S.cards.splice(ri, 1);
         }
       }
-      if (!S.cards.some(c => c.lessonId === lessonId && c.day === day && c.period === period))
-        S.cards.push({ lessonId, day, period, classroomId: cid });
+      for (let k = 0; k < blockLen; k++) {
+        if (!S.cards.some(c => c.lessonId === lessonId && c.day === day && c.period === period + k))
+          S.cards.push({ lessonId, day, period: period + k, classroomId: cid });
+      }
     }
     function revertPlacement() {
       if (!S) return;
-      const ti = S.cards.findIndex(c => c.lessonId === lessonId && c.day === day && c.period === period);
-      if (ti !== -1) S.cards.splice(ti, 1);
+      for (let k = 0; k < blockLen; k++) {
+        const ti = S.cards.findIndex(c => c.lessonId === lessonId && c.day === day && c.period === period + k);
+        if (ti !== -1) S.cards.splice(ti, 1);
+      }
       for (const removed of targetRemoved) {
         if (!S.cards.some(c =>
           c.lessonId === removed.lessonId &&
@@ -471,8 +498,12 @@
           });
         }
       }
-      if (isMove && !S.cards.some(c => c.lessonId === lessonId && c.day === originDay && c.period === originPeriod))
-        S.cards.push({ lessonId, day: originDay, period: originPeriod, classroomId: originClassroomId || cid });
+      if (isMove) {
+        for (let k = 0; k < blockLen; k++) {
+          if (!S.cards.some(c => c.lessonId === lessonId && c.day === originDay && c.period === originPeriod + k))
+            S.cards.push({ lessonId, day: originDay, period: originPeriod + k, classroomId: originClassroomId || cid });
+        }
+      }
     }
 
     // Push onto undo stack so AI → Cleanup last card move can revert it.
@@ -637,8 +668,11 @@
       if (S) {
         const lesson = S._idx.lessonById[inHand.lessonId];
         const cid = inHand.originClassroomId || (lesson ? lesson.preferredRoomId : undefined);
-        if (!S.cards.some(c => c.lessonId === inHand.lessonId && c.day === inHand.originDay && c.period === inHand.originPeriod))
-          S.cards.push({ lessonId: inHand.lessonId, day: inHand.originDay, period: inHand.originPeriod, classroomId: cid });
+        const blockLen = inHand.blockLen || 1;   // restore the whole block back to origin
+        for (let k = 0; k < blockLen; k++) {
+          if (!S.cards.some(c => c.lessonId === inHand.lessonId && c.day === inHand.originDay && c.period === inHand.originPeriod + k))
+            S.cards.push({ lessonId: inHand.lessonId, day: inHand.originDay, period: inHand.originPeriod + k, classroomId: cid });
+        }
       }
     }
     if (ghost) {

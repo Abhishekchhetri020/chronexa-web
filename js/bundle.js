@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-06-14T07:18:54Z
+/* Chronexa bundle — generated 2026-06-14T08:22:29Z
  *      167 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -16172,28 +16172,34 @@ window.Editor = (function () {
         const outOfBell = p.synthetic || (bellPeriodSet && !bellPeriodSet.has(p.index | 0));
         if (cards && cards.length > 0) {
           const oob = outOfBell ? " out-of-bell" : "";
-          const cardListHtml = cards.map(c => vkartaHtml(S, c, d, p.index, row.key)).join("");
           // Exactly two cards share a cell (a group-split, or a conflict in
           // teacher/room view) → render as a clean DIAGONAL split (aSc-style)
           // via chrx-slot--split2. Three or more fall back to the micro-card
           // grid (chrx-slot--split).
           const splitClass = cards.length === 2 ? " chrx-slot--split2"
                            : cards.length > 2  ? " chrx-slot--split" : "";
-          // Lab-double / double-period lesson → span TWO period columns as one
-          // wide block (aSc-style), instead of a single card + an empty cell.
-          // Only when this is a single lab-double card, there's a next period
-          // in this day, and that next cell is free for this row (the lesson
-          // occupies it). Skip the consumed next period so the grid stays
-          // column-aligned with the period header.
-          const firstLesson = cards.length === 1 ? S._idx.lessonById[cards[0].lessonId] : null;
+          // Double-period BLOCK: aSc stores a 2-period block as TWO consecutive
+          // single cards of the SAME lesson on the same day (e.g. Sports Meet at
+          // periods 1 AND 2). Merge them into one 2-wide block — render the first
+          // spanning two columns and SKIP the second — so it reads as a single
+          // block. (The old logic let each half independently span an adjacent
+          // EMPTY cell, which turned one block into "two double blocks".)
+          // Fallback: a lone lab-double card with an empty next cell still
+          // expands to fill its block.
+          const thisCard = cards.length === 1 ? cards[0] : null;
+          const firstLesson = thisCard ? S._idx.lessonById[thisCard.lessonId] : null;
           const nextP = periods[pi + 1];
-          const nextFree = nextP && !(rowBucket && rowBucket[d + "_" + nextP.index]);
-          const isLab = !!(firstLesson && firstLesson.isLabDouble && nextFree);
+          const nextBucket = (nextP && rowBucket) ? rowBucket[d + "_" + nextP.index] : null;
+          const nextSameLesson = !!(thisCard && nextBucket && nextBucket.length === 1
+            && nextBucket[0].lessonId === thisCard.lessonId);
+          const nextEmpty = !!(nextP && !nextBucket);
+          const isLab = nextSameLesson || !!(firstLesson && firstLesson.isLabDouble && nextEmpty);
           const spanClass = isLab ? " chrx-slot--span2" : "";
+          const cardListHtml = cards.map(c => vkartaHtml(S, c, d, p.index, row.key, isLab ? 2 : 1)).join("");
           slots.push(
             `<div class="chrx-slot${oob}${splitClass}${spanClass}" role="gridcell" data-day="${d}" data-period="${p.index}" data-row="${esc(row.key)}">${cardListHtml}</div>`
           );
-          if (isLab) pi++; // the lesson covers the next period too
+          if (isLab) pi++; // the block covers the next period too — skip it
         } else {
           const oob = outOfBell ? " out-of-bell" : "";
           slots.push(
@@ -16287,7 +16293,7 @@ window.Editor = (function () {
     }
   }
 
-  function vkartaHtml(S, card, day, period, rowKey) {
+  function vkartaHtml(S, card, day, period, rowKey, blockLen) {
     const lesson = S._idx.lessonById[card.lessonId];
     const subject = lesson ? S._idx.subjectById[lesson.subjectId] : null;
     const subjShort = subject ? (subject.abbr || subject.name) : "?";
@@ -16372,6 +16378,7 @@ window.Editor = (function () {
            data-lesson-id="${esc(card.lessonId)}"
            data-day="${day}"
            data-period="${period}"
+           data-block-len="${blockLen || 1}"
            data-classroom-id="${esc(card.classroomId || "")}"
            role="button" tabindex="0" aria-label="${esc(ariaLabel)}"
            aria-roledescription="timetable card"
@@ -16771,7 +16778,8 @@ window.Editor = (function () {
     const day = parseInt(vk.dataset.day, 10);
     const period = parseInt(vk.dataset.period, 10);
     const originClassroomId = vk.dataset.classroomId || undefined;
-    
+    const blockLen = parseInt(vk.dataset.blockLen, 10) || 1;   // double-period block moves as one
+
     const held = window.APP.editor.cardInHand;
     if (held) {
       placeCardOnSchool(held.lessonId, held.originDay, held.originPeriod);
@@ -16779,8 +16787,9 @@ window.Editor = (function () {
       dispatch("editor:restore", { cardId: held.cardId, lessonId: held.lessonId,
         day: held.originDay, period: held.originPeriod, reason: "second-pickup" });
     }
-    
-    removeCardFromSchool(lessonId, day, period);
+
+    // Lift the whole block out together (each period is a separate card).
+    for (let k = 0; k < blockLen; k++) removeCardFromSchool(lessonId, day, period + k);
     const slot = vk.closest(".chrx-slot");
     if (slot) {
       slot.classList.add("empty");
@@ -16789,9 +16798,9 @@ window.Editor = (function () {
       slot.dataset.day = String(day);
       slot.dataset.period = String(period);
     }
-    window.APP.editor.cardInHand = { cardId, lessonId, originDay: day, originPeriod: period, originClassroomId, mode: "drag" };
+    window.APP.editor.cardInHand = { cardId, lessonId, originDay: day, originPeriod: period, originClassroomId, blockLen, mode: "drag" };
     syncCardInHandClass();
-    dispatch("editor:pickup", { cardId, lessonId, day, period, originClassroomId, sourceX: startX, sourceY: startY, mode: "drag" });
+    dispatch("editor:pickup", { cardId, lessonId, day, period, originClassroomId, blockLen, sourceX: startX, sourceY: startY, mode: "drag" });
     if (held) {
       const host = vk.closest(".chrx-editor");
       if (host) render(host);
@@ -17864,6 +17873,7 @@ window.PendingStrip = (function () {
                originDay: d.day, originPeriod: d.period,
                originClassroomId: d.originClassroomId,
                fromPending: !!d.fromPending,
+               blockLen: Math.max(1, parseInt(d.blockLen, 10) || 1),  // double-period block moves as one
                rowKey: d.rowKey,
                mode: mode };
                
@@ -18183,7 +18193,9 @@ window.PendingStrip = (function () {
     // the displaced card attaches to the cursor so you can keep dragging it.
     // swap() falls back to the collision menu if the dragged card can't fit
     // cleanly here (a real conflict the user must resolve).
-    if (targetCardsForSlot(slot).length) {
+    // Single cards swap with the occupant; a multi-period block can't swap
+    // cleanly, so route it to commit (which checks block room + collisions).
+    if (targetCardsForSlot(slot).length && (!inHand || (inHand.blockLen || 1) === 1)) {
       const targetVk = vkartaAt(up.x, up.y);
       return swap(d, p, slot, targetVk ? targetVk.dataset.lessonId : null, { x: up.x, y: up.y });
     }
@@ -18228,6 +18240,24 @@ window.PendingStrip = (function () {
     const isSameSlot = isMove && originDay === day && originPeriod === period;
     const lesson = S && S._idx ? S._idx.lessonById[lessonId] : null;
     const cid = slot ? classroomForSlot(lessonId, slot) : (lesson ? lesson.preferredRoomId : undefined);
+    const blockLen = (inHand && inHand.blockLen) || 1;
+
+    // A double-period block must land on blockLen consecutive free, in-bell
+    // periods. If the following period(s) aren't available, snap back. Scope the
+    // lookup to the DROP slot's own row — in By-Class view every class has a
+    // slot at this day/period, so a global query would check the wrong row.
+    const dropRow = slot && slot.closest(".chrx-row");
+    if (slot && blockLen > 1) {
+      for (let k = 1; k < blockLen; k++) {
+        const ns = (dropRow || document).querySelector(
+          `.chrx-slot[data-day="${day}"][data-period="${period + k}"]`);
+        if (!ns || ns.classList.contains("out-of-bell") || ns.querySelector(".chrx-vkarta")) {
+          (window._chrxNotify || function () {})("No room for the 2-period block here.", "warn");
+          cancel();
+          return;
+        }
+      }
+    }
 
     if (!forced && slot) {
       const v = classifySlot(slot);
@@ -18258,8 +18288,10 @@ window.PendingStrip = (function () {
     function applyPlacement() {
       if (!S) return;
       if (isMove) {
-        const oi = S.cards.findIndex(c => c.lessonId === lessonId && c.day === originDay && c.period === originPeriod);
-        if (oi !== -1) S.cards.splice(oi, 1);
+        for (let k = 0; k < blockLen; k++) {
+          const oi = S.cards.findIndex(c => c.lessonId === lessonId && c.day === originDay && c.period === originPeriod + k);
+          if (oi !== -1) S.cards.splice(oi, 1);
+        }
       }
       if (replace && targetRemoved.length) {
         for (const removed of targetRemoved) {
@@ -18272,13 +18304,17 @@ window.PendingStrip = (function () {
           if (ri !== -1) S.cards.splice(ri, 1);
         }
       }
-      if (!S.cards.some(c => c.lessonId === lessonId && c.day === day && c.period === period))
-        S.cards.push({ lessonId, day, period, classroomId: cid });
+      for (let k = 0; k < blockLen; k++) {
+        if (!S.cards.some(c => c.lessonId === lessonId && c.day === day && c.period === period + k))
+          S.cards.push({ lessonId, day, period: period + k, classroomId: cid });
+      }
     }
     function revertPlacement() {
       if (!S) return;
-      const ti = S.cards.findIndex(c => c.lessonId === lessonId && c.day === day && c.period === period);
-      if (ti !== -1) S.cards.splice(ti, 1);
+      for (let k = 0; k < blockLen; k++) {
+        const ti = S.cards.findIndex(c => c.lessonId === lessonId && c.day === day && c.period === period + k);
+        if (ti !== -1) S.cards.splice(ti, 1);
+      }
       for (const removed of targetRemoved) {
         if (!S.cards.some(c =>
           c.lessonId === removed.lessonId &&
@@ -18294,8 +18330,12 @@ window.PendingStrip = (function () {
           });
         }
       }
-      if (isMove && !S.cards.some(c => c.lessonId === lessonId && c.day === originDay && c.period === originPeriod))
-        S.cards.push({ lessonId, day: originDay, period: originPeriod, classroomId: originClassroomId || cid });
+      if (isMove) {
+        for (let k = 0; k < blockLen; k++) {
+          if (!S.cards.some(c => c.lessonId === lessonId && c.day === originDay && c.period === originPeriod + k))
+            S.cards.push({ lessonId, day: originDay, period: originPeriod + k, classroomId: originClassroomId || cid });
+        }
+      }
     }
 
     // Push onto undo stack so AI → Cleanup last card move can revert it.
@@ -18460,8 +18500,11 @@ window.PendingStrip = (function () {
       if (S) {
         const lesson = S._idx.lessonById[inHand.lessonId];
         const cid = inHand.originClassroomId || (lesson ? lesson.preferredRoomId : undefined);
-        if (!S.cards.some(c => c.lessonId === inHand.lessonId && c.day === inHand.originDay && c.period === inHand.originPeriod))
-          S.cards.push({ lessonId: inHand.lessonId, day: inHand.originDay, period: inHand.originPeriod, classroomId: cid });
+        const blockLen = inHand.blockLen || 1;   // restore the whole block back to origin
+        for (let k = 0; k < blockLen; k++) {
+          if (!S.cards.some(c => c.lessonId === inHand.lessonId && c.day === inHand.originDay && c.period === inHand.originPeriod + k))
+            S.cards.push({ lessonId: inHand.lessonId, day: inHand.originDay, period: inHand.originPeriod + k, classroomId: cid });
+        }
       }
     }
     if (ghost) {
