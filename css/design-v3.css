@@ -1377,6 +1377,16 @@ body.chrx-editor-dark .chrx-slot:focus-visible{ outline-color:#7dd3fc !important
   .chrx-row, .chrx-slot, .chrx-vkarta, .chrx-rowlabel, .chrx-row-head{
     -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important;
   }
+  /* Pivot print-preview grid: keep header/break/cell fills when printing
+     (browsers strip backgrounds by default), repeat the column header on each
+     printed page of a long report, and never split a row across a page. */
+  .chrx-pivot-grid{ break-inside:auto; }
+  .chrx-pivot-grid thead{ display:table-header-group; }
+  .chrx-pivot-grid tr{ page-break-inside:avoid; break-inside:avoid; }
+  .chrx-pivot-page, .chrx-pivot-grid,
+  .chrx-pivot-grid th, .chrx-pivot-grid td, .chrx-pivot-cell{
+    -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important;
+  }
 }
 
 /* ── Start screen scrolls the whole window ─────────────────────────────────

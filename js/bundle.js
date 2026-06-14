@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-06-14T11:12:37Z
+/* Chronexa bundle — generated 2026-06-14T12:02:14Z
  *      167 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -27046,7 +27046,7 @@ window.StartScreen = (function () {
       for (const col of summaryCols) {
         if (col.kind === "break") {
           headerRow.appendChild(el("th", {
-            style: "border:1px solid #bbb;padding:2px;background:#efefeb;width:" + breakColWidthPx + "px;font-size:8px;text-align:center;color:#666",
+            style: "border:0.75px dashed #c5c0b2;padding:2px;background:#f3f0e8;width:" + breakColWidthPx + "px;font-size:8px;text-align:center;color:#7a7568",
           }, ""));
           continue;
         }
@@ -27090,7 +27090,7 @@ window.StartScreen = (function () {
     for (const col of summaryCols) {
       if (col.kind === "break") {
         periodRow.appendChild(el("th", {
-          style: "border:1px solid #bbb;padding:2px;background:#efefeb;width:" + breakColWidthPx + "px;font-size:8px;text-align:center;color:#666",
+          style: "border:0.75px dashed #c5c0b2;padding:2px;background:#f3f0e8;width:" + breakColWidthPx + "px;font-size:8px;text-align:center;color:#7a7568",
         }, ""));
         continue;
       }
@@ -27205,7 +27205,7 @@ window.StartScreen = (function () {
     const tableWrap = el("div", { style: "flex:1;overflow:visible;display:flex;gap:6px" });
     const table = el("table", {
       class: "chrx-pivot-grid",
-      style: "border-collapse:collapse;width:100%;table-layout:fixed;font-size:" + report._layout.bodyFontPx + "px",
+      style: "border-collapse:collapse;width:100%;table-layout:fixed;border:1.4px solid #2b2b2b;font-size:" + report._layout.bodyFontPx + "px",
     });
 
     const thead = el("thead");
@@ -27237,7 +27237,7 @@ window.StartScreen = (function () {
         const brk = breakAfterCol(visibleCols, ci, school);
         if (brk) {
           headerRow.appendChild(el("th", {
-            style: "border:1px solid #bbb;padding:2px;background:#efefeb;width:28px;font-size:8px;text-align:center;color:#666",
+            style: "border:0.75px dashed #c5c0b2;padding:2px;background:#f3f0e8;width:28px;font-size:8px;text-align:center;color:#7a7568",
           }, ""));
         }
       }
@@ -27265,7 +27265,7 @@ window.StartScreen = (function () {
             const brkText = col.breakItem.printtext || col.breakItem.name || "BREAK";
             const brkTd = el("td", {
               rowspan: String(visibleRows.length),
-              style: "border:1px solid #bbb;padding:2px;background:#efefeb;width:" + report._layout.summaryDayBreakColWidthPx + "px;vertical-align:middle;text-align:center",
+              style: "border:0.75px dashed #c5c0b2;padding:2px;background:#f3f0e8;width:" + report._layout.summaryDayBreakColWidthPx + "px;vertical-align:middle;text-align:center",
             });
             const brkInner = el("div", {
               style: "writing-mode:vertical-lr;transform:rotate(180deg);font-weight:700;font-size:8.5px;text-transform:uppercase;letter-spacing:.1em;color:#555;margin:0 auto",
@@ -27279,7 +27279,7 @@ window.StartScreen = (function () {
         const combined = new Map([...pageBindings, ...rc, ...cc]);
         const cellCards = cardsMatching(pageCards, combined);
         const cellNode = el("td", {
-          style: "border:1px solid #ccc;padding:0;vertical-align:top;height:" + report._layout.cellMinHeightPx + "px",
+          style: "border:0.75px solid #d2d2d2;padding:0;vertical-align:top;height:" + report._layout.cellMinHeightPx + "px",
         });
         if (APP.PrintCellRenderer && typeof APP.PrintCellRenderer.renderCell === "function") {
           const kind = report.cells || "draw-lessons";
@@ -27306,7 +27306,7 @@ window.StartScreen = (function () {
             const brkText = brk.printtext || brk.name || "BREAK";
             const brkTd = el("td", {
               rowspan: String(visibleRows.length),
-              style: "border:1px solid #bbb;padding:2px;background:#efefeb;width:28px;vertical-align:middle;text-align:center",
+              style: "border:0.75px dashed #c5c0b2;padding:2px;background:#f3f0e8;width:28px;vertical-align:middle;text-align:center",
             });
             const brkInner = el("div", {
               style: "writing-mode:vertical-lr;transform:rotate(180deg);font-weight:700;font-size:8.5px;text-transform:uppercase;letter-spacing:.1em;color:#555;margin:0 auto",
