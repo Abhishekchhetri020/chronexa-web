@@ -116,17 +116,86 @@
     document.body.appendChild(modal);
   }
 
-  // ----- Error banner (red on-page, copy of sitting-planner pattern) --------
+  // ----- Error recovery (Plan E) -------------------------------------------
+  // Instead of a raw red stack-trace dump, show a calm, actionable recovery
+  // card: reload, restore the last auto-save, or copy the details for a report.
+  // The technical detail is collapsed. Caps at 2 banners so an error loop can't
+  // bury the page.
+  let _errCount = 0;
+  function ensureErrorStyles() {
+    if (document.getElementById("chrx-error-styles")) return;
+    const s = document.createElement("style");
+    s.id = "chrx-error-styles";
+    s.textContent =
+      ".chrx-error-recover{background:#fff;border:1px solid #f1b5b0;border-left:4px solid #c0392b;" +
+      "border-radius:10px;padding:12px 14px;margin:8px 0;box-shadow:0 6px 20px rgba(0,0,0,.10);" +
+      "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#3a2a28}" +
+      ".chrx-error-recover__head{display:flex;align-items:flex-start;gap:10px}" +
+      ".chrx-error-recover__icon{font-size:20px;line-height:1.2}" +
+      ".chrx-error-recover__title{font-weight:700;font-size:14px;color:#9c2b1f}" +
+      ".chrx-error-recover__sub{font-size:12.5px;color:#6b5a57;margin-top:2px}" +
+      ".chrx-error-recover__x{margin-left:auto;background:none;border:0;font-size:20px;line-height:1;cursor:pointer;color:#a98}" +
+      ".chrx-error-recover__actions{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 2px}" +
+      ".chrx-error-recover__actions button{font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;" +
+      "padding:6px 12px;border-radius:7px;border:1px solid #d8b6b1;background:#fff;color:#7a2a20}" +
+      ".chrx-error-recover__actions button[data-act=reload]{background:#c0392b;color:#fff;border-color:#c0392b}" +
+      ".chrx-error-recover__actions button[data-act=restore]{background:#0d4f54;color:#fff;border-color:#0d4f54}" +
+      ".chrx-error-recover__details{margin-top:8px;font-size:11px;color:#7a6a67}" +
+      ".chrx-error-recover__details pre{white-space:pre-wrap;font-family:ui-monospace,Menlo,monospace;margin:6px 0 0;max-height:160px;overflow:auto}";
+    document.head.appendChild(s);
+  }
   function showError(where, err) {
     const msg = (err && err.message) ? err.message : String(err);
-    const stack = (err && err.stack) ? err.stack.split("\n").slice(0, 4).join("\n") : "";
+    const stack = (err && err.stack) ? err.stack.split("\n").slice(0, 6).join("\n") : "";
+    console.error(`[${where}]`, err);
+    if (_errCount >= 2) return;          // don't let an error loop bury the page
+    _errCount++;
+    ensureErrorStyles();
+    let saved = null;
+    try { saved = window.AutoSave && window.AutoSave.restore && window.AutoSave.restore(); } catch (_) {}
+    const canRestore = !!(saved && saved.payload);
     const banner = document.createElement("div");
-    banner.className = "error-banner";
-    banner.style.cssText = "background:#fee2e2;border:1px solid #f87171;color:#991b1b;padding:12px;margin:8px 0;border-radius:6px;font-size:12px;font-family:monospace;white-space:pre-wrap;";
-    banner.innerHTML = `<strong>${escapeHtml(where)}:</strong>\n${escapeHtml(msg)}\n${escapeHtml(stack)}`;
+    banner.className = "chrx-error-recover";
+    banner.setAttribute("role", "alert");
+    banner.innerHTML =
+      '<div class="chrx-error-recover__head">' +
+        '<span class="chrx-error-recover__icon" aria-hidden="true">⚠️</span>' +
+        '<div><div class="chrx-error-recover__title">Something went wrong</div>' +
+        '<div class="chrx-error-recover__sub">' +
+          (canRestore
+            ? "Your work is auto-saved locally — restore it, or reload the app."
+            : "You can reload the app; your last session is auto-saved locally.") +
+        '</div></div>' +
+        '<button class="chrx-error-recover__x" type="button" aria-label="Dismiss">×</button>' +
+      '</div>' +
+      '<div class="chrx-error-recover__actions">' +
+        '<button type="button" data-act="reload">↻ Reload app</button>' +
+        (canRestore ? '<button type="button" data-act="restore">⤺ Restore last save</button>' : "") +
+        '<button type="button" data-act="copy">⧉ Copy details</button>' +
+      '</div>' +
+      '<details class="chrx-error-recover__details"><summary>Technical details</summary><pre>' +
+        escapeHtml(where) + ": " + escapeHtml(msg) + "\n" + escapeHtml(stack) +
+      '</pre></details>';
     const slot = document.getElementById("error-slot") || document.body;
     slot.prepend(banner);
-    console.error(`[${where}]`, err);
+    banner.querySelector(".chrx-error-recover__x").onclick = () => banner.remove();
+    banner.querySelector('[data-act="reload"]').onclick = () => location.reload();
+    banner.querySelector('[data-act="copy"]').onclick = (e) => {
+      try { navigator.clipboard.writeText(where + ": " + msg + "\n" + stack); } catch (_) {}
+      e.target.textContent = "✓ Copied";
+    };
+    const rb = banner.querySelector('[data-act="restore"]');
+    if (rb) rb.onclick = () => {
+      try {
+        window.APP.school = saved.payload;
+        if (window.CreateNew && window.CreateNew.refreshIndex) window.CreateNew.refreshIndex();
+        document.querySelectorAll(".needs-school").forEach(b => b.disabled = false);
+        document.dispatchEvent(new CustomEvent("app:school-loaded", { detail: { source: "autosave-restore" } }));
+        showStep(6);
+        banner.remove();
+        if (window._chrxNotify) window._chrxNotify("Restored your last auto-saved session ✓");
+      } catch (e2) { console.error("[restore] failed", e2); }
+    };
   }
   window.addEventListener("error", (e) => showError("error", e.error || e));
   window.addEventListener("unhandledrejection", (e) => showError("async", e.reason));
