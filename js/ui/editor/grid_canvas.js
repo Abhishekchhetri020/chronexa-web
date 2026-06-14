@@ -518,6 +518,7 @@ window.Editor = (function () {
     // normal edit session leaked hundreds of listeners until the tab froze.
     if (!rootEl._chrxWired) {
       rootEl.addEventListener("mousedown", onMouseDown);
+      rootEl.addEventListener("touchstart", onTouchStart, { passive: true });
       // Day-tab click delegation off rootEl too — survives innerHTML
       // replace without needing a re-bind every render.
       rootEl.addEventListener("click", onRootClick);
@@ -901,6 +902,40 @@ window.Editor = (function () {
       const host = vk.closest(".chrx-editor");
       if (host) render(host);
     }
+  }
+
+  // Plan C: touch drag. A long-press (≈320ms held still) on a card picks it up
+  // for dragging; a quick tap selects it; a finger that moves first is a scroll
+  // and is left alone. Once picked up, CardInHand's touchmove/touchend handlers
+  // take over (see card_in_hand.js).
+  function onTouchStart(ev) {
+    // Click-to-place mode: a tap on a highlighted slot commits, like a click.
+    if (window.APP.editor.cardInHand && window.APP.editor.cardInHand.mode === "click") return;
+    const vk = ev.target.closest(".chrx-vkarta");
+    if (!vk || vk.classList.contains("locked")) return;
+    const t = ev.touches[0]; if (!t) return;
+    const sx = t.clientX, sy = t.clientY;
+    let moved = false, fired = false;
+    const lp = setTimeout(() => {
+      if (moved) return;
+      fired = true;
+      cleanupTS();
+      if (navigator.vibrate) { try { navigator.vibrate(15); } catch (_) {} }   // haptic
+      startDragPickup(vk, sx, sy);
+    }, 320);
+    function tm(e) {
+      const tt = e.touches[0]; if (!tt) return;
+      if (Math.hypot(tt.clientX - sx, tt.clientY - sy) > 10) { moved = true; clearTimeout(lp); cleanupTS(); }
+    }
+    function te() { clearTimeout(lp); cleanupTS(); if (!fired && !moved) handleCardClick(vk); }
+    function cleanupTS() {
+      document.removeEventListener("touchmove", tm, true);
+      document.removeEventListener("touchend", te, true);
+      document.removeEventListener("touchcancel", te, true);
+    }
+    document.addEventListener("touchmove", tm, true);
+    document.addEventListener("touchend", te, true);
+    document.addEventListener("touchcancel", te, true);
   }
 
   function onMouseDown(ev) {

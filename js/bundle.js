@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-06-14T05:46:41Z
+/* Chronexa bundle — generated 2026-06-14T05:52:01Z
  *      167 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -16384,6 +16384,7 @@ window.Editor = (function () {
     // normal edit session leaked hundreds of listeners until the tab froze.
     if (!rootEl._chrxWired) {
       rootEl.addEventListener("mousedown", onMouseDown);
+      rootEl.addEventListener("touchstart", onTouchStart, { passive: true });
       // Day-tab click delegation off rootEl too — survives innerHTML
       // replace without needing a re-bind every render.
       rootEl.addEventListener("click", onRootClick);
@@ -16767,6 +16768,40 @@ window.Editor = (function () {
       const host = vk.closest(".chrx-editor");
       if (host) render(host);
     }
+  }
+
+  // Plan C: touch drag. A long-press (≈320ms held still) on a card picks it up
+  // for dragging; a quick tap selects it; a finger that moves first is a scroll
+  // and is left alone. Once picked up, CardInHand's touchmove/touchend handlers
+  // take over (see card_in_hand.js).
+  function onTouchStart(ev) {
+    // Click-to-place mode: a tap on a highlighted slot commits, like a click.
+    if (window.APP.editor.cardInHand && window.APP.editor.cardInHand.mode === "click") return;
+    const vk = ev.target.closest(".chrx-vkarta");
+    if (!vk || vk.classList.contains("locked")) return;
+    const t = ev.touches[0]; if (!t) return;
+    const sx = t.clientX, sy = t.clientY;
+    let moved = false, fired = false;
+    const lp = setTimeout(() => {
+      if (moved) return;
+      fired = true;
+      cleanupTS();
+      if (navigator.vibrate) { try { navigator.vibrate(15); } catch (_) {} }   // haptic
+      startDragPickup(vk, sx, sy);
+    }, 320);
+    function tm(e) {
+      const tt = e.touches[0]; if (!tt) return;
+      if (Math.hypot(tt.clientX - sx, tt.clientY - sy) > 10) { moved = true; clearTimeout(lp); cleanupTS(); }
+    }
+    function te() { clearTimeout(lp); cleanupTS(); if (!fired && !moved) handleCardClick(vk); }
+    function cleanupTS() {
+      document.removeEventListener("touchmove", tm, true);
+      document.removeEventListener("touchend", te, true);
+      document.removeEventListener("touchcancel", te, true);
+    }
+    document.addEventListener("touchmove", tm, true);
+    document.addEventListener("touchend", te, true);
+    document.addEventListener("touchcancel", te, true);
   }
 
   function onMouseDown(ev) {
@@ -17800,6 +17835,9 @@ window.PendingStrip = (function () {
       paintAllSlots();
       document.addEventListener("mousemove", onMove, true);
       document.addEventListener("mouseup", onUp, true);
+      document.addEventListener("touchmove", onMove, { capture: true, passive: false });
+      document.addEventListener("touchend", onUp, true);
+      document.addEventListener("touchcancel", onUp, true);
       document.addEventListener("keydown", onKey, true);
     } else {
       // Click mode!
@@ -17938,12 +17976,20 @@ window.PendingStrip = (function () {
     }
   }
 
+  // Pointer coords from either a mouse or a touch event (Plan C touch support).
+  function evXY(e) {
+    const t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]);
+    return t ? { x: t.clientX, y: t.clientY } : { x: e.clientX, y: e.clientY };
+  }
+
   function onMove(e) {
     if (!ghost) return;
-    px = e.clientX; py = e.clientY;
+    if (e.type === "touchmove" && e.cancelable) e.preventDefault();  // stop page scroll while dragging
+    const xy = evXY(e);
+    px = xy.x; py = xy.y;
     if (!renderInit) { rx = px; ry = py; renderInit = true; }
     if (dragTooltipEl && dragTooltipEl.style.display !== "none") {
-      positionDragTooltip(e.clientX, e.clientY);
+      positionDragTooltip(px, py);
     }
     if (!rafId) rafId = requestAnimationFrame(flush);
   }
@@ -18042,8 +18088,9 @@ window.PendingStrip = (function () {
   function onUp(e) {
     if (!ghost) return;
     if (e.target && e.target.closest && e.target.closest(".chrx-collision-menu")) return;
-    if (overPending(e.clientX, e.clientY)) return unplaceToPending();
-    const slot = slotAt(e.clientX, e.clientY);
+    const up = evXY(e);   // touch end reports via changedTouches
+    if (overPending(up.x, up.y)) return unplaceToPending();
+    const slot = slotAt(up.x, up.y);
     if (!slot) return cancel();
     const d = parseInt(slot.dataset.day, 10), p = parseInt(slot.dataset.period, 10);
     // Drop onto an occupied slot → swap: the dragged card takes the slot and
@@ -18051,8 +18098,8 @@ window.PendingStrip = (function () {
     // swap() falls back to the collision menu if the dragged card can't fit
     // cleanly here (a real conflict the user must resolve).
     if (targetCardsForSlot(slot).length) {
-      const targetVk = vkartaAt(e.clientX, e.clientY);
-      return swap(d, p, slot, targetVk ? targetVk.dataset.lessonId : null, { x: e.clientX, y: e.clientY });
+      const targetVk = vkartaAt(up.x, up.y);
+      return swap(d, p, slot, targetVk ? targetVk.dataset.lessonId : null, { x: up.x, y: up.y });
     }
     const v = classifySlot(slot);
     if (v.validity === "red") return showCollisionMenu(slot, v, e.clientX, e.clientY);
@@ -18371,6 +18418,9 @@ window.PendingStrip = (function () {
   function cleanup() {
     document.removeEventListener("mousemove", onMove, true);
     document.removeEventListener("mouseup", onUp, true);
+    document.removeEventListener("touchmove", onMove, { capture: true });
+    document.removeEventListener("touchend", onUp, true);
+    document.removeEventListener("touchcancel", onUp, true);
     document.removeEventListener("keydown", onKey, true);
     if (lastSlot) { lastSlot.removeAttribute("data-validity"); lastSlot.removeAttribute("title"); }
     lastSlot = null;

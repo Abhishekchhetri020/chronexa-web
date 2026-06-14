@@ -656,3 +656,38 @@ body.chrx-body--resizing * {
   }
   @keyframes chrx-slot-breathe{ 0%,100%{opacity:0} 50%{opacity:1} }
 }
+
+/* ── Plan C: mobile / touch polish ─────────────────────────────────────────*/
+@media (max-width: 767px), (pointer: coarse){
+  /* 44×44 minimum touch targets (Apple HIG) */
+  #editor-quick-tools button, .chrx-topbar-editor-tools button,
+  .step-btn, .chrx-pending-tab, .chrx-day-tab,
+  .chrx-matrix-teachersel, .chrx-matrix-save, .chrx-matrix-cancel{ min-height:44px; }
+  /* Roomier rows so cards are tappable */
+  .chrx-editor--compact .chrx-row{ height:40px; min-height:40px; }
+  .chrx-grid{ --chrx-cell-min:44px; }
+  /* Let vertical scroll work when a drag hasn't started; long-press picks up. */
+  .chrx-vkarta{ touch-action:pan-x pan-y; }
+}
+/* Modals become bottom sheets on small screens (native feel). */
+@media (max-width: 640px){
+  .chrx-matrix-root{ align-items:flex-end !important; padding:0 !important; }
+  .chrx-matrix-panel{
+    width:100% !important; max-width:100% !important; max-height:92vh !important;
+    border-radius:16px 16px 0 0 !important; animation:chrx-sheet-up .28s cubic-bezier(.2,.8,.2,1);
+  }
+}
+@keyframes chrx-sheet-up{ from{transform:translateY(100%)} to{transform:translateY(0)} }
+@media (max-width:640px) and (prefers-reduced-motion: reduce){ .chrx-matrix-panel{ animation:none !important } }
+
+/* Mobile: collapse the studio sidebar + wordmark so the editor/start content
+   gets the full width (otherwise the 216px rail eats most of a phone screen). */
+@media (max-width: 767px){
+  .chrx-shell{
+    grid-template-columns:0 1fr !important;
+    grid-template-areas:"topbar topbar" "main main" "status status" !important;
+  }
+  .chrx-shell .chrx-sidebar, .chrx-shell .chrx-wordmark, .chrx-rail{ display:none !important; }
+  /* Topbar can wrap its controls on small screens instead of overflowing. */
+  .chrx-topbar{ flex-wrap:wrap; height:auto !important; min-height:56px; }
+}

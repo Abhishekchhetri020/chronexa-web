@@ -98,6 +98,9 @@
       paintAllSlots();
       document.addEventListener("mousemove", onMove, true);
       document.addEventListener("mouseup", onUp, true);
+      document.addEventListener("touchmove", onMove, { capture: true, passive: false });
+      document.addEventListener("touchend", onUp, true);
+      document.addEventListener("touchcancel", onUp, true);
       document.addEventListener("keydown", onKey, true);
     } else {
       // Click mode!
@@ -236,12 +239,20 @@
     }
   }
 
+  // Pointer coords from either a mouse or a touch event (Plan C touch support).
+  function evXY(e) {
+    const t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]);
+    return t ? { x: t.clientX, y: t.clientY } : { x: e.clientX, y: e.clientY };
+  }
+
   function onMove(e) {
     if (!ghost) return;
-    px = e.clientX; py = e.clientY;
+    if (e.type === "touchmove" && e.cancelable) e.preventDefault();  // stop page scroll while dragging
+    const xy = evXY(e);
+    px = xy.x; py = xy.y;
     if (!renderInit) { rx = px; ry = py; renderInit = true; }
     if (dragTooltipEl && dragTooltipEl.style.display !== "none") {
-      positionDragTooltip(e.clientX, e.clientY);
+      positionDragTooltip(px, py);
     }
     if (!rafId) rafId = requestAnimationFrame(flush);
   }
@@ -340,8 +351,9 @@
   function onUp(e) {
     if (!ghost) return;
     if (e.target && e.target.closest && e.target.closest(".chrx-collision-menu")) return;
-    if (overPending(e.clientX, e.clientY)) return unplaceToPending();
-    const slot = slotAt(e.clientX, e.clientY);
+    const up = evXY(e);   // touch end reports via changedTouches
+    if (overPending(up.x, up.y)) return unplaceToPending();
+    const slot = slotAt(up.x, up.y);
     if (!slot) return cancel();
     const d = parseInt(slot.dataset.day, 10), p = parseInt(slot.dataset.period, 10);
     // Drop onto an occupied slot → swap: the dragged card takes the slot and
@@ -349,8 +361,8 @@
     // swap() falls back to the collision menu if the dragged card can't fit
     // cleanly here (a real conflict the user must resolve).
     if (targetCardsForSlot(slot).length) {
-      const targetVk = vkartaAt(e.clientX, e.clientY);
-      return swap(d, p, slot, targetVk ? targetVk.dataset.lessonId : null, { x: e.clientX, y: e.clientY });
+      const targetVk = vkartaAt(up.x, up.y);
+      return swap(d, p, slot, targetVk ? targetVk.dataset.lessonId : null, { x: up.x, y: up.y });
     }
     const v = classifySlot(slot);
     if (v.validity === "red") return showCollisionMenu(slot, v, e.clientX, e.clientY);
@@ -669,6 +681,9 @@
   function cleanup() {
     document.removeEventListener("mousemove", onMove, true);
     document.removeEventListener("mouseup", onUp, true);
+    document.removeEventListener("touchmove", onMove, { capture: true });
+    document.removeEventListener("touchend", onUp, true);
+    document.removeEventListener("touchcancel", onUp, true);
     document.removeEventListener("keydown", onKey, true);
     if (lastSlot) { lastSlot.removeAttribute("data-validity"); lastSlot.removeAttribute("title"); }
     lastSlot = null;
