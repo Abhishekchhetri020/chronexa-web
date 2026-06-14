@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-06-14T05:59:28Z
+/* Chronexa bundle — generated 2026-06-14T06:49:54Z
  *      167 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -16385,6 +16385,7 @@ window.Editor = (function () {
     if (!rootEl._chrxWired) {
       rootEl.addEventListener("mousedown", onMouseDown);
       rootEl.addEventListener("touchstart", onTouchStart, { passive: true });
+      rootEl.addEventListener("touchstart", onSwipeStart, { passive: true });
       // Day-tab click delegation off rootEl too — survives innerHTML
       // replace without needing a re-bind every render.
       rootEl.addEventListener("click", onRootClick);
@@ -16802,6 +16803,35 @@ window.Editor = (function () {
     document.addEventListener("touchmove", tm, true);
     document.addEventListener("touchend", te, true);
     document.addEventListener("touchcancel", te, true);
+  }
+
+  // Plan C: on a phone (single-day view) a horizontal swipe across the grid
+  // changes the active day. Desktop shows all days, so it's gated to ≤767px and
+  // never fires while a card is being carried/picked up.
+  function onSwipeStart(ev) {
+    if (window.innerWidth > 767) return;
+    if (window.APP.editor.cardInHand) return;
+    const t = ev.touches[0]; if (!t) return;
+    const sx = t.clientX, sy = t.clientY, t0 = Date.now();
+    function end(e) {
+      document.removeEventListener("touchend", end, true);
+      if (window.APP.editor.cardInHand) return;        // a pickup happened — ignore
+      if (Date.now() - t0 > 600) return;               // slow = scroll/hold, not a swipe
+      const tt = e.changedTouches && e.changedTouches[0]; if (!tt) return;
+      const dx = tt.clientX - sx, dy = tt.clientY - sy;
+      if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 2) changeDay(dx < 0 ? 1 : -1);
+    }
+    document.addEventListener("touchend", end, true);
+  }
+  function changeDay(dir) {
+    const S = window.APP.school; if (!S) return;
+    const nd = dayCount(S);
+    let d = (window.APP.day || 0) + dir;
+    d = Math.max(0, Math.min(nd - 1, d));
+    if (d === (window.APP.day || 0)) return;
+    window.APP.day = d;
+    const host = document.querySelector(".chrx-editor");
+    if (host) render(host);
   }
 
   function onMouseDown(ev) {
@@ -20569,6 +20599,67 @@ window.StartScreen = (function () {
   window.addEventListener("unhandledrejection", (e) => showError("async", e.reason));
   window._showError = showError;
 
+  // ----- Keyboard shortcuts cheat sheet (Plan E) ---------------------------
+  function ensureShortcutStyles() {
+    if (document.getElementById("chrx-shortcuts-styles")) return;
+    const s = document.createElement("style");
+    s.id = "chrx-shortcuts-styles";
+    s.textContent =
+      ".chrx-shortcuts-overlay{position:fixed;inset:0;z-index:10030;display:flex;align-items:center;" +
+      "justify-content:center;background:rgba(15,23,42,.5);animation:chrx-sc-fade .18s ease}" +
+      "@keyframes chrx-sc-fade{from{opacity:0}to{opacity:1}}" +
+      ".chrx-shortcuts-card{background:var(--chrx-bg-elev,#fff);color:var(--chrx-fg,#1a1714);" +
+      "border:1px solid var(--chrx-line,#d8cfbb);border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.3);" +
+      "width:min(460px,92vw);max-height:86vh;overflow:auto;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}" +
+      ".chrx-shortcuts-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;" +
+      "border-bottom:1px solid var(--chrx-line,#eee)}" +
+      ".chrx-shortcuts-head h2{margin:0;font-size:16px;color:var(--chrx-accent,#0d4f54)}" +
+      ".chrx-shortcuts-head button{background:none;border:0;font-size:22px;cursor:pointer;color:#94a3b8;line-height:1}" +
+      ".chrx-shortcuts-grid{padding:10px 18px 18px}" +
+      ".chrx-shortcuts-row{display:flex;align-items:center;gap:12px;padding:7px 0;border-bottom:1px solid rgba(0,0,0,.05)}" +
+      ".chrx-shortcuts-row:last-child{border-bottom:0}" +
+      ".chrx-shortcuts-row kbd{flex:0 0 auto;min-width:120px;font-family:ui-monospace,Menlo,monospace;font-size:12px;" +
+      "background:var(--chrx-bg-tile,#f1f5f9);border:1px solid var(--chrx-line,#d8cfbb);border-radius:6px;padding:3px 8px}" +
+      ".chrx-shortcuts-row span{font-size:13px;color:var(--chrx-fg-secondary,#4a4339)}";
+    document.head.appendChild(s);
+  }
+  function toggleShortcutSheet() {
+    const existing = document.getElementById("chrx-shortcuts");
+    if (existing) { existing.remove(); return; }
+    ensureShortcutStyles();
+    const rows = [
+      ["Drag a card", "move it to another slot"],
+      ["Long-press (touch)", "pick up a card on mobile"],
+      ["Drop on Pending", "unplace a card"],
+      ["Click card → slot", "place without dragging"],
+      ["Esc", "cancel the card in hand"],
+      ["⌘K / Ctrl-K", "command palette"],
+      ["⌘Z / Ctrl-Z", "undo"],
+      ["⇧⌘Z / Ctrl-Y", "redo"],
+      ["F", "fullscreen editor (Esc exits)"],
+      ["[", "toggle sidebar"],
+      ["?", "show / hide this sheet"],
+    ].map(r => `<div class="chrx-shortcuts-row"><kbd>${escapeHtml(r[0])}</kbd><span>${escapeHtml(r[1])}</span></div>`).join("");
+    const o = document.createElement("div");
+    o.id = "chrx-shortcuts";
+    o.className = "chrx-shortcuts-overlay";
+    o.innerHTML =
+      '<div class="chrx-shortcuts-card" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">' +
+        '<div class="chrx-shortcuts-head"><h2>⌨️ Keyboard shortcuts</h2>' +
+        '<button type="button" aria-label="Close">×</button></div>' +
+        '<div class="chrx-shortcuts-grid">' + rows + '</div></div>';
+    document.body.appendChild(o);
+    o.addEventListener("click", (e) => { if (e.target === o) o.remove(); });
+    o.querySelector("button").onclick = () => o.remove();
+  }
+  document.addEventListener("keydown", (e) => {
+    const tag = (e.target && e.target.tagName) || "";
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(tag) || (e.target && e.target.isContentEditable)) return;
+    if (e.key === "?" || (e.key === "/" && e.shiftKey)) { e.preventDefault(); toggleShortcutSheet(); }
+    else if (e.key === "Escape") { const o = document.getElementById("chrx-shortcuts"); if (o) o.remove(); }
+  });
+  window._chrxShortcuts = toggleShortcutSheet;
+
   // ----- Step navigation ----------------------------------------------------
   function showStep(n) {
     window.APP.step = n;
@@ -22245,16 +22336,25 @@ window.StartScreen = (function () {
     audit.redoStack.length = 0;
     notify(cmd.label ? "Done: " + cmd.label : "Done", "info");
   };
+  // Plan D: brief grid flash so the user sees an undo/redo took effect. Runs
+  // after the command's re-render (.chrx-grid-scroll is freshly rebuilt).
+  function flashGrid() {
+    const g = document.querySelector(".chrx-grid-scroll");
+    if (!g) return;
+    g.classList.remove("chrx-grid-flash"); void g.offsetWidth;  // restart anim
+    g.classList.add("chrx-grid-flash");
+    setTimeout(() => g.classList.remove("chrx-grid-flash"), 480);
+  }
   audit.undo = function () {
     const cmd = audit.undoStack.pop();
     if (!cmd) { notify("Nothing to undo"); return; }
-    try { cmd.undo(); audit.redoStack.push(cmd); notify("Undo · " + (cmd.label || "")); }
+    try { cmd.undo(); audit.redoStack.push(cmd); flashGrid(); notify("Undo · " + (cmd.label || "")); }
     catch (e) { console.error(e); notify("Undo failed: " + e.message, "error"); }
   };
   audit.redo = function () {
     const cmd = audit.redoStack.pop();
     if (!cmd) { notify("Nothing to redo"); return; }
-    try { cmd.do(); audit.undoStack.push(cmd); notify("Redo · " + (cmd.label || "")); }
+    try { cmd.do(); audit.undoStack.push(cmd); flashGrid(); notify("Redo · " + (cmd.label || "")); }
     catch (e) { console.error(e); notify("Redo failed: " + e.message, "error"); }
   };
   audit.clear = function () { audit.undoStack.length = 0; audit.redoStack.length = 0; };

@@ -201,6 +201,67 @@
   window.addEventListener("unhandledrejection", (e) => showError("async", e.reason));
   window._showError = showError;
 
+  // ----- Keyboard shortcuts cheat sheet (Plan E) ---------------------------
+  function ensureShortcutStyles() {
+    if (document.getElementById("chrx-shortcuts-styles")) return;
+    const s = document.createElement("style");
+    s.id = "chrx-shortcuts-styles";
+    s.textContent =
+      ".chrx-shortcuts-overlay{position:fixed;inset:0;z-index:10030;display:flex;align-items:center;" +
+      "justify-content:center;background:rgba(15,23,42,.5);animation:chrx-sc-fade .18s ease}" +
+      "@keyframes chrx-sc-fade{from{opacity:0}to{opacity:1}}" +
+      ".chrx-shortcuts-card{background:var(--chrx-bg-elev,#fff);color:var(--chrx-fg,#1a1714);" +
+      "border:1px solid var(--chrx-line,#d8cfbb);border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.3);" +
+      "width:min(460px,92vw);max-height:86vh;overflow:auto;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}" +
+      ".chrx-shortcuts-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;" +
+      "border-bottom:1px solid var(--chrx-line,#eee)}" +
+      ".chrx-shortcuts-head h2{margin:0;font-size:16px;color:var(--chrx-accent,#0d4f54)}" +
+      ".chrx-shortcuts-head button{background:none;border:0;font-size:22px;cursor:pointer;color:#94a3b8;line-height:1}" +
+      ".chrx-shortcuts-grid{padding:10px 18px 18px}" +
+      ".chrx-shortcuts-row{display:flex;align-items:center;gap:12px;padding:7px 0;border-bottom:1px solid rgba(0,0,0,.05)}" +
+      ".chrx-shortcuts-row:last-child{border-bottom:0}" +
+      ".chrx-shortcuts-row kbd{flex:0 0 auto;min-width:120px;font-family:ui-monospace,Menlo,monospace;font-size:12px;" +
+      "background:var(--chrx-bg-tile,#f1f5f9);border:1px solid var(--chrx-line,#d8cfbb);border-radius:6px;padding:3px 8px}" +
+      ".chrx-shortcuts-row span{font-size:13px;color:var(--chrx-fg-secondary,#4a4339)}";
+    document.head.appendChild(s);
+  }
+  function toggleShortcutSheet() {
+    const existing = document.getElementById("chrx-shortcuts");
+    if (existing) { existing.remove(); return; }
+    ensureShortcutStyles();
+    const rows = [
+      ["Drag a card", "move it to another slot"],
+      ["Long-press (touch)", "pick up a card on mobile"],
+      ["Drop on Pending", "unplace a card"],
+      ["Click card → slot", "place without dragging"],
+      ["Esc", "cancel the card in hand"],
+      ["⌘K / Ctrl-K", "command palette"],
+      ["⌘Z / Ctrl-Z", "undo"],
+      ["⇧⌘Z / Ctrl-Y", "redo"],
+      ["F", "fullscreen editor (Esc exits)"],
+      ["[", "toggle sidebar"],
+      ["?", "show / hide this sheet"],
+    ].map(r => `<div class="chrx-shortcuts-row"><kbd>${escapeHtml(r[0])}</kbd><span>${escapeHtml(r[1])}</span></div>`).join("");
+    const o = document.createElement("div");
+    o.id = "chrx-shortcuts";
+    o.className = "chrx-shortcuts-overlay";
+    o.innerHTML =
+      '<div class="chrx-shortcuts-card" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">' +
+        '<div class="chrx-shortcuts-head"><h2>⌨️ Keyboard shortcuts</h2>' +
+        '<button type="button" aria-label="Close">×</button></div>' +
+        '<div class="chrx-shortcuts-grid">' + rows + '</div></div>';
+    document.body.appendChild(o);
+    o.addEventListener("click", (e) => { if (e.target === o) o.remove(); });
+    o.querySelector("button").onclick = () => o.remove();
+  }
+  document.addEventListener("keydown", (e) => {
+    const tag = (e.target && e.target.tagName) || "";
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(tag) || (e.target && e.target.isContentEditable)) return;
+    if (e.key === "?" || (e.key === "/" && e.shiftKey)) { e.preventDefault(); toggleShortcutSheet(); }
+    else if (e.key === "Escape") { const o = document.getElementById("chrx-shortcuts"); if (o) o.remove(); }
+  });
+  window._chrxShortcuts = toggleShortcutSheet;
+
   // ----- Step navigation ----------------------------------------------------
   function showStep(n) {
     window.APP.step = n;

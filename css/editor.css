@@ -691,3 +691,17 @@ body.chrx-body--resizing * {
   /* Topbar can wrap its controls on small screens instead of overflowing. */
   .chrx-topbar{ flex-wrap:wrap; height:auto !important; min-height:56px; }
 }
+
+/* ── Plan D: undo/redo grid flash + loading skeleton ───────────────────────*/
+@keyframes chrx-grid-flash{ 0%{box-shadow:inset 0 0 0 3px var(--chrx-accent,#0d4f54)} 100%{box-shadow:inset 0 0 0 0 transparent} }
+.chrx-grid-flash{ animation:chrx-grid-flash .48s ease; }
+/* Branded shimmer while the editor mount is still empty (before first render). */
+#editor-root:empty{ position:relative; min-height:200px; }
+#editor-root:empty::after{
+  content:"Loading timetable…"; position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  color:var(--chrx-fg-tertiary,#837a6d); font-size:13px; font-family:var(--chrx-font-sans,sans-serif); letter-spacing:.02em;
+  background:linear-gradient(100deg, transparent 30%, rgba(13,79,84,.06) 50%, transparent 70%);
+  background-size:200% 100%; animation:chrx-shimmer 1.3s ease-in-out infinite;
+}
+@keyframes chrx-shimmer{ from{background-position:200% 0} to{background-position:-200% 0} }
+@media (prefers-reduced-motion: reduce){ .chrx-grid-flash, #editor-root:empty::after{ animation:none } }

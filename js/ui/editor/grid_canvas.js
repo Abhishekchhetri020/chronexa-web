@@ -519,6 +519,7 @@ window.Editor = (function () {
     if (!rootEl._chrxWired) {
       rootEl.addEventListener("mousedown", onMouseDown);
       rootEl.addEventListener("touchstart", onTouchStart, { passive: true });
+      rootEl.addEventListener("touchstart", onSwipeStart, { passive: true });
       // Day-tab click delegation off rootEl too — survives innerHTML
       // replace without needing a re-bind every render.
       rootEl.addEventListener("click", onRootClick);
@@ -936,6 +937,35 @@ window.Editor = (function () {
     document.addEventListener("touchmove", tm, true);
     document.addEventListener("touchend", te, true);
     document.addEventListener("touchcancel", te, true);
+  }
+
+  // Plan C: on a phone (single-day view) a horizontal swipe across the grid
+  // changes the active day. Desktop shows all days, so it's gated to ≤767px and
+  // never fires while a card is being carried/picked up.
+  function onSwipeStart(ev) {
+    if (window.innerWidth > 767) return;
+    if (window.APP.editor.cardInHand) return;
+    const t = ev.touches[0]; if (!t) return;
+    const sx = t.clientX, sy = t.clientY, t0 = Date.now();
+    function end(e) {
+      document.removeEventListener("touchend", end, true);
+      if (window.APP.editor.cardInHand) return;        // a pickup happened — ignore
+      if (Date.now() - t0 > 600) return;               // slow = scroll/hold, not a swipe
+      const tt = e.changedTouches && e.changedTouches[0]; if (!tt) return;
+      const dx = tt.clientX - sx, dy = tt.clientY - sy;
+      if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 2) changeDay(dx < 0 ? 1 : -1);
+    }
+    document.addEventListener("touchend", end, true);
+  }
+  function changeDay(dir) {
+    const S = window.APP.school; if (!S) return;
+    const nd = dayCount(S);
+    let d = (window.APP.day || 0) + dir;
+    d = Math.max(0, Math.min(nd - 1, d));
+    if (d === (window.APP.day || 0)) return;
+    window.APP.day = d;
+    const host = document.querySelector(".chrx-editor");
+    if (host) render(host);
   }
 
   function onMouseDown(ev) {

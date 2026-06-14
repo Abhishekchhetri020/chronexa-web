@@ -49,16 +49,25 @@
     audit.redoStack.length = 0;
     notify(cmd.label ? "Done: " + cmd.label : "Done", "info");
   };
+  // Plan D: brief grid flash so the user sees an undo/redo took effect. Runs
+  // after the command's re-render (.chrx-grid-scroll is freshly rebuilt).
+  function flashGrid() {
+    const g = document.querySelector(".chrx-grid-scroll");
+    if (!g) return;
+    g.classList.remove("chrx-grid-flash"); void g.offsetWidth;  // restart anim
+    g.classList.add("chrx-grid-flash");
+    setTimeout(() => g.classList.remove("chrx-grid-flash"), 480);
+  }
   audit.undo = function () {
     const cmd = audit.undoStack.pop();
     if (!cmd) { notify("Nothing to undo"); return; }
-    try { cmd.undo(); audit.redoStack.push(cmd); notify("Undo · " + (cmd.label || "")); }
+    try { cmd.undo(); audit.redoStack.push(cmd); flashGrid(); notify("Undo · " + (cmd.label || "")); }
     catch (e) { console.error(e); notify("Undo failed: " + e.message, "error"); }
   };
   audit.redo = function () {
     const cmd = audit.redoStack.pop();
     if (!cmd) { notify("Nothing to redo"); return; }
-    try { cmd.do(); audit.undoStack.push(cmd); notify("Redo · " + (cmd.label || "")); }
+    try { cmd.do(); audit.undoStack.push(cmd); flashGrid(); notify("Redo · " + (cmd.label || "")); }
     catch (e) { console.error(e); notify("Redo failed: " + e.message, "error"); }
   };
   audit.clear = function () { audit.undoStack.length = 0; audit.redoStack.length = 0; };
