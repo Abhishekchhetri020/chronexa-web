@@ -204,10 +204,17 @@
       const pageWidthPx = (orientation === "portrait" ? 210 : 297) * mmToPx;
       const paddingWidthPx = 24 * mmToPx;
       const rowHeaderWidthPx = compactLevel === 2 ? 46 : compactLevel === 1 ? 58 : 80;
-      const breakWidthPx = compactLevel === 2 ? 18 : 22;
+      const availableGridWidthPx = pageWidthPx - paddingWidthPx - rowHeaderWidthPx;
       const breakCount = summaryCols.filter(col => col.kind === "break").length;
       const teachingColCount = Math.max(1, summaryCols.filter(col => col.kind === "period").length);
-      const periodColWidthPx = Math.max(10, (pageWidthPx - paddingWidthPx - rowHeaderWidthPx - breakCount * breakWidthPx) / teachingColCount);
+      const minPeriodWidthPx = compactLevel === 2 ? 6 : compactLevel === 1 ? 7 : 8;
+      let breakWidthPx = compactLevel === 2 ? 12 : compactLevel === 1 ? 14 : 16;
+      let periodColWidthPx = (availableGridWidthPx - breakCount * breakWidthPx) / teachingColCount;
+      if (periodColWidthPx < minPeriodWidthPx && breakCount > 0) {
+        breakWidthPx = Math.max(4, (availableGridWidthPx - teachingColCount * minPeriodWidthPx) / breakCount);
+        periodColWidthPx = Math.max(minPeriodWidthPx, (availableGridWidthPx - breakCount * breakWidthPx) / teachingColCount);
+      }
+      periodColWidthPx = Math.max(5, periodColWidthPx);
       const periodFontPx = Math.max(5.8, Math.min(compactLevel === 2 ? 7.2 : 8, periodColWidthPx * 0.48));
       layout.summaryDayColumns = summaryCols;
       layout.summaryDayRuns = runs;
@@ -313,15 +320,47 @@
   function appendSummaryDayPeriodHeader(thead, report) {
     const layout = report._layout || {};
     const periodColWidthPx = layout.summaryDayPeriodColWidthPx || 18;
-    const breakColWidthPx = layout.summaryDayBreakColWidthPx || 22;
+    const breakColWidthPx = layout.summaryDayBreakColWidthPx || 16;
     const summaryCols = layout.summaryDayColumns || [];
+    const runs = layout.summaryDayRuns || [];
+
+    if (runs.length === 0) {
+      const headerRow = el("tr");
+      headerRow.appendChild(el("th", {
+        style: "border:1px solid #999;padding:3px;background:#fafafa;width:" + layout.rowHeaderWidthPx + "px",
+      }, ""));
+      for (const col of summaryCols) {
+        if (col.kind === "break") {
+          headerRow.appendChild(el("th", {
+            style: "border:1px solid #bbb;padding:2px;background:#efefeb;width:" + breakColWidthPx + "px;font-size:8px;text-align:center;color:#666",
+          }, ""));
+          continue;
+        }
+        const cc = col.combo;
+        const labels = [];
+        let startMin = null, endMin = null;
+        for (const [dim, ent] of cc.entries()) {
+          if (dim === "period") {
+            labels.push(ent.abbr || ent.name);
+            if (ent._startMin != null) startMin = ent._startMin;
+            if (ent._endMin   != null) endMin   = ent._endMin;
+          }
+        }
+        headerRow.appendChild(el("th", {
+          style: "border:1px solid #999;padding:2px;background:#fafafa;font-weight:700;font-size:" + report._layout.headerFontPx + "px;text-align:center;font-family:system-ui;width:" + periodColWidthPx + "px",
+        }, labels.join(" · ")));
+      }
+      thead.appendChild(headerRow);
+      return;
+    }
+
     const headerRow = el("tr");
     headerRow.appendChild(el("th", {
       rowspan: "2",
       style: "border:1px solid #999;padding:3px;background:#fafafa;width:" + layout.rowHeaderWidthPx + "px",
     }, ""));
 
-    for (const run of layout.summaryDayRuns || []) {
+    for (const run of runs) {
       headerRow.appendChild(el("th", {
         colspan: String(run.colCount || 0),
         style: "border:1px solid #999;padding:3px 2px;background:#fafafa;font-weight:700;font-size:" + report._layout.headerFontPx + "px;text-align:center;font-family:system-ui",
