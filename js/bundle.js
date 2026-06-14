@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-06-14T06:49:54Z
+/* Chronexa bundle — generated 2026-06-14T07:18:54Z
  *      167 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -15919,6 +15919,12 @@ window.Editor = (function () {
     const newScroll = rootEl.querySelector(".chrx-grid-scroll");
     if (newScroll) { newScroll.scrollTop = savedTop; newScroll.scrollLeft = savedLeft; }
 
+    // Re-apply any pinch-zoom level to the freshly built grid (Plan C).
+    if (window.APP.editor.gridZoom && window.APP.editor.gridZoom !== 1) {
+      const g = rootEl.querySelector(".chrx-grid");
+      if (g) g.style.setProperty("--chrx-grid-zoom", String(window.APP.editor.gridZoom));
+    }
+
     wire(rootEl);
     syncCardInHandClass();
     autoFitRowLabels(rootEl);
@@ -16392,6 +16398,27 @@ window.Editor = (function () {
       rootEl.addEventListener("mouseover", onMouseOver);
       rootEl.addEventListener("focusin", onFocusIn);
       rootEl.addEventListener("mouseout", onMouseOut);
+      // Plan C: pinch-to-zoom the grid (scales cell width + row height via the
+      // --chrx-grid-zoom var, sticky-safe — no transform).
+      let pinch = null;
+      rootEl.addEventListener("touchstart", (ev) => {
+        if (ev.touches.length !== 2) return;
+        const a = ev.touches[0], b = ev.touches[1];
+        pinch = { d0: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY),
+                  z0: (window.APP.editor.gridZoom || 1) };
+      }, { passive: true });
+      rootEl.addEventListener("touchmove", (ev) => {
+        if (!pinch || ev.touches.length !== 2) return;
+        if (ev.cancelable) ev.preventDefault();
+        const a = ev.touches[0], b = ev.touches[1];
+        const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+        let z = pinch.z0 * (d / pinch.d0);
+        z = Math.max(0.6, Math.min(2.2, z));
+        window.APP.editor.gridZoom = z;
+        const g = rootEl.querySelector(".chrx-grid");
+        if (g) g.style.setProperty("--chrx-grid-zoom", z.toFixed(3));
+      }, { passive: false });
+      rootEl.addEventListener("touchend", (ev) => { if (!ev.touches || ev.touches.length < 2) pinch = null; }, { passive: true });
       rootEl._chrxWired = true;
     }
   }
@@ -17418,6 +17445,35 @@ window.PendingStrip = (function () {
       document.addEventListener("mousemove", onMouseMove, true);
       document.addEventListener("mouseup", onMouseUp, true);
     });
+    // Plan C: touch support — long-press a pending card to drag it onto the
+    // grid (CardInHand's touch handlers take over once picked up); a quick tap
+    // selects it for click-to-place.
+    rootEl.addEventListener("touchstart", (ev) => {
+      const vk = ev.target.closest(".chrx-vk-pending");
+      if (!vk) return;
+      const t = ev.touches[0]; if (!t) return;
+      const sx = t.clientX, sy = t.clientY;
+      let moved = false, fired = false;
+      const lp = setTimeout(() => {
+        if (moved) return;
+        fired = true; cleanup();
+        if (navigator.vibrate) { try { navigator.vibrate(15); } catch (_) {} }
+        startPendingDrag(vk, sx, sy);
+      }, 320);
+      function tmove(e) {
+        const tt = e.touches[0]; if (!tt) return;
+        if (Math.hypot(tt.clientX - sx, tt.clientY - sy) > 10) { moved = true; clearTimeout(lp); cleanup(); }
+      }
+      function tend() { clearTimeout(lp); cleanup(); if (!fired && !moved) handlePendingClick(vk); }
+      function cleanup() {
+        document.removeEventListener("touchmove", tmove, true);
+        document.removeEventListener("touchend", tend, true);
+        document.removeEventListener("touchcancel", tend, true);
+      }
+      document.addEventListener("touchmove", tmove, true);
+      document.addEventListener("touchend", tend, true);
+      document.addEventListener("touchcancel", tend, true);
+    }, { passive: true });
     document.addEventListener("editor:place", () => render(rootEl));
     rootEl._chrxPendingWired = true;
   }

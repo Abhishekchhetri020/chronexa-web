@@ -27,16 +27,16 @@ main:has(#step-6:not(.hidden)){max-width:none !important;padding:6px 10px 8px !i
 .chrx-editor-tool__count{margin-left:auto;font-size:var(--chrx-font-eye);font-weight:var(--chrx-fw-semibold);color:var(--chrx-fg-secondary);white-space:nowrap}
 .chrx-day-tab{flex:1;padding:var(--chrx-space-2) var(--chrx-space-3);border:1px solid var(--chrx-line);background:var(--chrx-bg-tile-thin);color:var(--chrx-fg);font-weight:var(--chrx-fw-semibold);font-size:var(--chrx-font-body);border-radius:var(--chrx-radius-sm);cursor:pointer}
 .chrx-day-tab.active{background:var(--chrx-accent);color:#fff;border-color:var(--chrx-accent)}
-.chrx-row{display:flex;align-items:stretch;height:44px;border-bottom:1px solid var(--chrx-bg-grid-line);transition:height .24s cubic-bezier(.4,0,.2,1),min-height .24s cubic-bezier(.4,0,.2,1)}
+.chrx-row{display:flex;align-items:stretch;height:calc(44px * var(--chrx-grid-zoom,1));border-bottom:1px solid var(--chrx-bg-grid-line);transition:height .24s cubic-bezier(.4,0,.2,1),min-height .24s cubic-bezier(.4,0,.2,1)}
 @media (prefers-reduced-motion: reduce){.chrx-row{transition:none}}
 .chrx-row:last-child{border-bottom:0}
 .chrx-row-head{height:42px;background:var(--chrx-bg-panel);position:sticky;top:0;z-index:var(--chrx-z-grid);font-size:var(--chrx-font-eye);font-weight:var(--chrx-fw-semibold);color:var(--chrx-fg-secondary)}
 .chrx-rowlabel{width:var(--chrx-rowlabel-w,52px);min-width:var(--chrx-rowlabel-w,52px);padding:0 3px;display:flex;align-items:center;font-size:9.5px;line-height:1.15;font-weight:var(--chrx-fw-semibold);background:var(--chrx-bg-tile);border-right:1px solid var(--chrx-line);position:sticky;left:0;z-index:calc(var(--chrx-z-grid) + 1);overflow:hidden;white-space:nowrap}
-.chrx-grid .chrx-row{min-height:44px}
+.chrx-grid .chrx-row{min-height:calc(44px * var(--chrx-grid-zoom,1))}
 /* Compact density: subject-only cards → shorter rows for max classes on screen.
    Bumped 24→32 now the toolbar row moved to the top bar — bigger, readable
    cards (the school's short subject codes fit comfortably). */
-.chrx-editor--compact .chrx-row{height:32px;min-height:32px}
+.chrx-editor--compact .chrx-row{height:calc(32px * var(--chrx-grid-zoom,1));min-height:calc(32px * var(--chrx-grid-zoom,1))}
 /* The header stacks TWO lines (day name ~21px + period numbers ~20px ≈ 41px).
    The compact rule above also matches the header (it has .chrx-row), shrinking
    it to 24px so the period row spilled ~17px onto the first data row — the
@@ -52,7 +52,7 @@ main:has(#step-6:not(.hidden)){max-width:none !important;padding:6px 10px 8px !i
 .chrx-rowlabel-sub{display:none}
 .chrx-day-head-group,.chrx-day-body-group{flex:1 1 0;min-width:0;border-right:2px solid var(--chrx-line)}
 .chrx-day-head-group{display:flex;flex-direction:column}
-.chrx-period-head-row,.chrx-day-body-group{display:grid;grid-template-columns:repeat(var(--chrx-periods, 8), minmax(var(--chrx-cell-min,34px), 1fr))}
+.chrx-period-head-row,.chrx-day-body-group{display:grid;grid-template-columns:repeat(var(--chrx-periods, 8), minmax(calc(var(--chrx-cell-min,34px) * var(--chrx-grid-zoom,1)), 1fr))}
 .chrx-h-day{min-width:0;text-align:center;font-weight:var(--chrx-fw-semibold);font-size:var(--chrx-font-small);background:var(--chrx-bg-tile);border-right:0;border-bottom:1px solid var(--chrx-line);padding:2px 0}
 .chrx-h-period{width:auto;min-width:0;text-align:center;border-right:1px solid var(--chrx-bg-grid-line);padding:2px 2px;color:var(--chrx-fg-tertiary);font-size:10px;letter-spacing:0;overflow:hidden;white-space:nowrap}
 .chrx-h-period.is-synthetic{color:rgba(100,116,139,.55);background:repeating-linear-gradient(45deg,rgba(148,163,184,.10) 0 4px,transparent 4px 8px)}

@@ -173,6 +173,35 @@ window.PendingStrip = (function () {
       document.addEventListener("mousemove", onMouseMove, true);
       document.addEventListener("mouseup", onMouseUp, true);
     });
+    // Plan C: touch support — long-press a pending card to drag it onto the
+    // grid (CardInHand's touch handlers take over once picked up); a quick tap
+    // selects it for click-to-place.
+    rootEl.addEventListener("touchstart", (ev) => {
+      const vk = ev.target.closest(".chrx-vk-pending");
+      if (!vk) return;
+      const t = ev.touches[0]; if (!t) return;
+      const sx = t.clientX, sy = t.clientY;
+      let moved = false, fired = false;
+      const lp = setTimeout(() => {
+        if (moved) return;
+        fired = true; cleanup();
+        if (navigator.vibrate) { try { navigator.vibrate(15); } catch (_) {} }
+        startPendingDrag(vk, sx, sy);
+      }, 320);
+      function tmove(e) {
+        const tt = e.touches[0]; if (!tt) return;
+        if (Math.hypot(tt.clientX - sx, tt.clientY - sy) > 10) { moved = true; clearTimeout(lp); cleanup(); }
+      }
+      function tend() { clearTimeout(lp); cleanup(); if (!fired && !moved) handlePendingClick(vk); }
+      function cleanup() {
+        document.removeEventListener("touchmove", tmove, true);
+        document.removeEventListener("touchend", tend, true);
+        document.removeEventListener("touchcancel", tend, true);
+      }
+      document.addEventListener("touchmove", tmove, true);
+      document.addEventListener("touchend", tend, true);
+      document.addEventListener("touchcancel", tend, true);
+    }, { passive: true });
     document.addEventListener("editor:place", () => render(rootEl));
     rootEl._chrxPendingWired = true;
   }

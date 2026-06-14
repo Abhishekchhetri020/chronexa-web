@@ -1358,3 +1358,23 @@ body.chrx-editor-dark .chrx-slot:focus-visible{ outline-color:#7dd3fc !important
 .step-panel:not(.hidden){ animation:chrx-step-in .28s var(--chrx-ease,ease) both; }
 @keyframes chrx-step-in{ from{opacity:0; transform:translateY(8px)} to{opacity:1; transform:translateY(0)} }
 @media (prefers-reduced-motion: reduce){ .step-panel:not(.hidden){ animation:none } }
+
+/* ── Plan E: print pass ────────────────────────────────────────────────────
+   Make Ctrl-P of the editor produce a clean timetable: drop the app chrome,
+   the paper grain and scroll caps, keep card colours, avoid splitting a row
+   across pages. */
+@media print{
+  #chrx-ribbon, .chrx-ribbon, .chrx-topbar, .chrx-sidebar, .chrx-wordmark, .chrx-rail,
+  nav, body > header, header[class*="from-slate-900"],
+  .chrx-pending-region, #editor-lower, .chrx-toast, #chrx-update-banner,
+  .chrx-error-recover, .chrx-day-tabs, .step-btn, .needs-school,
+  #editor-quick-tools, .chrx-topbar-editor-tools, .chrx-pwa-banner{ display:none !important; }
+  html, body{ background:#fff !important; }
+  body::before{ display:none !important; }            /* paper grain */
+  main, main:has(#step-6:not(.hidden)){ max-width:none !important; padding:0 !important; }
+  .chrx-grid-scroll{ max-height:none !important; overflow:visible !important; border:0 !important; box-shadow:none !important; }
+  .chrx-row{ page-break-inside:avoid; }
+  .chrx-row, .chrx-slot, .chrx-vkarta, .chrx-rowlabel, .chrx-row-head{
+    -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important;
+  }
+}

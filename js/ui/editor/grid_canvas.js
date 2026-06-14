@@ -53,6 +53,12 @@ window.Editor = (function () {
     const newScroll = rootEl.querySelector(".chrx-grid-scroll");
     if (newScroll) { newScroll.scrollTop = savedTop; newScroll.scrollLeft = savedLeft; }
 
+    // Re-apply any pinch-zoom level to the freshly built grid (Plan C).
+    if (window.APP.editor.gridZoom && window.APP.editor.gridZoom !== 1) {
+      const g = rootEl.querySelector(".chrx-grid");
+      if (g) g.style.setProperty("--chrx-grid-zoom", String(window.APP.editor.gridZoom));
+    }
+
     wire(rootEl);
     syncCardInHandClass();
     autoFitRowLabels(rootEl);
@@ -526,6 +532,27 @@ window.Editor = (function () {
       rootEl.addEventListener("mouseover", onMouseOver);
       rootEl.addEventListener("focusin", onFocusIn);
       rootEl.addEventListener("mouseout", onMouseOut);
+      // Plan C: pinch-to-zoom the grid (scales cell width + row height via the
+      // --chrx-grid-zoom var, sticky-safe — no transform).
+      let pinch = null;
+      rootEl.addEventListener("touchstart", (ev) => {
+        if (ev.touches.length !== 2) return;
+        const a = ev.touches[0], b = ev.touches[1];
+        pinch = { d0: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY),
+                  z0: (window.APP.editor.gridZoom || 1) };
+      }, { passive: true });
+      rootEl.addEventListener("touchmove", (ev) => {
+        if (!pinch || ev.touches.length !== 2) return;
+        if (ev.cancelable) ev.preventDefault();
+        const a = ev.touches[0], b = ev.touches[1];
+        const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+        let z = pinch.z0 * (d / pinch.d0);
+        z = Math.max(0.6, Math.min(2.2, z));
+        window.APP.editor.gridZoom = z;
+        const g = rootEl.querySelector(".chrx-grid");
+        if (g) g.style.setProperty("--chrx-grid-zoom", z.toFixed(3));
+      }, { passive: false });
+      rootEl.addEventListener("touchend", (ev) => { if (!ev.touches || ev.touches.length < 2) pinch = null; }, { passive: true });
       rootEl._chrxWired = true;
     }
   }

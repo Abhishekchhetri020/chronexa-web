@@ -15,7 +15,7 @@
  */
 
 const CACHE_PREFIX = "chronexa-";
-const APP_VER = "20260614-p165-polish-tail";
+const APP_VER = "20260614-p166-final-tail";
 const CACHE_NAME = CACHE_PREFIX + APP_VER;
 
 // Minimal app shell for offline support.

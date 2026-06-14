@@ -544,3 +544,13 @@
   color: var(--chrx-fg-secondary, rgba(0,0,0,0.7));
   line-height: 1.5;
 }
+
+/* Plan D: solver "thinking" — ambient glow pulse on the progress ring while a
+   generate is running, so the modal feels alive (the heatmap already pulses per
+   iteration). Reduced-motion safe. */
+.csu-progress .csu-ring{ animation:csu-think-pulse 1.9s ease-in-out infinite; border-radius:50%; }
+@keyframes csu-think-pulse{
+  0%,100%{ filter:drop-shadow(0 0 0 rgba(13,79,84,0)); }
+  50%{ filter:drop-shadow(0 0 9px rgba(13,79,84,.55)); }
+}
+@media (prefers-reduced-motion: reduce){ .csu-progress .csu-ring{ animation:none } }
