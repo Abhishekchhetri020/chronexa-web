@@ -122,6 +122,21 @@ const denseSchool = { ...school, bell: { periods: manyPeriods } };
 window.APP.PrintPivot.renderReport(denseReport, denseSchool, manyPeriods);
 check("dense reports switch to compact cell height", denseReport._layout.cellMinHeightPx <= 22, String(denseReport._layout.cellMinHeightPx));
 
+const summaryPages = window.APP.PrintPivot.renderPreset("summary", school, school.bell.periods);
+const summaryPage = summaryPages[0];
+const summaryTopHeaders = Array.from(summaryPage.querySelectorAll("table.chrx-pivot-grid thead tr:first-child th")).slice(1).map(th => th.textContent.trim().replace(/\s+/g, " "));
+const summaryPeriodHeaders = Array.from(summaryPage.querySelectorAll("table.chrx-pivot-grid thead tr:nth-child(2) th")).slice(1).map(th => th.textContent.trim().replace(/\s+/g, " "));
+const summaryCells = Array.from(summaryPage.querySelectorAll("table.chrx-pivot-grid tbody td")).slice(1);
+check("summary classes use ASC-style grouped day headers", summaryTopHeaders.length === school.daysPerWeek && summaryTopHeaders[0] === "Monday", summaryTopHeaders.join(" | "));
+check("summary class/day-period cells show period subject codes", summaryPage.textContent.includes("1st") && summaryCells.some(td => td.textContent.includes("Maths")), summaryCells.map(td => td.textContent.trim()).join(" | ").slice(0, 160));
+
+const breakSchool = { ...school, cards: [...school.cards, { lessonId: "L3", day: 0, period: 2, classroomId: "R1" }], breaks: [{ starttime: "8:45", endtime: "9:00", name: "RECESS" }] };
+const breakSummaryPage = window.APP.PrintPivot.renderPreset("summary", breakSchool, breakSchool.bell.periods)[0];
+const breakSummaryHeaders = Array.from(breakSummaryPage.querySelectorAll("table.chrx-pivot-grid thead tr:nth-child(2) th")).slice(1).map(th => th.textContent.trim().replace(/\s+/g, " "));
+const breakSummaryFirstRow = Array.from(breakSummaryPage.querySelectorAll("table.chrx-pivot-grid tbody tr:first-child td")).slice(1);
+check("summary break column stays between period 1 and 2 in header", breakSummaryHeaders[0] === "1st" && breakSummaryHeaders[1] === "" && breakSummaryHeaders[2] === "2nd", breakSummaryHeaders.join(" | ").slice(0, 160));
+check("summary break column stays between period 1 and 2 in body", breakSummaryFirstRow[0]?.textContent.includes("Maths") && breakSummaryFirstRow[1]?.textContent.includes("RECESS") && breakSummaryFirstRow[2]?.textContent.includes("Eng"), breakSummaryFirstRow.map(td => td.textContent.trim()).join(" | ").slice(0, 160));
+
 const summarySubjectPages = window.APP.PrintPivot.renderPreset("summary_of_subjects", school, school.bell.periods);
 const summarySubjectText = summarySubjectPages[0].textContent;
 check("Summary timetable of subjects uses aggregate count mode", summarySubjectText.includes("1") && summarySubjectText.includes("IA"), summarySubjectText);

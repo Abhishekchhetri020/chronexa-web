@@ -25,6 +25,7 @@
   const ELEMENT_KEYS = ["subject","teacher","class","group","classroom","count","bellTimes"];
   const CELL_KINDS = [
     { id: "draw-lessons",            label: "Draw lessons" },
+    { id: "summary-class-day-period", label: "Summary class/day-period ASC grid" },
     { id: "count-placed",            label: "Print count of placed cards" },
     { id: "count-lessons",           label: "Print count of lessons" },
     { id: "teacher-list-with-count", label: "Teacher list + count" },

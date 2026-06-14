@@ -1378,3 +1378,13 @@ body.chrx-editor-dark .chrx-slot:focus-visible{ outline-color:#7dd3fc !important
     -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important;
   }
 }
+
+/* ── Start screen scrolls the whole window ─────────────────────────────────
+   The app shell is height:100vh with scroll trapped inside .chrx-main — correct
+   for the fixed-height editor, but the Start screen is a tall marketing page
+   (wordmark → New/Open → demo → docs → "watch it solve" animation). Trapping
+   its scroll left the bottom animation unreachable on some viewports. When the
+   Start step is active, let the shell grow and the page scroll normally. The
+   editor step keeps its internal scroll. */
+body:has(#step-1:not(.hidden)) .chrx-shell{ height:auto !important; min-height:100vh; }
+body:has(#step-1:not(.hidden)) .chrx-main{ overflow:visible !important; height:auto !important; }

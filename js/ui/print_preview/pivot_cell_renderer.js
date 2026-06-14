@@ -303,6 +303,167 @@
     return entityColor(school, key, id);
   }
 
+  function ordinal(n) {
+    const suff = ["th","st","nd","rd"];
+    const v = n % 100;
+    return n + (suff[(v-20)%10] || suff[v] || suff[0]);
+  }
+
+  function printPeriods(school) {
+    const periods = school?._printPeriods || school?.bell?.periods || [];
+    return Array.isArray(periods) ? periods : [];
+  }
+
+  function periodIndexValue(p, i) {
+    return p && p.index != null ? (p.index | 0) : i + 1;
+  }
+
+  function periodEntityForCard(card, school) {
+    const periods = printPeriods(school);
+    const period = (card && card.period) | 0;
+    for (let i = 0; i < periods.length; i++) {
+      const p = periods[i] || {};
+      const idx = periodIndexValue(p, i);
+      if (idx === period) {
+        const label = p.label ? String(p.label) : ordinal(i + 1);
+        const displayLabel = /^\d+$/.test(label) ? ordinal(Number(label)) : label;
+        return { ...p, index: idx, label: displayLabel, abbr: displayLabel };
+      }
+    }
+    return null;
+  }
+
+  function breakAfterPeriod(periods, idx, school) {
+    if (!school || !school.breaks || !school.breaks.length) return null;
+    if (idx >= periods.length - 1) return null;
+    const p1 = periods[idx], p2 = periods[idx + 1];
+    if (!p1 || !p2 || p1.endMin == null || p2.startMin == null) return null;
+    const t1 = p1.endMin, t2 = p2.startMin;
+    if (t2 <= t1) return null;
+    for (const b of school.breaks) {
+      const bs = timeToMin(b.starttime), be = timeToMin(b.endtime);
+      if (bs !== -1 && be !== -1 && bs >= t1 - 5 && be <= t2 + 5) return b;
+    }
+    return null;
+  }
+
+  function breakAfterCardPeriod(cards, idx, school) {
+    const p1 = periodEntityForCard(cards[idx], school);
+    const p2 = periodEntityForCard(cards[idx + 1], school);
+    if (!p1 || !p2 || p1.index === p2.index) return null;
+    const periods = printPeriods(school);
+    let start = -1, end = -1;
+    for (let i = 0; i < periods.length; i++) {
+      const idxValue = periodIndexValue(periods[i], i);
+      if (idxValue === p1.index) start = i;
+      if (idxValue === p2.index) end = i;
+    }
+    if (start < 0 || end < 0 || end <= start) return null;
+    for (let i = start; i < end; i++) {
+      const brk = breakAfterPeriod(periods, i, school);
+      if (brk) return brk;
+    }
+    return null;
+  }
+
+  function timeToMin(timeStr) {
+    if (!timeStr) return -1;
+    const m = String(timeStr).match(/^(\d{1,2}):(\d{2})$/);
+    if (!m) return -1;
+    return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+  }
+
+  function teacherLabel(card, school) {
+    const ids = (card && card.teacherIds) || [];
+    const first = ids[0];
+    return first ? entityName(school, "teacher", first, "abbreviation") : "";
+  }
+
+  function roomLabel(card, school) {
+    const rid = card?.roomId || (card?.roomIds && card.roomIds[0]);
+    return rid ? entityName(school, "classroom", rid, "abbreviation") : "";
+  }
+
+  function truncateText(text, maxChars) {
+    text = String(text || "");
+    if (text.length <= maxChars) return text;
+    return maxChars <= 1 ? text.slice(0, 1) : text.slice(0, maxChars - 1) + "…";
+  }
+
+  function ascSubjectLines(text, widthPx, fontPx, maxLines) {
+    const words = String(text || "").split(/\s+/).filter(Boolean);
+    if (!words.length) return ["·"];
+    const charsPerLine = Math.max(2, Math.floor((widthPx || 18) / Math.max(3, (fontPx || 7) * 0.55)));
+    const lines = [];
+    for (const word of words) {
+      if (word.length <= charsPerLine) {
+        lines.push(word);
+      } else {
+        for (let i = 0; i < word.length; i += charsPerLine) {
+          lines.push(truncateText(word.slice(i, i + charsPerLine), charsPerLine));
+        }
+      }
+    }
+    if (lines.length <= maxLines) return lines;
+    if (maxLines <= 1) return [truncateText(words.join(" "), charsPerLine)];
+    const kept = lines.slice(0, Math.max(1, maxLines - 1));
+    kept[kept.length - 1] = truncateText(words[words.length - 1] || words.join(" "), charsPerLine);
+    return kept;
+  }
+
+  function renderSummaryClassDayCell(cards, report, school) {
+    cards = (cards || []).slice();
+    const layout = report?._layout || {};
+    const fontPx = layout.summaryDayFontPx || 7.5;
+    const linePx = layout.summaryDayLineHeightPx || 8.6;
+    const periodMode = report.cells === "summary-class-day-period";
+    const maxLines = Math.max(1, Math.floor((layout.cellMinHeightPx || 48) / Math.max(6.8, linePx)));
+    const cell = el("div", {
+      class: "chrx-pivot-cell chrx-pivot-cell--summary-day",
+      style: "width:100%;height:100%;min-height:" + Math.max(18, layout.cellMinHeightPx || 48) + "px;padding:2px 1px;box-sizing:border-box;overflow:hidden;font-family:Arial,sans-serif;font-size:" + fontPx + "px;line-height:" + linePx + "px;text-align:center;display:flex;flex-direction:column;justify-content:center;align-items:center",
+    });
+    if (!cards.length) return cell;
+
+    cards.sort((a, b) => {
+      const pa = periodEntityForCard(a, school);
+      const pb = periodEntityForCard(b, school);
+      return (pa?.index || a.period || 0) - (pb?.index || b.period || 0)
+        || String(a.lessonId || "").localeCompare(String(b.lessonId || ""));
+    });
+
+    const showMeta = !!layout.summaryDayShowMeta;
+    const renderedLines = [];
+    const seenLines = new Set();
+    cards.forEach((card, ci) => {
+      const period = periodEntityForCard(card, school);
+      const label = period?.abbr || period?.label || String(card.period || "");
+      const subject = entityName(school, "subject", card.subjectId, "abbreviation") || "·";
+      const meta = showMeta && !periodMode ? [teacherLabel(card, school), roomLabel(card, school)].filter(Boolean).join(" · ") : "";
+      const lines = periodMode
+        ? ascSubjectLines(subject, layout.summaryDayPeriodColWidthPx || 18, fontPx, maxLines)
+        : [label + " " + subject + (meta ? " · " + meta : "")];
+      for (const line of lines) {
+        if (!seenLines.has(line)) {
+          seenLines.add(line);
+          renderedLines.push(line);
+        }
+      }
+      if (!periodMode) {
+        const brk = breakAfterCardPeriod(cards, ci, school);
+        if (brk) {
+          renderedLines.push(brk.printtext || brk.name || "BREAK");
+        }
+      }
+    });
+    for (const line of renderedLines.slice(0, periodMode ? maxLines : renderedLines.length)) {
+      cell.appendChild(el("div", {
+        style: "white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;color:#222",
+      }, line));
+    }
+
+    return cell;
+  }
+
   function renderCell(cards, report, school) {
     cards = cards || [];
     const layout = report?._layout || {};
@@ -349,6 +510,11 @@
     return cell;
   }
 
-  APP.PrintCellRenderer = { renderCell, joinElementLabels };
+  APP.PrintCellRenderer = {
+    renderCell,
+    renderSummaryClassDayCell,
+    renderSummaryClassDayPeriodCell: renderSummaryClassDayCell,
+    joinElementLabels,
+  };
   APP.PrintCellRenderer.renderAggregateCell = renderAggregateCell;
 })();

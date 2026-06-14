@@ -66,8 +66,8 @@
         if (Array.isArray(periods) && periods.length > 0 && typeof periods[0] === "object") {
           return periods.map((p, i) => ({
             id: (p && p.index != null) ? (p.index | 0) : (i + 1),
-            name: (p && p.label) ? p.label : ordinal(i + 1),
-            abbr: (p && p.label) ? p.label : ordinal(i + 1),
+            name: periodLabel(p, i),
+            abbr: periodLabel(p, i),
             _dim: "period",
             _startMin: (p && p.startMin != null) ? p.startMin : null,
             _endMin:   (p && p.endMin   != null) ? p.endMin   : null,
@@ -141,10 +141,96 @@
     return null;
   }
 
+  function summaryDayColumns(visibleCols, school) {
+    const cols = [];
+    for (let ci = 0; ci < visibleCols.length; ci++) {
+      cols.push({ kind: "period", combo: visibleCols[ci] });
+      const brk = breakAfterCol(visibleCols, ci, school);
+      if (brk) cols.push({ kind: "break", breakItem: brk });
+    }
+    return cols;
+  }
+
+  function dayRunsForSummaryColumns(summaryCols) {
+    const runs = [];
+    for (const col of summaryCols) {
+      if (col.kind === "break") {
+        const last = runs[runs.length - 1];
+        if (last) last.colCount++;
+        continue;
+      }
+      const day = col.combo.get("day");
+      if (!day) continue;
+      const last = runs[runs.length - 1];
+      if (last && last.key === day.id) {
+        last.colCount++;
+      } else {
+        runs.push({ key: day.id, name: day.name, colCount: 1 });
+      }
+    }
+    return runs;
+  }
+
+  function computeSummaryDayLayout(visibleRows, visibleCols, pageBindings, pageCards, denseRows, compactLevel, orientation, school, cells) {
+    let maxCardsInCell = 0;
+    for (const rc of visibleRows) {
+      for (const cc of visibleCols) {
+        const combined = new Map([...pageBindings, ...rc, ...cc]);
+        maxCardsInCell = Math.max(maxCardsInCell, cardsMatching(pageCards, combined).length);
+      }
+    }
+
+    const mmToPx = 3.779527559;
+    const pageHeightPx = (orientation === "portrait" ? 297 : 210) * mmToPx;
+    const paddingPx = 28 * mmToPx;
+    const headerFooterReservePx = 72;
+    const fitCellHeightPx = Math.max(20, Math.floor((pageHeightPx - paddingPx - headerFooterReservePx) / Math.max(1, denseRows)));
+    const desiredHeightPx = maxCardsInCell * (compactLevel === 2 ? 8.4 : 9) + (compactLevel === 2 ? 7 : 9);
+    const cellMinHeightPx = Math.max(20, Math.min(desiredHeightPx, fitCellHeightPx));
+    const linePx = Math.max(7, Math.min(compactLevel === 2 ? 8.5 : 9.5, (cellMinHeightPx - 6) / Math.max(1, maxCardsInCell)));
+    const fontPx = Math.max(5.8, Math.min(compactLevel === 2 ? 7.5 : 8.5, linePx - 1));
+
+    const layout = {
+      summaryDayMaxCards: maxCardsInCell,
+      summaryDayCellMinHeightPx: cellMinHeightPx,
+      summaryDayFontPx: fontPx,
+      summaryDayLineHeightPx: linePx,
+      summaryDayShowMeta: maxCardsInCell <= 8 && denseRows <= 20 && fontPx >= 6.8,
+    };
+
+    if (cells === "summary-class-day-period") {
+      const summaryCols = summaryDayColumns(visibleCols, school);
+      const runs = dayRunsForSummaryColumns(summaryCols);
+      const pageWidthPx = (orientation === "portrait" ? 210 : 297) * mmToPx;
+      const paddingWidthPx = 24 * mmToPx;
+      const rowHeaderWidthPx = compactLevel === 2 ? 46 : compactLevel === 1 ? 58 : 80;
+      const breakWidthPx = compactLevel === 2 ? 18 : 22;
+      const breakCount = summaryCols.filter(col => col.kind === "break").length;
+      const teachingColCount = Math.max(1, summaryCols.filter(col => col.kind === "period").length);
+      const periodColWidthPx = Math.max(10, (pageWidthPx - paddingWidthPx - rowHeaderWidthPx - breakCount * breakWidthPx) / teachingColCount);
+      const periodFontPx = Math.max(5.8, Math.min(compactLevel === 2 ? 7.2 : 8, periodColWidthPx * 0.48));
+      layout.summaryDayColumns = summaryCols;
+      layout.summaryDayRuns = runs;
+      layout.summaryDayPeriodColWidthPx = periodColWidthPx;
+      layout.summaryDayBreakColWidthPx = breakWidthPx;
+      layout.summaryDayFontPx = Math.min(layout.summaryDayFontPx, periodFontPx);
+      layout.summaryDayLineHeightPx = Math.max(6.8, Math.min(layout.summaryDayLineHeightPx, layout.summaryDayFontPx + 1.2));
+      layout.summaryDayMaxLines = Math.max(1, Math.floor(layout.summaryDayCellMinHeightPx / layout.summaryDayLineHeightPx));
+      layout.summaryDayShowMeta = false;
+    }
+
+    return layout;
+  }
+
   function ordinal(n) {
     const suff = ["th","st","nd","rd"];
     const v = n % 100;
     return n + (suff[(v-20)%10] || suff[v] || suff[0]);
+  }
+
+  function periodLabel(p, i) {
+    const label = (p && p.label) ? String(p.label) : ordinal(i + 1);
+    return /^\d+$/.test(label) ? ordinal(Number(label)) : label;
   }
 
   function pickName(t) {
@@ -224,6 +310,53 @@
     return combos;
   }
 
+  function appendSummaryDayPeriodHeader(thead, report) {
+    const layout = report._layout || {};
+    const periodColWidthPx = layout.summaryDayPeriodColWidthPx || 18;
+    const breakColWidthPx = layout.summaryDayBreakColWidthPx || 22;
+    const summaryCols = layout.summaryDayColumns || [];
+    const headerRow = el("tr");
+    headerRow.appendChild(el("th", {
+      rowspan: "2",
+      style: "border:1px solid #999;padding:3px;background:#fafafa;width:" + layout.rowHeaderWidthPx + "px",
+    }, ""));
+
+    for (const run of layout.summaryDayRuns || []) {
+      headerRow.appendChild(el("th", {
+        colspan: String(run.colCount || 0),
+        style: "border:1px solid #999;padding:3px 2px;background:#fafafa;font-weight:700;font-size:" + report._layout.headerFontPx + "px;text-align:center;font-family:system-ui",
+      }, run.name));
+    }
+    thead.appendChild(headerRow);
+
+    const periodRow = el("tr");
+    periodRow.appendChild(el("th", {
+      style: "border:1px solid #999;padding:3px;background:#fafafa;width:" + layout.rowHeaderWidthPx + "px",
+    }, ""));
+    for (const col of summaryCols) {
+      if (col.kind === "break") {
+        periodRow.appendChild(el("th", {
+          style: "border:1px solid #bbb;padding:2px;background:#efefeb;width:" + breakColWidthPx + "px;font-size:8px;text-align:center;color:#666",
+        }, ""));
+        continue;
+      }
+      const cc = col.combo;
+      const labels = [];
+      let startMin = null, endMin = null;
+      for (const [dim, ent] of cc.entries()) {
+        if (dim === "period") {
+          labels.push(ent.abbr || ent.name);
+          if (ent._startMin != null) startMin = ent._startMin;
+          if (ent._endMin   != null) endMin   = ent._endMin;
+        }
+      }
+      periodRow.appendChild(el("th", {
+        style: "border:1px solid #999;padding:2px;background:#fafafa;font-weight:700;font-size:" + report._layout.headerFontPx + "px;text-align:center;font-family:system-ui;width:" + periodColWidthPx + "px",
+      }, labels.join(" · ")));
+    }
+    thead.appendChild(periodRow);
+  }
+
   function renderPage(report, school, periods, pageBindings, pageIndex, totalPages) {
     const allCards = school.cards || [];
     const pageCards = cardsMatching(allCards, pageBindings);
@@ -259,13 +392,17 @@
     const orientation = report.pageSetup?.orientation || (denseCols > 10 ? "landscape" : "portrait");
     const pageWidth = orientation === "portrait" ? "210mm" : "297mm";
     const pageHeight = orientation === "portrait" ? "297mm" : "210mm";
+    const summaryDayLayout = report.cells === "summary-class-day" || report.cells === "summary-class-day-period"
+      ? computeSummaryDayLayout(visibleRows, visibleCols, pageBindings, pageCards, denseRows, compactLevel, orientation, school, report.cells)
+      : {};
     report._layout = {
       compactLevel,
-      cellMinHeightPx: compactLevel === 2 ? 22 : compactLevel === 1 ? 34 : 54,
+      cellMinHeightPx: summaryDayLayout.summaryDayCellMinHeightPx || (compactLevel === 2 ? 22 : compactLevel === 1 ? 34 : 54),
       rowHeaderWidthPx: compactLevel === 2 ? 46 : compactLevel === 1 ? 58 : 80,
       bodyFontPx: compactLevel === 2 ? 8 : compactLevel === 1 ? 9.5 : 11,
       headerFontPx: compactLevel === 2 ? 8 : compactLevel === 1 ? 9.5 : 11,
       rowFontPx: compactLevel === 2 ? 10 : compactLevel === 1 ? 12 : 14,
+      ...summaryDayLayout,
     };
 
     const page = el("div", {
@@ -317,36 +454,40 @@
     });
 
     const thead = el("thead");
-    const headerRow = el("tr");
-    headerRow.appendChild(el("th", {
-      style: "border:1px solid #999;padding:3px;background:#fafafa;width:" + report._layout.rowHeaderWidthPx + "px",
-    }, ""));
-    for (let ci = 0; ci < visibleCols.length; ci++) {
-      const cc = visibleCols[ci];
-      const labels = [];
-      let startMin = null, endMin = null;
-      for (const [, ent] of cc.entries()) {
-        labels.push(ent.abbr || ent.name);
-        if (ent._startMin != null) startMin = ent._startMin;
-        if (ent._endMin   != null) endMin   = ent._endMin;
+    if (report.cells === "summary-class-day-period") {
+      appendSummaryDayPeriodHeader(thead, report);
+    } else {
+      const headerRow = el("tr");
+      headerRow.appendChild(el("th", {
+        style: "border:1px solid #999;padding:3px;background:#fafafa;width:" + report._layout.rowHeaderWidthPx + "px",
+      }, ""));
+      for (let ci = 0; ci < visibleCols.length; ci++) {
+        const cc = visibleCols[ci];
+        const labels = [];
+        let startMin = null, endMin = null;
+        for (const [, ent] of cc.entries()) {
+          labels.push(report.cells === "summary-class-day" && ent._dim === "day" ? ent.name : (ent.abbr || ent.name));
+          if (ent._startMin != null) startMin = ent._startMin;
+          if (ent._endMin   != null) endMin   = ent._endMin;
+        }
+        const th = el("th", {
+          style: "border:1px solid #999;padding:3px 2px;background:#fafafa;font-weight:700;font-size:" + report._layout.headerFontPx + "px;text-align:center;font-family:system-ui",
+        });
+        th.appendChild(el("div", { style: "font-weight:700" }, labels.join(" · ")));
+        if (startMin != null && endMin != null) {
+          th.appendChild(el("div", { style: "font-size:8.5px;font-weight:400;color:#555;margin-top:1px" },
+            fmtMin(startMin) + "–" + fmtMin(endMin)));
+        }
+        headerRow.appendChild(th);
+        const brk = breakAfterCol(visibleCols, ci, school);
+        if (brk) {
+          headerRow.appendChild(el("th", {
+            style: "border:1px solid #bbb;padding:2px;background:#efefeb;width:28px;font-size:8px;text-align:center;color:#666",
+          }, ""));
+        }
       }
-      const th = el("th", {
-        style: "border:1px solid #999;padding:3px 2px;background:#fafafa;font-weight:700;font-size:" + report._layout.headerFontPx + "px;text-align:center;font-family:system-ui",
-      });
-      th.appendChild(el("div", { style: "font-weight:700" }, labels.join(" · ")));
-      if (startMin != null && endMin != null) {
-        th.appendChild(el("div", { style: "font-size:8.5px;font-weight:400;color:#555;margin-top:1px" },
-          fmtMin(startMin) + "–" + fmtMin(endMin)));
-      }
-      headerRow.appendChild(th);
-      const brk = breakAfterCol(visibleCols, ci, school);
-      if (brk) {
-        headerRow.appendChild(el("th", {
-          style: "border:1px solid #bbb;padding:2px;background:#efefeb;width:28px;font-size:8px;text-align:center;color:#666",
-        }, ""));
-      }
+      thead.appendChild(headerRow);
     }
-    thead.appendChild(headerRow);
     table.appendChild(thead);
 
     const tbody = el("tbody");
@@ -358,8 +499,26 @@
       tr.appendChild(el("td", {
         style: "border:1px solid #999;padding:4px 5px;background:#fafafa;font-weight:600;text-align:center;font-family:'Fraunces',serif;font-size:" + report._layout.rowFontPx + "px",
       }, rowLabels.join(" · ")));
-      for (let ci = 0; ci < visibleCols.length; ci++) {
-        const cc = visibleCols[ci];
+      const summaryCols = report.cells === "summary-class-day-period"
+        ? report._layout.summaryDayColumns
+        : null;
+      for (const col of summaryCols || visibleCols) {
+        if (summaryCols && col.kind === "break") {
+          if (ri === 0) {
+            const brkText = col.breakItem.printtext || col.breakItem.name || "BREAK";
+            const brkTd = el("td", {
+              rowspan: String(visibleRows.length),
+              style: "border:1px solid #bbb;padding:2px;background:#efefeb;width:" + report._layout.summaryDayBreakColWidthPx + "px;vertical-align:middle;text-align:center",
+            });
+            const brkInner = el("div", {
+              style: "writing-mode:vertical-lr;transform:rotate(180deg);font-weight:700;font-size:8.5px;text-transform:uppercase;letter-spacing:.1em;color:#555;margin:0 auto",
+            }, brkText);
+            brkTd.appendChild(brkInner);
+            tr.appendChild(brkTd);
+          }
+          continue;
+        }
+        const cc = col.combo || col;
         const combined = new Map([...pageBindings, ...rc, ...cc]);
         const cellCards = cardsMatching(pageCards, combined);
         const cellNode = el("td", {
@@ -367,9 +526,13 @@
         });
         if (APP.PrintCellRenderer && typeof APP.PrintCellRenderer.renderCell === "function") {
           const kind = report.cells || "draw-lessons";
-          const renderer = kind === "draw-lessons"
-            ? APP.PrintCellRenderer.renderCell
-            : (APP.PrintCellRenderer.renderAggregateCell || APP.PrintCellRenderer.renderCell);
+          const renderer = kind === "summary-class-day-period"
+            ? APP.PrintCellRenderer.renderSummaryClassDayPeriodCell
+            : kind === "summary-class-day"
+              ? APP.PrintCellRenderer.renderSummaryClassDayCell
+              : kind === "draw-lessons"
+              ? APP.PrintCellRenderer.renderCell
+              : (APP.PrintCellRenderer.renderAggregateCell || APP.PrintCellRenderer.renderCell);
           cellNode.appendChild(renderer(cellCards, report, school));
         } else if (cellCards.length > 0) {
           const subj = cellCards[0]?.subjectId;
@@ -377,19 +540,6 @@
           cellNode.appendChild(el("div", { style: "padding:4px;font-size:11px;text-align:center" }, text));
         }
         tr.appendChild(cellNode);
-        const brk = breakAfterCol(visibleCols, ci, school);
-        if (brk && ri === 0) {
-          const brkText = brk.printtext || brk.name || "BREAK";
-          const brkTd = el("td", {
-            rowspan: String(visibleRows.length),
-            style: "border:1px solid #bbb;padding:2px;background:#efefeb;width:28px;vertical-align:middle;text-align:center",
-          });
-          const brkInner = el("div", {
-            style: "writing-mode:vertical-lr;transform:rotate(180deg);font-weight:700;font-size:8.5px;text-transform:uppercase;letter-spacing:.1em;color:#555;margin:0 auto",
-          }, brkText);
-          brkTd.appendChild(brkInner);
-          tr.appendChild(brkTd);
-        }
       }
       tbody.appendChild(tr);
     }
@@ -544,8 +694,9 @@
   function renderReport(report, school, periods) {
     if (!report || !school) return [];
     const joinedCards = joinCardsWithLessons(school);
-    const joinedSchool = Object.assign({}, school, { cards: joinedCards });
-    const pageCombos = axisCombinations(report.pages, joinedSchool, periods || PERIODS_DEFAULT, report.filters);
+    const resolvedPeriods = periods || PERIODS_DEFAULT;
+    const joinedSchool = Object.assign({}, school, { cards: joinedCards, _printPeriods: resolvedPeriods });
+    const pageCombos = axisCombinations(report.pages, joinedSchool, resolvedPeriods, report.filters);
     const out = [];
     pageCombos.forEach((bindings, idx) => {
       out.push(renderPage(report, joinedSchool, periods || PERIODS_DEFAULT, bindings, idx, pageCombos.length));
