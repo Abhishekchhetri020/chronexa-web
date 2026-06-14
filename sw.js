@@ -15,7 +15,7 @@
  */
 
 const CACHE_PREFIX = "chronexa-";
-const APP_VER = "20260614-p174-zoom-controls";
+const APP_VER = "20260614-p175-click-to-style";
 const CACHE_NAME = CACHE_PREFIX + APP_VER;
 
 // Minimal app shell for offline support.

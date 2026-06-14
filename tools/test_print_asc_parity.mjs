@@ -90,6 +90,13 @@ const classPage = classPages[0];
 check("pivot class report uses preview page class", classPage.className.includes("chrx-preview-page"), classPage.className);
 check("pivot class report uses landscape A4 width", /width:297mm/.test(classPage.getAttribute("style")), classPage.getAttribute("style"));
 
+// Click-to-style: every timetable data cell is tagged and carries its cards
+// so the preview can open the per-card style dialog on click (aSc parity).
+const classDataCells = Array.from(classPage.querySelectorAll("td.chrx-pivot-datacell"));
+const aCellWithCards = classDataCells.find(td => Array.isArray(td._cards) && td._cards.length > 0);
+check("timetable data cells are tagged chrx-pivot-datacell", classDataCells.length > 0, "count=" + classDataCells.length);
+check("data cells carry their cards for click-to-style", !!aCellWithCards, "found cell with cards: " + !!aCellWithCards);
+
 // Regression: when a school has breaks, the per-class (non-summary) grid
 // inserts a break column in BOTH header and body. If the body skips it the
 // two go out of sync under table-layout:fixed and every period cell shifts

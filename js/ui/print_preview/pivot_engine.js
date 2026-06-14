@@ -577,8 +577,12 @@
         const combined = new Map([...pageBindings, ...rc, ...cc]);
         const cellCards = cardsMatching(pageCards, combined);
         const cellNode = el("td", {
+          class: "chrx-pivot-datacell",
           style: "border:0.75px solid #d2d2d2;padding:0;vertical-align:top;height:" + report._layout.cellMinHeightPx + "px",
         });
+        // Stash the cell's cards so the preview can open the per-card style
+        // dialog when this cell is clicked (aSc "click a card to style it").
+        cellNode._cards = cellCards;
         if (APP.PrintCellRenderer && typeof APP.PrintCellRenderer.renderCell === "function") {
           const kind = report.cells || "draw-lessons";
           const renderer = kind === "summary-class-day-period" || kind === "draw-lessons"

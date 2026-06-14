@@ -353,6 +353,29 @@
     docShell.addEventListener("wheel", (e) => {
       if (e.ctrlKey || e.metaKey) { e.preventDefault(); setZoom(zoom + (e.deltaY < 0 ? 0.08 : -0.08)); }
     }, { passive: false });
+    // Click any timetable cell to open the per-element style dialog for that
+    // card (aSc parity). Edits apply to the live report and re-render.
+    docShell.addEventListener("click", (e) => {
+      const td = e.target && e.target.closest && e.target.closest("td.chrx-pivot-datacell");
+      if (!td || !td._cards) return;
+      if (!window.CellStyleDialog) { notify("Cell-style dialog not loaded", "error"); return; }
+      const Schema = window.APP && window.APP.PrintReportSchema;
+      const Presets = window.APP && window.APP.PrintPresets;
+      if (Schema && Presets && (!APP.activePrintReport || APP.activePrintReport._presetId !== currentTemplate)) {
+        const preset = Presets.get(currentTemplate);
+        if (preset) {
+          const r = Schema.create({ context: preset.context });
+          Schema.applyPreset(r, preset);
+          r._presetId = preset.id;
+          APP.activePrintReport = r;
+        }
+      }
+      if (!APP.activePrintReport) return;
+      window.CellStyleDialog.open({
+        mode: "single-card", report: APP.activePrintReport, cards: td._cards,
+        onSave: () => render(currentTemplate),
+      });
+    });
     mainArea.appendChild(docShell);
     
     const tuningDrawer = buildTuningDrawer();

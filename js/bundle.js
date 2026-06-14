@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-06-14T12:42:11Z
+/* Chronexa bundle — generated 2026-06-14T12:46:06Z
  *      167 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -27279,8 +27279,12 @@ window.StartScreen = (function () {
         const combined = new Map([...pageBindings, ...rc, ...cc]);
         const cellCards = cardsMatching(pageCards, combined);
         const cellNode = el("td", {
+          class: "chrx-pivot-datacell",
           style: "border:0.75px solid #d2d2d2;padding:0;vertical-align:top;height:" + report._layout.cellMinHeightPx + "px",
         });
+        // Stash the cell's cards so the preview can open the per-card style
+        // dialog when this cell is clicked (aSc "click a card to style it").
+        cellNode._cards = cellCards;
         if (APP.PrintCellRenderer && typeof APP.PrintCellRenderer.renderCell === "function") {
           const kind = report.cells || "draw-lessons";
           const renderer = kind === "summary-class-day-period" || kind === "draw-lessons"
@@ -35483,6 +35487,29 @@ window.StartScreen = (function () {
     docShell.addEventListener("wheel", (e) => {
       if (e.ctrlKey || e.metaKey) { e.preventDefault(); setZoom(zoom + (e.deltaY < 0 ? 0.08 : -0.08)); }
     }, { passive: false });
+    // Click any timetable cell to open the per-element style dialog for that
+    // card (aSc parity). Edits apply to the live report and re-render.
+    docShell.addEventListener("click", (e) => {
+      const td = e.target && e.target.closest && e.target.closest("td.chrx-pivot-datacell");
+      if (!td || !td._cards) return;
+      if (!window.CellStyleDialog) { notify("Cell-style dialog not loaded", "error"); return; }
+      const Schema = window.APP && window.APP.PrintReportSchema;
+      const Presets = window.APP && window.APP.PrintPresets;
+      if (Schema && Presets && (!APP.activePrintReport || APP.activePrintReport._presetId !== currentTemplate)) {
+        const preset = Presets.get(currentTemplate);
+        if (preset) {
+          const r = Schema.create({ context: preset.context });
+          Schema.applyPreset(r, preset);
+          r._presetId = preset.id;
+          APP.activePrintReport = r;
+        }
+      }
+      if (!APP.activePrintReport) return;
+      window.CellStyleDialog.open({
+        mode: "single-card", report: APP.activePrintReport, cards: td._cards,
+        onSave: () => render(currentTemplate),
+      });
+    });
     mainArea.appendChild(docShell);
     
     const tuningDrawer = buildTuningDrawer();

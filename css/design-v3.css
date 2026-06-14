@@ -930,6 +930,13 @@ input:focus,select:focus,textarea:focus{
     display: none !important;
   }
 }
+/* Click-to-style affordance: timetable cells are clickable in the preview to
+   open the per-element style dialog for that card (aSc parity). Screen only. */
+.chrx-preview-doc .chrx-pivot-datacell { cursor: pointer; }
+.chrx-preview-doc .chrx-pivot-datacell:hover {
+  outline: 2px solid var(--teal, #2a9d8f);
+  outline-offset: -2px;
+}
 
 /* ───── p-UI-01: Polished Hero Landing Page ───────────────
    Transform the generic start screen into an editorial-studio
