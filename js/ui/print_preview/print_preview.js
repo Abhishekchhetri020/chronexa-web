@@ -21,6 +21,7 @@
   let pageIdx = 0;
   let pages = [];
   let currentTemplate = "class";
+  let zoom = 1;
 
   function ensureOverlay() {
     if (overlay) return overlay;
@@ -211,10 +212,16 @@
       title: "Live aesthetics tuning drawer — card padding, font sizes, colors, and visibility",
       onclick: toggleTuningDrawer }, "🎚 Tuning");
 
+    const zoomOut = el("button", { class: "chrx-tb-btn", type: "button", title: "Zoom out", onclick: () => setZoom(zoom - 0.1) }, "➖");
+    const zoomReadout = el("span", { class: "chrx-pp-zoom", title: "Reset zoom to 100%",
+      style: "min-width:46px;text-align:center;font-variant-numeric:tabular-nums;cursor:pointer;user-select:none", onclick: () => setZoom(1) }, "100%");
+    const zoomIn = el("button", { class: "chrx-tb-btn", type: "button", title: "Zoom in", onclick: () => setZoom(zoom + 0.1) }, "➕");
+    const fitBtn = el("button", { class: "chrx-tb-btn", type: "button", title: "Fit page to width", onclick: fitToWidth }, "⤢ Fit");
+
     const close = el("button", { class: "chrx-tb-btn chrx-tb-btn--danger", type: "button",
       style: "margin-left:auto", onclick: closePreview }, "✕ Close preview");
 
-    [prev, next, print, indicator, sel, filterBtn, tuningBtn, structBtn, extraBtn, styleBtn, sizeBtn, designBtn, colorBtn, globalBtn, close]
+    [prev, next, print, indicator, sel, zoomOut, zoomReadout, zoomIn, fitBtn, filterBtn, tuningBtn, structBtn, extraBtn, styleBtn, sizeBtn, designBtn, colorBtn, globalBtn, close]
       .forEach(c => bar.appendChild(c));
     bar._indicator = indicator;
     return bar;
@@ -342,6 +349,10 @@
     
     const mainArea = el("div", { class: "chrx-preview-main-area", style: "display:flex; flex:1; overflow:hidden;" });
     docShell = el("div", { class: "chrx-preview-doc", style: "flex:1; overflow:auto;" });
+    // Ctrl/⌘ + wheel zooms the preview (like a PDF viewer); plain wheel scrolls.
+    docShell.addEventListener("wheel", (e) => {
+      if (e.ctrlKey || e.metaKey) { e.preventDefault(); setZoom(zoom + (e.deltaY < 0 ? 0.08 : -0.08)); }
+    }, { passive: false });
     mainArea.appendChild(docShell);
     
     const tuningDrawer = buildTuningDrawer();
@@ -392,12 +403,16 @@
   // in the print CSS so each page gets its own physical sheet.
   function printAllPages() {
     if (!pages.length || !docShell) { window.print(); return; }
-    if (pages.length === 1) { window.print(); return; }
+    // Strip the on-screen zoom so the printout uses the true A4 page size,
+    // not whatever magnification the user is previewing at.
+    pages.forEach(p => { p.style.zoom = "1"; });
     const saved = pageIdx;
-    while (docShell.firstChild) docShell.removeChild(docShell.firstChild);
-    for (const p of pages) docShell.appendChild(p);
+    if (pages.length > 1) {
+      while (docShell.firstChild) docShell.removeChild(docShell.firstChild);
+      for (const p of pages) docShell.appendChild(p);
+    }
     try { window.print(); }
-    finally { showPage(saved); }
+    finally { showPage(saved); }  // re-mounts current page + re-applies zoom
   }
   function showPage(i) {
     docShell.innerHTML = "";
@@ -407,6 +422,31 @@
     // Now the page is in the live DOM with real geometry — run the measure-
     // and-fit pass so cell text shrinks to fit instead of ballooning rows.
     try { autofitMountedPage(pages[i]); } catch (e) { /* never break preview */ }
+    applyZoom();
+  }
+
+  /* Preview zoom (screen only — the actual print uses the real A4 page size).
+   * CSS `zoom` reflows the page so docShell's scrollbars track the scaled
+   * size naturally; cleaner than transform:scale for a scroll container. */
+  function applyZoom() {
+    const page = pages[pageIdx];
+    if (page) page.style.zoom = String(zoom);
+    const r = overlay && overlay.querySelector(".chrx-pp-zoom");
+    if (r) r.textContent = Math.round(zoom * 100) + "%";
+  }
+
+  function setZoom(z) {
+    zoom = Math.max(0.3, Math.min(2.5, Math.round(z * 100) / 100));
+    applyZoom();
+  }
+
+  function fitToWidth() {
+    const page = pages[pageIdx];
+    if (!page || !docShell) return;
+    page.style.zoom = "1";
+    const avail = docShell.clientWidth - 24;
+    const pageW = page.getBoundingClientRect().width;
+    if (pageW > 0) setZoom(avail / pageW);
   }
 
   /* aSc-style shrink-to-fit. The CSS cqi+clamp() in the cell renderer is a
