@@ -1313,3 +1313,48 @@ body.chrx-editor-dark .chrx-slot:focus-visible{ outline-color:#7dd3fc !important
     transition:none !important; animation:none !important;
   }
 }
+
+/* ── Plan D: motion & micro-interactions ───────────────────────────────────*/
+/* Toast: slides down from the top, auto-dismiss progress bar, fades out. */
+.chrx-toast{
+  position:fixed; top:14px; left:50%; transform:translate(-50%,-160%);
+  display:flex; flex-direction:column; gap:0;
+  background:var(--chrx-bg-elev,#fff); color:var(--chrx-fg,#1a1714);
+  padding:10px 16px 12px; border:1px solid var(--chrx-line,#d8cfbb);
+  border-radius:10px; box-shadow:var(--chrx-shadow-sheet,0 12px 28px rgba(0,0,0,.18));
+  z-index:10010; font-size:13px; font-weight:500; max-width:min(440px,92vw);
+  opacity:0; overflow:hidden;
+  transition:transform .32s cubic-bezier(.2,.8,.2,1), opacity .32s ease;
+}
+.chrx-toast--in{ transform:translate(-50%,0); opacity:1; }
+.chrx-toast--out{ transform:translate(-50%,-160%); opacity:0; }
+.chrx-toast--error{ border-color:var(--chrx-red,#9c4322); }
+.chrx-toast--warn{ border-color:var(--gold,#b08a3e); }
+.chrx-toast__bar{
+  position:absolute; left:0; bottom:0; height:3px; width:100%; transform-origin:left;
+  background:var(--chrx-accent,#0d4f54);
+  animation:chrx-toast-bar linear forwards;
+}
+.chrx-toast--error .chrx-toast__bar{ background:var(--chrx-red,#9c4322); }
+.chrx-toast--warn .chrx-toast__bar{ background:var(--gold,#b08a3e); }
+@keyframes chrx-toast-bar{ from{transform:scaleX(1)} to{transform:scaleX(0)} }
+
+/* Placement snap: a freshly dropped card settles (scale up from 0.82) with a
+   brief brightness flash so the eye confirms where it landed. */
+@keyframes chrx-card-land{
+  0%{ transform:scale(.82); filter:brightness(1.5); }
+  60%{ transform:scale(1.04); filter:brightness(1.15); }
+  100%{ transform:scale(1); filter:brightness(1); }
+}
+.chrx-vkarta--landed{ animation:chrx-card-land .34s cubic-bezier(.2,.8,.2,1); z-index:5; }
+
+@media (prefers-reduced-motion: reduce){
+  .chrx-toast{ transition:none } .chrx-toast__bar{ animation:none; display:none }
+  .chrx-vkarta--landed{ animation:none }
+}
+
+/* Plan D: step panels fade/slide in when they become visible (showStep toggles
+   .hidden). `both` retains the final state so no lasting transform offset. */
+.step-panel:not(.hidden){ animation:chrx-step-in .28s var(--chrx-ease,ease) both; }
+@keyframes chrx-step-in{ from{opacity:0; transform:translateY(8px)} to{opacity:1; transform:translateY(0)} }
+@media (prefers-reduced-motion: reduce){ .step-panel:not(.hidden){ animation:none } }

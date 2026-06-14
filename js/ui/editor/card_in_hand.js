@@ -473,7 +473,7 @@
         do() {
           applyPlacement();
           document.dispatchEvent(new CustomEvent("editor:place", { detail: { cardId, lessonId, day, period, forced } }));
-          rerender();
+          rerender({ lessonId, day, period });
         },
         undo() {
           revertPlacement();
@@ -485,7 +485,7 @@
       applyPlacement();
       document.dispatchEvent(new CustomEvent("editor:place",
         { detail: { cardId, lessonId, day, period, forced } }));
-      rerender();
+      rerender({ lessonId, day, period });
     }
     if (window.APP.editor) window.APP.editor.cardInHand = null;
     cleanup();
@@ -650,11 +650,20 @@
     }
   }
 
-  function rerender() {
+  function rerender(landed) {
     const host = document.querySelector(".chrx-editor");
     if (host && window.Editor && window.Editor.render) window.Editor.render(host);
     const pend = document.querySelector(".chrx-pending-strip");
     if (pend && window.PendingStrip && window.PendingStrip.render) window.PendingStrip.render(pend);
+    // Plan D: snap-flash the freshly placed card so the eye lands on it.
+    if (landed) {
+      const card = document.querySelector(
+        `.chrx-editor .chrx-vkarta[data-card-id="placed_${landed.lessonId}_${landed.day}_${landed.period}"]`);
+      if (card) {
+        card.classList.add("chrx-vkarta--landed");
+        setTimeout(() => card.classList.remove("chrx-vkarta--landed"), 360);
+      }
+    }
   }
 
   function cleanup() {

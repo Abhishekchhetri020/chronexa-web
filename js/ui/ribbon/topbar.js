@@ -21,12 +21,22 @@
   }
   function dispatch(name, detail) { window.dispatchEvent(new CustomEvent(name, { detail: detail || {} })); }
   function notify(msg, level) {
-    const t = el("div", { class: "chrx-toast",
-      style: "position:fixed;bottom:24px;left:50%;transform:translateX(-50%);"
-        + "background:var(--chrx-bg-elev);color:var(--chrx-fg);padding:8px 14px;"
-        + "border:1px solid " + (level === "error" ? "var(--chrx-red)" : "var(--chrx-line)")
-        + ";border-radius:8px;box-shadow:var(--chrx-shadow-sheet);z-index:9999;font-size:13px;" });
-    t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), 2200);
+    // Plan D: slide in from the top, show an auto-dismiss progress bar, fade
+    // out. Styling lives in css/design-v3.css (.chrx-toast*).
+    var reduce = typeof matchMedia === "function" &&
+      matchMedia("(prefers-reduced-motion: reduce)").matches;
+    var dur = 2600;
+    var t = el("div", { class: "chrx-toast chrx-toast--" + (level || "info") });
+    var span = el("span", { class: "chrx-toast__msg" }); span.textContent = msg;
+    var bar = el("div", { class: "chrx-toast__bar" });
+    if (!reduce) bar.style.animationDuration = dur + "ms";
+    t.appendChild(span); t.appendChild(bar);
+    document.body.appendChild(t);
+    requestAnimationFrame(function () { t.classList.add("chrx-toast--in"); });
+    setTimeout(function () {
+      t.classList.add("chrx-toast--out");
+      setTimeout(function () { t.remove(); }, 320);
+    }, dur);
   }
   window._chrxNotify = notify;
 

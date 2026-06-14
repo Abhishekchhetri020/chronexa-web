@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-06-14T00:42:46Z
+/* Chronexa bundle — generated 2026-06-14T05:46:41Z
  *      167 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -16054,12 +16054,55 @@ window.Editor = (function () {
     `;
   }
 
+  let _prevUnplaced = null;
   function syncUnplacedCount(S) {
     const elc = document.getElementById("editor-unplaced-count");
-    if (!elc) return;
     const n = pendingCount(S);
-    elc.textContent = n === 0 ? "All placed ✓" : n + " unplaced";
-    elc.style.color = n === 0 ? "var(--chrx-green, #16a34a)" : "";
+    if (elc) {
+      elc.textContent = n === 0 ? "All placed ✓" : n + " unplaced";
+      elc.style.color = n === 0 ? "var(--chrx-green, #16a34a)" : "";
+    }
+    // Plan D: celebrate the moment everything first lands (a real >0 → 0
+    // transition, not an already-complete load).
+    if (_prevUnplaced != null && _prevUnplaced > 0 && n === 0) celebrateAllPlaced();
+    _prevUnplaced = n;
+  }
+
+  // One-shot confetti burst. Pure canvas, no deps; honours reduced-motion and
+  // won't stack if one is already running.
+  function celebrateAllPlaced() {
+    if (document.getElementById("chrx-confetti")) return;
+    if (typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const cv = document.createElement("canvas");
+    cv.id = "chrx-confetti";
+    cv.style.cssText = "position:fixed;inset:0;pointer-events:none;z-index:10020";
+    cv.width = window.innerWidth; cv.height = window.innerHeight;
+    document.body.appendChild(cv);
+    const ctx = cv.getContext("2d");
+    const colors = ["#0d4f54", "#b08a3e", "#9c4322", "#5b6e3d", "#4c6e91", "#d9466b"];
+    const parts = Array.from({ length: 150 }, () => ({
+      x: cv.width / 2 + (Math.random() - 0.5) * 160,
+      y: cv.height / 3,
+      vx: (Math.random() - 0.5) * 11,
+      vy: Math.random() * -13 - 4,
+      r: 4 + Math.random() * 5,
+      c: colors[(Math.random() * colors.length) | 0],
+      rot: Math.random() * 6, vr: (Math.random() - 0.5) * 0.4,
+    }));
+    let frames = 0;
+    (function frame() {
+      frames++;
+      ctx.clearRect(0, 0, cv.width, cv.height);
+      let alive = false;
+      for (const p of parts) {
+        p.vy += 0.35; p.x += p.vx; p.y += p.vy; p.rot += p.vr;
+        if (p.y < cv.height + 24) alive = true;
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+        ctx.fillStyle = p.c; ctx.fillRect(-p.r / 2, -p.r / 2, p.r, p.r * 0.6); ctx.restore();
+      }
+      if (alive && frames < 240) requestAnimationFrame(frame);
+      else cv.remove();
+    })();
   }
 
   const PERSPECTIVES = ["class", "teacher", "room", "subject"];
@@ -18132,7 +18175,7 @@ window.PendingStrip = (function () {
         do() {
           applyPlacement();
           document.dispatchEvent(new CustomEvent("editor:place", { detail: { cardId, lessonId, day, period, forced } }));
-          rerender();
+          rerender({ lessonId, day, period });
         },
         undo() {
           revertPlacement();
@@ -18144,7 +18187,7 @@ window.PendingStrip = (function () {
       applyPlacement();
       document.dispatchEvent(new CustomEvent("editor:place",
         { detail: { cardId, lessonId, day, period, forced } }));
-      rerender();
+      rerender({ lessonId, day, period });
     }
     if (window.APP.editor) window.APP.editor.cardInHand = null;
     cleanup();
@@ -18309,11 +18352,20 @@ window.PendingStrip = (function () {
     }
   }
 
-  function rerender() {
+  function rerender(landed) {
     const host = document.querySelector(".chrx-editor");
     if (host && window.Editor && window.Editor.render) window.Editor.render(host);
     const pend = document.querySelector(".chrx-pending-strip");
     if (pend && window.PendingStrip && window.PendingStrip.render) window.PendingStrip.render(pend);
+    // Plan D: snap-flash the freshly placed card so the eye lands on it.
+    if (landed) {
+      const card = document.querySelector(
+        `.chrx-editor .chrx-vkarta[data-card-id="placed_${landed.lessonId}_${landed.day}_${landed.period}"]`);
+      if (card) {
+        card.classList.add("chrx-vkarta--landed");
+        setTimeout(() => card.classList.remove("chrx-vkarta--landed"), 360);
+      }
+    }
   }
 
   function cleanup() {
@@ -21771,12 +21823,22 @@ window.StartScreen = (function () {
   }
   function dispatch(name, detail) { window.dispatchEvent(new CustomEvent(name, { detail: detail || {} })); }
   function notify(msg, level) {
-    const t = el("div", { class: "chrx-toast",
-      style: "position:fixed;bottom:24px;left:50%;transform:translateX(-50%);"
-        + "background:var(--chrx-bg-elev);color:var(--chrx-fg);padding:8px 14px;"
-        + "border:1px solid " + (level === "error" ? "var(--chrx-red)" : "var(--chrx-line)")
-        + ";border-radius:8px;box-shadow:var(--chrx-shadow-sheet);z-index:9999;font-size:13px;" });
-    t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), 2200);
+    // Plan D: slide in from the top, show an auto-dismiss progress bar, fade
+    // out. Styling lives in css/design-v3.css (.chrx-toast*).
+    var reduce = typeof matchMedia === "function" &&
+      matchMedia("(prefers-reduced-motion: reduce)").matches;
+    var dur = 2600;
+    var t = el("div", { class: "chrx-toast chrx-toast--" + (level || "info") });
+    var span = el("span", { class: "chrx-toast__msg" }); span.textContent = msg;
+    var bar = el("div", { class: "chrx-toast__bar" });
+    if (!reduce) bar.style.animationDuration = dur + "ms";
+    t.appendChild(span); t.appendChild(bar);
+    document.body.appendChild(t);
+    requestAnimationFrame(function () { t.classList.add("chrx-toast--in"); });
+    setTimeout(function () {
+      t.classList.add("chrx-toast--out");
+      setTimeout(function () { t.remove(); }, 320);
+    }, dur);
   }
   window._chrxNotify = notify;
 

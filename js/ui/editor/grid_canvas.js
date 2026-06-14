@@ -188,12 +188,55 @@ window.Editor = (function () {
     `;
   }
 
+  let _prevUnplaced = null;
   function syncUnplacedCount(S) {
     const elc = document.getElementById("editor-unplaced-count");
-    if (!elc) return;
     const n = pendingCount(S);
-    elc.textContent = n === 0 ? "All placed ✓" : n + " unplaced";
-    elc.style.color = n === 0 ? "var(--chrx-green, #16a34a)" : "";
+    if (elc) {
+      elc.textContent = n === 0 ? "All placed ✓" : n + " unplaced";
+      elc.style.color = n === 0 ? "var(--chrx-green, #16a34a)" : "";
+    }
+    // Plan D: celebrate the moment everything first lands (a real >0 → 0
+    // transition, not an already-complete load).
+    if (_prevUnplaced != null && _prevUnplaced > 0 && n === 0) celebrateAllPlaced();
+    _prevUnplaced = n;
+  }
+
+  // One-shot confetti burst. Pure canvas, no deps; honours reduced-motion and
+  // won't stack if one is already running.
+  function celebrateAllPlaced() {
+    if (document.getElementById("chrx-confetti")) return;
+    if (typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const cv = document.createElement("canvas");
+    cv.id = "chrx-confetti";
+    cv.style.cssText = "position:fixed;inset:0;pointer-events:none;z-index:10020";
+    cv.width = window.innerWidth; cv.height = window.innerHeight;
+    document.body.appendChild(cv);
+    const ctx = cv.getContext("2d");
+    const colors = ["#0d4f54", "#b08a3e", "#9c4322", "#5b6e3d", "#4c6e91", "#d9466b"];
+    const parts = Array.from({ length: 150 }, () => ({
+      x: cv.width / 2 + (Math.random() - 0.5) * 160,
+      y: cv.height / 3,
+      vx: (Math.random() - 0.5) * 11,
+      vy: Math.random() * -13 - 4,
+      r: 4 + Math.random() * 5,
+      c: colors[(Math.random() * colors.length) | 0],
+      rot: Math.random() * 6, vr: (Math.random() - 0.5) * 0.4,
+    }));
+    let frames = 0;
+    (function frame() {
+      frames++;
+      ctx.clearRect(0, 0, cv.width, cv.height);
+      let alive = false;
+      for (const p of parts) {
+        p.vy += 0.35; p.x += p.vx; p.y += p.vy; p.rot += p.vr;
+        if (p.y < cv.height + 24) alive = true;
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+        ctx.fillStyle = p.c; ctx.fillRect(-p.r / 2, -p.r / 2, p.r, p.r * 0.6); ctx.restore();
+      }
+      if (alive && frames < 240) requestAnimationFrame(frame);
+      else cv.remove();
+    })();
   }
 
   const PERSPECTIVES = ["class", "teacher", "room", "subject"];
