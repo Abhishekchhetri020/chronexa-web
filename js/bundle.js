@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-06-14T12:02:14Z
+/* Chronexa bundle — generated 2026-06-14T12:09:01Z
  *      167 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -27205,7 +27205,7 @@ window.StartScreen = (function () {
     const tableWrap = el("div", { style: "flex:1;overflow:visible;display:flex;gap:6px" });
     const table = el("table", {
       class: "chrx-pivot-grid",
-      style: "border-collapse:collapse;width:100%;table-layout:fixed;border:1.4px solid #2b2b2b;font-size:" + report._layout.bodyFontPx + "px",
+      style: "border-collapse:collapse;width:100%;min-width:0;table-layout:fixed;border:1.4px solid #2b2b2b;font-size:" + report._layout.bodyFontPx + "px",
     });
 
     const thead = el("thead");
@@ -27323,9 +27323,17 @@ window.StartScreen = (function () {
 
     if (report.extraCols && report.extraCols.length > 0) {
       const extraWidth = report.extraCols.reduce((sum, ec) => sum + ((ec.width || 10) * 5), 0);
+      // Width protection: the side panel sits in a flex row next to the main
+      // grid, so an unbounded px width pushes the timetable off the page. Cap
+      // it to ~42% of the printable page width and let flex shrink it; with
+      // table-layout:fixed the column widths scale down proportionally to fit.
+      const mmToPx = 3.779527559;
+      const innerWidthPx = (orientation === "portrait" ? 210 : 297) * mmToPx - 24 * mmToPx;
+      const maxExtraPx = Math.floor(innerWidthPx * 0.42);
+      const panelWidth = Math.max(60, Math.min(extraWidth, maxExtraPx));
       const extraPanel = el("table", {
         class: "chrx-pivot-extras",
-        style: "border-collapse:collapse;width:" + extraWidth + "px;table-layout:fixed;font-size:11px",
+        style: "border-collapse:collapse;width:" + panelWidth + "px;max-width:" + panelWidth + "px;flex:0 0 auto;table-layout:fixed;font-size:11px",
       });
       const extHead = el("thead");
       const extHeadRow = el("tr");

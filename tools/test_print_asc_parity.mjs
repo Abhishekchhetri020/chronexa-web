@@ -118,6 +118,27 @@ const withTableText = withTablePages[0].textContent;
 check("Class-with-table header shows home classroom and class teacher", withTableText.includes("Home classroom: Room 1") && withTableText.includes("Class teacher: Bindu"), withTableText);
 check("Class-with-table includes subject/count side panel", withTableText.includes("Subjects") && withTableText.includes("Count") && withTableText.includes("Lessons/week"), withTableText);
 
+// Width protection: the extra-columns side panel must be capped so it can't
+// push the timetable off the page. Even with absurdly wide column configs the
+// panel width stays within ~42% of the printable page width.
+const wideReport = window.APP.PrintReportSchema.create({ context: "class" });
+window.APP.PrintReportSchema.applyPreset(wideReport, window.APP.PrintPresets.get("classwise_with_table"));
+wideReport.extraCols = [
+  { type: "subjects-count", header: "Subjects", width: 200 },
+  { type: "sum-of-lessons", header: "Count", width: 200 },
+  { type: "teachers-of-lessons", header: "Teachers", width: 200 },
+];
+const widePanel = window.APP.PrintPivot.renderReport(wideReport, school, school.bell.periods)[0].querySelector("table.chrx-pivot-extras");
+const widePanelPx = widePanel ? parseFloat(widePanel.style.width) : 0;
+const mmToPx = 3.779527559;
+const landscapeInnerPx = 297 * mmToPx - 24 * mmToPx; // class report is landscape
+check("Extra-columns side panel width is capped to ~42% of page width",
+  widePanelPx > 0 && widePanelPx <= Math.floor(landscapeInnerPx * 0.42) + 0.5,
+  "panel=" + widePanelPx.toFixed(0) + "px cap=" + Math.floor(landscapeInnerPx * 0.42) + "px");
+check("Extra-columns panel does not flex-grow (flex:0 0 auto)",
+  !!widePanel && /flex:0 0 auto/.test(widePanel.getAttribute("style")),
+  widePanel ? widePanel.getAttribute("style") : "<none>");
+
 const subjectPresetReport = window.APP.PrintReportSchema.create({ context: "subject" });
 const countStyle = subjectPresetReport.elementStyles.find(s => s.key === "count");
 check("subject report defaults include count element", !!countStyle?.enabled && countStyle.anchor === "top-right", JSON.stringify(countStyle));
