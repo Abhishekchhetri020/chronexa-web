@@ -37,7 +37,7 @@
       id: "summary",
       name: "Summary timetable of classes",
       context: "summary",
-      pages: [], rows: ["class"], cols: ["day","period"],
+      pages: ["day"], rows: ["class"], cols: ["period"],
       cells: "summary-class-day-period", fitWidth: true, fitHeight: true,
     },
     {

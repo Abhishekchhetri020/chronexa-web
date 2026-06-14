@@ -124,10 +124,14 @@ check("dense reports switch to compact cell height", denseReport._layout.cellMin
 
 const summaryPages = window.APP.PrintPivot.renderPreset("summary", school, school.bell.periods);
 const summaryPage = summaryPages[0];
+const summaryTuesdayPage = summaryPages[1];
 const summaryTopHeaders = Array.from(summaryPage.querySelectorAll("table.chrx-pivot-grid thead tr:first-child th")).slice(1).map(th => th.textContent.trim().replace(/\s+/g, " "));
 const summaryPeriodHeaders = Array.from(summaryPage.querySelectorAll("table.chrx-pivot-grid thead tr:nth-child(2) th")).slice(1).map(th => th.textContent.trim().replace(/\s+/g, " "));
 const summaryCells = Array.from(summaryPage.querySelectorAll("table.chrx-pivot-grid tbody td")).slice(1);
-check("summary classes use ASC-style grouped day headers", summaryTopHeaders.length === school.daysPerWeek && summaryTopHeaders[0] === "Monday", summaryTopHeaders.join(" | "));
+check("summary classes render one page per day", summaryPages.length === school.daysPerWeek, "Expected " + school.daysPerWeek + " pages, got " + summaryPages.length);
+check("summary Monday page contains only Monday data", summaryPage.textContent.includes("Monday") && !summaryPage.textContent.includes("Tuesday"), summaryPage.textContent.slice(0, 220));
+check("summary Tuesday page contains only Tuesday data", summaryTuesdayPage.textContent.includes("Tuesday") && !summaryTuesdayPage.textContent.includes("Monday"), summaryTuesdayPage.textContent.slice(0, 220));
+check("summary day pages use period-only headers", summaryTopHeaders.length === 0 && summaryPeriodHeaders.join(" | ") === "1st | 2nd | 3rd | 4th", summaryPeriodHeaders.join(" | "));
 check("summary class/day-period cells show period subject codes", summaryPage.textContent.includes("1st") && summaryCells.some(td => td.textContent.includes("Maths")), summaryCells.map(td => td.textContent.trim()).join(" | ").slice(0, 160));
 
 const breakSchool = { ...school, cards: [...school.cards, { lessonId: "L3", day: 0, period: 2, classroomId: "R1" }], breaks: [{ starttime: "8:45", endtime: "9:00", name: "RECESS" }] };

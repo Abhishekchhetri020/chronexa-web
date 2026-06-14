@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-06-14T09:44:26Z
+/* Chronexa bundle — generated 2026-06-14T10:04:23Z
  *      167 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -30239,7 +30239,7 @@ window.StartScreen = (function () {
       id: "summary",
       name: "Summary timetable of classes",
       context: "summary",
-      pages: [], rows: ["class"], cols: ["day","period"],
+      pages: ["day"], rows: ["class"], cols: ["period"],
       cells: "summary-class-day-period", fitWidth: true, fitHeight: true,
     },
     {
