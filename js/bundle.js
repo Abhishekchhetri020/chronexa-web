@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-06-14T12:46:06Z
+/* Chronexa bundle — generated 2026-06-14T12:48:01Z
  *      167 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -26108,7 +26108,10 @@ window.StartScreen = (function () {
 
       // Colors (Phase 5)
       colors: {
-        cardOn: false,
+        // On by default (aSc parity): colour cards by subject. Harmless when
+        // subjects carry no colour — entityColor returns null and the card
+        // stays uncoloured. Teacherless cards print white (see getCardBgColor).
+        cardOn: true,
         cardKey: "subject",         // subject | teacher | class | group | classroom | building
         cardColor1: null,
         cardColor2: null,
@@ -26474,6 +26477,11 @@ window.StartScreen = (function () {
     const key = report.colors.cardKey || "subject";
     if (cards.length === 0) return null;
     const card = cards[0];
+    // aSc convention: cards with no teacher (free / leisure / self-study
+    // periods) print white, so coloured teaching cards stand out against
+    // them. This wins over the colour key.
+    const hasTeacher = (card.teacherIds || []).length > 0;
+    if (!hasTeacher) return "#ffffff";
     let id = null;
     if (key === "subject")   id = card.subjectId;
     else if (key === "teacher")   id = (card.teacherIds || [])[0];

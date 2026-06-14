@@ -144,7 +144,10 @@
 
       // Colors (Phase 5)
       colors: {
-        cardOn: false,
+        // On by default (aSc parity): colour cards by subject. Harmless when
+        // subjects carry no colour — entityColor returns null and the card
+        // stays uncoloured. Teacherless cards print white (see getCardBgColor).
+        cardOn: true,
         cardKey: "subject",         // subject | teacher | class | group | classroom | building
         cardColor1: null,
         cardColor2: null,

@@ -296,6 +296,11 @@
     const key = report.colors.cardKey || "subject";
     if (cards.length === 0) return null;
     const card = cards[0];
+    // aSc convention: cards with no teacher (free / leisure / self-study
+    // periods) print white, so coloured teaching cards stand out against
+    // them. This wins over the colour key.
+    const hasTeacher = (card.teacherIds || []).length > 0;
+    if (!hasTeacher) return "#ffffff";
     let id = null;
     if (key === "subject")   id = card.subjectId;
     else if (key === "teacher")   id = (card.teacherIds || [])[0];

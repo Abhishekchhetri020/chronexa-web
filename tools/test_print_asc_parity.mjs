@@ -97,6 +97,35 @@ const aCellWithCards = classDataCells.find(td => Array.isArray(td._cards) && td.
 check("timetable data cells are tagged chrx-pivot-datacell", classDataCells.length > 0, "count=" + classDataCells.length);
 check("data cells carry their cards for click-to-style", !!aCellWithCards, "found cell with cards: " + !!aCellWithCards);
 
+// Card colours (aSc parity): colour cards by subject by default, but cards
+// with no teacher (free/leisure periods) print white.
+const colorSchool = {
+  ...school,
+  subjects: [
+    { id: "S1", name: "Maths", abbreviation: "Maths", color: "#cce5ff" },
+    { id: "S9", name: "Leisure", abbreviation: "Leis", color: "#ffeeaa" },
+  ],
+  lessons: [
+    { id: "LC", classIds: ["C1"], teacherIds: ["T1"], subjectId: "S1", periodsPerWeek: 1 },
+    { id: "LF", classIds: ["C1"], teacherIds: [], subjectId: "S9", periodsPerWeek: 1 },
+  ],
+  cards: [
+    { lessonId: "LC", day: 0, period: 1 },
+    { lessonId: "LF", day: 0, period: 2 },
+  ],
+};
+const colorReport = window.APP.PrintReportSchema.create({ context: "class" });
+window.APP.PrintReportSchema.applyPreset(colorReport, window.APP.PrintPresets.get("class"));
+check("cards are coloured by subject by default", colorReport.colors.cardOn === true, "cardOn=" + colorReport.colors.cardOn);
+const colorPage = window.APP.PrintPivot.renderReport(colorReport, colorSchool, colorSchool.bell.periods)[0];
+const colorByCard = {};
+colorPage.querySelectorAll("td.chrx-pivot-datacell").forEach(td => {
+  const c = td._cards && td._cards[0]; if (!c) return;
+  colorByCard[c.subjectId] = td.querySelector(".chrx-pivot-cell").style.background;
+});
+check("teaching card takes its subject colour", /204, 229, 255|#cce5ff/.test(colorByCard["S1"] || ""), "Maths bg=" + colorByCard["S1"]);
+check("teacherless (leisure) card prints white", /255, 255, 255|#ffffff/.test(colorByCard["S9"] || ""), "Leisure bg=" + colorByCard["S9"]);
+
 // Regression: when a school has breaks, the per-class (non-summary) grid
 // inserts a break column in BOTH header and body. If the body skips it the
 // two go out of sync under table-layout:fixed and every period cell shifts
