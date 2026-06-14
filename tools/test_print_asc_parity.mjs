@@ -193,6 +193,56 @@ const sumSubjPeriodRow = sumSubjHeadRows[sumSubjHeadRows.length - 1];
 const sumSubjPeriodLabels = sumSubjPeriodRow ? Array.from(sumSubjPeriodRow.querySelectorAll("th")).map(t => t.textContent.trim()).filter(Boolean) : [];
 check("Summary of subjects period sub-row shows period labels", sumSubjPeriodLabels[0] === "1st", sumSubjPeriodLabels.join("|"));
 
+// Regression: the period sub-row must NOT begin with a blank leading <th>.
+// The day-group row above carries a rowspan:2 corner cell that already fills
+// column 1; an extra leading cell here shifts every period label one column
+// right of the body ("1st period shows under 2nd" off-by-one). The very first
+// cell of the period row must already be a period label, not an empty spacer.
+const sumSubjPeriodFirstCell = sumSubjPeriodRow ? sumSubjPeriodRow.querySelector("th") : null;
+check("Summary of subjects period row has no leading blank (no off-by-one)",
+  !!sumSubjPeriodFirstCell && sumSubjPeriodFirstCell.textContent.trim() === "1st",
+  "first period-row cell = '" + (sumSubjPeriodFirstCell ? sumSubjPeriodFirstCell.textContent.trim() : "<none>") + "'");
+
+// Strict column geometry: the day-group row, the period sub-row (+ the spanned
+// corner) and the first body row must all describe the same number of columns.
+// This catches a header/body off-by-one in ANY grid mode, not just this one.
+function colWidth(cells, attr) {
+  return cells.reduce((s, c) => s + (parseInt(c.getAttribute(attr) || "1", 10) || 1), 0);
+}
+const sumSubjDayRowCols = colWidth(Array.from(sumSubjHeadRows[0].querySelectorAll("th")), "colspan");
+const sumSubjPeriodRowCols = sumSubjPeriodRow.querySelectorAll("th").length + 1; // +1 for the rowspan corner
+const sumSubjBodyRow0 = sumSubjPage.querySelector("table.chrx-pivot-grid tbody tr");
+const sumSubjBodyRow0Cols = colWidth(Array.from(sumSubjBodyRow0.querySelectorAll("td")), "colspan");
+check("Summary of subjects: header rows and body row describe equal column counts",
+  sumSubjDayRowCols === sumSubjPeriodRowCols && sumSubjPeriodRowCols === sumSubjBodyRow0Cols,
+  "dayRow=" + sumSubjDayRowCols + " periodRow(+corner)=" + sumSubjPeriodRowCols + " body0=" + sumSubjBodyRow0Cols);
+
+// Broad sweep: for EVERY pivot-grid preset (class-wise, teacher-wise,
+// subject-wise, room-wise, all summary variants, posters…), the first header
+// row and the first body row must describe the same number of columns. The
+// first <thead> row always spans the full grid width (leading/corner cell +
+// period or day-colspan cells), so this single invariant catches any
+// header/body off-by-one regardless of mode. Custom-rendered presets (lists,
+// lesson grid, contract) are skipped — they don't use the pivot grid.
+let geomChecked = 0;
+for (const preset of window.APP.PrintPresets.list()) {
+  if (preset.render) continue; // custom renderer, not a pivot grid
+  const pages = window.APP.PrintPivot.renderPreset(preset.id, school, school.bell.periods);
+  const page = pages && pages[0];
+  if (!page) continue;
+  const grid = page.querySelector("table.chrx-pivot-grid");
+  if (!grid) continue;
+  const headRow0 = grid.querySelector("thead tr");
+  const bodyRow0 = grid.querySelector("tbody tr");
+  if (!headRow0 || !bodyRow0) continue;
+  const headCols = colWidth(Array.from(headRow0.children), "colspan");
+  const bodyCols = colWidth(Array.from(bodyRow0.children), "colspan");
+  geomChecked++;
+  check("Column geometry aligns header↔body for preset '" + preset.id + "'",
+    headCols === bodyCols, "header=" + headCols + " body=" + bodyCols);
+}
+check("Column-geometry sweep covered the grid presets", geomChecked >= 8, "checked=" + geomChecked);
+
 check(
   "Class element can print group instead of class",
   window.APP.PrintCellRenderer.joinElementLabels(

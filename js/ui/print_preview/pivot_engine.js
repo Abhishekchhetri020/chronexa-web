@@ -380,10 +380,11 @@
     }
     thead.appendChild(headerRow);
 
+    // No leading row-header <th> here: the day-group row above carries a
+    // rowspan:2 corner cell that already occupies column 1 of this row.
+    // Adding another would shift every period label one column right of the
+    // body cells (the "1st period shows under 2nd" off-by-one).
     const periodRow = el("tr");
-    periodRow.appendChild(el("th", {
-      style: "border:1px solid #999;padding:3px;background:#fafafa;width:" + layout.rowHeaderWidthPx + "px",
-    }, ""));
     for (const col of summaryCols) {
       if (col.kind === "break") {
         periodRow.appendChild(el("th", {
