@@ -90,6 +90,29 @@ const classPage = classPages[0];
 check("pivot class report uses preview page class", classPage.className.includes("chrx-preview-page"), classPage.className);
 check("pivot class report uses landscape A4 width", /width:297mm/.test(classPage.getAttribute("style")), classPage.getAttribute("style"));
 
+// Regression: when a school has breaks, the per-class (non-summary) grid
+// inserts a break column in BOTH header and body. If the body skips it the
+// two go out of sync under table-layout:fixed and every period cell shifts
+// into the narrow break slot (the 2026-06-14 "messed up print preview" bug).
+const perClassBreakSchool = {
+  ...school,
+  breaks: [{ starttime: "10:25", endtime: "10:40", name: "Recess", printtext: "RECESS" }],
+  bell: {
+    periods: [
+      { index: 1, label: "1", startMin: 480, endMin: 525 },
+      { index: 2, label: "2", startMin: 540, endMin: 585 },
+      { index: 3, label: "3", startMin: 600, endMin: 625 },  // ends 10:25
+      { index: 4, label: "4", startMin: 640, endMin: 705 },  // starts 10:40 → break between 3 and 4
+    ],
+  },
+};
+const breakClassPage = window.APP.PrintPivot.renderPreset("class", perClassBreakSchool, perClassBreakSchool.bell.periods)[0];
+const bcHeaderTh = breakClassPage.querySelectorAll("table.chrx-pivot-grid thead tr th").length;
+const bcFirstBodyRow = breakClassPage.querySelector("table.chrx-pivot-grid tbody tr");
+const bcFirstRowTd = bcFirstBodyRow ? bcFirstBodyRow.querySelectorAll("td").length : 0;
+check("per-class break column appears in header", breakClassPage.textContent.includes("RECESS"), breakClassPage.textContent.slice(0, 200));
+check("per-class header and first body row have equal column count", bcHeaderTh === bcFirstRowTd, "header th=" + bcHeaderTh + " body td=" + bcFirstRowTd);
+
 const withTablePages = window.APP.PrintPivot.renderPreset("classwise_with_table", school, school.bell.periods);
 const withTableText = withTablePages[0].textContent;
 check("Class-with-table header shows home classroom and class teacher", withTableText.includes("Home classroom: Room 1") && withTableText.includes("Class teacher: Bindu"), withTableText);

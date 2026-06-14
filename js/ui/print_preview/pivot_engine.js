@@ -541,7 +541,9 @@
       const summaryCols = report.cells === "summary-class-day-period"
         ? report._layout.summaryDayColumns
         : null;
-      for (const col of summaryCols || visibleCols) {
+      const colList = summaryCols || visibleCols;
+      for (let ci = 0; ci < colList.length; ci++) {
+        const col = colList[ci];
         if (summaryCols && col.kind === "break") {
           if (ri === 0) {
             const brkText = col.breakItem.printtext || col.breakItem.name || "BREAK";
@@ -577,6 +579,26 @@
           cellNode.appendChild(el("div", { style: "padding:4px;font-size:11px;text-align:center" }, text));
         }
         tr.appendChild(cellNode);
+        // Non-summary path: mirror the header's break columns in the body so
+        // the two stay column-aligned under table-layout:fixed. (The header
+        // inserts a break <th> after each qualifying period via breakAfterCol;
+        // without the matching body <td> every period cell shifts left into
+        // the narrow break slot.)
+        if (!summaryCols) {
+          const brk = breakAfterCol(visibleCols, ci, school);
+          if (brk && ri === 0) {
+            const brkText = brk.printtext || brk.name || "BREAK";
+            const brkTd = el("td", {
+              rowspan: String(visibleRows.length),
+              style: "border:1px solid #bbb;padding:2px;background:#efefeb;width:28px;vertical-align:middle;text-align:center",
+            });
+            const brkInner = el("div", {
+              style: "writing-mode:vertical-lr;transform:rotate(180deg);font-weight:700;font-size:8.5px;text-transform:uppercase;letter-spacing:.1em;color:#555;margin:0 auto",
+            }, brkText);
+            brkTd.appendChild(brkInner);
+            tr.appendChild(brkTd);
+          }
+        }
       }
       tbody.appendChild(tr);
     }
