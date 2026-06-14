@@ -253,18 +253,20 @@
     const rooms = uniqueLabels(cards, "classroom", school);
 
     if (kind === "count-placed") {
+      // ASC "Summary timetable of subjects" cell: a bold count pinned to the
+      // top-right corner, then the list of classes that take this row's
+      // subject in this day+period. The class list is in normal flow (not
+      // absolutely positioned) so the table row grows to fit it instead of
+      // the text overflowing into neighbouring cells. Teachers and rooms are
+      // intentionally omitted to stay compact like ASC.
+      cell.style.padding = "1px 2px";
+      cell.style.height = "auto";
       cell.appendChild(el("div", {
-        style: "position:absolute;right:3px;top:2px;font-size:clamp(7px,22cqi,13px);font-weight:700;line-height:1",
+        style: "position:absolute;right:2px;top:1px;font-size:clamp(6px,20cqi,11px);font-weight:700;line-height:1;z-index:1",
       }, String(count)));
-      const lines = [];
-      if (teachers.length) lines.push(teachers.join(", "));
-      if (classes.length) lines.push(classes.join(", "));
-      if (rooms.length) lines.push(rooms.join(", "));
-      if (lines.length) {
-        cell.appendChild(el("div", {
-          style: "position:absolute;left:3px;right:3px;bottom:2px;text-align:center;font-size:clamp(5px,11cqi,8px);line-height:1.12;color:#333;overflow-wrap:anywhere",
-        }, lines.join(" / ")));
-      }
+      cell.appendChild(el("div", {
+        style: "font-size:clamp(4.5px,10cqi,7px);line-height:1.1;color:#333;text-align:center;overflow-wrap:anywhere;word-break:break-word;padding-top:1px",
+      }, classes.length ? classes.join(", ") : ""));
       return cell;
     }
 

@@ -171,7 +171,19 @@
     return runs;
   }
 
-  function computeSummaryDayLayout(visibleRows, visibleCols, pageBindings, pageCards, denseRows, compactLevel, orientation, school, cells) {
+  /** True when the column axis pivots on BOTH day and period (e.g. the
+   *  "Summary timetable of subjects/teachers/classrooms/students" reports,
+   *  cols=["day","period"]). These need the ASC-style grouped day header +
+   *  break columns + width-fitting, regardless of which cell kind they use.
+   *  The per-day "summary" preset (cols=["period"] only) is intentionally
+   *  excluded — it pages by day so its columns carry no day dim. */
+  function colsAreDayPeriod(report) {
+    const Schema = APP.PrintReportSchema;
+    const active = Schema.activeDims(report.cols || []);
+    return active.includes("day") && active.includes("period");
+  }
+
+  function computeSummaryDayLayout(visibleRows, visibleCols, pageBindings, pageCards, denseRows, compactLevel, orientation, school, cells, dayPeriodGrid) {
     let maxCardsInCell = 0;
     for (const rc of visibleRows) {
       for (const cc of visibleCols) {
@@ -198,7 +210,7 @@
       summaryDayShowMeta: maxCardsInCell <= 8 && denseRows <= 20 && fontPx >= 6.8,
     };
 
-    if (cells === "summary-class-day-period") {
+    if (cells === "summary-class-day-period" || dayPeriodGrid) {
       const summaryCols = summaryDayColumns(visibleCols, school);
       const runs = dayRunsForSummaryColumns(summaryCols);
       const pageWidthPx = (orientation === "portrait" ? 210 : 297) * mmToPx;
@@ -431,8 +443,9 @@
     const orientation = report.pageSetup?.orientation || (denseCols > 10 ? "landscape" : "portrait");
     const pageWidth = orientation === "portrait" ? "210mm" : "297mm";
     const pageHeight = orientation === "portrait" ? "297mm" : "210mm";
-    const summaryDayLayout = report.cells === "summary-class-day" || report.cells === "summary-class-day-period"
-      ? computeSummaryDayLayout(visibleRows, visibleCols, pageBindings, pageCards, denseRows, compactLevel, orientation, school, report.cells)
+    const isDayPeriodGrid = colsAreDayPeriod(report);
+    const summaryDayLayout = report.cells === "summary-class-day" || report.cells === "summary-class-day-period" || isDayPeriodGrid
+      ? computeSummaryDayLayout(visibleRows, visibleCols, pageBindings, pageCards, denseRows, compactLevel, orientation, school, report.cells, isDayPeriodGrid)
       : {};
     report._layout = {
       compactLevel,
@@ -493,7 +506,7 @@
     });
 
     const thead = el("thead");
-    if (report.cells === "summary-class-day-period") {
+    if (report.cells === "summary-class-day-period" || isDayPeriodGrid) {
       appendSummaryDayPeriodHeader(thead, report);
     } else {
       const headerRow = el("tr");
@@ -538,7 +551,7 @@
       tr.appendChild(el("td", {
         style: "border:1px solid #999;padding:4px 5px;background:#fafafa;font-weight:600;text-align:center;font-family:'Fraunces',serif;font-size:" + report._layout.rowFontPx + "px",
       }, rowLabels.join(" · ")));
-      const summaryCols = report.cells === "summary-class-day-period"
+      const summaryCols = (report.cells === "summary-class-day-period" || isDayPeriodGrid)
         ? report._layout.summaryDayColumns
         : null;
       const colList = summaryCols || visibleCols;

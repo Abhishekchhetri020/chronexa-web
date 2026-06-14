@@ -177,6 +177,22 @@ const summarySubjectPages = window.APP.PrintPivot.renderPreset("summary_of_subje
 const summarySubjectText = summarySubjectPages[0].textContent;
 check("Summary timetable of subjects uses aggregate count mode", summarySubjectText.includes("1") && summarySubjectText.includes("IA"), summarySubjectText);
 
+// Regression: day×period summary reports (cols=["day","period"]) must use the
+// ASC grouped day header — a top row of day names with colspans over their
+// periods, then a period sub-row — NOT the generic header that repeats the day
+// label in every period column ("MonMonMon" + overlapping bell times bug).
+const sumSubjPage = summarySubjectPages[0];
+const sumSubjHeadRows = Array.from(sumSubjPage.querySelectorAll("table.chrx-pivot-grid thead tr"));
+const sumSubjTopLabels = sumSubjHeadRows.length ? Array.from(sumSubjHeadRows[0].querySelectorAll("th")).map(t => t.textContent.trim()).filter(Boolean) : [];
+const sumSubjDayColspans = sumSubjHeadRows.length ? Array.from(sumSubjHeadRows[0].querySelectorAll("th[colspan]")) : [];
+check("Summary of subjects uses two header rows", sumSubjHeadRows.length === 2, "rows=" + sumSubjHeadRows.length);
+check("Summary of subjects groups days with colspan (no MonMonMon repeat)",
+  sumSubjTopLabels.includes("Monday") && sumSubjTopLabels.filter(l => l === "Monday").length === 1 && sumSubjDayColspans.length >= 1,
+  "top=" + sumSubjTopLabels.join("|"));
+const sumSubjPeriodRow = sumSubjHeadRows[sumSubjHeadRows.length - 1];
+const sumSubjPeriodLabels = sumSubjPeriodRow ? Array.from(sumSubjPeriodRow.querySelectorAll("th")).map(t => t.textContent.trim()).filter(Boolean) : [];
+check("Summary of subjects period sub-row shows period labels", sumSubjPeriodLabels[0] === "1st", sumSubjPeriodLabels.join("|"));
+
 check(
   "Class element can print group instead of class",
   window.APP.PrintCellRenderer.joinElementLabels(
