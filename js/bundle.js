@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-06-14T00:26:55Z
+/* Chronexa bundle — generated 2026-06-14T00:42:46Z
  *      167 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -16142,13 +16142,13 @@ window.Editor = (function () {
           const isLab = !!(firstLesson && firstLesson.isLabDouble && nextFree);
           const spanClass = isLab ? " chrx-slot--span2" : "";
           slots.push(
-            `<div class="chrx-slot${oob}${splitClass}${spanClass}" data-day="${d}" data-period="${p.index}" data-row="${esc(row.key)}">${cardListHtml}</div>`
+            `<div class="chrx-slot${oob}${splitClass}${spanClass}" role="gridcell" data-day="${d}" data-period="${p.index}" data-row="${esc(row.key)}">${cardListHtml}</div>`
           );
           if (isLab) pi++; // the lesson covers the next period too
         } else {
           const oob = outOfBell ? " out-of-bell" : "";
           slots.push(
-            `<div class="chrx-slot empty${oob}" data-day="${d}" data-period="${p.index}" data-row="${esc(row.key)}"${outOfBell ? ' aria-hidden="true"' : ''}></div>`
+            `<div class="chrx-slot empty${oob}" role="gridcell" data-day="${d}" data-period="${p.index}" data-row="${esc(row.key)}"${outOfBell ? ' aria-hidden="true"' : ` aria-label="Empty, ${esc((DAY_LABELS_EN[d]||("Day "+(d+1))))} period ${p.index}"`}></div>`
           );
         }
       }
@@ -16311,6 +16311,12 @@ window.Editor = (function () {
     // rich hover tooltip (info header + violations). A title here made the
     // browser's native tooltip overlap the explainer with duplicate text.
     const bgStyle = stripeBg ? `;background:${stripeBg} !important;border-left-color:transparent !important` : "";
+    // Screen-reader label: the full human description regardless of how the cell
+    // is abbreviated visually (Plan E a11y). e.g. "Maths, X A, Ms. Yachna —
+    // Monday period 3, locked".
+    const dayName = DAY_LABELS_EN[day] || ("Day " + (day + 1));
+    const ariaLabel = [subjFull, classShort, teacherShort, roomShort]
+      .filter(Boolean).join(", ") + ` — ${dayName} period ${period}` + (locked ? ", locked" : "");
     return `
       <div class="chrx-vkarta${locked}${densityClass}"
            data-card-id="${cardId}"
@@ -16318,6 +16324,8 @@ window.Editor = (function () {
            data-day="${day}"
            data-period="${period}"
            data-classroom-id="${esc(card.classroomId || "")}"
+           role="button" tabindex="0" aria-label="${esc(ariaLabel)}"
+           aria-roledescription="timetable card"
            style="--chrx-card-hue:${hue}${bgStyle}">
         <div class="chrx-vk-line1">${esc(line1)}</div>
         ${compact || !line2 ? "" : `<div class="chrx-vk-line2">${esc(line2)}</div>`}

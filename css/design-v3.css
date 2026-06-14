@@ -1286,3 +1286,30 @@ body.chrx-editor-dark .chrx-vkarta[data-halo="red"]{
 body.chrx-editor-dark .chrx-vkarta[data-halo="amber"]{
   box-shadow:inset 0 0 0 2px #ffc04d, 0 0 12px 1px hsl(42 96% 56% / .6) !important;
 }
+
+/* ── Plan E: editor accessibility ──────────────────────────────────────────
+   Visible keyboard focus, a colour-INDEPENDENT conflict cue (shape), and a
+   reduced-motion catch-all for the Plan B animations. */
+.chrx-vkarta:focus-visible{ outline:3px solid #2563eb !important; outline-offset:1px !important; z-index:6; }
+.chrx-slot:focus-visible{ outline:3px solid #2563eb; outline-offset:-3px; z-index:5; }
+.chrx-rowlabel:focus-visible{ outline:3px solid #2563eb; outline-offset:-2px; }
+body.chrx-editor-dark .chrx-vkarta:focus-visible,
+body.chrx-editor-dark .chrx-slot:focus-visible{ outline-color:#7dd3fc !important; }
+
+/* Colour-blind aid: a SHAPE in the corner marks conflict severity so red/amber
+   aren't distinguished by hue alone. ▲ = hard conflict, ◆ = soft warning. Sits
+   bottom-right, clear of the top/left-aligned card text. */
+.chrx-vkarta[data-halo]::before{
+  position:absolute; right:2px; bottom:1px; z-index:3;
+  font-size:8px; line-height:1; color:#fff; text-shadow:0 0 2px rgba(0,0,0,.65);
+  pointer-events:none;
+}
+.chrx-vkarta[data-halo="red"]::before{ content:"\25B2"; }   /* ▲ */
+.chrx-vkarta[data-halo="amber"]::before{ content:"\25C6"; } /* ◆ */
+
+@media (prefers-reduced-motion: reduce){
+  .chrx-vkarta, .chrx-row, .chrx-slot, .chrx-card-ghost,
+  body.chrx-card-in-hand .chrx-slot.empty:not(.out-of-bell)::after{
+    transition:none !important; animation:none !important;
+  }
+}
