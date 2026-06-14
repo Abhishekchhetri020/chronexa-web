@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-06-14T10:15:24Z
+/* Chronexa bundle — generated 2026-06-14T10:30:09Z
  *      167 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -27265,12 +27265,10 @@ window.StartScreen = (function () {
         });
         if (APP.PrintCellRenderer && typeof APP.PrintCellRenderer.renderCell === "function") {
           const kind = report.cells || "draw-lessons";
-          const renderer = kind === "summary-class-day-period"
-            ? APP.PrintCellRenderer.renderSummaryClassDayPeriodCell
+          const renderer = kind === "summary-class-day-period" || kind === "draw-lessons"
+            ? APP.PrintCellRenderer.renderCell
             : kind === "summary-class-day"
               ? APP.PrintCellRenderer.renderSummaryClassDayCell
-              : kind === "draw-lessons"
-              ? APP.PrintCellRenderer.renderCell
               : (APP.PrintCellRenderer.renderAggregateCell || APP.PrintCellRenderer.renderCell);
           cellNode.appendChild(renderer(cellCards, report, school));
         } else if (cellCards.length > 0) {

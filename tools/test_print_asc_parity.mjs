@@ -140,6 +140,7 @@ check("summary Monday page contains only Monday data", summaryPage.textContent.i
 check("summary Tuesday page contains only Tuesday data", summaryTuesdayPage.textContent.includes("Tuesday") && !summaryTuesdayPage.textContent.includes("Monday"), summaryTuesdayPage.textContent.slice(0, 220));
 check("summary day pages use period-only headers", summaryTopHeaders.length === 0 && summaryPeriodHeaders[0] === "1st" && summaryPeriodHeaders.join(" | ") === "1st | 2nd | 3rd | 4th", summaryPeriodHeaders.join(" | "));
 check("summary class/day-period cells show period subject codes", summaryPage.textContent.includes("1st") && summaryCells.some(td => td.textContent.includes("Maths")), summaryCells.map(td => td.textContent.trim()).join(" | ").slice(0, 160));
+check("summary day-wise cells use common element renderer with teacher names", summaryPage.textContent.includes("Bindu") && summaryPage.textContent.includes("Anil"), summaryPage.textContent.slice(0, 360));
 
 const breakSchool = { ...school, cards: [...school.cards, { lessonId: "L3", day: 0, period: 2, classroomId: "R1" }], breaks: [{ starttime: "8:45", endtime: "9:00", name: "RECESS" }] };
 const breakSummaryPage = window.APP.PrintPivot.renderPreset("summary", breakSchool, breakSchool.bell.periods)[0];

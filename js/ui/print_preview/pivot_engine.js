@@ -565,12 +565,10 @@
         });
         if (APP.PrintCellRenderer && typeof APP.PrintCellRenderer.renderCell === "function") {
           const kind = report.cells || "draw-lessons";
-          const renderer = kind === "summary-class-day-period"
-            ? APP.PrintCellRenderer.renderSummaryClassDayPeriodCell
+          const renderer = kind === "summary-class-day-period" || kind === "draw-lessons"
+            ? APP.PrintCellRenderer.renderCell
             : kind === "summary-class-day"
               ? APP.PrintCellRenderer.renderSummaryClassDayCell
-              : kind === "draw-lessons"
-              ? APP.PrintCellRenderer.renderCell
               : (APP.PrintCellRenderer.renderAggregateCell || APP.PrintCellRenderer.renderCell);
           cellNode.appendChild(renderer(cellCards, report, school));
         } else if (cellCards.length > 0) {
