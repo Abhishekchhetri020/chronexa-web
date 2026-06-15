@@ -105,8 +105,243 @@
   opacity: 0.55;
 }
 
+/* ── Live hero treatment ─────────────────────────────── */
+
+#step-1 .chrx-start__hero {
+  position: relative;
+  isolation: isolate;
+}
+
+#step-1 .chrx-start__hero::before,
+#step-1 .chrx-start__hero::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+/* Soft brand-colour aurora behind the title and tagline. */
+#step-1 .chrx-start__hero::before {
+  inset: -74px -112px -58px;
+  border-radius: 50%;
+  background:
+    radial-gradient(ellipse at 18% 48%, rgba(13, 79, 84, 0.17), transparent 44%),
+    radial-gradient(ellipse at 68% 18%, rgba(217, 119, 6, 0.13), transparent 42%),
+    radial-gradient(ellipse at 82% 72%, rgba(190, 64, 75, 0.11), transparent 40%);
+  opacity: 0.72;
+  transform: translate3d(-1.5%, 0, 0) scale(0.98);
+  animation: chrx-aurora-drift 14s ease-in-out infinite alternate;
+}
+
+#step-1 .chrx-start__hero::after {
+  top: -38px;
+  left: 8%;
+  width: 74%;
+  height: 112px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(255, 255, 255, 0.64), transparent 68%);
+  opacity: 0.36;
+  transform: translate3d(0, 0, 0) scale(0.92);
+  animation: chrx-aurora-glow 9s ease-in-out infinite;
+}
+
+@keyframes chrx-aurora-drift {
+  0% {
+    opacity: 0.58;
+    transform: translate3d(-1.5%, 0, 0) scale(0.98) rotate(-1deg);
+  }
+  50% {
+    opacity: 0.78;
+    transform: translate3d(2%, -3%, 0) scale(1.04) rotate(1deg);
+  }
+  100% {
+    opacity: 0.64;
+    transform: translate3d(-0.5%, 2%, 0) scale(1.01) rotate(0deg);
+  }
+}
+
+@keyframes chrx-aurora-glow {
+  0%, 100% {
+    opacity: 0.24;
+    transform: translate3d(-4%, 0, 0) scale(0.92);
+  }
+  50% {
+    opacity: 0.46;
+    transform: translate3d(8%, 4%, 0) scale(1.08);
+  }
+}
+
+/* The pixel timetable fills in slot-by-slot, then settles before repeating. */
+.chrx-pixels .cp.on {
+  animation: chrx-cell-live-fill 8s cubic-bezier(0.22, 1, 0.36, 1) infinite both;
+}
+
+.chrx-pixels .cp.on:nth-child(10n + 1) { animation-delay: 0.52s; }
+.chrx-pixels .cp.on:nth-child(10n + 2) { animation-delay: 0.64s; }
+.chrx-pixels .cp.on:nth-child(10n + 3) { animation-delay: 0.76s; }
+.chrx-pixels .cp.on:nth-child(10n + 4) { animation-delay: 0.88s; }
+.chrx-pixels .cp.on:nth-child(10n + 5) { animation-delay: 1s; }
+.chrx-pixels .cp.on:nth-child(10n + 6) { animation-delay: 1.12s; }
+.chrx-pixels .cp.on:nth-child(10n + 7) { animation-delay: 1.24s; }
+.chrx-pixels .cp.on:nth-child(10n + 8) { animation-delay: 1.36s; }
+.chrx-pixels .cp.on:nth-child(10n + 9) { animation-delay: 1.48s; }
+.chrx-pixels .cp.on:nth-child(10n) { animation-delay: 1.6s; }
+
+@keyframes chrx-cell-live-fill {
+  0%, 9% {
+    opacity: 0.08;
+    transform: translate3d(0, 4px, 0) scale(0.72);
+  }
+  18%, 56% {
+    opacity: var(--hi, 0.82);
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  61% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1.12);
+  }
+  70%, 100% {
+    opacity: var(--lo, 0.45);
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+/* Replace the original left-position shimmer with a compositor-friendly scan. */
+.chrx-pixels::after {
+  left: -45%;
+  width: 45%;
+  animation: chrx-pixel-scan 8s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+@keyframes chrx-pixel-scan {
+  0%, 22% {
+    opacity: 0;
+    transform: translate3d(0, 0, 0);
+  }
+  30% { opacity: 0.66; }
+  50% {
+    opacity: 0.88;
+    transform: translate3d(220%, 0, 0);
+  }
+  68% {
+    opacity: 0;
+    transform: translate3d(430%, 0, 0);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(430%, 0, 0);
+  }
+}
+
+/* A restrained first-paint reveal keeps the hero feeling responsive. */
+#step-1 .chrx-start__wordmark,
+#step-1 .chrx-start__tagline {
+  will-change: transform, opacity;
+  animation: chrx-hero-enter 760ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+#step-1 .chrx-start__tagline {
+  animation-delay: 120ms;
+}
+
+@keyframes chrx-hero-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 12px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+/* Keep the demo CTA quietly active without affecting other primary buttons. */
+#cta-landing-demo.chrx-btn--primary {
+  position: relative;
+  isolation: isolate;
+  will-change: transform;
+  animation: chrx-cta-breathe 3.8s ease-in-out infinite;
+}
+
+#cta-landing-demo.chrx-btn--primary::after {
+  content: "";
+  position: absolute;
+  inset: -5px;
+  z-index: -1;
+  border: 1px solid rgba(13, 79, 84, 0.36);
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  will-change: transform, opacity;
+  transition: transform 220ms ease, opacity 220ms ease;
+  animation: chrx-cta-ring 3.8s ease-out infinite;
+}
+
+@keyframes chrx-cta-breathe {
+  0%, 64%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  76% { transform: translate3d(0, -1px, 0) scale(1.018); }
+}
+
+@keyframes chrx-cta-ring {
+  0%, 62% {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  74% { opacity: 0.32; }
+  92%, 100% {
+    opacity: 0;
+    transform: scale(1.16);
+  }
+}
+
+@media (hover: hover) {
+  #cta-landing-demo.chrx-btn--primary:hover {
+    transform: translate3d(0, -2px, 0) scale(1.025);
+    animation: none;
+  }
+
+  #cta-landing-demo.chrx-btn--primary:hover::after {
+    animation: none;
+    opacity: 0.42;
+    transform: scale(1.06);
+  }
+}
+
 /* ── Reduced motion: hide the whole layer ────────────── */
 
 @media (prefers-reduced-motion: reduce) {
   #step-1 .chrx-landing-anim { display: none; }
+
+  #step-1 .chrx-start__hero::before,
+  #step-1 .chrx-start__hero::after,
+  #step-1 .chrx-start__wordmark,
+  #step-1 .chrx-start__tagline,
+  .chrx-pixels .cp.on,
+  .chrx-pixels::after,
+  #cta-landing-demo.chrx-btn--primary,
+  #cta-landing-demo.chrx-btn--primary::after {
+    animation: none;
+    transform: none;
+  }
+
+  #step-1 .chrx-start__wordmark,
+  #step-1 .chrx-start__tagline {
+    opacity: 1;
+  }
+
+  .chrx-pixels .cp.on {
+    opacity: 0.55;
+  }
+
+  .chrx-pixels::after,
+  #cta-landing-demo.chrx-btn--primary::after {
+    display: none;
+  }
+
+  #cta-landing-demo.chrx-btn--primary,
+  #cta-landing-demo.chrx-btn--primary::after {
+    transition: none;
+  }
 }
