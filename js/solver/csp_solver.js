@@ -3885,6 +3885,9 @@ function largeNeighborhoodSearch(model, state, deadlineMs, ctx) {
   let rejectStreak = 0;
   let noImproveStreak = 0;
   let lastImproveMs = performance.now();
+  // A short time window prevents the opt-in metaheuristics from spinning to
+  // the full deadline when they are only cycling through lateral moves. The
+  // streak keeps the timer from firing on a tiny burst of LAHC lateral moves.
   const noImproveBudgetMs = Math.max(250, Math.min(1000, (deadlineMs - performance.now()) * 0.05));
   // Late Acceptance Hill-Climbing (Timefold port) — opt-in via
   // ctx.useLAHC. Maintains a sliding history of the last L scores; a
@@ -3918,7 +3921,7 @@ function largeNeighborhoodSearch(model, state, deadlineMs, ctx) {
   }
 
   while (performance.now() < deadlineMs) {
-    if (performance.now() - lastImproveMs > noImproveBudgetMs && noImproveStreak >= 3) break;
+    if (performance.now() - lastImproveMs > noImproveBudgetMs && noImproveStreak >= 10) break;
     iterations += 1;
     const strategy = strategies[strategyIdx % strategies.length];
     strategyIdx += 1;
