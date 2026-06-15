@@ -110,6 +110,7 @@
 #step-1 .chrx-start__hero {
   position: relative;
   isolation: isolate;
+  overflow: hidden;
 }
 
 #step-1 .chrx-start__hero::before,
@@ -262,6 +263,7 @@
   position: relative;
   isolation: isolate;
   will-change: transform;
+  transition: transform 220ms ease;
   animation: chrx-cta-breathe 3.8s ease-in-out infinite;
 }
 
@@ -324,6 +326,7 @@
   #cta-landing-demo.chrx-btn--primary::after {
     animation: none;
     transform: none;
+    will-change: auto;
   }
 
   #step-1 .chrx-start__wordmark,
