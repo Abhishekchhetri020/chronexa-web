@@ -239,7 +239,6 @@
 /* A restrained first-paint reveal keeps the hero feeling responsive. */
 #step-1 .chrx-start__wordmark,
 #step-1 .chrx-start__tagline {
-  will-change: transform, opacity;
   animation: chrx-hero-enter 760ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
