@@ -56,6 +56,26 @@ function baseSchool() {
   };
 }
 
+// --- EMPTY_BELL_MASK: one structured warning per school ---------------------
+test("EMPTY_BELL_MASK: one warning is recorded when a class bell mask is empty", () => {
+  const school = baseSchool();
+  school.bells = [{ id: "empty", name: "Empty", periods: [] }];
+  school.classes = [{ id: "cA", name: "CA", bellId: "empty" }];
+  school.lessons = [
+    { id: "lA", subjectId: "sA", periodsPerWeek: 1, classIds: ["cA"], teacherIds: ["tA"] },
+  ];
+
+  const res = solve(school, { seed: 1, timeLimitSec: 5 });
+
+  assert.strictEqual(res.stats.placed, 1, "lesson must still place with ALL-period fallback");
+  assert.strictEqual(res.warnings.length, 1, "expected exactly one structured warning");
+  const warning = res.warnings[0];
+  assert.strictEqual(warning.ruleId, "EMPTY_BELL_MASK");
+  assert.strictEqual(warning.bellId, "empty");
+  assert.ok(warning.message.includes("empty mask"), `warning message must mention empty mask: ${warning.message}`);
+  assert.deepStrictEqual(warning.affectedClassIds, ["cA"]);
+});
+
 // --- MC13: single locked card pins its lesson -------------------------------
 test("MC13: a locked card pins the lesson to that exact (day, period)", () => {
   const school = baseSchool();
