@@ -1,0 +1,616 @@
+{
+  "timestamp": "2026-06-15T18:04:22.715Z",
+  "platform": "darwin arm64",
+  "nodeVersion": "v22.22.3",
+  "config": {
+    "seeds": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "timeLimitSec": 30,
+    "disableLearning": true,
+    "wasmPreloaded": true,
+    "solverPaths": {
+      "js": "js/solver/csp_solver.js",
+      "wasm": "js/solver/wasm/adapter.js"
+    },
+    "solverOptions": {
+      "js": {
+        "useWasm": false
+      },
+      "wasm": {
+        "useWasm": true
+      }
+    },
+    "note": "All four fixtures use five seeds and an explicit 30-second per-solve cap. The WASM adapter runs with its shipped WASM hot path enabled."
+  },
+  "results": [
+    {
+      "name": "Small School",
+      "file": "small_school.json",
+      "solvers": {
+        "js": {
+          "runs": [
+            {
+              "seed": 1,
+              "status": "FEASIBLE",
+              "placed": 39,
+              "expected": 39,
+              "softScore": -300,
+              "hardConflicts": 0,
+              "durationMs": 25
+            },
+            {
+              "seed": 2,
+              "status": "FEASIBLE",
+              "placed": 39,
+              "expected": 39,
+              "softScore": -300,
+              "hardConflicts": 0,
+              "durationMs": 13
+            },
+            {
+              "seed": 3,
+              "status": "FEASIBLE",
+              "placed": 39,
+              "expected": 39,
+              "softScore": -300,
+              "hardConflicts": 0,
+              "durationMs": 7
+            },
+            {
+              "seed": 4,
+              "status": "FEASIBLE",
+              "placed": 39,
+              "expected": 39,
+              "softScore": -300,
+              "hardConflicts": 0,
+              "durationMs": 7
+            },
+            {
+              "seed": 5,
+              "status": "FEASIBLE",
+              "placed": 39,
+              "expected": 39,
+              "softScore": -300,
+              "hardConflicts": 0,
+              "durationMs": 6
+            }
+          ],
+          "average": {
+            "placed": 39,
+            "expected": 39,
+            "softScore": -300,
+            "hardConflicts": 0,
+            "durationMs": 11.6
+          },
+          "min": {
+            "placed": 39,
+            "expected": 39,
+            "softScore": -300,
+            "hardConflicts": 0,
+            "durationMs": 6
+          },
+          "max": {
+            "placed": 39,
+            "expected": 39,
+            "softScore": -300,
+            "hardConflicts": 0,
+            "durationMs": 25
+          }
+        },
+        "wasm": {
+          "runs": [
+            {
+              "seed": 1,
+              "status": "FEASIBLE",
+              "placed": 39,
+              "expected": 39,
+              "softScore": -300,
+              "hardConflicts": 0,
+              "durationMs": 8
+            },
+            {
+              "seed": 2,
+              "status": "FEASIBLE",
+              "placed": 39,
+              "expected": 39,
+              "softScore": -300,
+              "hardConflicts": 0,
+              "durationMs": 5
+            },
+            {
+              "seed": 3,
+              "status": "FEASIBLE",
+              "placed": 39,
+              "expected": 39,
+              "softScore": -300,
+              "hardConflicts": 0,
+              "durationMs": 4
+            },
+            {
+              "seed": 4,
+              "status": "FEASIBLE",
+              "placed": 39,
+              "expected": 39,
+              "softScore": -300,
+              "hardConflicts": 0,
+              "durationMs": 4
+            },
+            {
+              "seed": 5,
+              "status": "FEASIBLE",
+              "placed": 39,
+              "expected": 39,
+              "softScore": -300,
+              "hardConflicts": 0,
+              "durationMs": 3
+            }
+          ],
+          "average": {
+            "placed": 39,
+            "expected": 39,
+            "softScore": -300,
+            "hardConflicts": 0,
+            "durationMs": 4.8
+          },
+          "min": {
+            "placed": 39,
+            "expected": 39,
+            "softScore": -300,
+            "hardConflicts": 0,
+            "durationMs": 3
+          },
+          "max": {
+            "placed": 39,
+            "expected": 39,
+            "softScore": -300,
+            "hardConflicts": 0,
+            "durationMs": 8
+          }
+        }
+      }
+    },
+    {
+      "name": "Medium School",
+      "file": "medium_school.json",
+      "solvers": {
+        "js": {
+          "runs": [
+            {
+              "seed": 1,
+              "status": "FEASIBLE",
+              "placed": 300,
+              "expected": 300,
+              "softScore": -3610,
+              "hardConflicts": 0,
+              "durationMs": 136
+            },
+            {
+              "seed": 2,
+              "status": "FEASIBLE",
+              "placed": 300,
+              "expected": 300,
+              "softScore": -3270,
+              "hardConflicts": 0,
+              "durationMs": 125
+            },
+            {
+              "seed": 3,
+              "status": "FEASIBLE",
+              "placed": 300,
+              "expected": 300,
+              "softScore": -3760,
+              "hardConflicts": 0,
+              "durationMs": 153
+            },
+            {
+              "seed": 4,
+              "status": "FEASIBLE",
+              "placed": 300,
+              "expected": 300,
+              "softScore": -3600,
+              "hardConflicts": 0,
+              "durationMs": 234
+            },
+            {
+              "seed": 5,
+              "status": "FEASIBLE",
+              "placed": 300,
+              "expected": 300,
+              "softScore": -3580,
+              "hardConflicts": 0,
+              "durationMs": 135
+            }
+          ],
+          "average": {
+            "placed": 300,
+            "expected": 300,
+            "softScore": -3564,
+            "hardConflicts": 0,
+            "durationMs": 156.6
+          },
+          "min": {
+            "placed": 300,
+            "expected": 300,
+            "softScore": -3760,
+            "hardConflicts": 0,
+            "durationMs": 125
+          },
+          "max": {
+            "placed": 300,
+            "expected": 300,
+            "softScore": -3270,
+            "hardConflicts": 0,
+            "durationMs": 234
+          }
+        },
+        "wasm": {
+          "runs": [
+            {
+              "seed": 1,
+              "status": "FEASIBLE",
+              "placed": 300,
+              "expected": 300,
+              "softScore": -3610,
+              "hardConflicts": 0,
+              "durationMs": 69
+            },
+            {
+              "seed": 2,
+              "status": "FEASIBLE",
+              "placed": 300,
+              "expected": 300,
+              "softScore": -3270,
+              "hardConflicts": 0,
+              "durationMs": 65
+            },
+            {
+              "seed": 3,
+              "status": "FEASIBLE",
+              "placed": 300,
+              "expected": 300,
+              "softScore": -3760,
+              "hardConflicts": 0,
+              "durationMs": 86
+            },
+            {
+              "seed": 4,
+              "status": "FEASIBLE",
+              "placed": 300,
+              "expected": 300,
+              "softScore": -3600,
+              "hardConflicts": 0,
+              "durationMs": 129
+            },
+            {
+              "seed": 5,
+              "status": "FEASIBLE",
+              "placed": 300,
+              "expected": 300,
+              "softScore": -3580,
+              "hardConflicts": 0,
+              "durationMs": 72
+            }
+          ],
+          "average": {
+            "placed": 300,
+            "expected": 300,
+            "softScore": -3564,
+            "hardConflicts": 0,
+            "durationMs": 84.2
+          },
+          "min": {
+            "placed": 300,
+            "expected": 300,
+            "softScore": -3760,
+            "hardConflicts": 0,
+            "durationMs": 65
+          },
+          "max": {
+            "placed": 300,
+            "expected": 300,
+            "softScore": -3270,
+            "hardConflicts": 0,
+            "durationMs": 129
+          }
+        }
+      }
+    },
+    {
+      "name": "Large School",
+      "file": "large_school.json",
+      "solvers": {
+        "js": {
+          "runs": [
+            {
+              "seed": 1,
+              "status": "TIMEOUT",
+              "placed": 564,
+              "expected": 800,
+              "softScore": -12630,
+              "hardConflicts": 236,
+              "durationMs": 30002
+            },
+            {
+              "seed": 2,
+              "status": "TIMEOUT",
+              "placed": 568,
+              "expected": 800,
+              "softScore": -12100,
+              "hardConflicts": 232,
+              "durationMs": 30001
+            },
+            {
+              "seed": 3,
+              "status": "TIMEOUT",
+              "placed": 567,
+              "expected": 800,
+              "softScore": -11485,
+              "hardConflicts": 233,
+              "durationMs": 30001
+            },
+            {
+              "seed": 4,
+              "status": "TIMEOUT",
+              "placed": 569,
+              "expected": 800,
+              "softScore": -12235,
+              "hardConflicts": 231,
+              "durationMs": 30002
+            },
+            {
+              "seed": 5,
+              "status": "TIMEOUT",
+              "placed": 570,
+              "expected": 800,
+              "softScore": -12020,
+              "hardConflicts": 230,
+              "durationMs": 30001
+            }
+          ],
+          "average": {
+            "placed": 567.6,
+            "expected": 800,
+            "softScore": -12094,
+            "hardConflicts": 232.4,
+            "durationMs": 30001.4
+          },
+          "min": {
+            "placed": 564,
+            "expected": 800,
+            "softScore": -12630,
+            "hardConflicts": 230,
+            "durationMs": 30001
+          },
+          "max": {
+            "placed": 570,
+            "expected": 800,
+            "softScore": -11485,
+            "hardConflicts": 236,
+            "durationMs": 30002
+          }
+        },
+        "wasm": {
+          "runs": [
+            {
+              "seed": 1,
+              "status": "TIMEOUT",
+              "placed": 564,
+              "expected": 800,
+              "softScore": -12630,
+              "hardConflicts": 236,
+              "durationMs": 30002
+            },
+            {
+              "seed": 2,
+              "status": "TIMEOUT",
+              "placed": 568,
+              "expected": 800,
+              "softScore": -12100,
+              "hardConflicts": 232,
+              "durationMs": 30001
+            },
+            {
+              "seed": 3,
+              "status": "TIMEOUT",
+              "placed": 567,
+              "expected": 800,
+              "softScore": -11485,
+              "hardConflicts": 233,
+              "durationMs": 30001
+            },
+            {
+              "seed": 4,
+              "status": "TIMEOUT",
+              "placed": 569,
+              "expected": 800,
+              "softScore": -12235,
+              "hardConflicts": 231,
+              "durationMs": 30001
+            },
+            {
+              "seed": 5,
+              "status": "TIMEOUT",
+              "placed": 570,
+              "expected": 800,
+              "softScore": -12020,
+              "hardConflicts": 230,
+              "durationMs": 30001
+            }
+          ],
+          "average": {
+            "placed": 567.6,
+            "expected": 800,
+            "softScore": -12094,
+            "hardConflicts": 232.4,
+            "durationMs": 30001.2
+          },
+          "min": {
+            "placed": 564,
+            "expected": 800,
+            "softScore": -12630,
+            "hardConflicts": 230,
+            "durationMs": 30001
+          },
+          "max": {
+            "placed": 570,
+            "expected": 800,
+            "softScore": -11485,
+            "hardConflicts": 236,
+            "durationMs": 30002
+          }
+        }
+      }
+    },
+    {
+      "name": "Real School",
+      "file": "real_school.json",
+      "solvers": {
+        "js": {
+          "runs": [
+            {
+              "seed": 1,
+              "status": "FEASIBLE",
+              "placed": 951,
+              "expected": 951,
+              "softScore": 0,
+              "hardConflicts": 0,
+              "durationMs": 35
+            },
+            {
+              "seed": 2,
+              "status": "FEASIBLE",
+              "placed": 951,
+              "expected": 951,
+              "softScore": 0,
+              "hardConflicts": 0,
+              "durationMs": 27
+            },
+            {
+              "seed": 3,
+              "status": "FEASIBLE",
+              "placed": 951,
+              "expected": 951,
+              "softScore": 0,
+              "hardConflicts": 0,
+              "durationMs": 24
+            },
+            {
+              "seed": 4,
+              "status": "FEASIBLE",
+              "placed": 951,
+              "expected": 951,
+              "softScore": 0,
+              "hardConflicts": 0,
+              "durationMs": 24
+            },
+            {
+              "seed": 5,
+              "status": "FEASIBLE",
+              "placed": 951,
+              "expected": 951,
+              "softScore": 0,
+              "hardConflicts": 0,
+              "durationMs": 24
+            }
+          ],
+          "average": {
+            "placed": 951,
+            "expected": 951,
+            "softScore": 0,
+            "hardConflicts": 0,
+            "durationMs": 26.8
+          },
+          "min": {
+            "placed": 951,
+            "expected": 951,
+            "softScore": 0,
+            "hardConflicts": 0,
+            "durationMs": 24
+          },
+          "max": {
+            "placed": 951,
+            "expected": 951,
+            "softScore": 0,
+            "hardConflicts": 0,
+            "durationMs": 35
+          }
+        },
+        "wasm": {
+          "runs": [
+            {
+              "seed": 1,
+              "status": "FEASIBLE",
+              "placed": 951,
+              "expected": 951,
+              "softScore": 0,
+              "hardConflicts": 0,
+              "durationMs": 25
+            },
+            {
+              "seed": 2,
+              "status": "FEASIBLE",
+              "placed": 951,
+              "expected": 951,
+              "softScore": 0,
+              "hardConflicts": 0,
+              "durationMs": 21
+            },
+            {
+              "seed": 3,
+              "status": "FEASIBLE",
+              "placed": 951,
+              "expected": 951,
+              "softScore": 0,
+              "hardConflicts": 0,
+              "durationMs": 21
+            },
+            {
+              "seed": 4,
+              "status": "FEASIBLE",
+              "placed": 951,
+              "expected": 951,
+              "softScore": 0,
+              "hardConflicts": 0,
+              "durationMs": 23
+            },
+            {
+              "seed": 5,
+              "status": "FEASIBLE",
+              "placed": 951,
+              "expected": 951,
+              "softScore": 0,
+              "hardConflicts": 0,
+              "durationMs": 21
+            }
+          ],
+          "average": {
+            "placed": 951,
+            "expected": 951,
+            "softScore": 0,
+            "hardConflicts": 0,
+            "durationMs": 22.2
+          },
+          "min": {
+            "placed": 951,
+            "expected": 951,
+            "softScore": 0,
+            "hardConflicts": 0,
+            "durationMs": 21
+          },
+          "max": {
+            "placed": 951,
+            "expected": 951,
+            "softScore": 0,
+            "hardConflicts": 0,
+            "durationMs": 25
+          }
+        }
+      }
+    }
+  ]
+}
