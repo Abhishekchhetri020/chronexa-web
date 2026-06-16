@@ -15,7 +15,7 @@
  */
 
 const CACHE_PREFIX = "chronexa-";
-const APP_VER = "20260615-p177-landing-live";
+const APP_VER = "20260616-p178-solver-bell-bail";
 const CACHE_NAME = CACHE_PREFIX + APP_VER;
 
 // Minimal app shell for offline support.
@@ -25,7 +25,7 @@ const APP_SHELL = [
   "./manifest.json",
   "./css/style.css",
   "./css/chronexa-theme.css",
-  "./css/components.css?v=20260616-p178-solver-bell-bail",
+  "./css/components.css?v=20260520-p33-allrelations",
   "./css/editor.css",
   "./css/drag_ux.css",
   "./css/teacher_colors.css",
