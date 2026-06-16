@@ -111,23 +111,28 @@ function buildModel(school) {
   const _defaultMask = _maskFromPeriods(_defaultBellPeriods);
   const classValidPeriodMask = new Uint32Array(classIds.length);
   const emptyBellWarnings = new Map();
+  const _emptyBellSeen = new Map();
   function recordEmptyBellWarning(bellId, cls) {
     const key = bellId || "__default__";
     let warning = emptyBellWarnings.get(key);
     if (!warning) {
-      const label = bellId || "default";
       warning = {
         ruleId: "EMPTY_BELL_MASK",
-        bellId: label,
+        bellId: bellId ?? null,
         message: bellId
-          ? `Class bell "${label}" produced empty mask; using ${_defaultMask ? "school default bell" : "ALL periods"}. Check bell definition.`
+          ? `Class bell "${bellId}" produced empty mask; using ${_defaultMask ? "school default bell" : "ALL periods"}. Check bell definition.`
           : "School default bell produced empty mask; using ALL periods. Check school.bell.",
         affectedClassIds: [],
       };
       emptyBellWarnings.set(key, warning);
+      _emptyBellSeen.set(key, new Set());
     }
-    if (cls && cls.id && !warning.affectedClassIds.includes(cls.id)) {
-      warning.affectedClassIds.push(cls.id);
+    if (cls && cls.id) {
+      const seen = _emptyBellSeen.get(key);
+      if (!seen.has(cls.id)) {
+        seen.add(cls.id);
+        warning.affectedClassIds.push(cls.id);
+      }
     }
   }
   for (let i = 0; i < classIds.length; i++) {

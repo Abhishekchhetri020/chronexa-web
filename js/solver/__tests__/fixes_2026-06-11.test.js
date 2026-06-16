@@ -76,6 +76,25 @@ test("EMPTY_BELL_MASK: one warning is recorded when a class bell mask is empty",
   assert.deepStrictEqual(warning.affectedClassIds, ["cA"]);
 });
 
+test("EMPTY_BELL_MASK: school-default-bell-empty path warns with bellId=null", () => {
+  const school = baseSchool();
+  // Empty school default bell, no per-class bell -> the default-bell branch.
+  school.bell = { id: "b", name: "b", periods: [] };
+  school.bells = [{ id: "b", name: "b", periods: [] }];
+  school.classes = [{ id: "cA", name: "CA" }];
+  school.lessons = [
+    { id: "lA", subjectId: "sA", periodsPerWeek: 1, classIds: ["cA"], teacherIds: ["tA"] },
+  ];
+
+  const res = solve(school, { seed: 1, timeLimitSec: 5 });
+
+  assert.strictEqual(res.warnings.length, 1, "expected exactly one structured warning");
+  const warning = res.warnings[0];
+  assert.strictEqual(warning.ruleId, "EMPTY_BELL_MASK");
+  assert.strictEqual(warning.bellId, null, "default-bell path must report bellId=null, not 'default'");
+  assert.deepStrictEqual(warning.affectedClassIds, ["cA"]);
+});
+
 // --- MC13: single locked card pins its lesson -------------------------------
 test("MC13: a locked card pins the lesson to that exact (day, period)", () => {
   const school = baseSchool();
