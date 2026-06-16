@@ -3883,6 +3883,12 @@ function largeNeighborhoodSearch(model, state, deadlineMs, ctx) {
   const innerCtx = { onProgress: null, nodesVisited: 0, backtracks: 0, t0: ctx.t0, seed: ctx.seed };
 
   let rejectStreak = 0;
+  let noImproveStreak = 0;
+  let lastImproveMs = performance.now();
+  // A short time window prevents the opt-in metaheuristics from spinning to
+  // the full deadline when they are only cycling through lateral moves. The
+  // streak keeps the timer from firing on a tiny burst of LAHC lateral moves.
+  const noImproveBudgetMs = Math.max(250, Math.min(1000, (deadlineMs - performance.now()) * 0.05));
   // Late Acceptance Hill-Climbing (Timefold port) — opt-in via
   // ctx.useLAHC. Maintains a sliding history of the last L scores; a
   // move is accepted if it beats either the current score OR the score
@@ -3915,6 +3921,7 @@ function largeNeighborhoodSearch(model, state, deadlineMs, ctx) {
   }
 
   while (performance.now() < deadlineMs) {
+    if (performance.now() - lastImproveMs > noImproveBudgetMs && noImproveStreak >= 10) break;
     iterations += 1;
     const strategy = strategies[strategyIdx % strategies.length];
     strategyIdx += 1;
@@ -3988,6 +3995,8 @@ function largeNeighborhoodSearch(model, state, deadlineMs, ctx) {
     if (improved) {
       accepted += 1;
       rejectStreak = 0;
+      noImproveStreak = 0;
+      lastImproveMs = performance.now();
       kMul = 1;                       // back to exploiting small moves
       bestCount = newCount;
       bestSoft  = newSoft;
@@ -4017,8 +4026,10 @@ function largeNeighborhoodSearch(model, state, deadlineMs, ctx) {
       // snapshot stays unchanged so a future improvement can still
       // measure against it; only the live state advances.
       rejectStreak = 0;
+      noImproveStreak += 1;
     } else {
       rejectStreak += 1;
+      noImproveStreak += 1;
       // Adaptive K: 3 rejects in a row → broaden search; cap at 4×.
       if (rejectStreak >= 3 && kMul < 4) { kMul += 1; rejectStreak = 0; }
       // Revert from snapshot.
