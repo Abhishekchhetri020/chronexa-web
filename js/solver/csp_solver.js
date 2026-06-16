@@ -4402,6 +4402,10 @@ function diagnoseUnplaceabled(model, state, unplaceableIndices) {
         lessonIdx: idx,
         lessonId: srcId,
         subjectId: l.subjectId,
+        // IMPOSSIBLE = zero candidate slots even in an empty timetable, so no
+        // arrangement and no amount of search can place it — the input must be
+        // changed (free the teacher, add a room, relax a fixed slot).
+        verdict: "IMPOSSIBLE",
         reason: reasons.length ? reasons.join("; ") : "no valid (slot, room) candidates for this lesson",
       });
       continue;
@@ -4420,6 +4424,10 @@ function diagnoseUnplaceabled(model, state, unplaceableIndices) {
       lessonIdx: idx,
       lessonId: srcId,
       subjectId: model.lessons[idx].subjectId,
+      // CONTENTION = the lesson has feasible slots in isolation, but every one
+      // is taken by another lesson in this arrangement. The file is not broken;
+      // a different/better packing could place it (it's a search limit).
+      verdict: "CONTENTION",
       reason: sorted.map(([name, n]) => `${name}: ${n}/${count}`).join(", "),
     });
   }
@@ -5448,6 +5456,11 @@ export function solve(school, options = {}) {
     if (unplaceableIndices.length > 0) {
       try {
         diagnostics = diagnoseUnplaceabled(model, globalBest.state, unplaceableIndices);
+        // Attach the human-readable "<Subject> <Classes> · <Teachers>" label
+        // (precomputed in lessonLabels) so the UI shows names, not hex IDs.
+        for (const d of diagnostics) {
+          if (d.lessonIdx != null && lessonLabels[d.lessonIdx]) d.label = lessonLabels[d.lessonIdx];
+        }
       } catch (_e) { /* diagnostic is optional — don't break solve() */ }
     }
   }

@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-06-14T12:48:01Z
+/* Chronexa bundle — generated 2026-06-16T21:50:36Z
  *      167 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -14272,23 +14272,58 @@ ${body}
     }
 
     if (diag.length) {
+      // Make raw FAIL codes (e.g. "class_conflict: 23/42") readable.
+      const REASON_WORDS = {
+        teacher_conflict: "teacher already teaching",
+        teacher_unavailable: "teacher off that period",
+        teacher_max_per_day: "teacher daily limit",
+        class_conflict: "class already in another lesson",
+        class_unavailable: "class off that period",
+        class_max_per_day: "class daily limit",
+        room_conflict: "room taken",
+        room_unavailable: "room off that period",
+        subject_daily_limit: "subject daily limit",
+        subject_daily_min_violation: "daily-spread rule",
+        class_bell_period_invalid: "outside class hours",
+        fixed_slot_mismatch: "fixed-slot clash",
+        required_room_type: "no room of required type",
+      };
+      const humanize = (reason) => (reason || "unplaceable").replace(
+        /[a-z_]+/g, (m) => REASON_WORDS[m] || m.replace(/_/g, " "));
+
+      const impossible = diag.filter(d => d.verdict === "IMPOSSIBLE");
+      const contention = diag.filter(d => d.verdict !== "IMPOSSIBLE");
+
+      // Summary: the whole point — separate "fix the file" from "try again".
+      const summary = impossible.length
+        ? `⛔ ${impossible.length} cannot be placed in ANY timetable — these need a file change (free the teacher, add a room, or relax a fixed slot). ` +
+          (contention.length ? `The other ${contention.length} are contention (a better run may place them).` : "")
+        : `✓ None are impossible — your file is feasible. These ${contention.length} are contention: the solver couldn't fit them in this run. Re-running (or accepting the best of more branches) may place them.`;
+      refs.diagSection.appendChild(el("div", { class: "csu-result__diagTip" }, summary));
+
       const list = el("ul", { class: "csu-result__diagList" });
-      // Cap at 12 visible; full list is in verification panel.
-      const cap = Math.min(diag.length, 12);
+      // Show impossible (actionable) first, then contention. Cap at 12 visible.
+      const ordered = impossible.concat(contention);
+      const cap = Math.min(ordered.length, 12);
       for (let i = 0; i < cap; i++) {
-        const d = diag[i];
-        const subject = d.subjectId || "";
-        const lid = d.lessonId || ("lesson " + (d.lessonIdx + 1));
+        const d = ordered[i];
+        const name = d.label || d.lessonId || ("lesson " + (d.lessonIdx + 1));
+        const isImp = d.verdict === "IMPOSSIBLE";
+        const badge = el("span", {
+          class: "csu-result__diagBadge",
+          style: "font-size:0.75em;font-weight:600;margin-right:6px;padding:1px 6px;border-radius:4px;" +
+            (isImp ? "background:#fde2e2;color:#b42318;" : "background:#fef3c7;color:#92400e;"),
+        }, isImp ? "FIX FILE" : "CONTENTION");
         list.appendChild(el("li", {},
-          el("strong", {}, lid),
-          subject ? " (" + subject + ")" : "",
+          badge,
+          el("strong", {}, name),
           el("br"),
-          el("span", { class: "csu-result__diagReason" }, d.reason || "unplaceable"),
+          el("span", { class: "csu-result__diagReason" }, humanize(d.reason)),
         ));
       }
-      if (diag.length > cap) {
+      if (ordered.length > cap) {
         list.appendChild(el("li", { class: "csu-result__diagMore" },
-          `…and ${diag.length - cap} more. Open "View violations" for the full list.`));
+          `…and ${ordered.length - cap} more. Open "View violations" for the full list.`));
       }
       refs.diagSection.appendChild(wrap("Unplaceable lessons (" + diag.length + ")", list));
     }
