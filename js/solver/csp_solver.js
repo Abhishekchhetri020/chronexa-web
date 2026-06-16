@@ -216,9 +216,14 @@ function buildModel(school) {
       // lockedCardsByLesson above) and override the lesson-level anchor.
       let fixedDay    = (i === 0 && l.fixedDay    != null) ? (l.fixedDay    | 0) : null;
       let fixedPeriod = (i === 0 && l.fixedPeriod != null) ? (l.fixedPeriod | 0) : null;
+      let fixedRoomId;
+      let hardLocked = false;
       if (lockedCards && i < lockedCards.length) {
-        fixedDay    = lockedCards[i].day | 0;
-        fixedPeriod = lockedCards[i].period | 0; // 1-based, same as fixedPeriod
+        const lockedCard = lockedCards[i];
+        fixedDay    = lockedCard.day | 0;
+        fixedPeriod = lockedCard.period | 0; // 1-based, same as fixedPeriod
+        if (lockedCard._mppLockRoom) fixedRoomId = placementRoomId(lockedCard) || null;
+        hardLocked = !!lockedCard._mppHardLock;
       }
       expanded.push({
         id: reps === 1 ? l.id : `${l.id}#${i + 1}`,
@@ -230,8 +235,10 @@ function buildModel(school) {
         requiredRoomType: l.requiredRoomType || null,
         preferredRoomId: l.preferredRoomId || null,
         allowedRoomIds,
+        fixedRoomId,
         fixedDay,
         fixedPeriod,
+        hardLocked,
         isLabDouble: !!l.isLabDouble,
         tags: Array.isArray(l.tags) ? l.tags.slice() : [],
       });
@@ -309,6 +316,7 @@ function buildModel(school) {
   const lessonSubject = new Int32Array(lessonCount);
   const lessonLabDouble = new Int32Array(lessonCount);
   const lessonFixedSlot = new Int32Array(lessonCount).fill(-1);
+  const lessonHardLock = new Uint8Array(lessonCount);
 
   const lessonClassFlat = [];
   const lessonClassGroupMask = []; // parallel to lessonClassFlat
@@ -364,6 +372,7 @@ function buildModel(school) {
     if (sIdx == null) throw new Error(`Unknown subjectId in lesson ${l.id}: ${l.subjectId}`);
     lessonSubject[i] = sIdx;
     lessonLabDouble[i] = l.isLabDouble ? 1 : 0;
+    lessonHardLock[i] = l.hardLocked ? 1 : 0;
 
     if (l.fixedDay != null && l.fixedPeriod != null) {
       const d = (l.fixedDay | 0);
@@ -676,6 +685,14 @@ function buildModel(school) {
       roomCands = bucket;
     } else {
       roomCands = [-1];
+    }
+    if (l.fixedRoomId !== undefined) {
+      if (l.fixedRoomId == null || l.fixedRoomId === "") {
+        roomCands = [-1];
+      } else {
+        const rx = roomIdx.get(l.fixedRoomId);
+        roomCands = rx == null ? [] : [rx];
+      }
     }
     lessonRoomCands[i] = roomCands;
 
@@ -1198,7 +1215,7 @@ function buildModel(school) {
     lessonClassGroupMask: Uint32Array.from(lessonClassGroupMask),
     classGroupCount, classFullGroupMask,
     lessonTeacherStart, lessonTeacherCount, lessonTeacherFlat: Int32Array.from(lessonTeacherFlat),
-    lessonSubject, lessonLabDouble, lessonFixedSlot,
+    lessonSubject, lessonLabDouble, lessonFixedSlot, lessonHardLock,
     lessonCandidateStart, lessonCandidateCount,
     candidateSlot: candidateSlotArr, candidateRoom: candidateRoomArr,
     teacherAvailabilityMask, teacherConditionalMask, teacherMaxPerDay, teacherMaxConsec,
@@ -3519,6 +3536,7 @@ function listBlockers(model, state, lessonIdx, slot, room) {
   const blockers = [];
   function addBlocker(occ) {
     if (occ < 0 || occ === lessonIdx) return true;
+    if (model.lessonHardLock && model.lessonHardLock[occ]) return false;
     for (let i = 0; i < blockers.length; i++) if (blockers[i] === occ) return true;
     blockers.push(occ);
     return blockers.length <= REPAIR_MAX_BLOCKERS;
@@ -4512,6 +4530,115 @@ function lubySequence(i) {
   if (i === (1 << (k + 1)) - 2) return 1 << k;
   return lubySequence(i - (1 << k) + 1);
 }
+
+function makeMppContext(school, options) {
+  if (!options || options.mode !== "mpp" || !Array.isArray(options.disruptedLessonIds) ||
+      options.disruptedLessonIds.length === 0 || !school || typeof school !== "object") {
+    return null;
+  }
+  const disruptedSet = new Set();
+  for (const id of options.disruptedLessonIds) {
+    if (id != null) disruptedSet.add(String(id));
+  }
+  if (disruptedSet.size === 0) return null;
+
+  const baseCards = Array.isArray(school.cards) ? school.cards.slice() : [];
+  const lockedCards = [];
+  for (const c of baseCards) {
+    if (!c || c.lessonId == null || disruptedSet.has(String(c.lessonId))) continue;
+    lockedCards.push({
+      ...c,
+      locked: true,
+      _mppLockRoom: true,
+      _mppHardLock: true,
+    });
+  }
+
+  return {
+    disruptedSet,
+    baseCards,
+    school: { ...school, cards: lockedCards },
+  };
+}
+
+function placementRoomKey(roomId) {
+  return roomId == null || roomId === "" ? "" : String(roomId);
+}
+
+function placementRoomId(card) {
+  return card.classroomId != null ? card.classroomId : card.roomId;
+}
+
+function placementKey(card) {
+  return `${card.day | 0}:${card.period | 0}:${placementRoomKey(placementRoomId(card))}`;
+}
+
+function placementGroupsByLesson(cards) {
+  const groups = new Map();
+  for (const c of cards || []) {
+    if (!c || c.lessonId == null) continue;
+    const lessonId = String(c.lessonId);
+    let arr = groups.get(lessonId);
+    if (!arr) {
+      arr = [];
+      groups.set(lessonId, arr);
+    }
+    arr.push(placementKey(c));
+  }
+  for (const arr of groups.values()) arr.sort();
+  return groups;
+}
+
+function samePlacementGroup(a, b) {
+  if (!a || !b || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+function countPlacementPerturbations(baseCards, assignment) {
+  const before = placementGroupsByLesson(baseCards);
+  const after = placementGroupsByLesson(assignment);
+  const lessonIds = new Set([...before.keys(), ...after.keys()]);
+  let perturbation = 0;
+  for (const lessonId of lessonIds) {
+    if (!samePlacementGroup(before.get(lessonId), after.get(lessonId))) perturbation += 1;
+  }
+  return perturbation;
+}
+
+function expectedSessionsForLesson(lesson) {
+  const periodsPerCard = lesson && lesson.isLabDouble ? 2 : 1;
+  const totalPeriods = lesson && lesson.periodsPerWeek != null ? (lesson.periodsPerWeek | 0) : 1;
+  return Math.max(1, Math.round(totalPeriods / periodsPerCard));
+}
+
+function attachMppStatsAndWarnings(result, school, mppContext) {
+  result.stats.perturbation = countPlacementPerturbations(mppContext.baseCards, result.assignment);
+
+  const expectedByLesson = Object.create(null);
+  for (const l of school.lessons || []) {
+    if (l && l.id != null && mppContext.disruptedSet.has(String(l.id))) {
+      expectedByLesson[String(l.id)] = expectedSessionsForLesson(l);
+    }
+  }
+  const placedByLesson = Object.create(null);
+  for (const a of result.assignment || []) {
+    if (!a || a.lessonId == null) continue;
+    const lessonId = String(a.lessonId);
+    placedByLesson[lessonId] = (placedByLesson[lessonId] || 0) + 1;
+  }
+
+  const warnings = (result.warnings || []).slice();
+  for (const lessonId of Object.keys(expectedByLesson)) {
+    if ((placedByLesson[lessonId] || 0) < expectedByLesson[lessonId]) {
+      warnings.push({ ruleId: "MPP_UNPLACED", lessonId });
+    }
+  }
+  result.warnings = warnings;
+}
+
 export function solve(school, options = {}) {
   // Top 30 #16 — Improve solver mode. Alias for "warm-start the current
   // schedule + use LNS to search outward for improvements". Locked lessons
@@ -4528,6 +4655,11 @@ export function solve(school, options = {}) {
   if (sp) {
     const merged = { ...sp, ...options };
     options = merged;
+  }
+  const mppContext = makeMppContext(school, options);
+  if (mppContext) {
+    school = mppContext.school;
+    options = { ...options, warmStart: true };
   }
   // WASM hot-path warm-up — fire-and-forget load of the AssemblyScript
   // canPlace module. When the Promise resolves, globalThis.__chronexaWasmExports
@@ -5332,7 +5464,7 @@ export function solve(school, options = {}) {
     } catch (_e) { /* calibration is optional — don't break solve() */ }
   }
 
-  return {
+  const result = {
     status,
     assignment,
     stats: {
@@ -5350,6 +5482,8 @@ export function solve(school, options = {}) {
     diagnostics,
     weightSuggestions,
   };
+  if (mppContext) attachMppStatsAndWarnings(result, school, mppContext);
+  return result;
 }
 
 function maxCandidatesPerLesson(model) {
