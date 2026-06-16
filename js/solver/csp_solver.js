@@ -110,6 +110,31 @@ function buildModel(school) {
   }
   const _defaultMask = _maskFromPeriods(_defaultBellPeriods);
   const classValidPeriodMask = new Uint32Array(classIds.length);
+  const emptyBellWarnings = new Map();
+  const _emptyBellSeen = new Map();
+  function recordEmptyBellWarning(bellId, cls) {
+    const key = bellId || "__default__";
+    let warning = emptyBellWarnings.get(key);
+    if (!warning) {
+      warning = {
+        ruleId: "EMPTY_BELL_MASK",
+        bellId: bellId ?? null,
+        message: bellId
+          ? `Class bell "${bellId}" produced empty mask; using ${_defaultMask ? "school default bell" : "ALL periods"}. Check bell definition.`
+          : "School default bell produced empty mask; using ALL periods. Check school.bell.",
+        affectedClassIds: [],
+      };
+      emptyBellWarnings.set(key, warning);
+      _emptyBellSeen.set(key, new Set());
+    }
+    if (cls && cls.id) {
+      const seen = _emptyBellSeen.get(key);
+      if (!seen.has(cls.id)) {
+        seen.add(cls.id);
+        warning.affectedClassIds.push(cls.id);
+      }
+    }
+  }
   for (let i = 0; i < classIds.length; i++) {
     const cls = school.classes[i];
     let mask = _defaultMask;
@@ -120,14 +145,14 @@ function buildModel(school) {
     // Empty mask would block everything; fall back to default to avoid
     // false-positive infeasibility from misconfigured per-class bell.
     classValidPeriodMask[i] = mask || _defaultMask || ((1 << periodsPerDay) - 1) >>> 0;
-    // Phase 5: warn when a class bell is misconfigured (0 mask) and the
-    // school default is also empty — the full-bitmask fallback hides the issue.
-    if (!mask && !_defaultMask && cls && cls.bellId) {
-      console.warn("[solver] class \"" + (cls.name || cls.id) + "\" bellId=\"" + cls.bellId + "\" produced empty mask; falling back to ALL periods. Check bell definition.");
+    // Phase 5: warn once per school when a bell resolves to an empty mask.
+    if (!mask && cls && cls.bellId) {
+      recordEmptyBellWarning(cls.bellId, cls);
     } else if (!mask && cls && !cls.bellId && !_defaultMask) {
-      console.warn("[solver] school default bell is empty; ALL periods enabled. Define periods in school.bell.");
+      recordEmptyBellWarning(null, cls);
     }
   }
+  const modelWarnings = Array.from(emptyBellWarnings.values());
 
   const teacherIdx = new Map(teacherIds.map((id, i) => [id, i]));
   const classIdx = new Map(classIds.map((id, i) => [id, i]));
@@ -1167,6 +1192,7 @@ function buildModel(school) {
     lessonCount, teacherCount: teacherIds.length, classCount: classIds.length,
     roomCount: roomIds.length, subjectCount: subjectIds.length,
     teacherIds, classIds, roomIds, subjectIds,
+    warnings: modelWarnings,
     lessons: expanded,
     lessonClassStart, lessonClassCount, lessonClassFlat: Int32Array.from(lessonClassFlat),
     lessonClassGroupMask: Uint32Array.from(lessonClassGroupMask),
@@ -4566,6 +4592,7 @@ export function solve(school, options = {}) {
       stats: { placed: 0, unplaced: school.lessons.length, hardConflicts: 0, softScore: 0, durationMs: Math.round(performance.now() - t0) },
       violations: [{ ruleId: "build_model_error", description: String(e.message || e) }],
       validationIssues,
+      warnings: [],
     };
   }
 
@@ -5319,6 +5346,7 @@ export function solve(school, options = {}) {
     violations,
     chyby,
     validationIssues,
+    warnings: model.warnings || [],
     diagnostics,
     weightSuggestions,
   };
