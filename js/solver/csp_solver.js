@@ -4932,19 +4932,19 @@ export function solve(school, options = {}) {
       // this long, freeing the budget for repair/LNS. SMALL budgets only —
       // measured on demo_sample-school.xml at 120s × 8 branches, long
       // plateaus often break after >13.5s, and the UI's best-of-N branch
-      // statistic rewards exactly those deep lucky runs (best-of-8 went
-      // 2 → 13 unplaced with the bail active at 120s). At interactive
-      // budgets (window <= 3s) repair finishes near-instantly once given
-      // the budget, so bailing is pure win there (2-20x wall-time).
-      // NOTE: forcing the bail on at large budgets REGRESSES real best-of-8
-      // runs (kills productive backtracking — demo went 16 → 27 unplaced at
-      // 120s). Keep it auto-disabled above the ~3s window.
-      // options.stagnationMs overrides (0 or negative disables).
+      // Stagnation bail = OFF by default. It was previously auto-enabled for
+      // small budgets (<=40s) on the theory that repair finishes instantly so
+      // bailing is "pure win". Measured the opposite on the real demo: with the
+      // auto-bail ON, node seed 23799 returns 35-38 unplaced at 12-24s budgets
+      // but 3 at 8s and 40s — a non-monotonic "dead zone" where the bail hands
+      // backtracking off mid-construction and repair can't recover. With it OFF
+      // every budget gives 3 (8/12/16/20/24/30/40s all = 3, no regression).
+      // It also REGRESSED best-of-8 at 120s earlier (p181). Net: the heuristic
+      // has never been validated to help and demonstrably hurts, so it is now
+      // off unless explicitly requested via options.stagnationMs > 0.
       stagnationMs: options.stagnationMs != null
         ? (options.stagnationMs > 0 ? options.stagnationMs : -1)
-        : (useIterativeRepair && timeLimitSec * 1000 * btShare * 0.25 <= 3000
-            ? Math.max(800, timeLimitSec * 1000 * btShare * 0.25)
-            : -1),
+        : -1,
       stagnationBail: false,
       runMaxAssigned: state.assignedLessonCount,
       madeProgress: false,
