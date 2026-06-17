@@ -337,7 +337,7 @@
 
 <!-- ─────────────────────── SCRIPTS ─────────────────────── -->
 <!-- Bump APP_VER on every deploy so the browser refetches the JS bundle -->
-<script>window.APP_VER = "20260617-p184-backend-localstorage";</script>
+<script>window.APP_VER = "20260617-p185-backend-queryparam";</script>
 <!-- Nuclear SW migration: if an old cache-first SW is still controlling,
      unregister it and reload to pick up the new network-first SW. -->
 <script>
@@ -369,7 +369,14 @@
      time, or persist one in the browser via localStorage 'chronexa_backend_url'
      (e.g. a local OR-Tools backend at http://127.0.0.1:8088). -->
 <script>window.CHRONEXA_BACKEND_URL = window.CHRONEXA_BACKEND_URL
-  || (function(){ try { return localStorage.getItem("chronexa_backend_url") || ""; } catch (e) { return ""; } })();</script>
+  || (function(){
+       try {
+         // ?backend=<url> sets and persists the backend for this browser.
+         var q = new URLSearchParams(location.search).get("backend");
+         if (q) { localStorage.setItem("chronexa_backend_url", q); return q; }
+         return localStorage.getItem("chronexa_backend_url") || "";
+       } catch (e) { return ""; }
+     })();</script>
 <!-- Bundle mode (default): single HTTP request for all 133 modules.
      Falls back to per-file loader if bundle.js 404s (dev mode). -->
 <script>
