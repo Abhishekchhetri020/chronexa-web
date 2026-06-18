@@ -11,6 +11,7 @@ Set window.CHRONEXA_BACKEND_URL in the app to this server's URL.
 
 Run:  ./.venv/bin/uvicorn server:app --host 0.0.0.0 --port 8088
 """
+import os
 import threading
 import time
 import uuid
@@ -56,8 +57,13 @@ def _run_job(job_id, school, options):
         workers = 1
         time_limit = max(req_time, 240.0)   # 1 worker needs ~240s to hit 0
     else:
-        workers = int(options.get("numWorkers", 8))
-        time_limit = max(req_time, 120.0)   # 8 workers reliably hit 0 by ~90-120s
+        # Default worker count: env CHRONEXA_WORKERS (set this to ~2 on a small
+        # free host like Hugging Face), else the request value, else CPU count.
+        default_workers = int(os.environ.get("CHRONEXA_WORKERS", os.cpu_count() or 4))
+        workers = int(options.get("numWorkers") or default_workers)
+        # Slow hosts need longer to reach all-placed; allow a higher floor via env.
+        floor = float(os.environ.get("CHRONEXA_MIN_SECONDS", 120))
+        time_limit = max(req_time, floor)
 
     try:
         result = solver_cpsat.build_and_solve(

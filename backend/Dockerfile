@@ -3,6 +3,6 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY solver_cpsat.py server.py ./
-ENV PORT=8088
-# Render/Fly inject $PORT; bind to it.
+ENV PORT=7860
+# Render/Fly inject $PORT; Hugging Face uses 7860. Bind to whatever is set.
 CMD ["sh", "-c", "uvicorn server:app --host 0.0.0.0 --port ${PORT}"]
