@@ -337,7 +337,7 @@
 
 <!-- ─────────────────────── SCRIPTS ─────────────────────── -->
 <!-- Bump APP_VER on every deploy so the browser refetches the JS bundle -->
-<script>window.APP_VER = "20260617-p185-backend-queryparam";</script>
+<script>window.APP_VER = "20260618-p186-default-cloud";</script>
 <!-- Nuclear SW migration: if an old cache-first SW is still controlling,
      unregister it and reload to pick up the new network-first SW. -->
 <script>
@@ -365,17 +365,23 @@
   });
 })();
 </script>
-<!-- Backend URL — leave empty to force "Run on this computer". Override at deploy
-     time, or persist one in the browser via localStorage 'chronexa_backend_url'
-     (e.g. a local OR-Tools backend at http://127.0.0.1:8088). -->
+<!-- Backend URL. Default = the public OR-Tools CP-SAT Space, so "Run on cloud"
+     works out of the box. Override per-browser with ?backend=<url> (persists to
+     localStorage), or ?backend= (empty) to force "Run on this computer". -->
 <script>window.CHRONEXA_BACKEND_URL = window.CHRONEXA_BACKEND_URL
   || (function(){
+       var DEFAULT_BACKEND = "https://abhishekchhetri020-chronexa-solver.hf.space";
        try {
-         // ?backend=<url> sets and persists the backend for this browser.
-         var q = new URLSearchParams(location.search).get("backend");
-         if (q) { localStorage.setItem("chronexa_backend_url", q); return q; }
-         return localStorage.getItem("chronexa_backend_url") || "";
-       } catch (e) { return ""; }
+         // ?backend=<url> sets+persists; ?backend= (empty) clears to local solver.
+         var sp = new URLSearchParams(location.search);
+         if (sp.has("backend")) {
+           var q = sp.get("backend") || "";
+           localStorage.setItem("chronexa_backend_url", q);
+           return q;
+         }
+         var saved = localStorage.getItem("chronexa_backend_url");
+         return saved !== null ? saved : DEFAULT_BACKEND;
+       } catch (e) { return DEFAULT_BACKEND; }
      })();</script>
 <!-- Bundle mode (default): single HTTP request for all 133 modules.
      Falls back to per-file loader if bundle.js 404s (dev mode). -->
