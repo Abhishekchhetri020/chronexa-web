@@ -1,0 +1,18 @@
+# Fly.io config — deploy with:  fly launch --copy-config --now   (then `fly deploy`)
+app = "chronexa-solver"
+primary_region = "sin"   # change to your nearest region
+
+[build]
+  dockerfile = "Dockerfile"
+
+[http_service]
+  internal_port = 8088
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 4          # CP-SAT uses these as solver workers
+  memory = "2gb"

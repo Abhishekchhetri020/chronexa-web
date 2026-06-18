@@ -40,9 +40,20 @@ the returned assignment.
 - `GET  /health`
 - `result` = `{status, assignment:[{lessonId,day,period,classroomId}], stats:{placed,unplaced,hardConflicts,softScore,...}, violations}`
 
-`options.timeLimitSec` (default 30; use ≥30 — CP-SAT presolve on this model size
-needs ~20s before the warm-start hint kicks in), `options.numWorkers` (default 8),
-`options.seed`.
+### Options & solve behaviour
+- `options.timeLimitSec` — a **max** budget. The server floors it (≥120s for the
+  parallel mode) so the search has time to place everything.
+- **Stop-at-zero**: the instant all cards are placed, the solver stops and returns
+  — placing all cards is provably optimal (you can't place more), so it ends early
+  (often 13-90s) and the result is consistently 0 unplaced.
+- `options.deterministic: true` → **single worker** = bit-reproducible (same answer
+  every run). Slower: floored to 240s because one worker needs ~240s to reach 0 on
+  the demo. Default (`false`) → 8 workers, faster, reliably 0, but the parallel race
+  means the exact arrangement/time varies (the *count* is still consistently 0).
+- `options.seed`, `options.numWorkers` (non-deterministic mode only).
+
+Why "Run on cloud" earlier flickered between 0 / 4 / 6: there was no stop-at-zero and
+the 60s budget cut the parallel search off mid-improvement. Both are fixed.
 
 ## Model (solver_cpsat.py)
 - Each lesson expanded into `periodsPerWeek` cards; each card placed in ≤1 (day,period)
@@ -54,9 +65,26 @@ needs ~20s before the warm-start hint kicks in), `options.numWorkers` (default 8
   breaking** on interchangeable same-lesson cards — these two together take the 30s
   result from 921 → 948.
 
-## Deploy
-Any small VM / Fly.io / Render. Pin to HTTPS, set CORS to the Pages origin (currently
-`*` in server.py — tighten for production), and set `window.CHRONEXA_BACKEND_URL`.
+## Deploy (required for the GitHub Pages link to use cloud)
+The deployed app is HTTPS; browsers **block** an HTTPS page from calling a local
+`http://127.0.0.1` backend (Mixed-Content + Private Network Access). So `localhost`
+testing works, but the GitHub link needs the backend on a **public HTTPS** URL.
+Tunnels (cloudflared/localtunnel) are unreliable here (DNS-blocked / interstitial),
+so deploy it:
+
+```bash
+# Fly.io (free tier). Dockerfile + fly.toml are in this dir.
+fly launch --copy-config --now      # creates the app + first deploy
+fly deploy                          # subsequent deploys
+fly status                          # -> https://chronexa-solver.fly.dev
+```
+or Render: New → Web Service → this repo, root `backend/`, it auto-detects the
+Dockerfile. Either gives an HTTPS URL.
+
+Then point the app at it (works from the GitHub link too):
+`https://abhishekchhetri020.github.io/chronexa-web/?backend=https://chronexa-solver.fly.dev`
+(the `?backend=` param persists to localStorage). Tighten CORS in `server.py`
+(`allow_origins`) to your Pages origin for production.
 
 ## Not yet modeled (incremental — add as needed)
 Soft objectives (teacher gaps, subject spread), card relations (same-day / cannot-follow /

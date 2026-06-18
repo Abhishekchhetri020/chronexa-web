@@ -25,7 +25,11 @@ def _teaching_periods(school):
     return [p["index"] for p in ps]
 
 
-def build_and_solve(school, time_limit_sec=30, num_workers=8, seed=1, progress_cb=None):
+def build_and_solve(school, time_limit_sec=30, num_workers=8, seed=1,
+                    progress_fn=None, cancel_check=None):
+    """progress_fn(placed:int, ms:int) is called on each improving solution.
+    cancel_check() -> bool aborts the search. When every card is placed the
+    search stops immediately (placing all cards is provably optimal)."""
     days = list(range(school["daysPerWeek"]))
     periods = _teaching_periods(school)              # e.g. [1..7]
     slots = [(d, p) for d in days for p in periods]  # list of (day, period)
@@ -198,7 +202,26 @@ def build_and_solve(school, time_limit_sec=30, num_workers=8, seed=1, progress_c
     solver.parameters.num_search_workers = int(num_workers)
     solver.parameters.random_seed = int(seed)
 
-    status = solver.Solve(m, progress_cb) if progress_cb is not None else solver.Solve(m)
+    total_cards = len(cards)
+
+    class _CB(cp_model.CpSolverSolutionCallback):
+        def __init__(self):
+            super().__init__()
+        def on_solution_callback(self):
+            placed_now = int(round(self.ObjectiveValue()))
+            if progress_fn is not None:
+                try:
+                    progress_fn(placed_now, int(self.WallTime() * 1000))
+                except Exception:
+                    pass
+            # Stop the instant everything is placed — that is provably optimal
+            # (you cannot place more than all cards), so no run can do better.
+            if placed_now >= total_cards:
+                self.StopSearch()
+            elif cancel_check is not None and cancel_check():
+                self.StopSearch()
+
+    status = solver.Solve(m, _CB())
 
     assignment = []
     n_placed = 0

@@ -17,7 +17,6 @@ import uuid
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from ortools.sat.python import cp_model
 
 import solver_cpsat
 
@@ -41,29 +40,33 @@ def _run_job(job_id, school, options):
     cancel_event = job["cancel"]
     t0 = time.time()
 
-    # A CP-SAT callback that streams the best placed-count as progress.
-    class _Progress(cp_model.CpSolverSolutionCallback):
-        def __init__(self):
-            super().__init__()
-        def on_solution_callback(self):
-            placed = int(self.ObjectiveValue())
-            with _LOCK:
-                job["progress"] = {
-                    "iter": placed,
-                    "softScore": 0,
-                    "hardConflicts": 0,
-                    "durationMs": int((time.time() - t0) * 1000),
-                }
-            if cancel_event.is_set():
-                self.StopSearch()
+    def progress_fn(placed, ms):
+        with _LOCK:
+            job["progress"] = {
+                "iter": placed, "softScore": 0, "hardConflicts": 0,
+                "durationMs": int((time.time() - t0) * 1000),
+            }
+
+    # deterministic mode -> single worker (reproducible). Otherwise 8 workers
+    # (faster to reach all-placed, but the parallel race is non-deterministic).
+    # Single-worker needs a longer budget to reach 0, so floor it higher.
+    deterministic = bool(options.get("deterministic", False))
+    req_time = float(options.get("timeLimitSec", 60))
+    if deterministic:
+        workers = 1
+        time_limit = max(req_time, 240.0)   # 1 worker needs ~240s to hit 0
+    else:
+        workers = int(options.get("numWorkers", 8))
+        time_limit = max(req_time, 120.0)   # 8 workers reliably hit 0 by ~90-120s
 
     try:
         result = solver_cpsat.build_and_solve(
             school,
-            time_limit_sec=float(options.get("timeLimitSec", 30)),
-            num_workers=int(options.get("numWorkers", 8)),
+            time_limit_sec=time_limit,
+            num_workers=workers,
             seed=int(options.get("seed", 1)),
-            progress_cb=_Progress(),
+            progress_fn=progress_fn,
+            cancel_check=cancel_event.is_set,
         )
         with _LOCK:
             if cancel_event.is_set():
