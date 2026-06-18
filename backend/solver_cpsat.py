@@ -20,13 +20,18 @@ Hard constraints (mirror the JS solver's FAIL semantics):
     6/wk -> 1/day, 7/wk -> one day gets 2)
   - fixed day/period
 
-Soft objective (minimized after placement, weights mirror DEFAULT_SOFT_WEIGHTS):
-  - teacher_gaps (50)        idle gaps in a teacher's day
-  - subject back-to-back (20) two singles of one class+subject in adjacent periods
-  - period_load_balance (10) even number of lessons per day per class
+Subject even-spread: per-day cap = ceil(sessions/days) (6/wk -> 1/day, 7/wk -> 2
+on one day) is enforced as HARD at cap+1 (forbids the egregious "3 of a 6/wk
+subject on one day" even when the soft phase can't fully converge on a slow host)
+plus SOFT toward the ideal cap.
 
-Objective = maximize  PLACE_W * placed - soft_penalty   (lexicographic: a card
-placed always beats any soft gain), so it still drives to 0 unplaced first.
+Two/three-phase solve (so quality never un-places cards):
+  PHASE 1  maximize placement (doubles hard)            -> pstar
+  PHASE 2  lock placed>=pstar, minimize spread + no-back-to-back  (lean; reaches
+           OPTIMAL even on a 2-vCPU host)
+  PHASE 3  (gaps=True, fast host only) lock quality, minimize teacher within-day
+           gaps. Off by default — the per-period gap model is too heavy for
+           CP-SAT here and degrades spread/convergence on the free host.
 """
 import math
 from collections import defaultdict
@@ -185,6 +190,15 @@ def build_and_solve(school, time_limit_sec=30, num_workers=8, seed=1,
             for start, avar in assign[ci].items():
                 csd[(c, card["subject"], start[0])].append(avar)
 
+    # HARD cap = ideal + 1: forbids egregious clustering (e.g. 3 of a 6/wk
+    # subject on one day = cap+2) even when the soft phase can't fully converge
+    # on a slow host. cap+1 stays feasible (ASC exceeds the ideal by at most 2,
+    # and only on a few 3/wk activities, which the solver simply spreads).
+    for (c, subj, d), vs in csd.items():
+        hard = cap_cs[(c, subj)] + 1
+        if len(vs) > hard:
+            m.Add(sum(vs) <= hard)
+
     # ---- symmetry breaking + warm-start hint -----------------------------
     lesson_cards = defaultdict(list)
     for ci, card in enumerate(cards):
@@ -234,37 +248,8 @@ def build_and_solve(school, time_limit_sec=30, num_workers=8, seed=1,
                 m.Add(over >= sum(vs) - cap)
                 soft_terms.append((W_SPREAD, over))
 
-        # period-slot busy expression per teacher (0/1 thanks to no-overlap)
-        # teacher_gaps: an interior empty period between two busy ones.
-        # busy[t][d][i] expression
-        for t in ({t for card in cards for t in card["teachers"]} if gaps else ()):
-            for d in days:
-                busy = []
-                for p in periods:
-                    vs = t_occ.get((t, (d, p)), [])
-                    busy.append(sum(vs) if vs else 0)
-                # prefix OR (any busy at <= i) and suffix OR (any busy at >= i)
-                n = len(periods)
-                pre = [m.NewBoolVar(f"pre_{t}_{d}_{i}") for i in range(n)]
-                suf = [m.NewBoolVar(f"suf_{t}_{d}_{i}") for i in range(n)]
-                for i in range(n):
-                    terms_pre = busy[:i + 1]
-                    terms_suf = busy[i:]
-                    # pre[i] = OR(busy[0..i]) ; encode pre[i] >= each, pre[i] <= sum
-                    m.Add(pre[i] <= sum(terms_pre))
-                    for b in terms_pre:
-                        m.Add(pre[i] >= b)
-                    m.Add(suf[i] <= sum(terms_suf))
-                    for b in terms_suf:
-                        m.Add(suf[i] >= b)
-                for i in range(n):
-                    g = m.NewBoolVar(f"gap_{t}_{d}_{i}")
-                    # gap if surrounded by busy but not busy here
-                    m.Add(g <= pre[i])
-                    m.Add(g <= suf[i])
-                    m.Add(g + busy[i] <= 1)
-                    m.Add(g >= pre[i] + suf[i] - busy[i] - 1)
-                    soft_terms.append((W_GAP, g))
+        # (teacher within-day gaps are handled in PHASE 3 — see below — so they
+        # never compete with / degrade the spread objective.)
 
         # subject back-to-back (singles of same class+subject in adjacent periods)
         # only matters where the per-day cap allows >=2.
@@ -288,104 +273,129 @@ def build_and_solve(school, time_limit_sec=30, num_workers=8, seed=1,
             m.Add(b2b >= here + there - 1)
             soft_terms.append((W_B2B, b2b))
 
-        # period_load_balance: penalize a class having too many lessons on one day
-        # (soft cap at ceil(total_class_cards / days) + 0).
-        class_day = defaultdict(list)
-        class_total = defaultdict(int)
-        for ci, card in enumerate(cards):
-            for c in card["classes"]:
-                class_total[c] += 1
-                for start, avar in assign[ci].items():
-                    class_day[(c, start[0])].append(avar)
-        for (c, d), vs in class_day.items():
-            target = math.ceil(class_total[c] / ndays)
-            over = m.NewIntVar(0, len(periods), f"over_{c}_{d}")
-            m.Add(over >= sum(vs) - target)
-            soft_terms.append((W_BAL, over))
-
-        # teacher daily-load balance (cheap): spread each teacher's lessons
-        # across days so no day is overloaded (helps the "lumpy teacher" look
-        # without the expensive per-period gap model).
-        tday = defaultdict(list)
-        ttotal = defaultdict(int)
-        for ci, card in enumerate(cards):
-            for t in card["teachers"]:
-                ttotal[t] += 1
-                for start, avar in assign[ci].items():
-                    tday[(t, start[0])].append(avar)
-        for (t, d), vs in tday.items():
-            target = math.ceil(ttotal[t] / ndays)
-            over = m.NewIntVar(0, len(periods), f"tov_{t}_{d}")
-            m.Add(over >= sum(vs) - target)
-            soft_terms.append((W_BAL, over))
+        # Class + teacher daily-load balance — extra soft terms that help the
+        # "lumpy" look but enlarge the phase-2 search. Only enabled with `gaps`
+        # (i.e. on a fast host); on the free 2-vCPU host they keep phase 2 from
+        # converging on spread, so the lean default = spread + back-to-back only.
+        if gaps:
+            class_day = defaultdict(list)
+            class_total = defaultdict(int)
+            for ci, card in enumerate(cards):
+                for c in card["classes"]:
+                    class_total[c] += 1
+                    for start, avar in assign[ci].items():
+                        class_day[(c, start[0])].append(avar)
+            for (c, d), vs in class_day.items():
+                target = math.ceil(class_total[c] / ndays)
+                over = m.NewIntVar(0, len(periods), f"over_{c}_{d}")
+                m.Add(over >= sum(vs) - target)
+                soft_terms.append((W_BAL, over))
+            tday = defaultdict(list)
+            ttotal = defaultdict(int)
+            for ci, card in enumerate(cards):
+                for t in card["teachers"]:
+                    ttotal[t] += 1
+                    for start, avar in assign[ci].items():
+                        tday[(t, start[0])].append(avar)
+            for (t, d), vs in tday.items():
+                target = math.ceil(ttotal[t] / ndays)
+                over = m.NewIntVar(0, len(periods), f"tov_{t}_{d}")
+                m.Add(over >= sum(vs) - target)
+                soft_terms.append((W_BAL, over))
 
     total_cards = len(cards)
+    quality_terms = soft_terms                 # spread + back-to-back + balance
+    do_quality = bool(quality_terms) and soft
+    elapsed = 0.0
+    cancelled = lambda: cancel_check is not None and cancel_check()
 
-    # =====================================================================
-    # PHASE 1 — maximize placement (doubles hard). Quality is ignored here so
-    # the search reaches all-placed fast; we lock that count in phase 2.
-    # =====================================================================
-    m.Maximize(sum(placed))
-    solver = cp_model.CpSolver()
-    solver.parameters.num_search_workers = int(num_workers)
-    solver.parameters.random_seed = int(seed)
-    t1 = float(time_limit_sec) * (0.5 if soft_terms else 1.0)
+    def _new_solver(tlimit):
+        s = cp_model.CpSolver()
+        s.parameters.num_search_workers = int(num_workers)
+        s.parameters.random_seed = int(seed)
+        s.parameters.max_time_in_seconds = max(5.0, tlimit)
+        return s
 
-    class _P1(cp_model.CpSolverSolutionCallback):
-        def __init__(self):
-            super().__init__()
-        def on_solution_callback(self):
-            placed_now = int(round(self.ObjectiveValue()))
-            if progress_fn is not None:
-                try:
-                    progress_fn(placed_now, int(self.WallTime() * 1000))
-                except Exception:
-                    pass
-            if placed_now >= total_cards:
-                self.StopSearch()           # provably optimal placement -> stop
-            elif cancel_check is not None and cancel_check():
-                self.StopSearch()
-
-    solver.parameters.max_time_in_seconds = max(5.0, t1)
-    status = solver.Solve(m, _P1())
-    pstar = int(round(solver.ObjectiveValue())) if status in (cp_model.OPTIMAL, cp_model.FEASIBLE) else 0
-    elapsed = solver.WallTime()
-
-    # =====================================================================
-    # PHASE 2 — lock placement at pstar, minimize the soft penalty. This is a
-    # much smaller search (placement fixed), so quality improves quickly.
-    # =====================================================================
-    if soft_terms and pstar > 0 and (cancel_check is None or not cancel_check()):
-        m.ClearHints()
-        for ci in range(len(cards)):
-            for s, v in assign[ci].items():
-                m.AddHint(v, solver.Value(v))
-        for k, v in yroom.items():
-            m.AddHint(v, solver.Value(v))
-        m.Add(sum(placed) >= pstar)
-        m.Minimize(sum(w * sv for (w, sv) in soft_terms))
-        t2 = max(5.0, float(time_limit_sec) - elapsed)
-
-        class _P2(cp_model.CpSolverSolutionCallback):
+    def _cb(report):
+        class _CB(cp_model.CpSolverSolutionCallback):
             def __init__(self):
                 super().__init__()
             def on_solution_callback(self):
                 if progress_fn is not None:
                     try:
-                        progress_fn(pstar, int((elapsed + self.WallTime()) * 1000))
+                        pn = int(round(self.ObjectiveValue())) if report is None else report
+                        progress_fn(pn if report is None else report,
+                                    int((elapsed + self.WallTime()) * 1000))
                     except Exception:
                         pass
-                if cancel_check is not None and cancel_check():
+                if report is None and int(round(self.ObjectiveValue())) >= total_cards:
                     self.StopSearch()
+                elif cancelled():
+                    self.StopSearch()
+        return _CB()
 
-        solver2 = cp_model.CpSolver()
-        solver2.parameters.num_search_workers = int(num_workers)
-        solver2.parameters.random_seed = int(seed)
-        solver2.parameters.max_time_in_seconds = t2
-        status2 = solver2.Solve(m, _P2())
-        if status2 in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-            solver = solver2
-            status = status2
+    def _hint_from(prev):
+        m.ClearHints()
+        for ci in range(len(cards)):
+            for s, v in assign[ci].items():
+                m.AddHint(v, prev.Value(v))
+        for k, v in yroom.items():
+            m.AddHint(v, prev.Value(v))
+
+    # PHASE 1 — maximize placement (doubles hard). Reaches all-placed fast.
+    m.Maximize(sum(placed))
+    solver = _new_solver(float(time_limit_sec) * (0.6 if do_quality else 1.0))
+    status = solver.Solve(m, _cb(None))
+    pstar = int(round(solver.ObjectiveValue())) if status in (cp_model.OPTIMAL, cp_model.FEASIBLE) else 0
+    elapsed += solver.WallTime()
+
+    # PHASE 2 — lock placement, minimize quality (spread/back-to-back/balance).
+    if do_quality and pstar > 0 and not cancelled():
+        _hint_from(solver)
+        m.Add(sum(placed) >= pstar)
+        m.Minimize(sum(w * sv for (w, sv) in quality_terms))
+        solver2 = _new_solver((float(time_limit_sec) - elapsed) * 0.6)
+        st2 = solver2.Solve(m, _cb(pstar))
+        if st2 in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+            solver, status = solver2, st2
+            elapsed += solver2.WallTime()
+            qstar = int(round(sum(w * solver2.Value(sv) for (w, sv) in quality_terms)))
+
+            # PHASE 3 — lock quality at qstar, minimize teacher within-day gaps.
+            # Quality can't degrade (hard-bounded), so this is always safe.
+            t3 = float(time_limit_sec) - elapsed
+            if gaps and t3 > 5 and not cancelled():
+                gap_terms = []
+                allteach = {tt for card in cards for tt in card["teachers"]}
+                n = len(periods)
+                for t in allteach:
+                    for d in days:
+                        busy = [(sum(t_occ[(t, (d, p))]) if t_occ.get((t, (d, p))) else 0)
+                                for p in periods]
+                        pre = [m.NewBoolVar(f"pre_{t}_{d}_{i}") for i in range(n)]
+                        suf = [m.NewBoolVar(f"suf_{t}_{d}_{i}") for i in range(n)]
+                        for i in range(n):
+                            m.Add(pre[i] <= sum(busy[:i + 1]))
+                            for b in busy[:i + 1]:
+                                m.Add(pre[i] >= b)
+                            m.Add(suf[i] <= sum(busy[i:]))
+                            for b in busy[i:]:
+                                m.Add(suf[i] >= b)
+                        for i in range(n):
+                            g = m.NewBoolVar(f"gap_{t}_{d}_{i}")
+                            m.Add(g <= pre[i])
+                            m.Add(g <= suf[i])
+                            m.Add(g + busy[i] <= 1)
+                            m.Add(g >= pre[i] + suf[i] - busy[i] - 1)
+                            gap_terms.append(g)
+                _hint_from(solver2)
+                m.Add(sum(w * sv for (w, sv) in quality_terms) <= qstar)
+                m.Minimize(sum(gap_terms))
+                solver3 = _new_solver(t3)
+                st3 = solver3.Solve(m, _cb(pstar))
+                if st3 in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+                    solver, status = solver3, st3
+                    elapsed += solver3.WallTime()
 
     assignment = []
     n_placed = 0
@@ -426,7 +436,7 @@ def build_and_solve(school, time_limit_sec=30, num_workers=8, seed=1,
             "softScore": -soft_penalty,
             "cpStatus": solver.StatusName(status),
             "objective": n_placed,
-            "wallSec": round(elapsed + (solver.WallTime() if soft_terms and pstar > 0 else 0), 2),
+            "wallSec": round(elapsed, 2),
         },
         "violations": [],
     }
