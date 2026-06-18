@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-06-16T21:50:36Z
+/* Chronexa bundle — generated 2026-06-18T18:32:16Z
  *      167 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -14006,6 +14006,16 @@ ${body}
         ? opts.source.branches + " branches · browser"
         : "browser worker";
     refs.sub.textContent = "Cycle 1 · " + modeLabel;
+    // The cloud (CP-SAT) backend reports cards-placed, not search iterations,
+    // so relabel those two tiles to avoid the misleading "Iterations / sec".
+    const isCloud = !!(opts.source && opts.source.mode === "cloud");
+    const relabel = (valueNode, text) => {
+      const lb = valueNode && valueNode.parentNode &&
+                 valueNode.parentNode.querySelector(".csu-tile__label");
+      if (lb) lb.textContent = text;
+    };
+    relabel(refs.tIter, isCloud ? "Cards placed" : "Iterations");
+    relabel(refs.tSpeed, isCloud ? "Cards / sec" : "Schedules / sec");
     refs.bar1Fill.style.width = "0%";
     refs.bar2Fill.style.width = "0%";
     refs.pauseBtn.textContent = "Pause";
