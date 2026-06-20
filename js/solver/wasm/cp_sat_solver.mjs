@@ -272,17 +272,41 @@ export async function buildAndSolve(school, options = {}) {
       saved.get(c.lessonId).push(c);
     }
   }
-  let hintedCards = 0;
+  // Cards bound by HARD relations that this CP-SAT model does NOT encode
+  // (n_12/n_13 simultaneous = Sanskrit+Urdu together, must-follow, same-day,
+  // first/last, not-same-time, …). In Improve/Best mode we LOCK these to their
+  // warm-start slot so the polish can't break a relation the JS draft already
+  // satisfied. (Matching mirrors the JS solver's gatherMatched().)
+  const HARD_REL_TYPS = new Set(['n_0','n_1','n_2','n_5','n_6','n_7','n_8','n_9','n_10','n_12','n_13','n_16']);
+  const relationLockedLessons = new Set();
+  if (improve) {
+    for (const rel of school.relations || []) {
+      if (!rel || rel.disabled || !HARD_REL_TYPS.has(rel.typ)) continue;
+      const subjSet = new Set([...(rel.subjectids || []), ...(rel.subject2ids || [])]);
+      const classSet = new Set(rel.classids || []);
+      if (!subjSet.size && !classSet.size) continue;
+      for (const L of school.lessons) {
+        if (subjSet.size && !subjSet.has(L.subjectId)) continue;
+        if (classSet.size && !(L.classIds || []).some((c) => classSet.has(c))) continue;
+        relationLockedLessons.add(L.id);
+      }
+    }
+  }
+
+  let hintedCards = 0, lockedCards = 0;
   for (const [lid, cis] of lessonCards) {
     const sc = (saved.get(lid) || []).sort((a, b) => a.day - b.day || a.period - b.period);
     if (!sc.length) continue;
     const length = cards[cis[0]].length;
     const starts = sc.filter((_, i) => i % length === 0);
+    const lock = relationLockedLessons.has(lid);
     for (let i = 0; i < cis.length && i < starts.length; i++) {
       const s = `${starts[i].day},${starts[i].period}`;
       if (assign[cis[i]].has(s)) {
         m.addHint(assign[cis[i]].get(s), 1);
         hintedCards++;
+        // Hard relation the model can't express -> pin the card to its draft slot.
+        if (lock) { m.addEquality(assign[cis[i]].get(s), 1); lockedCards++; }
         const rm = starts[i].classroomId;
         if (rm) {
           const yv = yroom.get(`${cis[i]}|${s}|${rm}`);
@@ -291,6 +315,7 @@ export async function buildAndSolve(school, options = {}) {
       }
     }
   }
+  if (improve && lockedCards) console.error('IMPROVE mode: relation-locked cards =', lockedCards);
 
   // Improve mode: lock placement at the warm-start level so the solver keeps
   // the given timetable and only improves it (places more / better soft),
