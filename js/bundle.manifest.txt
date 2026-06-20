@@ -146,6 +146,7 @@ js/ui/components/approbation_matrix.js
 js/ui/components/verification_panel_pro.js
 js/ui/components/color_taxonomy.js
 js/ui/components/master_solver_wizard.js
+js/ui/components/dashboards.js
 js/ui/components/constraints_library.js
 js/ui/components/help_center.js
 js/ui/components/auto_save.js

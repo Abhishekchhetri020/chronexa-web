@@ -23,6 +23,8 @@
         { icon: "📜", label: "List constraints",          disabled: !has(), run: () => fire("app:list-constraints") },
         { sep: true },
         { icon: "📈", label: "Statistics…",               disabled: !has(), run: () => fire("app:statistics") },
+        { icon: "📊", label: "Teacher workload…",          disabled: !has(), run: () => window.Dashboards && window.Dashboards.openWorkload() },
+        { icon: "📚", label: "Subject usage…",             disabled: !has(), run: () => window.Dashboards && window.Dashboards.openSubjectUsage() },
         { icon: "🔁", label: "Substitutions…",            disabled: !has(), run: () => fire("app:substitutions") },
         { icon: "📑", label: "Reports…",                  disabled: !has(), run: () => fire("app:print-preview") },
         { sep: true },

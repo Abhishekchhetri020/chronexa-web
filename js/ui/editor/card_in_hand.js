@@ -1139,10 +1139,143 @@
     S.cards.push({ lessonId, day, period, classroomId: cid });
   }
 
+  // Two-phase drag-drop swap handshake (modal confirm).
+  //
+  // The user drops cardA onto an occupied slot. We pop a small modal showing
+  // both cards' details and asking "Swap?". Confirm → execute the swap.
+  // Cancel  → drop cardA back where it came from (revert to "in hand").
+  //
+  // Design notes:
+  // - In-app modal, not window.confirm() — themable, keyboard-accessible,
+  //   consistent with the rest of Chronexa.
+  // - Returns a Promise so swap() can await it and branch.
+  // - Inspired by prabath1998/timetable-generator's "needs_swap → confirm →
+  //   retry" pattern, but in-app rather than HTTP 409.
+  function confirmSwapDialog(cardA, cardB, dayB, periodB) {
+    return new Promise((resolve) => {
+      const S = window.APP && window.APP.school;
+      const idx = (S && S._idx) || {};
+      const lessonA = idx.lessonById ? idx.lessonById[cardA.lessonId] : null;
+      const lessonB = idx.lessonById ? idx.lessonById[cardB.lessonId] : null;
+      const subjA = lessonA && idx.subjectById ? idx.subjectById[lessonA.subjectId] : null;
+      const subjB = lessonB && idx.subjectById ? idx.subjectById[lessonB.subjectId] : null;
+      const classA = lessonA && idx.classById ? idx.classById[(lessonA.classIds || [])[0]] : null;
+      const classB = lessonB && idx.classById ? idx.classById[(lessonB.classIds || [])[0]] : null;
+      const roomA = cardA.classroomId && idx.classroomById ? idx.classroomById[cardA.classroomId] : null;
+      const roomB = cardB.classroomId && idx.classroomById ? idx.classroomById[cardB.classroomId] : null;
+      const teacherA = lessonA && idx.teacherById ? idx.teacherById[(lessonA.teacherIds || [])[0]] : null;
+      const teacherB = lessonB && idx.teacherById ? idx.teacherById[(lessonB.teacherIds || [])[0]] : null;
+
+      const label = (subject, klass, teacher, room) => {
+        const sub = subject ? (subject.abbr || subject.name || "?") : "?";
+        const cls = klass ? (klass.short || klass.name || "") : "";
+        const tch = teacher ? (teacher.abbr || teacher.name || "") : "";
+        const rm = room ? (room.abbr || room.name || "") : "";
+        return { sub, bits: [sub, cls, tch, rm].filter(Boolean).join(" · ") };
+      };
+      const A = label(subjA, classA, teacherA, roomA);
+      const B = label(subjB, classB, teacherB, roomB);
+      const fromLabel = "D" + ((cardA.originDay | 0) + 1) + "P" + ((cardA.originPeriod | 0) + 1);
+      const toLabel = "D" + (dayB + 1) + "P" + (periodB + 1);
+
+      const root = document.createElement("div");
+      root.className = "chrx-swap-root";
+      root.setAttribute("role", "dialog");
+      root.setAttribute("aria-modal", "true");
+      root.setAttribute("aria-labelledby", "chrx-swap-title");
+      root.innerHTML = `
+        <div class="chrx-swap-panel">
+          <h2 id="chrx-swap-title" class="chrx-swap-title">Swap these cards?</h2>
+          <p class="chrx-swap-sub">${esc(A.bits)} (currently at ${fromLabel}) will move to ${toLabel}; ${esc(B.bits)} will be picked up.</p>
+          <div class="chrx-swap-grid">
+            <div class="chrx-swap-card chrx-swap-card--from">
+              <div class="chrx-swap-card__chip" style="background:${subjectColor(subjA)}"></div>
+              <div class="chrx-swap-card__main">
+                <div class="chrx-swap-card__subj">${esc(A.sub)}</div>
+                <div class="chrx-swap-card__meta">${esc(A.bits)}</div>
+                <div class="chrx-swap-card__where">From ${fromLabel}</div>
+              </div>
+            </div>
+            <div class="chrx-swap-arrow" aria-hidden="true">⇄</div>
+            <div class="chrx-swap-card chrx-swap-card--to">
+              <div class="chrx-swap-card__chip" style="background:${subjectColor(subjB)}"></div>
+              <div class="chrx-swap-card__main">
+                <div class="chrx-swap-card__subj">${esc(B.sub)}</div>
+                <div class="chrx-swap-card__meta">${esc(B.bits)}</div>
+                <div class="chrx-swap-card__where">Currently at ${toLabel}</div>
+              </div>
+            </div>
+          </div>
+          <div class="chrx-swap-actions">
+            <button type="button" class="chrx-swap-cancel" data-act="cancel">Cancel — keep card in hand</button>
+            <button type="button" class="chrx-swap-confirm" data-act="confirm">Swap</button>
+          </div>
+        </div>`;
+      const style = document.createElement("style");
+      style.textContent = `
+.chrx-swap-root{position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;z-index:1100}
+.chrx-swap-panel{background:#fff;border-radius:12px;width:min(480px,92vw);padding:18px 18px 14px;box-shadow:0 18px 60px rgba(0,0,0,.32);font-family:-apple-system,BlinkMacSystemFont,sans-serif;color:#0f172a}
+.chrx-swap-title{margin:0 0 6px 0;font-size:16px;font-weight:600;color:#1e3a8a}
+.chrx-swap-sub{margin:0 0 14px 0;font-size:12px;color:#64748b;line-height:1.4}
+.chrx-swap-grid{display:flex;align-items:center;gap:8px;margin-bottom:14px;padding:10px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0}
+.chrx-swap-card{display:flex;align-items:center;gap:8px;flex:1;min-width:0}
+.chrx-swap-card__chip{width:8px;height:36px;border-radius:3px;flex-shrink:0}
+.chrx-swap-card__main{min-width:0;flex:1}
+.chrx-swap-card__subj{font-size:13px;font-weight:600;color:#0f172a;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chrx-swap-card__meta{font-size:11px;color:#64748b;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chrx-swap-card__where{font-size:10px;color:#94a3b8;margin-top:2px;font-variant-numeric:tabular-nums}
+.chrx-swap-arrow{font-size:18px;color:#64748b;font-weight:600;flex-shrink:0}
+.chrx-swap-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
+.chrx-swap-cancel{background:#fff;border:1px solid #cbd5e1;color:#475569;padding:7px 12px;border-radius:6px;font-size:12px;cursor:pointer}
+.chrx-swap-cancel:hover{background:#f1f5f9}
+.chrx-swap-confirm{background:#1d4ed8;color:#fff;border:0;padding:7px 18px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer}
+.chrx-swap-confirm:hover{background:#1e40af}
+.chrx-swap-confirm:focus-visible{outline:3px solid rgba(29,78,216,.4);outline-offset:2px}`;
+      document.head.appendChild(style);
+      document.body.appendChild(root);
+
+      const close = (decision) => {
+        root.remove();
+        style.remove();
+        resolve(decision);
+      };
+      root.addEventListener("click", (e) => {
+        const act = e.target && e.target.dataset && e.target.dataset.act;
+        if (act === "confirm") close(true);
+        else if (act === "cancel") close(false);
+        else if (e.target === root) close(false);
+      });
+      const onKey = (e) => {
+        if (e.key === "Escape") { close(false); document.removeEventListener("keydown", onKey, true); }
+        else if (e.key === "Enter") { close(true); document.removeEventListener("keydown", onKey, true); }
+      };
+      document.addEventListener("keydown", onKey, true);
+      setTimeout(() => {
+        const btn = root.querySelector(".chrx-swap-confirm");
+        if (btn) btn.focus();
+      }, 30);
+    });
+  }
+  function subjectColor(subj) {
+    if (!subj) return "#94a3b8";
+    const key = (subj.abbr || subj.name || "?").toUpperCase().replace(/[^A-Z]/g, "");
+    const HUE = { MA:220,MAT:220,MATH:220,MATHS:220,EN:12,ENG:12,ENGL:12,HI:32,HIN:32,HINDI:32,SC:150,SCI:150,SCIE:150,SS:50,SST:50,SOC:50,MU:285,MUS:285,AR:330,ART:330,PE:110,PT:110,PED:110,SP:110,IT:250,CS:250,COMP:250,LIB:200 };
+    if (HUE[key] != null) return `hsl(${HUE[key]} 70% 47%)`;
+    let h = 0;
+    for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) & 0xffff;
+    return `hsl(${h % 360} 65% 47%)`;
+  }
+
   // Place the card in hand (cardA) onto an occupied slot, sending the card
   // there (cardB) to the cursor. `targetLessonId` selects which occupant to
   // displace on a group-split slot; `dropXY` carries the drop point so a drag
-  // swap re-attaches the displaced card's ghost at the cursor.
+  // swap re-attaches a ghost at the drop point so they keep dragging;
+  // a click swap re-selects it (highlights light up) so they click to place.
+  //
+  // Two-phase flow:
+  //   1. Show confirmSwapDialog() with both cards' details.
+  //   2. User confirms → executeDisplacement() runs as before.
+  //   3. User cancels → drop cardA back where it came from (revert pickup).
   function swap(dayB, periodB, slotB, targetLessonId, dropXY) {
     if (!inHand || !slotB) return cancel();
 
@@ -1178,7 +1311,21 @@
       return showCollisionMenu(slotB, vA);
     }
 
-    executeDisplacement(cardA, dayB, periodB, classroomIdB, cardB, { dropXY });
+    // Two-phase handshake: pop the confirm modal, await the user's decision.
+    // We can't `await` here directly because swap() is called from synchronous
+    // event handlers; use .then() to chain the execute step.
+    confirmSwapDialog(cardA, cardB, dayB, periodB).then((ok) => {
+      if (!ok) {
+        // User cancelled — cardA stays "in hand" (it was already removed from
+        // the slot by startDragPickup, so we re-place it at its origin to
+        // restore the visual). cardInHand state is preserved.
+        placeCardOnSchool(cardA.lessonId, cardA.originDay, cardA.originPeriod, cardA.originClassroomId);
+        const host = document.querySelector(".chrx-editor");
+        if (host && window.Editor && window.Editor.render) window.Editor.render(host);
+        return;
+      }
+      executeDisplacement(cardA, dayB, periodB, classroomIdB, cardB, { dropXY });
+    });
   }
 
   function executeDisplacement(cardA, dayB, periodB, classroomIdB, cardB, options) {

@@ -1,0 +1,502 @@
+/* Chronexa Dashboards — Workload + Subject Usage.
+ *
+ * Inspired by prabath1998/timetable-generator (workload horizontal bar +
+ * subject usage radial + per-day bars + CSV export + per-row search/sort/limit)
+ * but built on top of Chronexa's data model (school.cards + school._idx)
+ * and using ApexCharts via CDN (same as prabath1998 — keeps us off a
+ * heavy npm dep while we only use 2 chart types).
+ *
+ * Public API:
+ *   Dashboards.openWorkload()         — per-teacher periods/week dashboard
+ *   Dashboards.openSubjectUsage()     — per (group, subject) progress dashboard
+ *
+ * Both dashboards:
+ *   - read live from window.APP.school.cards (no server roundtrip)
+ *   - re-render on every open (always fresh)
+ *   - export CSV client-side
+ *   - have a search box, sortable columns, and a default cap of 50 rows
+ */
+
+(function (global) {
+  "use strict";
+
+  const APEXCHART_SRC = "https://cdn.jsdelivr.net/npm/apexcharts@3.49.1/dist/apexcharts.min.js";
+
+  // ---------------- shared modal scaffold -----------------------------------
+  // One persistent <style> block for dashboard chrome (modal shell + grid
+  // table). ApexCharts brings its own CSS. Style is keyed by id so
+  // openWorkload() / openSubjectUsage() don't append duplicates.
+  function ensureStyles() {
+    if (document.getElementById("chrx-dash-styles")) return;
+    const s = document.createElement("style");
+    s.id = "chrx-dash-styles";
+    s.textContent = `
+.chrx-dash-root{position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:flex-start;justify-content:center;padding:18px;z-index:1000;overflow:auto}
+.chrx-dash-panel{background:#fff;border-radius:12px;width:min(1000px,96vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3);font-family:-apple-system,BlinkMacSystemFont,sans-serif;color:#0f172a}
+.chrx-dash-head{display:flex;justify-content:space-between;align-items:center;padding:12px 18px;border-bottom:1px solid #e2e8f0}
+.chrx-dash-head h2{margin:0;font-size:16px;font-weight:600;color:#1e3a8a}
+.chrx-dash-sub{margin:2px 0 0;font-size:12px;color:#64748b}
+.chrx-dash-actions{display:flex;gap:6px;align-items:center}
+.chrx-dash-close{background:none;border:0;font-size:22px;cursor:pointer;color:#64748b;line-height:1}
+.chrx-dash-toolbar{display:flex;gap:10px;padding:10px 18px;background:#f8fafc;border-bottom:1px solid #e2e8f0;align-items:center;flex-wrap:wrap}
+.chrx-dash-toolbar input[type="search"]{padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;min-width:200px;flex:1}
+.chrx-dash-toolbar select{padding:5px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;background:#fff}
+.chrx-dash-toolbar button{background:#1d4ed8;color:#fff;border:0;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer}
+.chrx-dash-toolbar button:hover{background:#1e40af}
+.chrx-dash-toolbar button.ghost{background:#fff;color:#475569;border:1px solid #cbd5e1}
+.chrx-dash-toolbar button.ghost:hover{background:#f1f5f9}
+.chrx-dash-chart{padding:14px 18px 4px}
+.chrx-dash-table-wrap{flex:1;overflow:auto;padding:0 18px 14px}
+.chrx-dash-table{width:100%;border-collapse:collapse;font-size:12px}
+.chrx-dash-table th,.chrx-dash-table td{padding:6px 10px;text-align:left;border-bottom:1px solid #f1f5f9}
+.chrx-dash-table th{position:sticky;top:0;background:#f8fafc;font-weight:600;color:#475569;font-size:11px;text-transform:uppercase;letter-spacing:.04em;cursor:pointer;user-select:none}
+.chrx-dash-table th:hover{color:#1e3a8a}
+.chrx-dash-table tr:hover{background:#f8fafc}
+.chrx-dash-pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600}
+.chrx-dash-pill--green{background:#d1fae5;color:#065f46}
+.chrx-dash-pill--amber{background:#fef3c7;color:#854d0e}
+.chrx-dash-pill--red{background:#fee2e2;color:#991b1b}
+.chrx-dash-pill--slate{background:#e2e8f0;color:#475569}
+.chrx-dash-foot{padding:8px 18px;border-top:1px solid #e2e8f0;background:#fafbfc;font-size:11px;color:#64748b;display:flex;justify-content:space-between}
+.chrx-dash-empty{padding:32px;text-align:center;color:#94a3b8;font-size:13px}`;
+    document.head.appendChild(s);
+  }
+
+  // Lazy-load ApexCharts once. Subsequent calls return the cached promise.
+  let _apex = null;
+  function loadApex() {
+    if (_apex) return _apex;
+    _apex = new Promise((resolve, reject) => {
+      if (window.ApexCharts) return resolve(window.ApexCharts);
+      const s = document.createElement("script");
+      s.src = APEXCHART_SRC;
+      s.async = true;
+      s.onload = () => resolve(window.ApexCharts);
+      s.onerror = () => reject(new Error("Failed to load ApexCharts from CDN"));
+      document.head.appendChild(s);
+    });
+    return _apex;
+  }
+
+  // Modal scaffold: returns { root, panel, head, toolbar, chart, tableWrap, foot, close }.
+  // Caller fills the sections; cleanup removes DOM + observers.
+  function buildScaffold(title, sub) {
+    const root = document.createElement("div");
+    root.className = "chrx-dash-root";
+    const panel = document.createElement("div");
+    panel.className = "chrx-dash-panel";
+    const head = document.createElement("div");
+    head.className = "chrx-dash-head";
+    head.innerHTML = `<div><h2></h2><p class="chrx-dash-sub"></p></div>
+      <div class="chrx-dash-actions">
+        <button type="button" class="chrx-dash-close" aria-label="Close">×</button>
+      </div>`;
+    head.querySelector("h2").textContent = title;
+    head.querySelector(".chrx-dash-sub").textContent = sub;
+    const toolbar = document.createElement("div");
+    toolbar.className = "chrx-dash-toolbar";
+    const chart = document.createElement("div");
+    chart.className = "chrx-dash-chart";
+    const tableWrap = document.createElement("div");
+    tableWrap.className = "chrx-dash-table-wrap";
+    const foot = document.createElement("div");
+    foot.className = "chrx-dash-foot";
+    panel.append(head, toolbar, chart, tableWrap, foot);
+    root.appendChild(panel);
+    document.body.appendChild(root);
+    const close = () => root.remove();
+    head.querySelector(".chrx-dash-close").onclick = close;
+    root.addEventListener("click", (e) => { if (e.target === root) close(); });
+    const onKey = (e) => { if (e.key === "Escape") { close(); document.removeEventListener("keydown", onKey, true); } };
+    document.addEventListener("keydown", onKey, true);
+    return { root, panel, head, toolbar, chart, tableWrap, foot, close };
+  }
+
+  // CSV export from an array of plain objects.
+  function exportCSV(filename, rows) {
+    if (!rows || !rows.length) return;
+    const cols = Object.keys(rows[0]);
+    const esc = (v) => {
+      const s = v == null ? "" : String(v);
+      return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    };
+    const csv = [cols.join(","), ...rows.map(r => cols.map(c => esc(r[c])).join(","))].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  // ---------------- Workload dashboard --------------------------------------
+  // Computes per-teacher periods/week from school.cards, plus per-day breakdown.
+  // Shows a horizontal bar chart (one row per teacher) + a sortable table.
+  function computeWorkload(school) {
+    const idx = school._idx || {};
+    const lessons = school.lessons || [];
+    const teachers = school.teachers || [];
+    const cards = school.cards || [];
+    const lessonById = idx.lessonById || Object.fromEntries(lessons.map(l => [l.id, l]));
+    const teacherById = idx.teacherById || Object.fromEntries(teachers.map(t => [t.id, t]));
+
+    // For each teacher, count cards (a placed card = 1 period). A
+    // lab-double card still occupies 2 consecutive periods in the grid,
+    // but here we count *sessions* (cards), not periods — same metric as
+    // aSc Timetables' "Periods/week" column for a single-period teacher.
+    // For a multi-period card (lab-double), we DO count the second period
+    // because the teacher is teaching both.
+    const ndays = (school.daysPerWeek || (school.bell && school.bell.periods ? 6 : 6));
+    const stats = new Map();
+    for (const t of teachers) {
+      stats.set(t.id, { teacher: t, total: 0, perDay: Array(ndays).fill(0), dailyMax: 0 });
+    }
+    for (const c of cards) {
+      const lesson = lessonById[c.lessonId];
+      if (!lesson) continue;
+      const length = lesson.isLabDouble ? 2 : 1;
+      for (const tid of (lesson.teacherIds || [])) {
+        const s = stats.get(tid);
+        if (!s) continue;
+        // A lab-double card occupies both periods for the same teacher.
+        s.total += length;
+        if (c.day >= 0 && c.day < ndays) {
+          s.perDay[c.day] += length;
+          if (s.perDay[c.day] > s.dailyMax) s.dailyMax = s.perDay[c.day];
+        }
+      }
+    }
+    const rows = Array.from(stats.values())
+      .map(s => ({
+        teacherId: s.teacher.id,
+        name: s.teacher.name || s.teacher.abbr || s.teacher.id,
+        abbr: s.teacher.abbr || s.teacher.name || "",
+        total: s.total,
+        perDay: s.perDay,
+        dailyMax: s.dailyMax,
+        avg: s.total / Math.max(1, s.perDay.filter(n => n > 0).length || ndays),
+      }))
+      .sort((a, b) => b.total - a.total);
+    const maxTotal = rows.reduce((m, r) => Math.max(m, r.total), 0) || 1;
+    const maxDaily = rows.reduce((m, r) => Math.max(m, r.dailyMax), 0) || 1;
+    return { rows, maxTotal, maxDaily, ndays };
+  }
+
+  function renderWorkloadChart(rows, maxTotal, chartHost) {
+    const categories = rows.map(r => r.name);
+    const data = rows.map(r => r.total);
+    const options = {
+      chart: { type: "bar", height: Math.max(280, 32 + rows.length * 22), toolbar: { show: false }, animations: { speed: 200 } },
+      plotOptions: { bar: { horizontal: true, borderRadius: 4, barHeight: "70%", distributed: false } },
+      series: [{ name: "Periods / week", data }],
+      xaxis: {
+        categories,
+        labels: { style: { fontSize: "11px" } },
+        title: { text: "Periods/week", style: { fontSize: "11px", color: "#475569" } },
+        max: Math.max(40, maxTotal),
+      },
+      yaxis: { labels: { style: { fontSize: "11px" } } },
+      colors: ["#2563eb"],
+      grid: { borderColor: "#e2e8f0", strokeDashArray: 4 },
+      dataLabels: {
+        enabled: true, style: { fontSize: "10px", colors: ["#1e293b"] }, offsetX: 30,
+        formatter: (val) => val + " pds",
+      },
+      tooltip: { y: { formatter: (v) => v + " periods this week" } },
+      legend: { show: false },
+    };
+    const chart = new window.ApexCharts(chartHost, options);
+    chart.render();
+    return chart;
+  }
+
+  function renderWorkloadTable(rows, tableHost, foot, { filter, sortKey, sortDir, limit }) {
+    const filtered = rows.filter(r => !filter || r.name.toLowerCase().includes(filter) || (r.abbr || "").toLowerCase().includes(filter));
+    filtered.sort((a, b) => {
+      const va = a[sortKey]; const vb = b[sortKey];
+      if (typeof va === "string") return sortDir * va.localeCompare(vb);
+      return sortDir * (va - vb);
+    });
+    const visible = filtered.slice(0, limit);
+    const html = [
+      "<table class=\"chrx-dash-table\">",
+      "<thead><tr>",
+      "<th data-key=\"name\">Teacher</th>",
+      "<th data-key=\"abbr\">Abbr</th>",
+      "<th data-key=\"total\">Periods/wk</th>",
+      "<th data-key=\"dailyMax\">Max/day</th>",
+      "<th data-key=\"avg\">Avg/day</th>",
+      "</tr></thead>",
+      "<tbody>",
+      visible.length ? visible.map(r => {
+        const pill = r.dailyMax >= 6 ? "red" : r.dailyMax >= 4 ? "amber" : "green";
+        return `<tr>
+          <td><strong>${esc(r.name)}</strong></td>
+          <td>${esc(r.abbr)}</td>
+          <td>${r.total}</td>
+          <td><span class="chrx-dash-pill chrx-dash-pill--${pill}">${r.dailyMax}</span></td>
+          <td>${r.avg.toFixed(1)}</td>
+        </tr>`;
+      }).join("") : `<tr><td colspan="5" class="chrx-dash-empty">No matching teachers.</td></tr>`,
+      "</tbody></table>",
+    ].join("");
+    tableHost.innerHTML = html;
+    foot.innerHTML = `<span>Showing ${visible.length} of ${filtered.length} (filtered) / ${rows.length} total</span><span>Daily max ≥ 6 = red, ≥ 4 = amber</span>`;
+  }
+
+  async function openWorkload() {
+    const school = window.APP && window.APP.school;
+    if (!school) {
+      (window._chrxNotify || console.log)("Open a timetable first.", "error");
+      return;
+    }
+    ensureStyles();
+    let chart;
+    try {
+      await loadApex();
+    } catch (e) {
+      (window._chrxNotify || console.log)("Could not load chart library: " + e.message, "error");
+      return;
+    }
+
+    const { rows, maxTotal } = computeWorkload(school);
+    if (!rows.length) {
+      (window._chrxNotify || console.log)("No teachers in this school yet.", "warn");
+      return;
+    }
+
+    const { chart: chartHost, toolbar, tableWrap, foot, close } = buildScaffold(
+      "Teacher workload",
+      "Periods per teacher this week · bar + table (sortable, searchable)"
+    );
+    chart = renderWorkloadChart(rows, maxTotal, chartHost);
+
+    const state = { filter: "", sortKey: "total", sortDir: -1, limit: 50 };
+    const refresh = () => renderWorkloadTable(rows, tableWrap, foot, state);
+
+    toolbar.innerHTML = `
+      <input type="search" placeholder="Filter by name or abbreviation…" aria-label="Filter">
+      <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:#475569">
+        Show <select class="limit">
+          <option>25</option><option selected>50</option><option>100</option><option>all</option>
+        </select>
+      </label>
+      <button type="button" class="ghost csv-export">⤓ Export CSV</button>`;
+    const input = toolbar.querySelector("input");
+    input.oninput = () => { state.filter = input.value.trim().toLowerCase(); refresh(); };
+    const sel = toolbar.querySelector("select.limit");
+    sel.onchange = () => { state.limit = sel.value === "all" ? Infinity : parseInt(sel.value, 10); refresh(); };
+    toolbar.querySelector(".csv-export").onclick = () => {
+      exportCSV("workload.csv", rows.map(r => ({
+        teacherId: r.teacherId, name: r.name, abbr: r.abbr,
+        total: r.total, dailyMax: r.dailyMax, avg: r.avg.toFixed(2),
+      })));
+    };
+    tableWrap.addEventListener("click", (e) => {
+      const th = e.target.closest("th[data-key]");
+      if (!th) return;
+      const k = th.dataset.key;
+      if (state.sortKey === k) state.sortDir = -state.sortDir;
+      else { state.sortKey = k; state.sortDir = -1; }
+      refresh();
+    });
+    refresh();
+  }
+
+  // ---------------- Subject Usage dashboard --------------------------------
+  // For each (class, subject) pair: how many cards are placed vs the target
+  // (periodsPerWeek), what days they land on, and where each falls.
+  function computeSubjectUsage(school) {
+    const idx = school._idx || {};
+    const lessons = school.lessons || [];
+    const cards = school.cards || [];
+    const lessonById = idx.lessonById || Object.fromEntries(lessons.map(l => [l.id, l]));
+    const subjectById = idx.subjectById || Object.fromEntries((school.subjects || []).map(s => [s.id, s]));
+    const classById = idx.classById || Object.fromEntries((school.classes || []).map(c => [c.id, c]));
+
+    // Build target: (classId, subjectId) -> periodsPerWeek (sum across lessons)
+    const target = new Map();
+    for (const L of lessons) {
+      const ppw = Number(L.periodsPerWeek) || 0;
+      if (ppw <= 0) continue;
+      for (const cid of (L.classIds || [])) {
+        const k = cid + "|" + L.subjectId;
+        target.set(k, (target.get(k) || 0) + ppw);
+      }
+    }
+    // Build placed: (classId, subjectId) -> { total, perDay }
+    const ndays = school.daysPerWeek || 6;
+    const placed = new Map();
+    for (const c of cards) {
+      const L = lessonById[c.lessonId];
+      if (!L) continue;
+      for (const cid of (L.classIds || [])) {
+        const k = cid + "|" + L.subjectId;
+        if (!placed.has(k)) placed.set(k, { total: 0, perDay: Array(ndays).fill(0), placements: [] });
+        const p = placed.get(k);
+        const length = L.isLabDouble ? 2 : 1;
+        p.total += length;
+        if (c.day >= 0 && c.day < ndays) p.perDay[c.day] += length;
+        p.placements.push({ day: c.day, period: c.period, classroomId: c.classroomId, lessonId: c.lessonId });
+      }
+    }
+
+    const rows = [];
+    for (const [k, tgt] of target) {
+      const [cid, sid] = k.split("|");
+      const p = placed.get(k) || { total: 0, perDay: Array(ndays).fill(0), placements: [] };
+      const cls = classById[cid];
+      const subj = subjectById[sid];
+      rows.push({
+        key: k,
+        classId: cid,
+        className: cls ? (cls.short || cls.name || cid) : cid,
+        subjectId: sid,
+        subjectName: subj ? (subj.abbr || subj.name || sid) : sid,
+        target: tgt,
+        placed: p.total,
+        pct: tgt > 0 ? p.total / tgt : 1,
+        perDay: p.perDay,
+        placements: p.placements,
+      });
+    }
+    rows.sort((a, b) => (b.pct - a.pct) || a.className.localeCompare(b.className));
+    return { rows, ndays };
+  }
+
+  // Render a "selected row" detail: chart (radial %) + per-day bar + table.
+  function renderSubjectDetail(rows, idx, ndays, chartHost, tableHost, foot) {
+    const r = rows[idx];
+    if (!r) return;
+    const opts = {
+      chart: { type: "radialBar", height: 280, toolbar: { show: false } },
+      series: [Math.round(r.pct * 100)],
+      labels: ["Target reached"],
+      colors: ["#2563eb"],
+      plotOptions: {
+        radialBar: {
+          hollow: { size: "55%" },
+          track: { background: "#e2e8f0" },
+          dataLabels: {
+            name: { fontSize: "13px", color: "#475569", offsetY: 22 },
+            value: {
+              fontSize: "28px", fontWeight: 600, color: "#0f172a", offsetY: -10,
+              formatter: (v) => v + "%",
+            },
+          },
+        },
+      },
+      fill: { type: "gradient", gradient: { shade: "dark", type: "horizontal", gradientToColors: ["#22d3ee"], stops: [0, 100] } },
+      stroke: { lineCap: "round" },
+    };
+    const radial = new window.ApexCharts(chartHost, opts);
+    radial.render();
+
+    // Per-day breakdown bar (below the radial, in the same chart host area).
+    const barHost = document.createElement("div");
+    chartHost.appendChild(barHost);
+    const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].slice(0, ndays);
+    const barOpts = {
+      chart: { type: "bar", height: 180, toolbar: { show: false } },
+      series: [{ name: "Periods", data: r.perDay }],
+      xaxis: { categories: dayNames, labels: { style: { fontSize: "11px" } } },
+      yaxis: { labels: { style: { fontSize: "11px" } }, title: { text: "Per day", style: { fontSize: "11px" } } },
+      plotOptions: { bar: { borderRadius: 3, columnWidth: "60%" } },
+      colors: ["#10b981"],
+      grid: { borderColor: "#e2e8f0", strokeDashArray: 4 },
+      dataLabels: { enabled: true, style: { fontSize: "10px", colors: ["#0f172a"] }, offsetY: -16 },
+    };
+    const bar = new window.ApexCharts(barHost, barOpts);
+    bar.render();
+
+    // Schedule table for this (class, subject)
+    const dayNamesFull = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const placementsHtml = r.placements.length
+      ? r.placements.slice().sort((a, b) => a.day - b.day || a.period - b.period)
+        .map(p => `<tr>
+          <td>${dayNamesFull[p.day] || "Day " + (p.day + 1)}</td>
+          <td>${p.period + 1}</td>
+          <td>${esc(p.classroomId || "—")}</td>
+        </tr>`).join("")
+      : `<tr><td colspan="3" class="chrx-dash-empty">No placements yet for this (class, subject).</td></tr>`;
+    tableHost.innerHTML = `
+      <h3 style="margin:14px 0 6px;font-size:13px;color:#1e3a8a">${esc(r.className)} · ${esc(r.subjectName)}</h3>
+      <div style="font-size:12px;color:#64748b;margin-bottom:6px">${r.placed} of ${r.target} periods placed (${Math.round(r.pct * 100)}%)</div>
+      <table class="chrx-dash-table">
+        <thead><tr><th>Day</th><th>Period</th><th>Room</th></tr></thead>
+        <tbody>${placementsHtml}</tbody>
+      </table>`;
+    foot.innerHTML = `<span>Target = ${r.target} · Placed = ${r.placed}</span>
+      <span>Select another row to change the focus</span>`;
+  }
+
+  async function openSubjectUsage() {
+    const school = window.APP && window.APP.school;
+    if (!school) {
+      (window._chrxNotify || console.log)("Open a timetable first.", "error");
+      return;
+    }
+    ensureStyles();
+    let chart;
+    try {
+      await loadApex();
+    } catch (e) {
+      (window._chrxNotify || console.log)("Could not load chart library: " + e.message, "error");
+      return;
+    }
+
+    const { rows, ndays } = computeSubjectUsage(school);
+    if (!rows.length) {
+      (window._chrxNotify || console.log)("No lessons to summarise yet.", "warn");
+      return;
+    }
+
+    const { chart: chartHost, toolbar, tableWrap, foot } = buildScaffold(
+      "Subject usage",
+      "Per (class, subject): target vs placed + per-day breakdown"
+    );
+
+    // Top-row picker: a single searchable dropdown over all (class, subject) pairs.
+    toolbar.innerHTML = `
+      <input type="search" placeholder="Filter (e.g. II B, ENGL, Maths)…" aria-label="Filter">
+      <select class="picker" style="min-width:240px"></select>
+      <button type="button" class="ghost csv-export">⤓ Export CSV</button>`;
+
+    const input = toolbar.querySelector("input");
+    const picker = toolbar.querySelector("select.picker");
+    toolbar.querySelector(".csv-export").onclick = () => {
+      exportCSV("subject-usage.csv", rows.map(r => ({
+        classId: r.classId, className: r.className,
+        subjectId: r.subjectId, subjectName: r.subjectName,
+        target: r.target, placed: r.placed, pct: Math.round(r.pct * 100) + "%",
+      })));
+    };
+
+    function refreshPicker(filter) {
+      const f = (filter || "").trim().toLowerCase();
+      const opts = rows.filter(r => !f || r.className.toLowerCase().includes(f) || r.subjectName.toLowerCase().includes(f));
+      picker.innerHTML = opts.map((r, i) =>
+        `<option value="${rows.indexOf(r)}">${esc(r.className)} · ${esc(r.subjectName)} (${r.placed}/${r.target})</option>`
+      ).join("");
+      if (opts.length) picker.value = String(rows.indexOf(opts[0]));
+      render();
+    }
+    let selectedIdx = 0;
+    function render() {
+      chartHost.innerHTML = "";
+      const idx = parseInt(picker.value, 10);
+      selectedIdx = Number.isFinite(idx) ? idx : 0;
+      renderSubjectDetail(rows, selectedIdx, ndays, chartHost, tableWrap, foot);
+    }
+    picker.onchange = render;
+    input.oninput = () => refreshPicker(input.value);
+    refreshPicker("");
+  }
+
+  // ---------------- exports -------------------------------------------------
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  }
+
+  global.Dashboards = { openWorkload, openSubjectUsage, computeWorkload, computeSubjectUsage };
+})(typeof window !== "undefined" ? window : globalThis);

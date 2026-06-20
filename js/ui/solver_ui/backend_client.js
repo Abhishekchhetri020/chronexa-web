@@ -182,6 +182,12 @@
   // Stage 1: the fast JS CSP Solver produces a draft timetable. Stage 2: feed
   // that draft to WASM-CP-SAT in Improve mode to polish it toward 100%. One
   // call, fully offline. Falls back to the draft if stage 2 can't run.
+  //
+  // Phase markers (consumed by SolverUI.Progress.setPhase in progress_modal.js):
+  //   { type: "phase", phase: "validating" }   -- emitted before stage 1 starts
+  //   { type: "phase", phase: "drafting"   }   -- emitted when stage 1 begins
+  //   { type: "phase", phase: "polishing"  }   -- emitted when stage 2 begins
+  //   { type: "phase", phase: "applying"   }   -- emitted right before "done"
   function runTwoStage(school, options) {
     const sub = makeSubscribable();
     let cancelled = false;
@@ -190,6 +196,18 @@
     const t1 = Math.max(5, Math.round(budget * 0.35));
     const t2 = Math.max(10, budget - t1);
     let draft = null;
+
+    // Brief validating tick so the UI shows the breadcrumb moving. The actual
+    // validation is the school-shape check inside runBrowser/runWasm; this
+    // marker just gives the user feedback that the pipeline acknowledged.
+    queueMicrotask(() => {
+      if (!cancelled) sub.emit({ type: "phase", phase: "validating" });
+      // Move into drafting on the next frame so the validating chip is
+      // visible for at least one paint cycle (otherwise it flashes by).
+      setTimeout(() => {
+        if (!cancelled) sub.emit({ type: "phase", phase: "drafting" });
+      }, 80);
+    });
 
     const stage1 = runBrowser(school, { ...options, timeLimitSec: t1 });
     stage1.subscribe((ev) => {
@@ -202,13 +220,19 @@
         ? draft.assignment.map((a) => ({ lessonId: a.lessonId, day: a.day, period: a.period, classroomId: a.classroomId }))
         : (school.cards || []);
       const seeded = { ...school, cards };
+      // Stage 1 finished → transition to "polishing" before kicking off stage 2.
+      sub.emit({ type: "phase", phase: "polishing" });
       stage2 = runWasm(seeded, { ...options, improve: true, timeLimitSec: t2 });
       stage2.subscribe((ev2) => {
         if (cancelled) return;
         if (ev2.type === "progress") { sub.emit({ ...ev2, stage: 2 }); }
-        else if (ev2.type === "done") { sub.emit({ type: "done", result: ev2.result }); }
+        else if (ev2.type === "done") {
+          sub.emit({ type: "phase", phase: "applying" });
+          sub.emit({ type: "done", result: ev2.result });
+        }
         else if (ev2.type === "error") {
           // Stage 2 unavailable (e.g. no JSPI) — the draft is still a valid timetable.
+          sub.emit({ type: "phase", phase: "applying" });
           sub.emit({ type: "done", result: draft });
         }
       });

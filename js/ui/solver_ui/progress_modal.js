@@ -118,7 +118,32 @@
 
     const title = el("h2", { class: "csu-dialog__title", id: "csu-progress-title" }, "Generating timetable…");
     const sub = el("p", { class: "csu-dialog__sub", id: "csu-progress-sub" }, "Cycle 1 · in browser worker");
-    const titleArea = el("div", { class: "csu-progress__title-text" }, title, sub);
+
+    // ---- named phase breadcrumb (Validating → Drafting → Polishing → Applying)
+    // The current phase is highlighted; earlier phases get a check-mark; later
+    // phases are dim. The user sees a clear sense of "where am I in the
+    // pipeline?" instead of an indeterminate spinner. Inspired by the
+    // 6-step overlay in prabath1998/timetable-generator.
+    const phaseRow = el("ol", { class: "csu-phases", id: "csu-phases", "aria-label": "Solver pipeline phases" });
+    const PHASES = [
+      { key: "validating", label: "Validating", icon: "✓" },
+      { key: "drafting",   label: "Drafting",   icon: "✎" },
+      { key: "polishing",  label: "Polishing",  icon: "✦" },
+      { key: "applying",   label: "Applying",   icon: "▶" },
+    ];
+    const phaseEls = {};
+    PHASES.forEach((p, i) => {
+      const li = el("li", { class: "csu-phase", "data-phase": p.key, id: "csu-phase-" + p.key },
+        el("span", { class: "csu-phase__icon" }, p.icon),
+        el("span", { class: "csu-phase__label" }, p.label),
+      );
+      if (i > 0) phaseRow.appendChild(el("span", { class: "csu-phase__sep" }, "›"));
+      phaseRow.appendChild(li);
+      phaseEls[p.key] = li;
+    });
+    phaseRow.classList.add("is-pending-all");
+
+    const titleArea = el("div", { class: "csu-progress__title-text" }, phaseRow, title, sub);
     const header = el("div", { class: "csu-progress__header" }, ringWrap, titleArea);
 
     // ---- progress bars
@@ -181,7 +206,28 @@
       heat, faultsList, placingLabel, pauseBtn, cancelBtn, acceptBtn,
       ringCircle: ring.circle, ringPct: ring.pctText, ringCircumference: ring.circumference,
       branches,
+      phaseRow, phaseEls,
     };
+  }
+
+  // Highlight the named phase in the breadcrumb. Earlier phases get a
+  // check-mark (.is-done), the named phase gets a pulsing dot (.is-active),
+  // and later phases stay dim.
+  // Public API: SolverUI.Progress.setPhase("drafting") from the caller.
+  const PHASE_ORDER = ["validating", "drafting", "polishing", "applying"];
+  function setPhase(key) {
+    if (!refs || !refs.phaseRow) return;
+    if (!PHASE_ORDER.includes(key)) return;
+    refs.phaseRow.classList.remove("is-pending-all", "is-done-all");
+    const idx = PHASE_ORDER.indexOf(key);
+    PHASE_ORDER.forEach((k, i) => {
+      const li = refs.phaseEls[k];
+      if (!li) return;
+      li.classList.remove("is-active", "is-done", "is-pending");
+      if (i < idx) li.classList.add("is-done");
+      else if (i === idx) li.classList.add("is-active");
+      else li.classList.add("is-pending");
+    });
   }
 
   // Render up to 3 violations as <li> rows. Uses textContent (no innerHTML)
@@ -373,6 +419,19 @@
     refs.tElapsed.textContent = "0:00";
     refs.tStuck.textContent = "—";
     updateRing(0, state.totalLessons || 1);
+    // Reset phase breadcrumb to "all pending" — caller calls setPhase(...)
+    // as it transitions through the pipeline. For Test mode (no polish),
+    // skip straight to "applying"; for Best mode the backend_client drives
+    // the transitions.
+    if (refs.phaseRow) {
+      refs.phaseRow.classList.add("is-pending-all");
+      refs.phaseRow.classList.remove("is-done-all");
+      PHASE_ORDER.forEach((k) => {
+        const li = refs.phaseEls[k];
+        if (!li) return;
+        li.classList.remove("is-active", "is-done");
+      });
+    }
 
     host.classList.add("is-open");
     host.setAttribute("aria-hidden", "false");
@@ -382,6 +441,12 @@
 
   function handleEvent(ev) {
     if (!state || !ev) return;
+    if (ev.type === "phase") {
+      // Named-stage marker from backend_client.runTwoStage. Drives the
+      // breadcrumb (Validating → Drafting → Polishing → Applying).
+      setPhase(ev.phase);
+      return;
+    }
     if (ev.type === "progress") {
       const dt = Math.max(1, ev.durationMs || 0);
       const iter = ev.iter || 0;
@@ -444,5 +509,5 @@
   }
 
   global.SolverUI = global.SolverUI || {};
-  global.SolverUI.Progress = { open, close };
+  global.SolverUI.Progress = { open, close, setPhase, PHASE_ORDER };
 })(typeof window !== "undefined" ? window : globalThis);
