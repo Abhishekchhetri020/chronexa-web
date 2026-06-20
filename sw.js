@@ -15,7 +15,7 @@
  */
 
 const CACHE_PREFIX = "chronexa-";
-const APP_VER = "20260621-p191-release-wasm";
+const APP_VER = "20260621-p192-simultaneous";
 const CACHE_NAME = CACHE_PREFIX + APP_VER;
 
 // Cross-origin isolation (COOP/COEP) — required for the in-browser WASM CP-SAT

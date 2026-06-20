@@ -282,25 +282,81 @@ export async function buildAndSolve(school, options = {}) {
       saved.get(c.lessonId).push(c);
     }
   }
-  // Cards bound by HARD relations that this CP-SAT model does NOT encode
-  // (n_12/n_13 simultaneous = Sanskrit+Urdu together, must-follow, same-day,
-  // first/last, not-same-time, …). In Improve/Best mode we LOCK these to their
-  // warm-start slot so the polish can't break a relation the JS draft already
-  // satisfied. (Matching mirrors the JS solver's gatherMatched().)
-  const HARD_REL_TYPS = new Set(['n_0','n_1','n_2','n_5','n_6','n_7','n_8','n_9','n_10','n_12','n_13','n_16']);
+  // --- Hard card-relations -------------------------------------------------
+  // n_12/n_13 (simultaneous, e.g. Sanskrit+Urdu) are ENCODED below as
+  // "same day => same period", so CP-SAT can still move the pair together — but
+  // only when the match is small enough to stay tractable. Otherwise, and for
+  // the other hard types we don't model yet, the bound cards are LOCKED to their
+  // warm-start slot (Improve mode only) so the polish can't break a relation the
+  // JS draft satisfied. (Matching mirrors the JS solver's gatherMatched().)
+  const LOCK_TYPS = new Set(['n_0','n_1','n_2','n_5','n_6','n_7','n_8','n_9','n_10','n_16']);
+  const matchRel = (rel) => {
+    const subjSet = new Set([...(rel.subjectids || []), ...(rel.subject2ids || [])]);
+    const classSet = new Set(rel.classids || []);
+    if (!subjSet.size && !classSet.size) return [];
+    return school.lessons.filter((L) =>
+      (!subjSet.size || subjSet.has(L.subjectId)) &&
+      (!classSet.size || (L.classIds || []).some((c) => classSet.has(c))));
+  };
+
+  // Simultaneous (n_12/n_13) cross-subject lesson pairs.
+  const simulPairs = [];
+  const simulLessons = new Set();
+  for (const rel of school.relations || []) {
+    if (!rel || rel.disabled || (rel.typ !== 'n_12' && rel.typ !== 'n_13')) continue;
+    const matched = matchRel(rel);
+    for (let a = 0; a < matched.length; a++) for (let b = a + 1; b < matched.length; b++) {
+      if (matched[a].subjectId === matched[b].subjectId) continue;
+      simulPairs.push([matched[a].id, matched[b].id]);
+      simulLessons.add(matched[a].id); simulLessons.add(matched[b].id);
+    }
+  }
+  const simulEncode = simulPairs.length > 0 && simulPairs.length <= 120;
+
+  // Lessons LOCKED to their warm-start slot (Improve mode only).
   const relationLockedLessons = new Set();
   if (improve) {
     for (const rel of school.relations || []) {
-      if (!rel || rel.disabled || !HARD_REL_TYPS.has(rel.typ)) continue;
-      const subjSet = new Set([...(rel.subjectids || []), ...(rel.subject2ids || [])]);
-      const classSet = new Set(rel.classids || []);
-      if (!subjSet.size && !classSet.size) continue;
-      for (const L of school.lessons) {
-        if (subjSet.size && !subjSet.has(L.subjectId)) continue;
-        if (classSet.size && !(L.classIds || []).some((c) => classSet.has(c))) continue;
-        relationLockedLessons.add(L.id);
+      if (!rel || rel.disabled || !LOCK_TYPS.has(rel.typ)) continue;
+      for (const L of matchRel(rel)) relationLockedLessons.add(L.id);
+    }
+    if (!simulEncode) for (const lid of simulLessons) relationLockedLessons.add(lid);
+  }
+
+  // ENCODE simultaneity: forbid partner lessons on the same day at different periods.
+  if (simulEncode) {
+    const lessonAt = new Map(); // `${lid}|${d},${p}` -> assign vars covering (d,p)
+    for (let ci = 0; ci < cards.length; ci++) {
+      const card = cards[ci];
+      for (const [skey, avar] of assign[ci]) {
+        const s = skey.split(',').map(Number);
+        for (const ps of cover(card, s)) {
+          const k = `${card.lesson_id}|${ps.join(',')}`;
+          if (!lessonAt.has(k)) lessonAt.set(k, []);
+          lessonAt.get(k).push(avar);
+        }
       }
     }
+    const occAt = (lid, d, p) => lessonAt.get(`${lid}|${d},${p}`);
+    let simCons = 0;
+    for (const [A, B] of simulPairs) {
+      for (const d of days) {
+        for (const pA of periods) {
+          const a = occAt(A, d, pA);
+          if (!a || !a.length) continue;
+          for (const pB of periods) {
+            if (pB === pA) continue;
+            const b = occAt(B, d, pB);
+            if (!b || !b.length) continue;
+            atMost(m, sum([...a, ...b]), 1); // forbid A@(d,pA) & B@(d,pB) when pA != pB
+            simCons++;
+          }
+        }
+      }
+    }
+    console.error('SIMULTANEOUS (n_12/n_13): pairs=', simulPairs.length, 'constraints=', simCons);
+  } else if (simulPairs.length) {
+    console.error('SIMULTANEOUS: too many pairs (', simulPairs.length, ') — locking instead of encoding');
   }
 
   let hintedCards = 0, lockedCards = 0;
