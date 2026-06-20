@@ -2,7 +2,7 @@
 // for use via the or-tools-wasm WASM build (Axelwickm/or-tools-wasm@0.9.1).
 //
 // Same model as the Python backend: lesson cards, hard (no-overlap, lab-double,
-// subject per-day cap = ideal+1), and 2-phase (max placement -> lock + min
+// subject per-day cap = ideal), and 2-phase (max placement -> lock + min
 // spread+back-to-back). Mirrors the Python to keep the two backends equivalent.
 //
 // Usage:
@@ -237,7 +237,17 @@ export async function buildAndSolve(school, options = {}) {
   for (const [k, vs] of csd) {
     const c = k.split('|')[0];
     const subj = k.split('|')[1];
-    const hard = capCs.get(`${c}|${subj}`) + 1;
+    // HARD cap = ideal = ceil(v / ndays). For v<=ndays this is 1 (strict
+    // 1-per-day); for v>ndays this is ceil(v/ndays) (e.g. 7/6 -> 2). Matches
+    // the JS CSP solver's subjectDailyLimit so Best mode (JS draft -> WASM
+    // polish) can't relax the spread that the draft just enforced. Was +1
+    // historically: that slack let the polish stage consolidate two same-
+    // subject cards on one day (e.g. English II B on Tue), producing a
+    // visible block that the renderer then hid. With cap=ideal, the solver
+    // either spreads or leaves cards unplaced — the latter surfaces the
+    // true bottleneck (teacher availability, room cap) instead of masking
+    // it behind a spread violation.
+    const hard = capCs.get(`${c}|${subj}`);
     if (vs.length > hard) atMost(m, sum(vs), hard);
   }
 

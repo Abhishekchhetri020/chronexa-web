@@ -312,12 +312,14 @@ window.Editor = (function () {
           // grid (chrx-slot--split).
           const splitClass = cards.length === 2 ? " chrx-slot--split2"
                            : cards.length > 2  ? " chrx-slot--split" : "";
-          // Double-period BLOCK: aSc stores a 2-period block as TWO consecutive
-          // single cards of the SAME lesson on the same day (e.g. Sports Meet at
-          // periods 1 AND 2). Merge them into one 2-wide block — render the first
-          // spanning two columns and SKIP the second — so it reads as a single
-          // block. (The old logic let each half independently span an adjacent
-          // EMPTY cell, which turned one block into "two double blocks".)
+          // Double-period BLOCK: only merge two consecutive cards into a
+          // single 2-wide block when the lesson is a real lab-double
+          // (isLabDouble=true — aSc's periodspercard=2, e.g. Sports Meet at
+          // periods 1 AND 2). Render the first spanning two columns and
+          // SKIP the second so it reads as a single block. Without the
+          // isLabDouble gate, two SOLVER-PLACED single-period cards of the
+          // same lesson (e.g. English II B landing on Tue P6+P7 by
+          // accident) also got fused into a fake block — hiding the bug.
           // Fallback: a lone lab-double card with an empty next cell still
           // expands to fill its block.
           const thisCard = cards.length === 1 ? cards[0] : null;
@@ -327,7 +329,8 @@ window.Editor = (function () {
           const nextSameLesson = !!(thisCard && nextBucket && nextBucket.length === 1
             && nextBucket[0].lessonId === thisCard.lessonId);
           const nextEmpty = !!(nextP && !nextBucket);
-          const isLab = nextSameLesson || !!(firstLesson && firstLesson.isLabDouble && nextEmpty);
+          const isLab = !!(firstLesson && firstLesson.isLabDouble
+            && (nextSameLesson || nextEmpty));
           const spanClass = isLab ? " chrx-slot--span2" : "";
           const cardListHtml = cards.map(c => vkartaHtml(S, c, d, p.index, row.key, isLab ? 2 : 1)).join("");
           slots.push(

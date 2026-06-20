@@ -173,12 +173,22 @@ def build_and_solve(school, time_limit_sec=30, num_workers=8, seed=1,
                 div_active.append(da)
             m.Add(sum(div_active) <= 1)
 
-    # ---- subject even-spread (SOFT) --------------------------------------
+    # ---- subject even-spread (HARD cap) -----------------------------------
     # Ideal per-day cap = ceil(sessions / days): 6/wk -> 1/day, 7/wk -> 2 on one
-    # day. NOTE: this is SOFT, not hard — even the reference (ASC) solution must
-    # put 2 of a 6/wk subject on a day in ~86 cases to place everything, so a
-    # hard cap forces cards unplaced. Soft lets it spread wherever possible and
-    # double-up only when the instance demands it.
+    # day. Enforced as a HARD cap = ideal (no +1 slack). Reasons:
+    #   1. Matches the JS CSP solver's subjectDailyLimit so Best mode (JS
+    #      draft -> WASM/HF polish) can't relax the spread that the draft
+    #      just enforced. Was +1 historically: that slack let the polish
+    #      stage consolidate two same-subject cards on one day (e.g.
+    #      English II B on Tue), producing a visible block that the renderer
+    #      then hid.
+    #   2. Surfaces the true bottleneck (teacher availability, room cap,
+    #      relation conflict) instead of masking it behind a spread
+    #      violation. If the instance is genuinely infeasible under cap=ideal,
+    #      the cards stay unplaced and the user/operator can see WHY.
+    # Tradeoff: ~few instances may end up with 1-3 cards unplaced where the
+    # previous +1 would have clustered them. Acceptable — better to place
+    # fewer cards cleanly than to silently violate user expectations.
     ncards_cs = defaultdict(int)
     for card in cards:
         for c in card["classes"]:
@@ -190,12 +200,8 @@ def build_and_solve(school, time_limit_sec=30, num_workers=8, seed=1,
             for start, avar in assign[ci].items():
                 csd[(c, card["subject"], start[0])].append(avar)
 
-    # HARD cap = ideal + 1: forbids egregious clustering (e.g. 3 of a 6/wk
-    # subject on one day = cap+2) even when the soft phase can't fully converge
-    # on a slow host. cap+1 stays feasible (ASC exceeds the ideal by at most 2,
-    # and only on a few 3/wk activities, which the solver simply spreads).
     for (c, subj, d), vs in csd.items():
-        hard = cap_cs[(c, subj)] + 1
+        hard = cap_cs[(c, subj)]
         if len(vs) > hard:
             m.Add(sum(vs) <= hard)
 
