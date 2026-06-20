@@ -15,8 +15,23 @@
  */
 
 const CACHE_PREFIX = "chronexa-";
-const APP_VER = "20260619-p187-cpsat-quality";
+const APP_VER = "20260620-p188-wasm-cpsat";
 const CACHE_NAME = CACHE_PREFIX + APP_VER;
+
+// Cross-origin isolation (COOP/COEP) — required for the in-browser WASM CP-SAT
+// solver (WASM threads + SharedArrayBuffer). We use COEP:credentialless so
+// existing cross-origin CDN <script>s (tailwind/jsdelivr/sheetjs) keep loading
+// without needing CORP headers, while the page still gets crossOriginIsolated.
+function addCoiHeaders(resp) {
+  if (!resp || resp.status === 0 || resp.type === "opaque" || resp.type === "opaqueredirect") return resp;
+  try {
+    const h = new Headers(resp.headers);
+    h.set("Cross-Origin-Embedder-Policy", "credentialless");
+    h.set("Cross-Origin-Opener-Policy", "same-origin");
+    h.set("Cross-Origin-Resource-Policy", "cross-origin");
+    return new Response(resp.body, { status: resp.status, statusText: resp.statusText, headers: h });
+  } catch { return resp; }
+}
 
 // Minimal app shell for offline support.
 const APP_SHELL = [
@@ -96,45 +111,39 @@ self.addEventListener("fetch", (evt) => {
   // Only handle GETs
   if (evt.request.method !== "GET") return;
 
+  let p;
   if (isCodeFile(url)) {
     // NETWORK-FIRST for code files: always try fresh, cache for offline.
-    evt.respondWith(
-      fetch(evt.request)
-        .then((resp) => {
-          if (resp && resp.status === 200) {
-            const clone = resp.clone();
-            caches.open(CACHE_NAME).then((c) => c.put(evt.request, clone));
-          }
-          return resp;
-        })
-        .catch(() => {
-          return caches.match(evt.request).then((cached) => {
-            if (cached) return cached;
-            if (evt.request.mode === "navigate") {
-              return caches.match("./index.html");
-            }
-          });
-        })
-    );
-  } else {
-    // CACHE-FIRST for CSS, images, fonts, etc.
-    evt.respondWith(
-      caches.match(evt.request).then((cached) => {
-        if (cached) return cached;
-        return fetch(evt.request).then((resp) => {
-          if (resp && resp.status === 200) {
-            const clone = resp.clone();
-            caches.open(CACHE_NAME).then((c) => c.put(evt.request, clone));
-          }
-          return resp;
-        }).catch(() => {
-          if (evt.request.mode === "navigate") {
-            return caches.match("./index.html");
-          }
-        });
+    p = fetch(evt.request)
+      .then((resp) => {
+        if (resp && resp.status === 200) {
+          const clone = resp.clone();
+          caches.open(CACHE_NAME).then((c) => c.put(evt.request, clone));
+        }
+        return resp;
       })
-    );
+      .catch(() => caches.match(evt.request).then((cached) => {
+        if (cached) return cached;
+        if (evt.request.mode === "navigate") return caches.match("./index.html");
+      }));
+  } else {
+    // CACHE-FIRST for CSS, images, fonts, wasm, etc.
+    p = caches.match(evt.request).then((cached) => {
+      if (cached) return cached;
+      return fetch(evt.request).then((resp) => {
+        if (resp && resp.status === 200) {
+          const clone = resp.clone();
+          caches.open(CACHE_NAME).then((c) => c.put(evt.request, clone));
+        }
+        return resp;
+      }).catch(() => {
+        if (evt.request.mode === "navigate") return caches.match("./index.html");
+      });
+    });
   }
+  // Inject COOP/COEP on every same-origin response so the page is cross-origin
+  // isolated (needed for the WASM CP-SAT threads).
+  evt.respondWith(p.then(addCoiHeaders));
 });
 
 // Allow the page to trigger an update via postMessage

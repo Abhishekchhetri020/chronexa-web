@@ -12,5 +12,8 @@
   "type": "module",
   "devDependencies": {
     "assemblyscript": "^0.28.17"
+  },
+  "dependencies": {
+    "or-tools-wasm": "^0.9.1"
   }
 }

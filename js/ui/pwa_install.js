@@ -148,6 +148,20 @@
       setTimeout(() => window.location.reload(), 300);
     });
 
+    // Cross-origin isolation: the COI service worker injects COOP/COEP, but the
+    // document only becomes crossOriginIsolated on a load it actually controls.
+    // If it controls us yet we're not isolated, do ONE guarded reload so the
+    // in-browser WASM CP-SAT solver gets WASM threads + SharedArrayBuffer.
+    try {
+      if (navigator.serviceWorker.controller && !self.crossOriginIsolated && !hasOpenWork()) {
+        var _coiKey = "chrx-coi-reload-" + (window.APP_VER || "");
+        if (!sessionStorage.getItem(_coiKey)) {
+          sessionStorage.setItem(_coiKey, "1");
+          setTimeout(() => window.location.reload(), 50);
+        }
+      }
+    } catch (_) {}
+
     navigator.serviceWorker
       .register("./sw.js")
       .then((reg) => {

@@ -15,7 +15,7 @@
  *     mode:       "generate" | "test",
  *     complexity: "normal" | "large" | "huge",   // → timeLimitSec 30 / 60 / 120
  *     conditions: "draft" | "relax" | "strict",  // → solver options.conditions (advisory; solver ignores today)
- *     algorithm:  "browser" | "cloud",           // browser Worker vs POST /solve
+ *     algorithm:  "browser" | "wasm" | "cloud",  // JS Worker · WASM CP-SAT · POST /solve
  *     showReport: true | false                   // open solver report after run
  *   }
  *
@@ -110,7 +110,17 @@
       el("span", { class: "csu-modebtn__title" }, "Improve current schedule"),
       el("span", { class: "csu-modebtn__hint" }, "Keep existing placements; search outward via LNS for improvements."),
     );
-    const modeRow = el("div", { class: "csu-mode-row" }, modeBtnTest, modeBtnGen, modeBtnImp);
+    const modeBtnBest = el("button", {
+      type: "button",
+      class: "csu-modebtn",
+      "data-mode": "best",
+      onclick: () => setMode("best"),
+    },
+      el("span", { class: "csu-modebtn__icon" }, "★"),
+      el("span", { class: "csu-modebtn__title" }, "Best timetable"),
+      el("span", { class: "csu-modebtn__hint" }, "Draft fast, then perfect with CP-SAT — one click, offline, toward 100%."),
+    );
+    const modeRow = el("div", { class: "csu-mode-row" }, modeBtnTest, modeBtnGen, modeBtnImp, modeBtnBest);
 
     // --- Complexity ----------------------------------------------------------
     const complexity = radioGroup("complexity", [
@@ -130,6 +140,7 @@
     const cloudReady = !!(global.CHRONEXA_BACKEND_URL && global.CHRONEXA_BACKEND_URL.length > 0);
     const algorithm = radioGroup("algorithm", [
       { value: "browser", label: "Run on this computer", hint: "Uses a Web Worker. Stays offline." },
+      { value: "wasm",    label: "CP-SAT in browser",    hint: "Full OR-Tools portfolio · offline · multi-threaded." },
       { value: "cloud",   label: "Run on cloud",          hint: cloudReady ? "OR-Tools CP-SAT via backend." : "Backend URL not set — will fall back to browser." },
     ], "browser");
 
@@ -152,7 +163,9 @@
       summary,
       sectionTitle("Complexity"),    complexity,
       sectionTitle("Conditions"),    conditions,
-      sectionTitle("Algorithm"),     algorithm,
+      // Algorithm (backend) only matters for Generate/Improve. setMode() hides
+      // this section for Test (always local) and Best (always the pipeline).
+      el("div", { id: "csu-algo-section" }, sectionTitle("Algorithm"), algorithm),
       reportLabel,
       actions,
     );
@@ -175,7 +188,13 @@
       b.classList.toggle("is-selected", b.dataset.mode === mode);
     });
     const startBtn = dialog.querySelector("#csu-prelaunch-start");
-    if (startBtn) startBtn.textContent = mode === "test" ? "Run test" : "Start generation";
+    if (startBtn) startBtn.textContent =
+      mode === "test" ? "Run test" :
+      mode === "best" ? "Build best timetable" :
+      mode === "improve" ? "Improve" : "Start generation";
+    // Algorithm/backend choice only applies to Generate and Improve.
+    const algoSec = dialog.querySelector("#csu-algo-section");
+    if (algoSec) algoSec.style.display = (mode === "generate" || mode === "improve") ? "" : "none";
     dialog.dataset.mode = mode;
   }
 
@@ -204,7 +223,7 @@
   }
 
   function doStart() {
-    const mode = dialog.dataset.mode || "generate";
+    const mode = dialog.dataset.mode || "best";
     const cfg = {
       mode,
       complexity: selectedRadio(dialog, "complexity") || "large",
@@ -213,6 +232,10 @@
       showReport: !!dialog.querySelector("#csu-show-report").checked,
     };
     cfg.timeLimitSec = TIME_LIMIT_BY_COMPLEXITY[cfg.complexity] || 60;
+    // "Best timetable" = silent two-stage pipeline (JS draft -> WASM-CP-SAT
+    // improve). Forces the "auto" backend regardless of the Algorithm radio.
+    if (mode === "best") cfg.algorithm = "auto";
+    if (mode === "improve") cfg.improve = true;
     // Improve mode = warm-start from current cards + LNS perturbation +
     // longer search budget. The solver also accepts options.mode==="improve"
     // as a shorthand alias for the same combination, so callers that pass
@@ -252,7 +275,7 @@
   function open(opts) {
     current = opts || {};
     if (!host) build();
-    setMode(current.defaultMode || "generate");
+    setMode(current.defaultMode || "best");
     const targetSchool = current.school || (global.APP && global.APP.school) || null;
     setSummary(targetSchool);
     applySuggestedComplexity(targetSchool);

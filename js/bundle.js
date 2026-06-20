@@ -1,4 +1,4 @@
-/* Chronexa bundle — generated 2026-06-18T18:32:16Z
+/* Chronexa bundle — generated 2026-06-20T08:10:09Z
  *      167 modules concatenated in document order.
  * DO NOT EDIT — regenerate with bash build_bundle.sh */
 
@@ -12927,6 +12927,96 @@ ${body}
     return runBrowserSingle(school, options);
   }
 
+  // -------- in-browser WASM CP-SAT source ---------------------------------
+  // Runs the full OR-Tools CP-SAT portfolio in a Web Worker via the committed
+  // static WASM build (js/solver/wasm/cp_sat_worker.js). Requires the page to
+  // be cross-origin isolated (COOP/COEP — provided by sw.js).
+  function runWasm(school, options) {
+    const sub = makeSubscribable();
+    let cancelled = false;
+    const url = "js/solver/wasm/cp_sat_worker.js?v=" + (window.APP_VER || "");
+    let worker;
+    try {
+      worker = new Worker(url, { type: "module" });
+    } catch (e) {
+      // Worker construction failed — surface as an error source.
+      return {
+        mode: "wasm",
+        subscribe: sub.subscribe,
+        cancel() {}, pause() {}, resume() {},
+        _err: setTimeout(() => sub.emit({ type: "error", message: "WASM worker failed to start: " + ((e && e.message) || e) }), 0),
+      };
+    }
+
+    worker.onmessage = (ev) => {
+      const m = ev.data || {};
+      if (cancelled) return;
+      if (m.type === "done") {
+        sub.emit({ type: "done", result: m.result });
+        worker.terminate();
+      } else if (m.type === "error") {
+        sub.emit({ type: "error", message: m.message || "wasm worker error" });
+        worker.terminate();
+      } else if (m.type === "progress") {
+        sub.emit(m);
+      }
+    };
+    worker.onerror = (e) => sub.emit({ type: "error", message: (e && e.message) || "wasm worker error" });
+    worker.postMessage({ type: "solve", school, options });
+
+    return {
+      mode: "wasm",
+      subscribe: sub.subscribe,
+      cancel() { cancelled = true; try { worker.terminate(); } catch {} sub.emit({ type: "cancelled" }); },
+      pause()  {},
+      resume() {},
+    };
+  }
+
+  // -------- two-stage "Best" source (JS draft -> WASM-CP-SAT improve) ------
+  // Stage 1: the fast JS CSP Solver produces a draft timetable. Stage 2: feed
+  // that draft to WASM-CP-SAT in Improve mode to polish it toward 100%. One
+  // call, fully offline. Falls back to the draft if stage 2 can't run.
+  function runTwoStage(school, options) {
+    const sub = makeSubscribable();
+    let cancelled = false;
+    let stage2 = null;
+    const budget = Math.max(15, options.timeLimitSec || 60);
+    const t1 = Math.max(5, Math.round(budget * 0.35));
+    const t2 = Math.max(10, budget - t1);
+    let draft = null;
+
+    const stage1 = runBrowser(school, { ...options, timeLimitSec: t1 });
+    stage1.subscribe((ev) => {
+      if (cancelled) return;
+      if (ev.type === "progress") { sub.emit({ ...ev, stage: 1 }); return; }
+      if (ev.type === "error") { sub.emit({ type: "error", message: "draft failed: " + ev.message }); return; }
+      if (ev.type !== "done") return;
+      draft = ev.result;
+      const cards = (draft && draft.assignment)
+        ? draft.assignment.map((a) => ({ lessonId: a.lessonId, day: a.day, period: a.period, classroomId: a.classroomId }))
+        : (school.cards || []);
+      const seeded = { ...school, cards };
+      stage2 = runWasm(seeded, { ...options, improve: true, timeLimitSec: t2 });
+      stage2.subscribe((ev2) => {
+        if (cancelled) return;
+        if (ev2.type === "progress") { sub.emit({ ...ev2, stage: 2 }); }
+        else if (ev2.type === "done") { sub.emit({ type: "done", result: ev2.result }); }
+        else if (ev2.type === "error") {
+          // Stage 2 unavailable (e.g. no JSPI) — the draft is still a valid timetable.
+          sub.emit({ type: "done", result: draft });
+        }
+      });
+    });
+
+    return {
+      mode: "auto",
+      subscribe: sub.subscribe,
+      cancel() { cancelled = true; try { stage1.cancel(); } catch {} try { stage2 && stage2.cancel(); } catch {} sub.emit({ type: "cancelled" }); },
+      pause()  {}, resume() {},
+    };
+  }
+
   // -------- cloud (HTTP) source -------------------------------------------
 
   /**
@@ -13140,7 +13230,9 @@ ${body}
     const school = spec.school;
     const options = spec.options || {};
     const algo = spec.algorithm || "browser";
+    if (algo === "auto" || spec.mode === "best") return runTwoStage(school, options);
     if (algo === "cloud") return runCloud(school, options, spec.onFallback);
+    if (algo === "wasm")  return runWasm(school, options);
     return runBrowser(school, options);
   }
 
@@ -13392,7 +13484,7 @@ ${body}
  *     mode:       "generate" | "test",
  *     complexity: "normal" | "large" | "huge",   // → timeLimitSec 30 / 60 / 120
  *     conditions: "draft" | "relax" | "strict",  // → solver options.conditions (advisory; solver ignores today)
- *     algorithm:  "browser" | "cloud",           // browser Worker vs POST /solve
+ *     algorithm:  "browser" | "wasm" | "cloud",  // JS Worker · WASM CP-SAT · POST /solve
  *     showReport: true | false                   // open solver report after run
  *   }
  *
@@ -13487,7 +13579,17 @@ ${body}
       el("span", { class: "csu-modebtn__title" }, "Improve current schedule"),
       el("span", { class: "csu-modebtn__hint" }, "Keep existing placements; search outward via LNS for improvements."),
     );
-    const modeRow = el("div", { class: "csu-mode-row" }, modeBtnTest, modeBtnGen, modeBtnImp);
+    const modeBtnBest = el("button", {
+      type: "button",
+      class: "csu-modebtn",
+      "data-mode": "best",
+      onclick: () => setMode("best"),
+    },
+      el("span", { class: "csu-modebtn__icon" }, "★"),
+      el("span", { class: "csu-modebtn__title" }, "Best timetable"),
+      el("span", { class: "csu-modebtn__hint" }, "Draft fast, then perfect with CP-SAT — one click, offline, toward 100%."),
+    );
+    const modeRow = el("div", { class: "csu-mode-row" }, modeBtnTest, modeBtnGen, modeBtnImp, modeBtnBest);
 
     // --- Complexity ----------------------------------------------------------
     const complexity = radioGroup("complexity", [
@@ -13507,6 +13609,7 @@ ${body}
     const cloudReady = !!(global.CHRONEXA_BACKEND_URL && global.CHRONEXA_BACKEND_URL.length > 0);
     const algorithm = radioGroup("algorithm", [
       { value: "browser", label: "Run on this computer", hint: "Uses a Web Worker. Stays offline." },
+      { value: "wasm",    label: "CP-SAT in browser",    hint: "Full OR-Tools portfolio · offline · multi-threaded." },
       { value: "cloud",   label: "Run on cloud",          hint: cloudReady ? "OR-Tools CP-SAT via backend." : "Backend URL not set — will fall back to browser." },
     ], "browser");
 
@@ -13529,7 +13632,9 @@ ${body}
       summary,
       sectionTitle("Complexity"),    complexity,
       sectionTitle("Conditions"),    conditions,
-      sectionTitle("Algorithm"),     algorithm,
+      // Algorithm (backend) only matters for Generate/Improve. setMode() hides
+      // this section for Test (always local) and Best (always the pipeline).
+      el("div", { id: "csu-algo-section" }, sectionTitle("Algorithm"), algorithm),
       reportLabel,
       actions,
     );
@@ -13552,7 +13657,13 @@ ${body}
       b.classList.toggle("is-selected", b.dataset.mode === mode);
     });
     const startBtn = dialog.querySelector("#csu-prelaunch-start");
-    if (startBtn) startBtn.textContent = mode === "test" ? "Run test" : "Start generation";
+    if (startBtn) startBtn.textContent =
+      mode === "test" ? "Run test" :
+      mode === "best" ? "Build best timetable" :
+      mode === "improve" ? "Improve" : "Start generation";
+    // Algorithm/backend choice only applies to Generate and Improve.
+    const algoSec = dialog.querySelector("#csu-algo-section");
+    if (algoSec) algoSec.style.display = (mode === "generate" || mode === "improve") ? "" : "none";
     dialog.dataset.mode = mode;
   }
 
@@ -13581,7 +13692,7 @@ ${body}
   }
 
   function doStart() {
-    const mode = dialog.dataset.mode || "generate";
+    const mode = dialog.dataset.mode || "best";
     const cfg = {
       mode,
       complexity: selectedRadio(dialog, "complexity") || "large",
@@ -13590,6 +13701,10 @@ ${body}
       showReport: !!dialog.querySelector("#csu-show-report").checked,
     };
     cfg.timeLimitSec = TIME_LIMIT_BY_COMPLEXITY[cfg.complexity] || 60;
+    // "Best timetable" = silent two-stage pipeline (JS draft -> WASM-CP-SAT
+    // improve). Forces the "auto" backend regardless of the Algorithm radio.
+    if (mode === "best") cfg.algorithm = "auto";
+    if (mode === "improve") cfg.improve = true;
     // Improve mode = warm-start from current cards + LNS perturbation +
     // longer search budget. The solver also accepts options.mode==="improve"
     // as a shorthand alias for the same combination, so callers that pass
@@ -13629,7 +13744,7 @@ ${body}
   function open(opts) {
     current = opts || {};
     if (!host) build();
-    setMode(current.defaultMode || "generate");
+    setMode(current.defaultMode || "best");
     const targetSchool = current.school || (global.APP && global.APP.school) || null;
     setSummary(targetSchool);
     applySuggestedComplexity(targetSchool);
@@ -15842,6 +15957,20 @@ ${body}
       console.info("[chronexa] new SW active — reloading in 300ms…");
       setTimeout(() => window.location.reload(), 300);
     });
+
+    // Cross-origin isolation: the COI service worker injects COOP/COEP, but the
+    // document only becomes crossOriginIsolated on a load it actually controls.
+    // If it controls us yet we're not isolated, do ONE guarded reload so the
+    // in-browser WASM CP-SAT solver gets WASM threads + SharedArrayBuffer.
+    try {
+      if (navigator.serviceWorker.controller && !self.crossOriginIsolated && !hasOpenWork()) {
+        var _coiKey = "chrx-coi-reload-" + (window.APP_VER || "");
+        if (!sessionStorage.getItem(_coiKey)) {
+          sessionStorage.setItem(_coiKey, "1");
+          setTimeout(() => window.location.reload(), 50);
+        }
+      }
+    } catch (_) {}
 
     navigator.serviceWorker
       .register("./sw.js")

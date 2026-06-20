@@ -132,6 +132,96 @@
     return runBrowserSingle(school, options);
   }
 
+  // -------- in-browser WASM CP-SAT source ---------------------------------
+  // Runs the full OR-Tools CP-SAT portfolio in a Web Worker via the committed
+  // static WASM build (js/solver/wasm/cp_sat_worker.js). Requires the page to
+  // be cross-origin isolated (COOP/COEP — provided by sw.js).
+  function runWasm(school, options) {
+    const sub = makeSubscribable();
+    let cancelled = false;
+    const url = "js/solver/wasm/cp_sat_worker.js?v=" + (window.APP_VER || "");
+    let worker;
+    try {
+      worker = new Worker(url, { type: "module" });
+    } catch (e) {
+      // Worker construction failed — surface as an error source.
+      return {
+        mode: "wasm",
+        subscribe: sub.subscribe,
+        cancel() {}, pause() {}, resume() {},
+        _err: setTimeout(() => sub.emit({ type: "error", message: "WASM worker failed to start: " + ((e && e.message) || e) }), 0),
+      };
+    }
+
+    worker.onmessage = (ev) => {
+      const m = ev.data || {};
+      if (cancelled) return;
+      if (m.type === "done") {
+        sub.emit({ type: "done", result: m.result });
+        worker.terminate();
+      } else if (m.type === "error") {
+        sub.emit({ type: "error", message: m.message || "wasm worker error" });
+        worker.terminate();
+      } else if (m.type === "progress") {
+        sub.emit(m);
+      }
+    };
+    worker.onerror = (e) => sub.emit({ type: "error", message: (e && e.message) || "wasm worker error" });
+    worker.postMessage({ type: "solve", school, options });
+
+    return {
+      mode: "wasm",
+      subscribe: sub.subscribe,
+      cancel() { cancelled = true; try { worker.terminate(); } catch {} sub.emit({ type: "cancelled" }); },
+      pause()  {},
+      resume() {},
+    };
+  }
+
+  // -------- two-stage "Best" source (JS draft -> WASM-CP-SAT improve) ------
+  // Stage 1: the fast JS CSP Solver produces a draft timetable. Stage 2: feed
+  // that draft to WASM-CP-SAT in Improve mode to polish it toward 100%. One
+  // call, fully offline. Falls back to the draft if stage 2 can't run.
+  function runTwoStage(school, options) {
+    const sub = makeSubscribable();
+    let cancelled = false;
+    let stage2 = null;
+    const budget = Math.max(15, options.timeLimitSec || 60);
+    const t1 = Math.max(5, Math.round(budget * 0.35));
+    const t2 = Math.max(10, budget - t1);
+    let draft = null;
+
+    const stage1 = runBrowser(school, { ...options, timeLimitSec: t1 });
+    stage1.subscribe((ev) => {
+      if (cancelled) return;
+      if (ev.type === "progress") { sub.emit({ ...ev, stage: 1 }); return; }
+      if (ev.type === "error") { sub.emit({ type: "error", message: "draft failed: " + ev.message }); return; }
+      if (ev.type !== "done") return;
+      draft = ev.result;
+      const cards = (draft && draft.assignment)
+        ? draft.assignment.map((a) => ({ lessonId: a.lessonId, day: a.day, period: a.period, classroomId: a.classroomId }))
+        : (school.cards || []);
+      const seeded = { ...school, cards };
+      stage2 = runWasm(seeded, { ...options, improve: true, timeLimitSec: t2 });
+      stage2.subscribe((ev2) => {
+        if (cancelled) return;
+        if (ev2.type === "progress") { sub.emit({ ...ev2, stage: 2 }); }
+        else if (ev2.type === "done") { sub.emit({ type: "done", result: ev2.result }); }
+        else if (ev2.type === "error") {
+          // Stage 2 unavailable (e.g. no JSPI) — the draft is still a valid timetable.
+          sub.emit({ type: "done", result: draft });
+        }
+      });
+    });
+
+    return {
+      mode: "auto",
+      subscribe: sub.subscribe,
+      cancel() { cancelled = true; try { stage1.cancel(); } catch {} try { stage2 && stage2.cancel(); } catch {} sub.emit({ type: "cancelled" }); },
+      pause()  {}, resume() {},
+    };
+  }
+
   // -------- cloud (HTTP) source -------------------------------------------
 
   /**
@@ -345,7 +435,9 @@
     const school = spec.school;
     const options = spec.options || {};
     const algo = spec.algorithm || "browser";
+    if (algo === "auto" || spec.mode === "best") return runTwoStage(school, options);
     if (algo === "cloud") return runCloud(school, options, spec.onFallback);
+    if (algo === "wasm")  return runWasm(school, options);
     return runBrowser(school, options);
   }
 
