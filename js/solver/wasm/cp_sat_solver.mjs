@@ -505,6 +505,64 @@ export async function buildAndSolve(school, options = {}) {
       atLeast(m, b2b, hereAndThere.minus(1));
       softTerms.push([W_B2B, b2b]);
     }
+
+    // --- Soft card-relations (mirror the JS softRelationPenalty) -----------
+    // Each soft relation nudges the objective so the polish honours user
+    // preferences instead of trading them away. Weight sits ABOVE the generic
+    // back-to-back nicety (an explicit user preference should beat it) but well
+    // below spread (1000) and placement. Per source lesson (group = its cards).
+    const W_SOFTREL = 250;
+    const periodsPerDay = (school.bell.periods || []).length || periods.length;
+    const halfPoint = Math.floor(periodsPerDay / 2);
+    const SOFT_TYPS = new Set(['n_3', 'n_4', 'n_11', 'n_14', 'n_15', 'n_17']);
+    // periodBool(lid,p) = 1 iff lid has a card at period p on any day.
+    const periodBoolCache = new Map();
+    const periodBool = (lid, p) => {
+      const k = `${lid}|${p}`;
+      if (periodBoolCache.has(k)) return periodBoolCache.get(k);
+      const vars = []; for (const d of days) { const v = occ(lid, d, p); if (v) vars.push(...v); }
+      const b = vars.length ? m.newBoolVar(`pl_${lid}_${p}`) : null;
+      if (b) m.addMaxEquality(b, vars); periodBoolCache.set(k, b); return b;
+    };
+    let softRelCount = 0;
+    for (const rel of school.relations || []) {
+      if (!rel || rel.disabled || !SOFT_TYPS.has(rel.typ) || softRelCount > 4000) continue;
+      const matched = matchRel(rel); if (!matched.length) continue;
+      if (rel.typ === 'n_17') {                    // afternoon: penalise morning placements
+        for (const L of matched) for (const ci of (lessonCards.get(L.id) || [])) {
+          for (const [skey, avar] of assign[ci]) {
+            if (Number(skey.split(',')[1]) < halfPoint) { softTerms.push([W_SOFTREL, avar]); softRelCount++; } }
+        }
+        continue;
+      }
+      for (const L of matched) {
+        const cis = lessonCards.get(L.id) || []; const nc = cis.length; if (nc < 1) continue;
+        const dayBools = []; for (const d of days) { const b = dayBool(L.id, d); if (b) dayBools.push(b); }
+        if (rel.typ === 'n_14') {                  // same period each day: penalise extra distinct periods
+          const pBools = []; for (const p of periods) { const b = periodBool(L.id, p); if (b) pBools.push(b); }
+          if (pBools.length > 1) { const over = m.newIntVar(0, pBools.length, `n14_${L.id}`);
+            atMost(m, LinearExpr.sum([...pBools, LinearExpr.term(over, -1)]), 1); softTerms.push([W_SOFTREL, over]); softRelCount++; }
+        } else if (rel.typ === 'n_11') {           // divided same day: penalise extra distinct days
+          if (dayBools.length > 1) { const over = m.newIntVar(0, dayBools.length, `n11_${L.id}`);
+            atMost(m, LinearExpr.sum([...dayBools, LinearExpr.term(over, -1)]), 1); softTerms.push([W_SOFTREL, over]); softRelCount++; }
+        } else if (rel.typ === 'n_4') {            // distribution: want >= ceil(nc/2) days
+          const target = Math.max(1, Math.ceil(nc / 2));
+          if (target > 1 && dayBools.length) { const under = m.newIntVar(0, target, `n4_${L.id}`);
+            atLeast(m, LinearExpr.sum([...dayBools, under]), target); softTerms.push([W_SOFTREL, under]); softRelCount++; }
+        } else if (rel.typ === 'n_3') {            // alternate days: want each placed card on a distinct day
+          const over = m.newIntVar(0, nc, `n3_${L.id}`);
+          atLeast(m, LinearExpr.sum([over, ...dayBools, ...neg(cis.map((ci) => placed[ci]))]), 0);
+          softTerms.push([W_SOFTREL, over]); softRelCount++;
+        } else if (rel.typ === 'n_15') {           // even spacing: penalise consecutive-day pairs
+          for (let i = 0; i + 1 < days.length; i++) {
+            const bA = dayBool(L.id, days[i]), bB = dayBool(L.id, days[i + 1]);
+            if (bA && bB) { const adj = m.newBoolVar(`n15_${L.id}_${i}`);
+              atLeast(m, adj, LinearExpr.sum([bA, bB]).minus(1)); softTerms.push([W_SOFTREL, adj]); softRelCount++; }
+          }
+        }
+      }
+    }
+    if (softRelCount) console.error('SOFT RELATIONS: terms added=', softRelCount);
   }
 
   const totalCards = cards.length;
