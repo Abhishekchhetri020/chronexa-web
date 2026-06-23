@@ -283,13 +283,12 @@ export async function buildAndSolve(school, options = {}) {
     }
   }
   // --- Hard card-relations -------------------------------------------------
-  // n_12/n_13 (simultaneous, e.g. Sanskrit+Urdu) are ENCODED below as
-  // "same day => same period", so CP-SAT can still move the pair together — but
-  // only when the match is small enough to stay tractable. Otherwise, and for
-  // the other hard types we don't model yet, the bound cards are LOCKED to their
-  // warm-start slot (Improve mode only) so the polish can't break a relation the
-  // JS draft satisfied. (Matching mirrors the JS solver's gatherMatched().)
-  const LOCK_TYPS = new Set(['n_0','n_1','n_2','n_5','n_6','n_7','n_8','n_9','n_10','n_16']);
+  // CP-SAT now MODELS most hard n_* relations directly, so it can optimise
+  // within them instead of just preserving them. Matching + pairing mirror the
+  // JS solver (gatherMatched / pairCrossSubject). Types we don't encode yet
+  // (n_5 follow-any, n_6 ordered-follow, n_7 break-between, n_9 same-day-ordered)
+  // — and any relation whose encoding would exceed the constraint budget — fall
+  // back to LOCKING the bound cards to their warm-start slot (Improve mode only).
   const matchRel = (rel) => {
     const subjSet = new Set([...(rel.subjectids || []), ...(rel.subject2ids || [])]);
     const classSet = new Set(rel.classids || []);
@@ -298,66 +297,97 @@ export async function buildAndSolve(school, options = {}) {
       (!subjSet.size || subjSet.has(L.subjectId)) &&
       (!classSet.size || (L.classIds || []).some((c) => classSet.has(c))));
   };
-
-  // Simultaneous (n_12/n_13) cross-subject lesson pairs.
-  const simulPairs = [];
-  const simulLessons = new Set();
-  for (const rel of school.relations || []) {
-    if (!rel || rel.disabled || (rel.typ !== 'n_12' && rel.typ !== 'n_13')) continue;
-    const matched = matchRel(rel);
-    for (let a = 0; a < matched.length; a++) for (let b = a + 1; b < matched.length; b++) {
-      if (matched[a].subjectId === matched[b].subjectId) continue;
-      simulPairs.push([matched[a].id, matched[b].id]);
-      simulLessons.add(matched[a].id); simulLessons.add(matched[b].id);
+  // Per-lesson occupancy: occ(lid,d,p) = assign vars of lid covering (d,p), or null.
+  const lessonAt = new Map();
+  for (let ci = 0; ci < cards.length; ci++) {
+    const card = cards[ci];
+    for (const [skey, avar] of assign[ci]) {
+      const s = skey.split(',').map(Number);
+      for (const ps of cover(card, s)) {
+        const k = `${card.lesson_id}|${ps.join(',')}`;
+        if (!lessonAt.has(k)) lessonAt.set(k, []);
+        lessonAt.get(k).push(avar);
+      }
     }
   }
-  const simulEncode = simulPairs.length > 0 && simulPairs.length <= 120;
+  const occ = (lid, d, p) => { const v = lessonAt.get(`${lid}|${d},${p}`); return (v && v.length) ? v : null; };
+  // dayBool(lid,d) = 1 iff lid has any card on day d (lazy, reified).
+  const dayBoolCache = new Map();
+  const dayBool = (lid, d) => {
+    const k = `${lid}|${d}`;
+    if (dayBoolCache.has(k)) return dayBoolCache.get(k);
+    const vars = [];
+    for (const p of periods) { const v = occ(lid, d, p); if (v) vars.push(...v); }
+    const b = vars.length ? m.newBoolVar(`dl_${lid}_${d}`) : null;
+    if (b) m.addMaxEquality(b, vars);
+    dayBoolCache.set(k, b);
+    return b;
+  };
+  const firstP = periods[0], lastP = periods[periods.length - 1];
+  const nextP = new Map(periods.map((p, i) => [p, periods[i + 1] ?? null]));
+  const breakVals = (school.bell.periods || []).filter((p) => p.isTeaching === false).map((p) => p.index);
 
-  // Lessons LOCKED to their warm-start slot (Improve mode only).
+  const ENCODE_TYPS = new Set(['n_0','n_1','n_2','n_8','n_10','n_12','n_13','n_16']);
+  const REL_BUDGET = 60000;
+  let relCons = 0;
   const relationLockedLessons = new Set();
-  if (improve) {
-    for (const rel of school.relations || []) {
-      if (!rel || rel.disabled || !LOCK_TYPS.has(rel.typ)) continue;
-      for (const L of matchRel(rel)) relationLockedLessons.add(L.id);
-    }
-    if (!simulEncode) for (const lid of simulLessons) relationLockedLessons.add(lid);
-  }
+  const lockMatched = (matched) => { if (improve) for (const L of matched) relationLockedLessons.add(L.id); };
 
-  // ENCODE simultaneity: forbid partner lessons on the same day at different periods.
-  if (simulEncode) {
-    const lessonAt = new Map(); // `${lid}|${d},${p}` -> assign vars covering (d,p)
-    for (let ci = 0; ci < cards.length; ci++) {
-      const card = cards[ci];
-      for (const [skey, avar] of assign[ci]) {
-        const s = skey.split(',').map(Number);
-        for (const ps of cover(card, s)) {
-          const k = `${card.lesson_id}|${ps.join(',')}`;
-          if (!lessonAt.has(k)) lessonAt.set(k, []);
-          lessonAt.get(k).push(avar);
+  for (const rel of school.relations || []) {
+    if (!rel || rel.disabled) continue;
+    const matched = matchRel(rel);
+    if (matched.length < (rel.typ === 'n_16' ? 1 : 2)) continue;
+    const typ = rel.typ;
+    const pairs = matched.length * (matched.length - 1) / 2;
+    // Rough upper-bound estimate; lock instead of encoding if it would blow up.
+    const est = (typ === 'n_16') ? matched.length * periods.length
+      : pairs * days.length * periods.length * periods.length;
+    if (!ENCODE_TYPS.has(typ) || relCons + est > REL_BUDGET) { lockMatched(matched); continue; }
+    const A = matched, n = matched.length;
+    if (typ === 'n_2') {                         // no two matched at same (d,p)
+      for (let a = 0; a < n; a++) for (let b = a + 1; b < n; b++)
+        for (const d of days) for (const p of periods) {
+          const x = occ(A[a].id, d, p), y = occ(A[b].id, d, p);
+          if (x && y) { atMost(m, sum([...x, ...y]), 1); relCons++; }
         }
-      }
-    }
-    const occAt = (lid, d, p) => lessonAt.get(`${lid}|${d},${p}`);
-    let simCons = 0;
-    for (const [A, B] of simulPairs) {
-      for (const d of days) {
-        for (const pA of periods) {
-          const a = occAt(A, d, pA);
-          if (!a || !a.length) continue;
-          for (const pB of periods) {
-            if (pB === pA) continue;
-            const b = occAt(B, d, pB);
-            if (!b || !b.length) continue;
-            atMost(m, sum([...a, ...b]), 1); // forbid A@(d,pA) & B@(d,pB) when pA != pB
-            simCons++;
-          }
+    } else if (typ === 'n_12' || typ === 'n_13') { // simultaneous: same day => same period
+      for (let a = 0; a < n; a++) for (let b = a + 1; b < n; b++)
+        for (const d of days) for (const pA of periods) {
+          const x = occ(A[a].id, d, pA); if (!x) continue;
+          for (const pB of periods) { if (pB === pA) continue; const y = occ(A[b].id, d, pB);
+            if (y) { atMost(m, sum([...x, ...y]), 1); relCons++; } }
         }
+    } else if (typ === 'n_1') {                  // cross-subject, not same day
+      for (let a = 0; a < n; a++) for (let b = a + 1; b < n; b++) {
+        if (A[a].subjectId === A[b].subjectId) continue;
+        for (const d of days) { const bA = dayBool(A[a].id, d), bB = dayBool(A[b].id, d);
+          if (bA && bB) { atMost(m, LinearExpr.sum([bA, bB]), 1); relCons++; } }
       }
+    } else if (typ === 'n_8' || typ === 'n_10') { // cross-subject, must same day
+      for (let a = 0; a < n; a++) for (let b = a + 1; b < n; b++) {
+        if (A[a].subjectId === A[b].subjectId) continue;
+        for (const d1 of days) for (const d2 of days) { if (d1 === d2) continue;
+          const bA = dayBool(A[a].id, d1), bB = dayBool(A[b].id, d2);
+          if (bA && bB) { atMost(m, LinearExpr.sum([bA, bB]), 1); relCons++; } }
+      }
+    } else if (typ === 'n_0') {                  // cross-subject, not adjacent same day
+      for (let a = 0; a < n; a++) for (let b = a + 1; b < n; b++) {
+        if (A[a].subjectId === A[b].subjectId) continue;
+        for (const d of days) for (const p of periods) { const np = nextP.get(p); if (np == null) continue;
+          const x1 = occ(A[a].id, d, p), y1 = occ(A[b].id, d, np);
+          if (x1 && y1) { atMost(m, sum([...x1, ...y1]), 1); relCons++; }
+          const x2 = occ(A[a].id, d, np), y2 = occ(A[b].id, d, p);
+          if (x2 && y2) { atMost(m, sum([...x2, ...y2]), 1); relCons++; } }
+      }
+    } else if (typ === 'n_16') {                 // first or last period only
+      const mset = new Set(matched.map((L) => L.id));
+      for (let ci = 0; ci < cards.length; ci++) { if (!mset.has(cards[ci].lesson_id)) continue;
+        for (const [skey, avar] of assign[ci]) { const p = Number(skey.split(',')[1]);
+          if (p !== firstP && p !== lastP) { m.addEquality(avar, 0); relCons++; } } }
     }
-    console.error('SIMULTANEOUS (n_12/n_13): pairs=', simulPairs.length, 'constraints=', simCons);
-  } else if (simulPairs.length) {
-    console.error('SIMULTANEOUS: too many pairs (', simulPairs.length, ') — locking instead of encoding');
   }
+  console.error('RELATIONS: encoded constraints=', relCons, 'locked lessons=', relationLockedLessons.size);
+  void breakVals; // reserved for n_7 (break-between) — currently locked
 
   let hintedCards = 0, lockedCards = 0;
   for (const [lid, cis] of lessonCards) {
