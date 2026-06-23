@@ -283,12 +283,13 @@ export async function buildAndSolve(school, options = {}) {
     }
   }
   // --- Hard card-relations -------------------------------------------------
-  // CP-SAT now MODELS most hard n_* relations directly, so it can optimise
-  // within them instead of just preserving them. Matching + pairing mirror the
-  // JS solver (gatherMatched / pairCrossSubject). Types we don't encode yet
-  // (n_5 follow-any, n_6 ordered-follow, n_7 break-between, n_9 same-day-ordered)
-  // — and any relation whose encoding would exceed the constraint budget — fall
-  // back to LOCKING the bound cards to their warm-start slot (Improve mode only).
+  // CP-SAT MODELS every hard n_* relation directly (n_0,n_1,n_2,n_5,n_6,n_7,
+  // n_8,n_9,n_10,n_12,n_13,n_16), so it can optimise within them instead of
+  // just preserving them. Matching + pairing mirror the JS solver (gatherMatched
+  // / pairCrossSubject). Only relations whose encoding would exceed the
+  // constraint budget fall back to LOCKING the bound cards to their warm-start
+  // slot (Improve mode only). Soft types (n_3/n_4/n_11/n_14/n_15/n_17) are not
+  // hard-enforced here (the JS draft biases toward them).
   const matchRel = (rel) => {
     const subjSet = new Set([...(rel.subjectids || []), ...(rel.subject2ids || [])]);
     const classSet = new Set(rel.classids || []);
@@ -325,9 +326,12 @@ export async function buildAndSolve(school, options = {}) {
   };
   const firstP = periods[0], lastP = periods[periods.length - 1];
   const nextP = new Map(periods.map((p, i) => [p, periods[i + 1] ?? null]));
+  const prevP = new Map(periods.map((p, i) => [p, periods[i - 1] ?? null]));
   const breakVals = (school.bell.periods || []).filter((p) => p.isTeaching === false).map((p) => p.index);
+  // negated occupancy term helper (for "A <= B"-shaped constraints)
+  const neg = (vars) => (vars || []).map((v) => LinearExpr.term(v, -1));
 
-  const ENCODE_TYPS = new Set(['n_0','n_1','n_2','n_8','n_10','n_12','n_13','n_16']);
+  const ENCODE_TYPS = new Set(['n_0','n_1','n_2','n_5','n_6','n_7','n_8','n_9','n_10','n_12','n_13','n_16']);
   const REL_BUDGET = 60000;
   let relCons = 0;
   const relationLockedLessons = new Set();
@@ -342,7 +346,8 @@ export async function buildAndSolve(school, options = {}) {
     // Rough upper-bound estimate; lock instead of encoding if it would blow up.
     const est = (typ === 'n_16') ? matched.length * periods.length
       : pairs * days.length * periods.length * periods.length;
-    if (!ENCODE_TYPS.has(typ) || relCons + est > REL_BUDGET) { lockMatched(matched); continue; }
+    if (!ENCODE_TYPS.has(typ)) continue;                                  // soft/unknown: not hard-enforced (no lock)
+    if (relCons + est > REL_BUDGET) { lockMatched(matched); continue; }   // hard but too big: preserve via lock
     const A = matched, n = matched.length;
     if (typ === 'n_2') {                         // no two matched at same (d,p)
       for (let a = 0; a < n; a++) for (let b = a + 1; b < n; b++)
@@ -363,12 +368,52 @@ export async function buildAndSolve(school, options = {}) {
         for (const d of days) { const bA = dayBool(A[a].id, d), bB = dayBool(A[b].id, d);
           if (bA && bB) { atMost(m, LinearExpr.sum([bA, bB]), 1); relCons++; } }
       }
-    } else if (typ === 'n_8' || typ === 'n_10') { // cross-subject, must same day
+    } else if (typ === 'n_8' || typ === 'n_10' || typ === 'n_9') { // cross-subject, must same day (n_9: + in order, enforced same-day here)
       for (let a = 0; a < n; a++) for (let b = a + 1; b < n; b++) {
         if (A[a].subjectId === A[b].subjectId) continue;
         for (const d1 of days) for (const d2 of days) { if (d1 === d2) continue;
           const bA = dayBool(A[a].id, d1), bB = dayBool(A[b].id, d2);
           if (bA && bB) { atMost(m, LinearExpr.sum([bA, bB]), 1); relCons++; } }
+      }
+    } else if (typ === 'n_5') {                  // cross-subject must-follow (same day, adjacent)
+      for (let a = 0; a < n; a++) for (let b = a + 1; b < n; b++) {
+        if (A[a].subjectId === A[b].subjectId) continue;
+        for (const d of days) for (const p of periods) {
+          const pv = prevP.get(p), nx = nextP.get(p);
+          const ax = occ(A[a].id, d, p);            // A@(d,p) => a B at p-1 or p+1
+          if (ax) { const bn = [...(occ(A[b].id, d, pv) || []), ...(occ(A[b].id, d, nx) || [])];
+            atMost(m, LinearExpr.sum([...ax, ...neg(bn)]), 0); relCons++; }
+          const bx = occ(A[b].id, d, p);            // and symmetrically B => an adjacent A
+          if (bx) { const an = [...(occ(A[a].id, d, pv) || []), ...(occ(A[a].id, d, nx) || [])];
+            atMost(m, LinearExpr.sum([...bx, ...neg(an)]), 0); relCons++; }
+        }
+      }
+    } else if (typ === 'n_6') {                  // ordered must-follow: A-side then B-side at p+1
+      const Asub = (rel.subjectids || [])[0];
+      const Bsub = (rel.subject2ids || [])[0] || (rel.subjectids || [])[1];
+      if (Asub && Bsub) {
+        const As = matched.filter((L) => L.subjectId === Asub);
+        const Bs = matched.filter((L) => L.subjectId === Bsub);
+        for (const AL of As) for (const d of days) {
+          const al = occ(AL.id, d, lastP); if (al) { atMost(m, sum(al), 0); relCons++; } // A not at last
+          for (const p of periods) { const np = nextP.get(p); if (np == null) continue;
+            const ap = occ(AL.id, d, p); if (!ap) continue;
+            const bnext = []; for (const BL of Bs) { const bb = occ(BL.id, d, np); if (bb) bnext.push(...bb); }
+            atMost(m, LinearExpr.sum([...ap, ...neg(bnext)]), 0); relCons++; } // A@(d,p) <= B@(d,p+1)
+        }
+      }
+    } else if (typ === 'n_7') {                  // cross-subject: no break strictly between, same day
+      if (breakVals.length) {
+        for (let a = 0; a < n; a++) for (let b = a + 1; b < n; b++) {
+          if (A[a].subjectId === A[b].subjectId) continue;
+          for (const d of days) for (const pA of periods) for (const pB of periods) {
+            if (pA >= pB || !breakVals.some((bp) => bp > pA && bp < pB)) continue;
+            const x1 = occ(A[a].id, d, pA), y1 = occ(A[b].id, d, pB);
+            if (x1 && y1) { atMost(m, sum([...x1, ...y1]), 1); relCons++; }
+            const x2 = occ(A[a].id, d, pB), y2 = occ(A[b].id, d, pA);
+            if (x2 && y2) { atMost(m, sum([...x2, ...y2]), 1); relCons++; }
+          }
+        }
       }
     } else if (typ === 'n_0') {                  // cross-subject, not adjacent same day
       for (let a = 0; a < n; a++) for (let b = a + 1; b < n; b++) {
@@ -387,7 +432,6 @@ export async function buildAndSolve(school, options = {}) {
     }
   }
   console.error('RELATIONS: encoded constraints=', relCons, 'locked lessons=', relationLockedLessons.size);
-  void breakVals; // reserved for n_7 (break-between) — currently locked
 
   let hintedCards = 0, lockedCards = 0;
   for (const [lid, cis] of lessonCards) {
