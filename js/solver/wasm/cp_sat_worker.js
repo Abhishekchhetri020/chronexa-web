@@ -28,11 +28,17 @@ self.onmessage = async (ev) => {
     return;
   }
   try {
+    // Match the CP-SAT portfolio width to the real machine, capped to the
+    // build's thread pool (PTHREAD_POOL_SIZE=16). A caller-supplied numWorkers
+    // in m.options still wins (it spreads after this default).
+    const hw = (self.navigator && self.navigator.hardwareConcurrency) || 8;
+    const coreWorkers = Math.max(4, Math.min(hw, 12));
     const result = await buildAndSolve(m.school, {
       // Symmetry-breaking is too costly for the asyncify WASM build (it blocks
       // first-solution finding); the portfolio + LNS reach good placement
       // without it.
       symBreak: false,
+      numWorkers: coreWorkers,
       ...(m.options || {}),
       progressFn: (placed, ms) => {
         try {
