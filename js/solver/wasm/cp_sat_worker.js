@@ -39,18 +39,27 @@ self.onmessage = async (ev) => {
     return;
   }
   try {
-    // Match the CP-SAT portfolio width to the real machine, capped to the
-    // build's thread pool (PTHREAD_POOL_SIZE=16). A caller-supplied numWorkers
-    // in m.options still wins (it spreads after this default).
-    const hw = (self.navigator && self.navigator.hardwareConcurrency) || 8;
-    const coreWorkers = Math.max(4, Math.min(hw, 12));
+    // Single search worker: the OR-Tools WASM JSPI build does not reliably
+    // enforce maxTimeInSeconds with multiple pthread workers (nested worker
+    // deadlock). Single-threaded solve is slower but actually terminates.
+    const timeLimit = (m.options && m.options.timeLimitSec) || 90;
+    // JS-level watchdog: if the solver exceeds the budget by 30%, force-abort.
+    // The OR-Tools maxTimeInSeconds is our primary limiter, but the WASM
+    // pthread build sometimes deadlocks and ignores it — this guarantees we
+    // never hang. The watchdog first tries a clean cancel via cancelCheck (the
+    // next solution callback fires stopSearch), then terminates the worker as
+    // a last resort for the deadlock case (stuck inside pthreads).
+    let watchdogFired = false;
+    const watchdog = setTimeout(() => {
+      watchdogFired = true;
+      self.postMessage({ type: "error", message: "WASM solver watchdog timed out (> " + (timeLimit * 1.3) + "s). The solver may be stuck — try a different algorithm." });
+      setTimeout(() => { try { self.close(); } catch {} }, 500);
+    }, timeLimit * 1300);
     const result = await buildAndSolve(m.school, {
-      // Symmetry-breaking is too costly for the asyncify WASM build (it blocks
-      // first-solution finding); the portfolio + LNS reach good placement
-      // without it.
       symBreak: false,
-      numWorkers: coreWorkers,
       ...(m.options || {}),
+      numWorkers: 1,           // forced — JSPI pthread deadlock workaround (caller override ignored)
+      cancelCheck: () => watchdogFired,
       progressFn: (placed, ms) => {
         try {
           self.postMessage({
@@ -63,7 +72,8 @@ self.onmessage = async (ev) => {
         } catch {}
       },
     });
-    self.postMessage({ type: "done", result });
+    clearTimeout(watchdog);
+    if (!watchdogFired) self.postMessage({ type: "done", result });
   } catch (err) {
     self.postMessage({ type: "error", message: (err && (err.stack || err.message)) || String(err) });
   }
