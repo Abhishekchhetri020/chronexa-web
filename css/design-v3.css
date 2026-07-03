@@ -8,83 +8,6 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,400;9..144,500;9..144,600;9..144,700;9..144,800&family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
-:root{
-  /* Paper palette */
-  --paper:        #f6f1e6;
-  --paper-2:      #efe9da;
-  --paper-3:      #e8e2d2;
-  --ink:          #1a1714;
-  --ink-2:        #4a4339;
-  --ink-3:        #837a6d;
-  --line:         #d8cfbb;
-  --line-soft:    #e5dfce;
-  --teal:         #0d4f54;
-  --teal-2:       #084146;
-  --teal-soft:    rgba(13,79,84,.08);
-  --gold:         #b08a3e;
-  --rust:         #9c4322;
-  --moss:         #5b6e3d;
-  --sky:          #4c6e91;
-
-  /* Override the legacy chronexa-theme tokens so existing components
-     pick up the new palette without per-file changes. */
-  --chrx-bg:           var(--paper);
-  --chrx-bg-canvas:    #fbf7eb;
-  --chrx-bg-panel:     var(--paper);
-  --chrx-bg-elev:      var(--paper);
-  --chrx-bg-input:     var(--paper);
-  --chrx-bg-tile:      var(--paper-2);
-  --chrx-bg-drawer:    rgba(246,241,230,.82);
-  --chrx-bg-sheet:     var(--paper);
-  --chrx-scrim:        rgba(26,23,20,.42);
-  --chrx-fg:           var(--ink);
-  --chrx-fg-secondary: var(--ink-2);
-  --chrx-fg-tertiary:  var(--ink-3);
-  --chrx-line:         var(--line);
-  --chrx-line-soft:    var(--line-soft);
-  --chrx-accent:       var(--teal);
-  --chrx-accent-hover: var(--teal-2);
-  --chrx-accent-soft:  var(--teal-soft);
-  --chrx-accent-on:    var(--paper);
-  --chrx-green:        var(--moss);
-  --chrx-green-bg:     rgba(91,110,61,.12);
-  --chrx-red:          var(--rust);
-  --chrx-red-bg:       rgba(156,67,34,.10);
-
-  --chrx-font-sans:    "Inter Tight", -apple-system, BlinkMacSystemFont, sans-serif;
-  --chrx-font-mono:    "JetBrains Mono", ui-monospace, Menlo, monospace;
-  --chrx-font-display: "Fraunces", "Iowan Old Style", Georgia, serif;
-  --chrx-font-body:    13.5px;
-  --chrx-font-small:   12.5px;
-  --chrx-font-eye:     10.5px;
-  --chrx-font-large:   15px;
-  --chrx-font-sheet-title: 22px;
-  --chrx-fw-medium:    500;
-  --chrx-fw-semibold:  600;
-  --chrx-fw-bold:      700;
-
-  --chrx-radius-xs: 4px;
-  --chrx-radius-sm: 6px;
-  --chrx-radius-md: 10px;
-  --chrx-radius-lg: 14px;
-  --chrx-radius-xl: 22px;
-  --chrx-shadow-sm:    0 1px 0 rgba(26,23,20,.04), 0 1px 2px rgba(26,23,20,.06);
-  --chrx-shadow-sheet: 0 1px 0 rgba(26,23,20,.04), 0 4px 8px rgba(26,23,20,.06), 0 12px 24px rgba(26,23,20,.08), 0 24px 48px rgba(26,23,20,.06);
-  --chrx-shadow-drawer: 0 -1px 0 rgba(26,23,20,.04), 0 -8px 24px rgba(26,23,20,.06);
-
-  --chrx-duration-micro: 60ms;
-  --chrx-duration-fast:  140ms;
-  --chrx-ease:           cubic-bezier(.2,.7,.2,1);
-}
-
-/* Dark variant — ink palette inverted */
-html[data-theme="dark"]{
-  --paper:#15130f; --paper-2:#1c1a16; --paper-3:#22201c;
-  --ink:#f1ece0; --ink-2:#bab3a5; --ink-3:#827b6e;
-  --line:#2c2823; --line-soft:#22201c;
-  --teal:#5fb3b9; --teal-2:#4a9da3; --teal-soft:rgba(95,179,185,.12);
-}
-
 html,body{
   margin:0; padding:0;
   background:var(--paper); color:var(--ink);
@@ -121,11 +44,11 @@ body::before{
 .chrx-shell.is-side-hidden .chrx-sidebar,
 .chrx-shell.is-side-hidden .chrx-wordmark{display:none}
 .chrx-shell.is-side-hidden{grid-template-areas:"topbar topbar" "main main" "status status"}
-.chrx-rail{display:none !important}
+.chrx-rail{display:none}
 
 /* Hide the legacy dark-navy header — its Test/Generate buttons duplicate the
    topbar; data-search + lang-toggle migration to the new shell is TODO. */
-.chrx-shell .chrx-main > header[class*="from-slate-900"]{display:none !important}
+.chrx-shell .chrx-main > header[class*="from-slate-900"]{display:none}
 
 /* Sidebar / right-rail visible collapse handles — sit at each end of the
    topbar. Label is the keybind so the shortcut is self-documenting. */
@@ -161,7 +84,7 @@ body::before{
 /* Override the legacy max-w-7xl cap so the editor + pending strip fill the
    full viewport horizontally. Only inside chrx-main, only in fullscreen. */
 .chrx-shell.is-fullscreen .chrx-main > main{
-  max-width:none !important; padding:8px !important; height:100%; min-height:0; overflow:hidden;
+  max-width:none; padding:8px; height:100%; min-height:0; overflow:hidden;
 }
 
 /* Wordmark cell */
@@ -201,7 +124,7 @@ body::before{
   cursor:pointer; text-decoration:none;
   transition:background var(--chrx-duration-micro) var(--chrx-ease);
 }
-.chrx-side-link:hover{background:rgba(13,79,84,.04); color:var(--ink)}
+.chrx-side-link:hover{background:var(--chrx-accent-bg); color:var(--ink)}
 .chrx-side-link.is-active{
   background:var(--teal-soft); color:var(--teal); font-weight:600;
 }
@@ -227,7 +150,7 @@ body::before{
 .chrx-topbar{
   grid-area:topbar; display:flex; align-items:center; gap:18px;
   padding:0 22px; border-bottom:1px solid var(--line);
-  background:rgba(246,241,230,.82);
+  background:var(--chrx-bg-drawer);
   backdrop-filter:blur(20px) saturate(180%);
   -webkit-backdrop-filter:blur(20px) saturate(180%);
 }
@@ -326,11 +249,11 @@ body::before{
 }
 .chrx-status__dot{
   width:6px; height:6px; border-radius:50%; background:var(--moss);
-  box-shadow:0 0 0 3px rgba(91,110,61,.18);
+  box-shadow:0 0 0 3px var(--chrx-green-bg);
   animation:chrx-pulse 2s ease-in-out infinite;
 }
-@keyframes chrx-pulse{0%,100%{box-shadow:0 0 0 3px rgba(91,110,61,.18)}50%{box-shadow:0 0 0 5px rgba(91,110,61,.10)}}
-.chrx-status__divider{color:var(--line); padding:0 6px}
+@keyframes chrx-pulse{0%,100%{box-shadow:0 0 0 3px var(--chrx-green-bg)}50%{box-shadow:0 0 0 5px var(--chrx-accent-soft)}}
+.chrx-status__divider{color:var(--chrx-fg-tertiary); padding:0 6px}
 .chrx-status__right{margin-left:auto; display:flex; gap:14px; align-items:center}
 
 /* Main area */
@@ -341,41 +264,43 @@ body::before{
 }
 
 /* Hide legacy ribbon when shell wraps it (sidebar replaces menu drilling) */
-.chrx-shell #chrx-ribbon{display:none !important}
+.chrx-shell #chrx-ribbon{display:none}
 
 /* Tab bar polish */
 #chrx-tab-bar{
-  background:rgba(246,241,230,.85) !important;
+  background:var(--chrx-bg-drawer);
   backdrop-filter:blur(20px) saturate(180%);
   -webkit-backdrop-filter:blur(20px) saturate(180%);
-  border-bottom:1px solid var(--line) !important;
-  font-family:var(--chrx-font-sans) !important;
+  border-bottom:1px solid var(--line);
+  font-family:var(--chrx-font-sans);
 }
 #chrx-tab-bar button{
-  border-radius:999px !important; border:1px solid var(--line) !important;
-  background:var(--paper) !important; color:var(--ink) !important;
-  font-family:var(--chrx-font-sans) !important;
+  border-radius:999px; border:1px solid var(--line);
+  background:var(--paper); color:var(--ink);
+  font-family:var(--chrx-font-sans);
 }
 
-/* Editor grid — print-card aesthetic */
-.chrx-vkarta{
+/* Editor grid — print-card aesthetic. Scoped to .chrx-shell so the
+   higher specificity beats legacy .chrx-vkarta in editor.css without
+   needing ``. */
+.chrx-shell .chrx-vkarta{
   --hue:var(--chrx-card-hue,210);
   /* Edge-to-edge mosaic (aSc density): the card fills its whole cell; the
      grid lines come from the slot's own borders, not gaps between cards.
      Flat fill + a darker left stripe + squared corners reads as a dense
      timetable block rather than a floating rounded sticker. */
-  position:absolute; inset:0 !important;
-  background:hsl(var(--hue) 76% 47%) !important;
-  border:0 !important;
-  border-left: 2px solid hsl(var(--hue) 85% 26%) !important;
-  color:#ffffff !important;
-  border-radius:0 !important;
-  padding:2px 3px 2px 2px !important;   /* text hugs the extreme left for max room */
-  display:flex !important;
-  flex-direction:column !important;
-  align-items:flex-start !important;
-  justify-content:center !important;   /* vertical-center so wrapped text never top-clips; left-aligned via align-items */
-  text-align:left !important;
+  position:absolute; inset:0;
+  background:hsl(var(--hue) 76% 47%);
+  border:0;
+  border-left: 2px solid hsl(var(--hue) 85% 26%);
+  color:#ffffff;
+  border-radius:0;
+  padding:2px 3px 2px 2px;   /* text hugs the extreme left for max room */
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  justify-content:center;   /* vertical-center so wrapped text never top-clips; left-aligned via align-items */
+  text-align:left;
   font-family:var(--chrx-font-sans);
   letter-spacing:-.005em;
   font-size:var(--chrx-font-small);
@@ -388,48 +313,49 @@ body::before{
 /* aSc card anatomy: when a card carries a secondary field (teacher / room /
    subject perspectives), the prominent label sits TOP-left and the smaller
    info sits BOTTOM-left — not centred. Single-field cards (By-Class subject
-   code) stay vertically centred. Uses :has() so no JS/markup change needed. */
-.chrx-vkarta:has(.chrx-vk-line2){ justify-content:space-between !important; }
-.chrx-vkarta:has(.chrx-vk-line2) .chrx-vk-line1{ margin-bottom:auto; }
-.chrx-vkarta .chrx-vk-line2{ margin-top:auto; }
-.chrx-vkarta:hover{
+   code) stay vertically centred. Uses :has() so no JS/markup change needed.
+   Scoped to .chrx-shell for higher specificity than editor.css's legacy rule. */
+.chrx-shell .chrx-vkarta:has(.chrx-vk-line2){ justify-content:space-between; }
+.chrx-shell .chrx-vkarta:has(.chrx-vk-line2) .chrx-vk-line1{ margin-bottom:auto; }
+.chrx-shell .chrx-vkarta .chrx-vk-line2{ margin-top:auto; }
+.chrx-shell .chrx-vkarta:hover{
   /* Physical "lift": the card rises and casts a deeper, layered shadow (a tight
      contact shadow + two diffuse ambient layers) so it reads as floating above
      the grid rather than just brightening. */
-  transform:scale(1.03) translateY(-2px) !important;
+  transform:scale(1.03) translateY(-2px);
   box-shadow:
     0 1px 2px hsl(var(--hue) 60% 25%/.32),
     0 6px 14px rgba(26,23,20,.22),
-    0 12px 28px rgba(26,23,20,.16) !important;
+    0 12px 28px rgba(26,23,20,.16);
   z-index:4;
 }
 @media (prefers-reduced-motion: reduce){
-  .chrx-vkarta:hover{ transform:none !important; }
+  .chrx-shell .chrx-vkarta:hover{ transform:none; }
 }
-.chrx-vkarta:active{cursor:grabbing; transform:scale(1) translateY(0) !important;}
-.chrx-vk-line1{
+.chrx-shell .chrx-vkarta:active{cursor:grabbing; transform:scale(1) translateY(0);}
+.chrx-shell .chrx-vk-line1{
   font-family:var(--chrx-font-display); font-weight:700; font-size:11.5px;
-  letter-spacing:-.01em; line-height:1.04; color:#ffffff !important;
-  text-align:left !important; width:100% !important;
+  letter-spacing:-.01em; line-height:1.04; color:#ffffff;
+  text-align:left; width:100%;
   /* Wrap the subject to up to 2 lines and fit it (aSc-style), instead of a
      single clipped line — so "Sports Meet", "Foundation English" etc. read
      in full inside the card. */
-  display:-webkit-box !important; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
   overflow:hidden; overflow-wrap:break-word;
 }
-.chrx-vk-line2,.chrx-vk-line3{
+.chrx-shell .chrx-vk-line2,.chrx-shell .chrx-vk-line3{
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-  font-size:10.5px; font-weight:500; color:rgba(255, 255, 255, 0.88) !important;
-  text-align:left !important; width:100% !important;
+  font-size:10.5px; font-weight:500; color:rgba(255, 255, 255, 0.88);
+  text-align:left; width:100%;
 }
-.chrx-vk-line3{
+.chrx-shell .chrx-vk-line3{
   font-family:var(--chrx-font-mono); font-size:9.5px;
-  text-transform:uppercase; letter-spacing:.04em; color:rgba(255, 255, 255, 0.74) !important;
-  text-align:left !important; width:100% !important;
+  text-transform:uppercase; letter-spacing:.04em; color:rgba(255, 255, 255, 0.74);
+  text-align:left; width:100%;
 }
-.chrx-vkarta.locked{opacity:.95}
-.chrx-vkarta.locked::after{
-  content:"🔒"; position:absolute; top:2px; right:3px; font-size:9px; opacity:.8; color:#ffffff !important;
+.chrx-shell .chrx-vkarta.locked{opacity:.95}
+.chrx-shell .chrx-vkarta.locked::after{
+  content:"🔒"; position:absolute; top:2px; right:3px; font-size:9px; opacity:.8; color:#ffffff;
 }
 /* Inset rings (contained inside the card), not outer-spread — the old
    0 0 0 4px outer rings bled past the card and merged with neighbouring
@@ -518,19 +444,19 @@ body.chrx-card-in-hand .chrx-slot.empty{
 
 input[type=text],input[type=number],input[type=email],input[type=search],
 input[type=date],select,textarea{
-  font-family:var(--chrx-font-sans) !important;
-  font-size:var(--chrx-font-small) !important;
-  border-radius:var(--chrx-radius-sm) !important;
-  border:1px solid var(--line) !important;
-  background:var(--paper) !important;
-  color:var(--ink) !important;
-  padding:5px 8px !important;
-  transition:border-color var(--chrx-duration-fast), box-shadow var(--chrx-duration-fast) !important;
+  font-family:var(--chrx-font-sans);
+  font-size:var(--chrx-font-small);
+  border-radius:var(--chrx-radius-sm);
+  border:1px solid var(--line);
+  background:var(--paper);
+  color:var(--ink);
+  padding:5px 8px;
+  transition:border-color var(--chrx-duration-fast), box-shadow var(--chrx-duration-fast);
 }
 input:focus,select:focus,textarea:focus{
-  outline:0 !important;
-  border-color:var(--teal) !important;
-  box-shadow:0 0 0 3px var(--teal-soft) !important;
+  outline:0;
+  border-color:var(--teal);
+  box-shadow:0 0 0 3px var(--teal-soft);
 }
 
 /* Entity tables */
@@ -564,13 +490,13 @@ input:focus,select:focus,textarea:focus{
 }
 @keyframes chrx-palup{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
 .chrx-palette input{
-  width:100%; padding:18px 22px !important; font-size:16px !important;
-  border:0 !important; background:transparent !important;
-  font-family:var(--chrx-font-display) !important;
-  font-weight:500 !important; letter-spacing:-.01em;
-  border-bottom:1px solid var(--line) !important; border-radius:0 !important;
+  width:100%; padding:18px 22px; font-size:16px;
+  border:0; background:transparent;
+  font-family:var(--chrx-font-display);
+  font-weight:500; letter-spacing:-.01em;
+  border-bottom:1px solid var(--line); border-radius:0;
 }
-.chrx-palette input:focus{box-shadow:none !important; border-color:var(--line) !important}
+.chrx-palette input:focus{box-shadow:none; border-color:var(--line)}
 .chrx-palette-list{
   max-height:48vh; overflow:auto; padding:6px;
 }
@@ -602,7 +528,7 @@ input:focus,select:focus,textarea:focus{
 ::-webkit-scrollbar-thumb:hover{background:var(--ink-3)}
 
 @media (prefers-reduced-motion: reduce){
-  *,*::before,*::after{transition:none !important; animation:none !important}
+  *,*::before,*::after{transition:none; animation:none}
 }
 
 /* ───── Legacy step-tab strip — editorialized ─────────────────
@@ -614,51 +540,51 @@ input:focus,select:focus,textarea:focus{
    bg-blue-700 / bg-emerald-600 substring in the class attribute (which
    is how the legacy JS toggles state). */
 .chrx-shell .chrx-main > nav:has(button.step-btn){
-  background:rgba(246,241,230,.82) !important;
+  background:rgba(246,241,230,.82);
   backdrop-filter:blur(20px) saturate(180%);
   -webkit-backdrop-filter:blur(20px) saturate(180%);
-  border-bottom:1px solid var(--line) !important;
-  box-shadow:none !important;
+  border-bottom:1px solid var(--line);
+  box-shadow:none;
 }
 .chrx-shell .chrx-main > nav:has(button.step-btn) > div{
-  max-width:none !important;
-  padding:10px 22px !important;
-  gap:6px !important;
+  max-width:none;
+  padding:10px 22px;
+  gap:6px;
 }
 .chrx-shell button.step-btn{
-  background:transparent !important;
-  border:1px solid transparent !important;
-  color:var(--ink-2) !important;
-  font-family:var(--chrx-font-sans) !important;
-  font-weight:500 !important;
-  font-size:13px !important;
-  letter-spacing:-.005em !important;
-  padding:6px 14px !important;
-  border-radius:8px !important;
+  background:transparent;
+  border:1px solid transparent;
+  color:var(--ink-2);
+  font-family:var(--chrx-font-sans);
+  font-weight:500;
+  font-size:13px;
+  letter-spacing:-.005em;
+  padding:6px 14px;
+  border-radius:8px;
   transition:background 120ms ease, color 120ms ease, border-color 120ms ease;
-  box-shadow:none !important;
+  box-shadow:none;
 }
 .chrx-shell button.step-btn:hover:not(:disabled){
-  background:var(--paper-2) !important;
-  border-color:var(--line) !important;
-  color:var(--ink) !important;
+  background:var(--paper-2);
+  border-color:var(--line);
+  color:var(--ink);
 }
 .chrx-shell button.step-btn[class*="bg-blue-700"],
 .chrx-shell button.step-btn[class*="bg-emerald-600"]{
-  background:var(--teal) !important;
-  color:var(--paper) !important;
-  border-color:var(--teal) !important;
-  font-family:var(--chrx-font-display) !important;
+  background:var(--teal);
+  color:var(--paper);
+  border-color:var(--teal);
+  font-family:var(--chrx-font-display);
   font-style:italic;
-  font-weight:500 !important;
+  font-weight:500;
 }
 .chrx-shell button.step-btn[class*="bg-blue-700"]:hover:not(:disabled),
 .chrx-shell button.step-btn[class*="bg-emerald-600"]:hover:not(:disabled){
-  background:var(--teal-2) !important;
-  border-color:var(--teal-2) !important;
+  background:var(--teal-2);
+  border-color:var(--teal-2);
 }
 .chrx-shell button.step-btn:disabled{
-  color:var(--ink-3) !important;
+  color:var(--ink-3);
   opacity:.72; cursor:not-allowed;
 }
 
@@ -668,84 +594,84 @@ input:focus,select:focus,textarea:focus{
    all ship with Tailwind utilities. Override to match the editorial
    paper aesthetic. The whole row is hidden in fullscreen mode (.is-fullscreen) — these rules only matter in non-fullscreen views. */
 .chrx-shell #step-6 > div:first-child{
-  padding:14px 4px 12px !important;
-  margin-bottom:8px !important;
+  padding:14px 4px 12px;
+  margin-bottom:8px;
 }
 .chrx-shell #step-6 h2.text-blue-900,
 .chrx-shell #step-6 h2{
-  font-family:var(--chrx-font-display) !important;
-  font-weight:500 !important;
-  font-size:22px !important;
-  color:var(--ink) !important;
-  letter-spacing:-.015em !important;
-  line-height:1.15 !important;
-  margin:0 0 2px 0 !important;
+  font-family:var(--chrx-font-display);
+  font-weight:500;
+  font-size:22px;
+  color:var(--ink);
+  letter-spacing:-.015em;
+  line-height:1.15;
+  margin:0 0 2px 0;
 }
 .chrx-shell #step-6 > div:first-child p.text-slate-600,
 .chrx-shell #step-6 > div:first-child p{
-  color:var(--ink-3) !important;
-  font-family:var(--chrx-font-sans) !important;
-  font-size:13px !important;
-  letter-spacing:-.005em !important;
-  margin:0 !important;
+  color:var(--ink-3);
+  font-family:var(--chrx-font-sans);
+  font-size:13px;
+  letter-spacing:-.005em;
+  margin:0;
 }
 .chrx-shell #editor-lesson-grid,
 .chrx-shell #editor-density,
 .chrx-shell #editor-toggle-skin,
 .chrx-shell #editor-perspective{
-  background:transparent !important;
-  border:1px solid var(--line) !important;
-  color:var(--ink-2) !important;
-  font-family:var(--chrx-font-sans) !important;
-  font-weight:500 !important;
-  font-size:12px !important;
-  letter-spacing:-.005em !important;
-  padding:6px 12px !important;
-  border-radius:6px !important;
-  box-shadow:none !important;
+  background:transparent;
+  border:1px solid var(--line);
+  color:var(--ink-2);
+  font-family:var(--chrx-font-sans);
+  font-weight:500;
+  font-size:12px;
+  letter-spacing:-.005em;
+  padding:6px 12px;
+  border-radius:6px;
+  box-shadow:none;
   transition:background 120ms ease, color 120ms ease, border-color 120ms ease;
 }
 .chrx-shell #editor-lesson-grid:hover,
 .chrx-shell #editor-density:hover,
 .chrx-shell #editor-toggle-skin:hover,
 .chrx-shell #editor-perspective:hover{
-  background:var(--paper-2) !important;
-  border-color:var(--ink-3) !important;
-  color:var(--ink) !important;
+  background:var(--paper-2);
+  border-color:var(--ink-3);
+  color:var(--ink);
 }
 /* The "Lesson grid" button has a softer-than-default treatment in the
    legacy classes (bg-blue-50). Give it a subtle teal accent here so it
    reads as the primary action of the toolbar row. */
 .chrx-shell #editor-lesson-grid{
-  background:var(--teal-soft) !important;
-  border-color:rgba(13,79,84,.18) !important;
-  color:var(--teal) !important;
+  background:var(--teal-soft);
+  border-color:rgba(13,79,84,.18);
+  color:var(--teal);
 }
 .chrx-shell #editor-lesson-grid:hover{
-  background:rgba(13,79,84,.15) !important;
-  border-color:var(--teal) !important;
+  background:rgba(13,79,84,.15);
+  border-color:var(--teal);
 }
 
 /* Also restyle the "Pending cards" heading + container in the editor
    (was bg-slate-50 with a slate-700 heading). */
 .chrx-shell #step-6 h3{
-  font-family:var(--chrx-font-sans) !important;
-  color:var(--ink-2) !important;
-  font-size:12px !important;
+  font-family:var(--chrx-font-sans);
+  color:var(--ink-2);
+  font-size:12px;
   text-transform:uppercase;
-  letter-spacing:.06em !important;
-  font-weight:600 !important;
+  letter-spacing:.06em;
+  font-weight:600;
 }
 .chrx-shell #pending-strip-root{
-  background:var(--paper-2) !important;
-  border:1px solid var(--line) !important;
-  border-radius:var(--chrx-radius-md) !important;
+  background:var(--paper-2);
+  border:1px solid var(--line);
+  border-radius:var(--chrx-radius-md);
 }
 .chrx-shell #editor-root{
-  background:var(--paper) !important;
-  border:1px solid var(--line) !important;
-  border-radius:var(--chrx-radius-md) !important;
-  box-shadow:var(--chrx-shadow-sm, 0 1px 2px rgba(26,23,20,.04)) !important;
+  background:var(--paper);
+  border:1px solid var(--line);
+  border-radius:var(--chrx-radius-md);
+  box-shadow:var(--chrx-shadow-sm, 0 1px 2px rgba(26,23,20,.04));
 }
 
 /* Co-taught lesson (2 teachers) in Color:Teacher mode → diagonal of both
@@ -754,21 +680,21 @@ input:focus,select:focus,textarea:focus{
 .chrx-vkarta.chrx-vkarta--bicolor {
   background:linear-gradient(135deg,
     hsl(var(--hue) 76% 47%) 0 49.5%,
-    hsl(var(--chrx-card-hue2,210) 76% 47%) 50.5% 100%) !important;
+    hsl(var(--chrx-card-hue2,210) 76% 47%) 50.5% 100%);
 }
 
 /* Pending-strip cards must stay in normal flow. The base .chrx-vkarta rule
-   above sets position:absolute + inset:1px !important (correct for cards
+   above sets position:absolute + inset:1px (correct for cards
    INSIDE grid slots) — without this override every pending card collapsed
    onto the strip's top-left corner, overlapping the search box. */
 .chrx-vkarta.chrx-vk-pending {
-  position: relative !important;
-  inset: auto !important;
-  width: 60px !important;
-  min-width: 60px !important;
-  height: 44px !important;
-  flex: 0 0 60px !important;
-  overflow: visible !important; /* allow badge + stack shadows to paint outside */
+  position: relative;
+  inset: auto;
+  width: 60px;
+  min-width: 60px;
+  height: 44px;
+  flex: 0 0 60px;
+  overflow: visible; /* allow badge + stack shadows to paint outside */
 }
 
 /* Two DIFFERENT subjects share a slot (parallel electives like Sanskrit +
@@ -777,157 +703,157 @@ input:focus,select:focus,textarea:focus{
    extreme left. (The diagonal is reserved for ONE subject taught by several
    teachers — that's rendered as N colour stripes on a single card.) */
 .chrx-slot--split2 {
-  padding: 0 !important;
-  overflow: hidden !important;
+  padding: 0;
+  overflow: hidden;
 }
 .chrx-slot--split2 .chrx-vkarta {
-  position: absolute !important;
-  width: auto !important;
-  height: auto !important;
-  border-radius: 0 !important;
-  border-left: 2px solid hsl(var(--hue) 85% 26%) !important;
-  clip-path: none !important;
-  justify-content: center !important;
-  align-items: flex-start !important;
-  padding: 0 2px !important;
+  position: absolute;
+  width: auto;
+  height: auto;
+  border-radius: 0;
+  border-left: 2px solid hsl(var(--hue) 85% 26%);
+  clip-path: none;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 0 2px;
 }
-.chrx-slot--split2 .chrx-vkarta:nth-child(1) { inset: 0 0 50% 0 !important; }
+.chrx-slot--split2 .chrx-vkarta:nth-child(1) { inset: 0 0 50% 0; }
 .chrx-slot--split2 .chrx-vkarta:nth-child(2) {
-  inset: 50% 0 0 0 !important;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.6) !important;   /* crisp divider line */
+  inset: 50% 0 0 0;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.6);   /* crisp divider line */
 }
 .chrx-slot--split2 .chrx-vk-line1 {
-  font-size: 8.5px !important;
-  line-height: 1 !important;
-  width: 100% !important;
-  font-weight: 700 !important;
+  font-size: 8.5px;
+  line-height: 1;
+  width: 100%;
+  font-weight: 700;
 }
 .chrx-slot--split2 .chrx-vk-line2,
-.chrx-slot--split2 .chrx-vk-line3 { display: none !important; }
+.chrx-slot--split2 .chrx-vk-line3 { display: none; }
 
 /* Split slot layout for THREE OR MORE cards (rare) — micro-card grid. */
 .chrx-slot--split {
-  display: grid !important;
-  grid-template-columns: repeat(auto-fit, minmax(16px, 1fr)) !important;
-  grid-auto-rows: 1fr !important;
-  gap: 1px !important;
-  padding: 1px !important;
-  align-items: stretch !important;
-  justify-items: stretch !important;
-  overflow: hidden !important;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16px, 1fr));
+  grid-auto-rows: 1fr;
+  gap: 1px;
+  padding: 1px;
+  align-items: stretch;
+  justify-items: stretch;
+  overflow: hidden;
 }
 .chrx-slot--split .chrx-vkarta {
-  position: relative !important;
-  inset: auto !important;
-  width: auto !important;
-  height: auto !important;
-  padding: 0 1px !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  box-shadow: inset 0 0 0 1px hsl(var(--hue) 60% 55% / 0.5) !important;
+  position: relative;
+  inset: auto;
+  width: auto;
+  height: auto;
+  padding: 0 1px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: inset 0 0 0 1px hsl(var(--hue) 60% 55% / 0.5);
 }
 .chrx-slot--split .chrx-vk-line1 {
-  font-size: 9px !important;
-  line-height: 1 !important;
-  white-space: nowrap !important;
-  overflow: hidden !important;
-  text-overflow: clip !important;
-  font-weight: 600 !important;
+  font-size: 9px;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: clip;
+  font-weight: 600;
 }
 .chrx-slot--split .chrx-vk-line2,
 .chrx-slot--split .chrx-vk-line3 {
-  display: none !important;
+  display: none;
 }
 
 /* Studio Spotlight Focus overrides */
 .chrx-vkarta.chrx-card--dimmed {
-  opacity: 0.18 !important;
-  pointer-events: none !important;
-  filter: saturate(0.15) !important;
-  box-shadow: none !important;
-  transition: opacity var(--chrx-duration-fast) var(--chrx-ease), filter var(--chrx-duration-fast) var(--chrx-ease) !important;
+  opacity: 0.18;
+  pointer-events: none;
+  filter: saturate(0.15);
+  box-shadow: none;
+  transition: opacity var(--chrx-duration-fast) var(--chrx-ease), filter var(--chrx-duration-fast) var(--chrx-ease);
 }
 .chrx-vkarta.chrx-card--focus {
-  opacity: 1 !important;
-  outline: 2px solid var(--teal) !important;
-  outline-offset: 1px !important;
-  transform: scale(1.04) translateY(-1.5px) !important;
-  z-index: 12 !important;
-  box-shadow: 0 6px 16px rgba(13, 79, 84, 0.22), 0 2px 4px rgba(13, 79, 84, 0.12), inset 0 0 0 1px hsl(var(--hue) 65% 60%/.7) !important;
-  transition: transform var(--chrx-duration-fast) var(--chrx-ease), box-shadow var(--chrx-duration-fast) var(--chrx-ease) !important;
+  opacity: 1;
+  outline: 2px solid var(--teal);
+  outline-offset: 1px;
+  transform: scale(1.04) translateY(-1.5px);
+  z-index: 12;
+  box-shadow: 0 6px 16px rgba(13, 79, 84, 0.22), 0 2px 4px rgba(13, 79, 84, 0.12), inset 0 0 0 1px hsl(var(--hue) 65% 60%/.7);
+  transition: transform var(--chrx-duration-fast) var(--chrx-ease), box-shadow var(--chrx-duration-fast) var(--chrx-ease);
 }
 
 /* Print preview page warm-studio aesthetic overrides */
 .chrx-preview-doc {
-  background: var(--paper-2) !important;
-  padding: 32px 16px !important;
+  background: var(--paper-2);
+  padding: 32px 16px;
 }
 .chrx-preview-page {
-  background: #ffffff !important;
-  color: #1a1714 !important;
-  border-radius: 4px !important;
-  box-shadow: 0 10px 30px rgba(26, 23, 20, 0.08), 0 1px 4px rgba(26, 23, 20, 0.04) !important;
-  border: 1px solid var(--line-soft) !important;
-  font-family: var(--chrx-font-sans) !important;
-  padding: 16mm 14mm !important;
-  box-sizing: border-box !important;
+  background: var(--chrx-bg-elev);
+  color: var(--chrx-fg);
+  border-radius: 4px;
+  box-shadow: var(--chrx-shadow-lg);
+  border: 1px solid var(--line-soft);
+  font-family: var(--chrx-font-sans);
+  padding: 16mm 14mm;
+  box-sizing: border-box;
 }
 .chrx-print-table {
-  border-collapse: collapse !important;
-  width: 100% !important;
-  margin: 12px 0 !important;
+  border-collapse: collapse;
+  width: 100%;
+  margin: 12px 0;
 }
 .chrx-print-table th, .chrx-print-table td {
-  border: 1px solid var(--line) !important;
-  padding: 6px 8px !important;
-  transition: padding 0.15s ease, font-size 0.15s ease, border-width 0.15s ease !important;
+  border: 1px solid var(--line);
+  padding: 6px 8px;
+  transition: padding 0.15s ease, font-size 0.15s ease, border-width 0.15s ease;
 }
 .chrx-print-th-corner, .chrx-print-th-day {
-  background: var(--paper-2) !important;
-  color: var(--ink-2) !important;
-  font-family: var(--chrx-font-display) !important;
-  font-weight: 600 !important;
-  font-size: 11px !important;
-  text-transform: uppercase !important;
-  letter-spacing: 0.05em !important;
+  background: var(--paper-2);
+  color: var(--ink-2);
+  font-family: var(--chrx-font-display);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 .chrx-print-th-period {
-  background: var(--paper-2) !important;
-  color: var(--ink-2) !important;
-  font-weight: 600 !important;
-  font-size: 10px !important;
+  background: var(--paper-2);
+  color: var(--ink-2);
+  font-weight: 600;
+  font-size: 10px;
 }
 .chrx-print-th-break {
-  background: var(--paper-3) !important;
-  width: 28px !important;
-  min-width: 28px !important;
-  max-width: 28px !important;
-  padding: 0 !important;
+  background: var(--paper-3);
+  width: 28px;
+  min-width: 28px;
+  max-width: 28px;
+  padding: 0;
 }
 .chrx-print-td-break {
-  background: var(--paper-2) !important;
-  border: 1px solid var(--line) !important;
-  font-family: var(--chrx-font-sans) !important;
-  width: 28px !important;
-  min-width: 28px !important;
-  max-width: 28px !important;
-  padding: 4px 0 !important;
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  font-family: var(--chrx-font-sans);
+  width: 28px;
+  min-width: 28px;
+  max-width: 28px;
+  padding: 4px 0;
 }
 
 /* Aesthetic Tuning Drawer overrides */
 .chrx-tuning-drawer {
-  font-family: var(--chrx-font-sans) !important;
+  font-family: var(--chrx-font-sans);
 }
 .chrx-tuning-drawer select, .chrx-tuning-drawer input[type="range"] {
-  border-radius: 6px !important;
-  border: 1px solid var(--line) !important;
-  background: var(--paper) !important;
-  color: var(--ink) !important;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
 }
 @media print {
   .chrx-tuning-drawer, #chrx-preview-tuning {
-    display: none !important;
+    display: none;
   }
 }
 /* Click-to-style affordance: timetable cells are clickable in the preview to
@@ -945,165 +871,165 @@ input:focus,select:focus,textarea:focus{
 
 /* Hero container */
 .chrx-shell .chrx-start {
-  max-width: 680px !important;
-  margin: 60px auto 0 !important;
-  padding: 0 24px !important;
+  max-width: 680px;
+  margin: 60px auto 0;
+  padding: 0 24px;
 }
 
 /* Hero title — Fraunces display */
 .chrx-shell .chrx-start__wordmark {
-  font-family: var(--chrx-font-display) !important;
-  font-weight: 700 !important;
-  font-size: 48px !important;
-  letter-spacing: -0.025em !important;
-  line-height: 1.05 !important;
-  color: var(--ink) !important;
-  margin: 0 0 8px 0 !important;
-  font-variation-settings: "SOFT" 30, "opsz" 144 !important;
+  font-family: var(--chrx-font-display);
+  font-weight: 700;
+  font-size: 48px;
+  letter-spacing: -0.025em;
+  line-height: 1.05;
+  color: var(--ink);
+  margin: 0 0 8px 0;
+  font-variation-settings: "SOFT" 30, "opsz" 144;
 }
 
 /* Hero tagline */
 .chrx-shell .chrx-start__tagline {
-  font-family: var(--chrx-font-sans) !important;
-  font-size: 16px !important;
-  color: var(--ink-3) !important;
-  letter-spacing: -0.005em !important;
-  line-height: 1.5 !important;
-  margin: 0 0 32px 0 !important;
+  font-family: var(--chrx-font-sans);
+  font-size: 16px;
+  color: var(--ink-3);
+  letter-spacing: -0.005em;
+  line-height: 1.5;
+  margin: 0 0 32px 0;
 }
 
 /* Hero action cards container */
 .chrx-shell .chrx-start__actions {
-  display: grid !important;
-  grid-template-columns: 1fr 1fr !important;
-  gap: 16px !important;
-  margin-bottom: 32px !important;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 32px;
 }
 
 /* Hero action cards — New / Open file */
 .chrx-shell .chrx-start-card {
-  background: var(--paper) !important;
-  border: 1px solid var(--line) !important;
-  border-radius: var(--chrx-radius-lg) !important;
-  padding: 24px 20px !important;
-  min-height: 120px !important;
-  cursor: pointer !important;
-  box-shadow: var(--chrx-shadow-sm) !important;
-  display: flex !important;
-  align-items: center !important;
-  gap: 16px !important;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--chrx-radius-lg);
+  padding: 24px 20px;
+  min-height: 120px;
+  cursor: pointer;
+  box-shadow: var(--chrx-shadow-sm);
+  display: flex;
+  align-items: center;
+  gap: 16px;
   transition:
     transform var(--chrx-duration-fast) var(--chrx-ease),
     box-shadow var(--chrx-duration-fast) var(--chrx-ease),
-    border-color var(--chrx-duration-fast) var(--chrx-ease) !important;
+    border-color var(--chrx-duration-fast) var(--chrx-ease);
 }
 .chrx-shell .chrx-start-card:hover {
-  transform: translateY(-3px) !important;
-  box-shadow: 0 8px 24px rgba(26,23,20,.08), 0 2px 6px rgba(26,23,20,.06) !important;
-  border-color: var(--ink-3) !important;
+  transform: translateY(-3px);
+  box-shadow: 0 8px 24px rgba(26,23,20,.08), 0 2px 6px rgba(26,23,20,.06);
+  border-color: var(--ink-3);
 }
 .chrx-shell .chrx-start-card:active {
-  transform: translateY(-1px) !important;
+  transform: translateY(-1px);
 }
 
 /* Card icon circle */
 .chrx-shell .chrx-start-card__icon {
-  width: 44px !important;
-  height: 44px !important;
-  display: grid !important;
-  place-items: center !important;
-  flex: 0 0 44px !important;
-  border-radius: 12px !important;
-  font-size: 22px !important;
-  font-weight: 600 !important;
-  line-height: 1 !important;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 44px;
+  border-radius: 12px;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1;
 }
 /* New card icon — teal accent */
 .chrx-shell .chrx-start-card--new .chrx-start-card__icon {
-  background: var(--teal-soft) !important;
-  color: var(--teal) !important;
+  background: var(--teal-soft);
+  color: var(--teal);
 }
 /* Open card icon — warm paper */
 .chrx-shell .chrx-start-card--open .chrx-start-card__icon {
-  background: var(--paper-2) !important;
-  color: var(--ink-2) !important;
+  background: var(--paper-2);
+  color: var(--ink-2);
 }
 
 /* Card text */
 .chrx-shell .chrx-start-card__title {
-  font-family: var(--chrx-font-display) !important;
-  font-weight: 600 !important;
-  font-size: 18px !important;
-  letter-spacing: -0.012em !important;
-  color: var(--ink) !important;
+  font-family: var(--chrx-font-display);
+  font-weight: 600;
+  font-size: 18px;
+  letter-spacing: -0.012em;
+  color: var(--ink);
 }
 .chrx-shell .chrx-start-card__subtitle {
-  font-family: var(--chrx-font-sans) !important;
-  font-size: 13px !important;
-  color: var(--ink-3) !important;
-  letter-spacing: -0.005em !important;
+  font-family: var(--chrx-font-sans);
+  font-size: 13px;
+  color: var(--ink-3);
+  letter-spacing: -0.005em;
 }
 
 /* Start links — Demo · Sample school · Docs */
 .chrx-shell .chrx-start-links {
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  gap: 6px !important;
-  margin-top: 20px !important;
-  font-family: var(--chrx-font-sans) !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 20px;
+  font-family: var(--chrx-font-sans);
 }
 .chrx-shell .chrx-start-links button,
 .chrx-shell .chrx-start-links a {
-  font-family: var(--chrx-font-sans) !important;
-  font-size: 13px !important;
-  font-weight: 500 !important;
-  color: var(--teal) !important;
-  background: none !important;
-  border: none !important;
-  padding: 4px 8px !important;
-  border-radius: 6px !important;
-  cursor: pointer !important;
-  text-decoration: none !important;
-  transition: background var(--chrx-duration-micro) ease !important;
+  font-family: var(--chrx-font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--teal);
+  background: none;
+  border: none;
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background var(--chrx-duration-micro) ease;
 }
 .chrx-shell .chrx-start-links button:hover,
 .chrx-shell .chrx-start-links a:hover {
-  background: var(--teal-soft) !important;
+  background: var(--teal-soft);
 }
 .chrx-shell .chrx-start-links span[aria-hidden] {
-  color: var(--ink-3) !important;
-  font-size: 14px !important;
+  color: var(--ink-3);
+  font-size: 14px;
 }
 
 /* Recent timetables section */
 .chrx-shell .chrx-start-recent {
-  margin-bottom: 24px !important;
+  margin-bottom: 24px;
 }
 .chrx-shell .chrx-start-recent__head h3 {
-  font-family: var(--chrx-font-sans) !important;
-  font-size: 11px !important;
-  text-transform: uppercase !important;
-  letter-spacing: 0.12em !important;
-  color: var(--ink-3) !important;
-  font-weight: 600 !important;
-  margin: 0 0 10px 0 !important;
+  font-family: var(--chrx-font-sans);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--ink-3);
+  font-weight: 600;
+  margin: 0 0 10px 0;
 }
 .chrx-shell .chrx-start-recent__list {
-  display: flex !important;
-  flex-direction: column !important;
-  gap: 6px !important;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 /* Footer "Runs entirely in browser" line */
 .chrx-shell .chrx-main > footer {
-  font-family: var(--chrx-font-sans) !important;
-  font-size: 12px !important;
-  color: var(--ink-3) !important;
-  letter-spacing: -0.005em !important;
-  background: transparent !important;
-  padding: 16px 24px !important;
-  text-align: center !important;
+  font-family: var(--chrx-font-sans);
+  font-size: 12px;
+  color: var(--ink-3);
+  letter-spacing: -0.005em;
+  background: transparent;
+  padding: 16px 24px;
+  text-align: center;
 }
 
 /* ───── p-UI-02: Step-Tab Strip — Editorial Segmented Control ──────
@@ -1112,63 +1038,63 @@ input:focus,select:focus,textarea:focus{
 
 /* The nav container itself */
 .chrx-shell .chrx-main > nav:has(button.step-btn) {
-  background: var(--paper) !important;
-  backdrop-filter: none !important;
-  border-bottom: 1px solid var(--line-soft) !important;
-  box-shadow: none !important;
+  background: var(--paper);
+  backdrop-filter: none;
+  border-bottom: 1px solid var(--line-soft);
+  box-shadow: none;
 }
 .chrx-shell .chrx-main > nav:has(button.step-btn) > div {
-  max-width: none !important;
-  padding: 8px 22px !important;
-  gap: 4px !important;
-  display: flex !important;
-  align-items: center !important;
+  max-width: none;
+  padding: 8px 22px;
+  gap: 4px;
+  display: flex;
+  align-items: center;
 }
 
 /* Step buttons — unified editorial style */
 .chrx-shell button.step-btn {
-  background: transparent !important;
-  border: 1px solid transparent !important;
-  color: var(--ink-3) !important;
-  font-family: var(--chrx-font-sans) !important;
-  font-weight: 500 !important;
-  font-size: 13px !important;
-  letter-spacing: -0.005em !important;
-  padding: 7px 16px !important;
-  border-radius: var(--chrx-radius-sm) !important;
-  transition: all var(--chrx-duration-fast) var(--chrx-ease) !important;
-  box-shadow: none !important;
-  white-space: nowrap !important;
-  line-height: 1.3 !important;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--ink-3);
+  font-family: var(--chrx-font-sans);
+  font-weight: 500;
+  font-size: 13px;
+  letter-spacing: -0.005em;
+  padding: 7px 16px;
+  border-radius: var(--chrx-radius-sm);
+  transition: all var(--chrx-duration-fast) var(--chrx-ease);
+  box-shadow: none;
+  white-space: nowrap;
+  line-height: 1.3;
 }
 
 /* Hover — subtle paper-2 fill */
 .chrx-shell button.step-btn:hover:not(:disabled) {
-  background: var(--paper-2) !important;
-  border-color: var(--line-soft) !important;
-  color: var(--ink-2) !important;
+  background: var(--paper-2);
+  border-color: var(--line-soft);
+  color: var(--ink-2);
 }
 
 /* Active state (detected by bg-blue-700 or bg-emerald-600 in class) */
 .chrx-shell button.step-btn[class*="bg-blue-700"],
 .chrx-shell button.step-btn[class*="bg-emerald-600"] {
-  background: var(--teal) !important;
-  color: var(--paper) !important;
-  border-color: var(--teal) !important;
-  font-weight: 600 !important;
-  box-shadow: 0 1px 3px rgba(13,79,84,.25) !important;
+  background: var(--teal);
+  color: var(--paper);
+  border-color: var(--teal);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(13,79,84,.25);
 }
 .chrx-shell button.step-btn[class*="bg-blue-700"]:hover:not(:disabled),
 .chrx-shell button.step-btn[class*="bg-emerald-600"]:hover:not(:disabled) {
-  background: var(--teal-2) !important;
-  border-color: var(--teal-2) !important;
+  background: var(--teal-2);
+  border-color: var(--teal-2);
 }
 
 /* Disabled state */
 .chrx-shell button.step-btn:disabled {
-  color: var(--ink-3) !important;
-  opacity: 0.5 !important;
-  cursor: not-allowed !important;
+  color: var(--ink-3);
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* ───── p-UI-03: Feature Highlights on Landing ──────────────
@@ -1218,10 +1144,10 @@ input:focus,select:focus,textarea:focus{
     gap: 16px;
   }
   .chrx-shell .chrx-start__actions {
-    grid-template-columns: 1fr !important;
+    grid-template-columns: 1fr;
   }
   .chrx-shell .chrx-start__wordmark {
-    font-size: 36px !important;
+    font-size: 36px;
   }
 }
 
@@ -1230,29 +1156,29 @@ input:focus,select:focus,textarea:focus{
 
 /* Step panels general */
 .chrx-shell .step-panel h2 {
-  font-family: var(--chrx-font-display) !important;
-  font-weight: 600 !important;
-  font-size: 22px !important;
-  letter-spacing: -0.015em !important;
-  color: var(--ink) !important;
-  margin: 0 0 4px 0 !important;
+  font-family: var(--chrx-font-display);
+  font-weight: 600;
+  font-size: 22px;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+  margin: 0 0 4px 0;
 }
 .chrx-shell .step-panel > p {
-  font-family: var(--chrx-font-sans) !important;
-  font-size: 13px !important;
-  color: var(--ink-3) !important;
-  letter-spacing: -0.005em !important;
-  margin: 0 0 16px 0 !important;
+  font-family: var(--chrx-font-sans);
+  font-size: 13px;
+  color: var(--ink-3);
+  letter-spacing: -0.005em;
+  margin: 0 0 16px 0;
 }
 
 /* "Tip" banner in editor */
 .chrx-shell #editor-banner {
-  background: rgba(176,138,62,.08) !important;
-  border-left: 3px solid var(--gold) !important;
-  border-radius: 0 var(--chrx-radius-sm) var(--chrx-radius-sm) 0 !important;
-  font-family: var(--chrx-font-sans) !important;
-  font-size: 12.5px !important;
-  color: var(--ink-2) !important;
+  background: rgba(176,138,62,.08);
+  border-left: 3px solid var(--gold);
+  border-radius: 0 var(--chrx-radius-sm) var(--chrx-radius-sm) 0;
+  font-family: var(--chrx-font-sans);
+  font-size: 12.5px;
+  color: var(--ink-2);
 }
 
 /* Bump APP_VER on every deploy so the browser refetches the JS bundle */
@@ -1268,40 +1194,40 @@ body.chrx-editor-dark .chrx-grid-scroll{
   --chrx-bg:#0b0b0d; --chrx-bg-canvas:#000; --chrx-bg-tile:#0b0b0d;
   --chrx-bg-panel:#101014; --chrx-bg-grid-line:#222227;
   --chrx-fg:#f3f3f6; --chrx-fg-secondary:#cbcbd4; --chrx-fg-tertiary:#8a8a95;
-  background:#000 !important; border-color:#222227 !important;
+  background:#000; border-color:#222227;
 }
 body.chrx-editor-dark .chrx-grid-scroll .chrx-rowlabel,
 body.chrx-editor-dark .chrx-grid-scroll .chrx-row-head,
 body.chrx-editor-dark .chrx-grid-scroll .chrx-h-day{
-  background:#0b0b0d !important; color:#e9e9ee !important; border-color:#222227 !important;
+  background:#0b0b0d; color:#e9e9ee; border-color:#222227;
 }
-body.chrx-editor-dark .chrx-grid-scroll .chrx-h-period{ color:#9a9aa3 !important; }
+body.chrx-editor-dark .chrx-grid-scroll .chrx-h-period{ color:#9a9aa3; }
 /* Cards read as neon on black: a touch more saturation + a faint own-hue glow. */
 body.chrx-editor-dark .chrx-vkarta{
-  background:hsl(var(--hue) 82% 53%) !important;
+  background:hsl(var(--hue) 82% 53%);
   box-shadow:inset 0 0 0 1px hsl(var(--hue) 70% 62% / .4),
-             0 0 7px hsl(var(--hue) 88% 52% / .28) !important;
+             0 0 7px hsl(var(--hue) 88% 52% / .28);
 }
 body.chrx-editor-dark .chrx-vkarta:hover{
   box-shadow:0 0 0 1px hsl(var(--hue) 85% 62% / .65),
              0 0 16px hsl(var(--hue) 92% 56% / .5),
-             0 8px 20px rgba(0,0,0,.6) !important;
+             0 8px 20px rgba(0,0,0,.6);
 }
 body.chrx-editor-dark .chrx-vkarta[data-halo="red"]{
-  box-shadow:inset 0 0 0 2px #ff5a3c, 0 0 12px 1px hsl(8 92% 56% / .7) !important;
+  box-shadow:inset 0 0 0 2px #ff5a3c, 0 0 12px 1px hsl(8 92% 56% / .7);
 }
 body.chrx-editor-dark .chrx-vkarta[data-halo="amber"]{
-  box-shadow:inset 0 0 0 2px #ffc04d, 0 0 12px 1px hsl(42 96% 56% / .6) !important;
+  box-shadow:inset 0 0 0 2px #ffc04d, 0 0 12px 1px hsl(42 96% 56% / .6);
 }
 
 /* ── Plan E: editor accessibility ──────────────────────────────────────────
    Visible keyboard focus, a colour-INDEPENDENT conflict cue (shape), and a
    reduced-motion catch-all for the Plan B animations. */
-.chrx-vkarta:focus-visible{ outline:3px solid #2563eb !important; outline-offset:1px !important; z-index:6; }
+.chrx-vkarta:focus-visible{ outline:3px solid #2563eb; outline-offset:1px; z-index:6; }
 .chrx-slot:focus-visible{ outline:3px solid #2563eb; outline-offset:-3px; z-index:5; }
 .chrx-rowlabel:focus-visible{ outline:3px solid #2563eb; outline-offset:-2px; }
 body.chrx-editor-dark .chrx-vkarta:focus-visible,
-body.chrx-editor-dark .chrx-slot:focus-visible{ outline-color:#7dd3fc !important; }
+body.chrx-editor-dark .chrx-slot:focus-visible{ outline-color:#7dd3fc; }
 
 /* Colour-blind aid: a SHAPE in the corner marks conflict severity so red/amber
    aren't distinguished by hue alone. ▲ = hard conflict, ◆ = soft warning. Sits
@@ -1317,7 +1243,7 @@ body.chrx-editor-dark .chrx-slot:focus-visible{ outline-color:#7dd3fc !important
 @media (prefers-reduced-motion: reduce){
   .chrx-vkarta, .chrx-row, .chrx-slot, .chrx-card-ghost,
   body.chrx-card-in-hand .chrx-slot.empty:not(.out-of-bell)::after{
-    transition:none !important; animation:none !important;
+    transition:none; animation:none;
   }
 }
 
@@ -1375,14 +1301,14 @@ body.chrx-editor-dark .chrx-slot:focus-visible{ outline-color:#7dd3fc !important
   nav, body > header, header[class*="from-slate-900"],
   .chrx-pending-region, #editor-lower, .chrx-toast, #chrx-update-banner,
   .chrx-error-recover, .chrx-day-tabs, .step-btn, .needs-school,
-  #editor-quick-tools, .chrx-topbar-editor-tools, .chrx-pwa-banner{ display:none !important; }
-  html, body{ background:#fff !important; }
-  body::before{ display:none !important; }            /* paper grain */
-  main, main:has(#step-6:not(.hidden)){ max-width:none !important; padding:0 !important; }
-  .chrx-grid-scroll{ max-height:none !important; overflow:visible !important; border:0 !important; box-shadow:none !important; }
+  #editor-quick-tools, .chrx-topbar-editor-tools, .chrx-pwa-banner{ display:none; }
+  html, body{ background:#fff; }
+  body::before{ display:none; }            /* paper grain */
+  main, main:has(#step-6:not(.hidden)){ max-width:none; padding:0; }
+  .chrx-grid-scroll{ max-height:none; overflow:visible; border:0; box-shadow:none; }
   .chrx-row{ page-break-inside:avoid; }
   .chrx-row, .chrx-slot, .chrx-vkarta, .chrx-rowlabel, .chrx-row-head{
-    -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important;
+    -webkit-print-color-adjust:exact; print-color-adjust:exact;
   }
   /* Pivot print-preview grid: keep header/break/cell fills when printing
      (browsers strip backgrounds by default), repeat the column header on each
@@ -1392,7 +1318,7 @@ body.chrx-editor-dark .chrx-slot:focus-visible{ outline-color:#7dd3fc !important
   .chrx-pivot-grid tr{ page-break-inside:avoid; break-inside:avoid; }
   .chrx-pivot-page, .chrx-pivot-grid,
   .chrx-pivot-grid th, .chrx-pivot-grid td, .chrx-pivot-cell{
-    -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important;
+    -webkit-print-color-adjust:exact; print-color-adjust:exact;
   }
 }
 
@@ -1403,5 +1329,5 @@ body.chrx-editor-dark .chrx-slot:focus-visible{ outline-color:#7dd3fc !important
    its scroll left the bottom animation unreachable on some viewports. When the
    Start step is active, let the shell grow and the page scroll normally. The
    editor step keeps its internal scroll. */
-body:has(#step-1:not(.hidden)) .chrx-shell{ height:auto !important; min-height:100vh; }
-body:has(#step-1:not(.hidden)) .chrx-main{ overflow:visible !important; height:auto !important; }
+body:has(#step-1:not(.hidden)) .chrx-shell{ height:auto; min-height:100vh; }
+body:has(#step-1:not(.hidden)) .chrx-main{ overflow:visible; height:auto; }

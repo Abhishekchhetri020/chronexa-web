@@ -224,7 +224,8 @@
     let cancelled = false;
     let stage2 = null;
     const budget = Math.max(15, options.timeLimitSec || 60);
-    const hasWarmCards = Array.isArray(school.cards) && school.cards.some((c) => c && c.day != null && c.period != null);
+    const isColdGenerate = options.mode === "generate" && !options.warmStart && !options.improve;
+    const hasWarmCards = !isColdGenerate && Array.isArray(school.cards) && school.cards.some((c) => c && c.day != null && c.period != null);
     // Adaptive draft budget: the JS solver reaches a good draft in seconds,
     // so give it clamp(totalCards/500, 1, 5)s and leave the rest to the
     // CP-SAT polish (which does the real quality work).
@@ -525,6 +526,10 @@
     if (algo === "auto" || spec.mode === "best") return runTwoStage(school, options);
 
     if (algo === "cloud") return runCloud(school, options, spec.onFallback);
+    // A cold, direct CP-SAT solve is still too slow/flaky in the browser. For
+    // "Generate timetable + CP-SAT in browser", build a JS draft first and let
+    // CP-SAT polish it; if WASM wedges, the two-stage path returns the draft.
+    if (algo === "wasm" && options.mode === "generate") return runTwoStage(school, options);
     if (algo === "wasm")  return runWasm(school, options);
     return runBrowser(school, options);
   }

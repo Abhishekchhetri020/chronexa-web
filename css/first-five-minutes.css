@@ -87,7 +87,7 @@
   display: grid;
   place-items: center;
   border-radius: 4px;
-  background: var(--demo-card);
+  background: color-mix(in srgb, var(--demo-card) 78%, #000);
   color: #fff;
   font-size: 9px;
   font-weight: 800;
@@ -333,6 +333,6 @@
   .chrx-coachmark-card,
   .chrx-coachmark-demo__card,
   .chrx-help-popover {
-    animation: none !important;
+    animation: none;
   }
 }

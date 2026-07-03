@@ -1,5 +1,5 @@
 /* Chronexa — overrides + light extras layered on top of the theme system.
- * Order matters: this file is loaded BEFORE chronexa-theme.css in index.html
+ * Order matters: this file is loaded after css/tokens.css in the Vite entry
  * so the theme tokens still apply, but the Tailwind utility classes used in
  * index.html get overridden by the more-specific selectors below. */
 
@@ -9,7 +9,7 @@
  *    color do the talking.
  * ─────────────────────────────────────────────────────────────── */
 body > header.bg-gradient-to-r {
-  background-image: none !important;
+  background-image: none;
   background-color: var(--chrx-bg-elev, #ffffff);
   color: var(--chrx-fg, #0f172a);
   box-shadow: 0 1px 0 var(--chrx-line, rgba(0,0,0,0.08));
@@ -21,7 +21,7 @@ body > header.bg-gradient-to-r h1 {
   font-weight: 700;
 }
 body > header.bg-gradient-to-r .text-amber-200 {
-  color: var(--chrx-fg-secondary) !important;
+  color: var(--chrx-fg-secondary);
   font-style: normal;
   font-weight: 500;
 }
@@ -54,7 +54,7 @@ body > header.bg-gradient-to-r #lang-hi {
   color: var(--chrx-fg);
 }
 body > header.bg-gradient-to-r .border-white\/40 {
-  border-color: transparent !important;
+  border-color: transparent;
 }
 body > header.bg-gradient-to-r #cta-generate,
 body > header.bg-gradient-to-r #cta-test {
@@ -66,28 +66,28 @@ body > header.bg-gradient-to-r #cta-test {
               filter 160ms cubic-bezier(0.2,0.8,0.2,1);
 }
 body > header.bg-gradient-to-r #cta-generate {
-  background: var(--chrx-accent) !important;
-  color: #fff !important;
+  background: var(--chrx-accent);
+  color: #fff;
 }
 body > header.bg-gradient-to-r #cta-generate:hover:not(:disabled) {
   filter: brightness(1.06);
   box-shadow: 0 4px 10px -2px rgba(0, 122, 255, 0.30);
 }
 body > header.bg-gradient-to-r #cta-test {
-  background: var(--chrx-bg-input) !important;
-  color: var(--chrx-fg) !important;
+  background: var(--chrx-bg-input);
+  color: var(--chrx-fg);
   border: 1px solid var(--chrx-line);
 }
 body > header.bg-gradient-to-r #cta-test:hover:not(:disabled) {
-  background: var(--chrx-line-soft) !important;
+  background: var(--chrx-line-soft);
 }
 body > header.bg-gradient-to-r #cta-generate:active,
 body > header.bg-gradient-to-r #cta-test:active { transform: scale(0.98); }
 
 /* Body background — calmer warm white instead of slate-50 */
 body.bg-slate-50 {
-  background-color: var(--chrx-bg-window) !important;
-  color: var(--chrx-fg) !important;
+  background-color: var(--chrx-bg-window);
+  color: var(--chrx-fg);
 }
 
 /* ───────────────────────────────────────────────────────────────
@@ -97,47 +97,47 @@ body.bg-slate-50 {
  *    soft border, generous hit area.
  * ─────────────────────────────────────────────────────────────── */
 nav.bg-white.shadow-sm {
-  background-color: var(--chrx-bg-elev) !important;
-  border-bottom-color: var(--chrx-line) !important;
+  background-color: var(--chrx-bg-elev);
+  border-bottom-color: var(--chrx-line);
 }
 .step-btn {
-  background-color: var(--chrx-bg-input) !important;
-  color: var(--chrx-fg-secondary) !important;
+  background-color: var(--chrx-bg-input);
+  color: var(--chrx-fg-secondary);
   border: 1px solid var(--chrx-line);
-  font-weight: 500 !important;
-  font-size: 12.5px !important;
-  padding: 6px 12px !important;
-  border-radius: 8px !important;
+  font-weight: 500;
+  font-size: 12.5px;
+  padding: 6px 12px;
+  border-radius: 8px;
   transition: background-color 160ms cubic-bezier(0.2,0.8,0.2,1),
               color 160ms cubic-bezier(0.2,0.8,0.2,1),
               transform 100ms cubic-bezier(0.2,0.8,0.2,1),
               box-shadow 160ms cubic-bezier(0.2,0.8,0.2,1);
 }
 .step-btn:hover:not(:disabled) {
-  background-color: var(--chrx-line-soft) !important;
-  color: var(--chrx-fg) !important;
+  background-color: var(--chrx-line-soft);
+  color: var(--chrx-fg);
 }
 .step-btn:active:not(:disabled) { transform: scale(0.97); }
 /* The "Start" button is always active on load — give it the accent treatment */
 .step-btn.bg-blue-700,
 .step-btn.bg-emerald-600,
 .step-btn.active {
-  background-color: var(--chrx-accent) !important;
-  color: #fff !important;
+  background-color: var(--chrx-accent);
+  color: #fff;
   border-color: var(--chrx-accent);
   box-shadow: 0 1px 2px rgba(0, 122, 255, 0.20),
               0 2px 8px -2px rgba(0, 122, 255, 0.28);
-  font-weight: 600 !important;
+  font-weight: 600;
 }
 .step-btn.bg-emerald-600 {
   /* Editor pill stays accent, not green — single-color principle */
-  background-color: var(--chrx-accent) !important;
+  background-color: var(--chrx-accent);
   border-color: var(--chrx-accent);
 }
 .step-btn:disabled { opacity: 0.55; }
 .step-btn.bg-slate-200 {
-  background-color: var(--chrx-bg-input) !important;
-  color: var(--chrx-fg-secondary) !important;
+  background-color: var(--chrx-bg-input);
+  color: var(--chrx-fg-secondary);
   border-color: var(--chrx-line);
 }
 
@@ -145,12 +145,12 @@ nav.bg-white.shadow-sm {
  * 3. Step-1 hero (Start panel) — two cards "Build new" / "Load existing".
  *    Replace raw emerald + slate borders with theme surfaces.
  * ─────────────────────────────────────────────────────────────── */
-#step-1 h2.text-blue-900 { color: var(--chrx-fg) !important; letter-spacing: -0.015em; }
+#step-1 h2.text-blue-900 { color: var(--chrx-fg); letter-spacing: -0.015em; }
 #step-1 .border-emerald-500,
 #step-1 .border-slate-300 {
-  background: var(--chrx-bg-elev) !important;
-  border: 1px solid var(--chrx-line) !important;
-  border-radius: 14px !important;
+  background: var(--chrx-bg-elev);
+  border: 1px solid var(--chrx-line);
+  border-radius: 14px;
   box-shadow:
     0 1px 2px rgba(15, 23, 42, 0.04),
     0 0 0 0.5px rgba(15, 23, 42, 0.04);
@@ -161,17 +161,17 @@ nav.bg-white.shadow-sm {
 #step-1 .border-emerald-500:hover,
 #step-1 .border-slate-300:hover {
   transform: translateY(-2px);
-  border-color: var(--chrx-accent) !important;
+  border-color: var(--chrx-accent);
   box-shadow:
     0 12px 28px -10px rgba(15, 23, 42, 0.18),
     0 4px 10px -6px rgba(15, 23, 42, 0.12);
 }
-#step-1 .text-emerald-700 { color: var(--chrx-fg) !important; }
-#step-1 .text-slate-700 { color: var(--chrx-fg) !important; }
+#step-1 .text-emerald-700 { color: var(--chrx-fg); }
+#step-1 .text-slate-700 { color: var(--chrx-fg); }
 #cta-build-new {
-  background: var(--chrx-accent) !important;
-  border-radius: 10px !important;
-  font-weight: 600 !important;
+  background: var(--chrx-accent);
+  border-radius: 10px;
+  font-weight: 600;
   box-shadow: 0 1px 2px rgba(0, 122, 255, 0.22),
               0 4px 12px -4px rgba(0, 122, 255, 0.30);
   transition: filter 160ms cubic-bezier(0.2,0.8,0.2,1),
@@ -179,7 +179,7 @@ nav.bg-white.shadow-sm {
 }
 #cta-build-new:hover { filter: brightness(1.06); }
 #cta-build-new:active { transform: scale(0.985); }
-#step-1 #cta-load-demo { color: var(--chrx-accent) !important; font-weight: 600; }
+#step-1 #cta-load-demo { color: var(--chrx-accent); font-weight: 600; }
 
 /* Step heading rest of the steps */
 .step-panel h2.text-blue-900 { color: var(--chrx-fg); letter-spacing: -0.015em; }
@@ -200,43 +200,43 @@ nav.bg-white.shadow-sm {
 #step-6 h2.text-blue-900 { color: var(--chrx-fg); letter-spacing: -0.015em; }
 #step-6 #editor-toggle-skin,
 #step-6 #editor-perspective {
-  background: var(--chrx-bg-input) !important;
-  color: var(--chrx-fg) !important;
-  border: 1px solid var(--chrx-line) !important;
-  border-radius: 8px !important;
+  background: var(--chrx-bg-input);
+  color: var(--chrx-fg);
+  border: 1px solid var(--chrx-line);
+  border-radius: 8px;
   transition: background-color 160ms cubic-bezier(0.2,0.8,0.2,1),
               border-color 160ms cubic-bezier(0.2,0.8,0.2,1);
 }
 #step-6 #editor-toggle-skin:hover,
 #step-6 #editor-perspective:hover {
-  background: var(--chrx-line-soft) !important;
+  background: var(--chrx-line-soft);
 }
 #editor-banner.bg-amber-50 {
-  background: var(--chrx-accent-bg) !important;
-  border-left-color: var(--chrx-accent) !important;
-  color: var(--chrx-fg) !important;
-  border-radius: 8px !important;
+  background: var(--chrx-accent-bg);
+  border-left-color: var(--chrx-accent);
+  color: var(--chrx-fg);
+  border-radius: 8px;
 }
 #editor-root.bg-white {
-  background: var(--chrx-bg-canvas) !important;
-  border: 1px solid var(--chrx-line) !important;
-  border-radius: var(--chrx-radius-xl) !important;
+  background: var(--chrx-bg-canvas);
+  border: 1px solid var(--chrx-line);
+  border-radius: var(--chrx-radius-xl);
   box-shadow:
     0 1px 2px rgba(15, 23, 42, 0.04),
-    0 0 0 0.5px rgba(15, 23, 42, 0.03) !important;
+    0 0 0 0.5px rgba(15, 23, 42, 0.03);
 }
 #pending-strip-root.bg-slate-50 {
-  background: var(--chrx-bg-tile) !important;
-  border: 1px solid var(--chrx-line) !important;
-  border-radius: var(--chrx-radius-lg) !important;
+  background: var(--chrx-bg-tile);
+  border: 1px solid var(--chrx-line);
+  border-radius: var(--chrx-radius-lg);
 }
 
 /* ───────────────────────────────────────────────────────────────
  * 5. Footer — small softening
  * ─────────────────────────────────────────────────────────────── */
 footer.bg-slate-100 {
-  background-color: var(--chrx-bg-elev) !important;
-  color: var(--chrx-fg-tertiary) !important;
+  background-color: var(--chrx-bg-elev);
+  color: var(--chrx-fg-tertiary);
   border-top: 1px solid var(--chrx-line);
 }
 
@@ -272,51 +272,86 @@ table.preview tr:nth-child(even) { background: var(--chrx-bg-tile); }
  *    half-built dark theme misses.
  * ─────────────────────────────────────────────────────────────── */
 :root[data-theme="dark"] body.bg-slate-50,
-:root:not([data-theme="light"]) body.bg-slate-50 {
-  background-color: var(--chrx-bg-window) !important;
-  color: var(--chrx-fg) !important;
+:root[data-theme="dark"] body.bg-slate-50 {
+  background-color: var(--chrx-bg-window);
+  color: var(--chrx-fg);
 }
 :root[data-theme="dark"] body > header.bg-gradient-to-r,
-:root:not([data-theme="light"]) body > header.bg-gradient-to-r {
-  background-color: var(--chrx-bg-elev) !important;
-  color: var(--chrx-fg) !important;
+:root[data-theme="dark"] body > header.bg-gradient-to-r {
+  background-color: var(--chrx-bg-elev);
+  color: var(--chrx-fg);
   border-bottom-color: var(--chrx-line);
 }
 :root[data-theme="dark"] nav.bg-white.shadow-sm,
-:root:not([data-theme="light"]) nav.bg-white.shadow-sm {
-  background-color: var(--chrx-bg-elev) !important;
+:root[data-theme="dark"] nav.bg-white.shadow-sm {
+  background-color: var(--chrx-bg-elev);
 }
 :root[data-theme="dark"] footer.bg-slate-100,
-:root:not([data-theme="light"]) footer.bg-slate-100 {
-  background-color: var(--chrx-bg-elev) !important;
+:root[data-theme="dark"] footer.bg-slate-100 {
+  background-color: var(--chrx-bg-elev);
 }
 :root[data-theme="dark"] #step-1 .border-emerald-500,
 :root[data-theme="dark"] #step-1 .border-slate-300,
-:root:not([data-theme="light"]) #step-1 .border-emerald-500,
-:root:not([data-theme="light"]) #step-1 .border-slate-300 {
-  background: var(--chrx-bg-elev) !important;
-  border-color: var(--chrx-line) !important;
+:root[data-theme="dark"] #step-1 .border-emerald-500,
+:root[data-theme="dark"] #step-1 .border-slate-300 {
+  background: var(--chrx-bg-elev);
+  border-color: var(--chrx-line);
 }
 :root[data-theme="dark"] .step-btn.bg-slate-200,
-:root:not([data-theme="light"]) .step-btn.bg-slate-200 {
-  background-color: var(--chrx-bg-input) !important;
+:root[data-theme="dark"] .step-btn.bg-slate-200 {
+  background-color: var(--chrx-bg-input);
 }
 /* Text helpers used by index.html that look bad in dark mode */
 :root[data-theme="dark"] .text-slate-600,
 :root[data-theme="dark"] .text-slate-500,
 :root[data-theme="dark"] .text-slate-700,
 :root[data-theme="dark"] .text-slate-800,
-:root:not([data-theme="light"]) .text-slate-600,
-:root:not([data-theme="light"]) .text-slate-500,
-:root:not([data-theme="light"]) .text-slate-700,
-:root:not([data-theme="light"]) .text-slate-800 { color: var(--chrx-fg-secondary) !important; }
+:root[data-theme="dark"] .text-slate-600,
+:root[data-theme="dark"] .text-slate-500,
+:root[data-theme="dark"] .text-slate-700,
+:root[data-theme="dark"] .text-slate-800 { color: var(--chrx-fg-secondary); }
 :root[data-theme="dark"] .bg-white,
-:root:not([data-theme="light"]) .bg-white {
-  background-color: var(--chrx-bg-elev) !important;
+:root[data-theme="dark"] .bg-white {
+  background-color: var(--chrx-bg-elev);
 }
 :root[data-theme="dark"] .bg-slate-50,
 :root[data-theme="dark"] .bg-slate-100,
-:root:not([data-theme="light"]) .bg-slate-50,
-:root:not([data-theme="light"]) .bg-slate-100 {
-  background-color: var(--chrx-bg-window) !important;
+:root[data-theme="dark"] .bg-slate-50,
+:root[data-theme="dark"] .bg-slate-100 {
+  background-color: var(--chrx-bg-window);
+}
+
+/* ───── Dark-mode: print-preview surfaces ────────────────────────────────
+   The .chrx-preview-* components in design-v3.css read the v3 --paper /
+   --ink aliases exported by tokens.css. Re-assign them under
+   [data-theme="dark"] so the print preview reads dark. */
+:root[data-theme="dark"] .chrx-preview-doc {
+  background: var(--chrx-bg-canvas);
+  color: var(--chrx-fg);
+}
+:root[data-theme="dark"] .chrx-preview-page {
+  background: var(--chrx-bg-elev);
+  color: var(--chrx-fg);
+  border-color: var(--chrx-line);
+}
+:root[data-theme="dark"] .chrx-preview-th-corner,
+:root[data-theme="dark"] .chrx-preview-th-day,
+:root[data-theme="dark"] .chrx-preview-th-period,
+:root[data-theme="dark"] .chrx-preview-th-break,
+:root[data-theme="dark"] .chrx-print-th-corner,
+:root[data-theme="dark"] .chrx-print-th-day,
+:root[data-theme="dark"] .chrx-print-th-period,
+:root[data-theme="dark"] .chrx-print-th-break {
+  background: var(--chrx-bg-tile);
+  color: var(--chrx-fg-secondary);
+}
+:root[data-theme="dark"] .chrx-tune-drawer,
+:root[data-theme="dark"] .chrx-tuning-drawer {
+  background: var(--chrx-bg-elev);
+  color: var(--chrx-fg);
+}
+:root[data-theme="dark"] .chrx-print-td-break,
+:root[data-theme="dark"] .chrx-pivot-datacell {
+  background: var(--chrx-bg-tile);
+  color: var(--chrx-fg);
 }

@@ -1,0 +1,435 @@
+/* Chronexa design tokens — single source of truth (paper / Fraunces / Teal).
+ *
+ * Replaces css/chronexa-theme.css (v1 — Apple/iOS-blue palette) and the
+ * cascade shim in css/design-v3.css. Loaded FIRST by js/entry/main.js so every
+ * component CSS resolves through this file.
+ *
+ * Light palette = v3 paper (Fraunces display + Inter Tight sans). Dark
+ * palette = v3 ink-palette inverted, retained at Teal hue for contrast.
+ *
+ * Cascade rules:
+ *   :root                                → light defaults
+ *   @media prefers-color-scheme: dark     → follows system unless .data-theme="light" pinned
+ *   :root[data-theme="dark"]             → explicit user toggle (always wins)
+ *   :root[data-theme="light"]            → explicit user toggle (pins light)
+ *   html.chrx-editor-dark                → scoped OLED canvas for the editor surface
+ *
+ * Contrast (AA): fg/canvas ≥ 15:1; accent/canvas ≥ 4.5:1.
+ * No in this file — tokens are :root-scoped, cascade order only. */
+
+:root {
+  color-scheme: light;
+
+  /* ───── Typography ───── */
+  --chrx-font-sans: "Inter Tight", -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, sans-serif;
+  --chrx-font-display: "Fraunces", "Iowan Old Style", Georgia, serif;
+  --chrx-font-mono: "JetBrains Mono", ui-monospace, Menlo, Consolas,
+    "Courier New", monospace;
+
+  /* Cell-editor sizes — keep v3's density */
+  --chrx-font-stat-big: 28px;
+  --chrx-font-h1: 22px;
+  --chrx-font-h2: 18px;
+  --chrx-font-sheet-title: 17px;
+  --chrx-font-large: 15.5px;
+  --chrx-font-body: 13.5px;
+  --chrx-font-section: 13px;
+  --chrx-font-small: 12.5px;
+  --chrx-font-cell-m: 11px;
+  --chrx-font-eye: 10.5px;
+  --chrx-font-cell-s: 10px;
+
+  /* Weights */
+  --chrx-fw-regular: 400;
+  --chrx-fw-medium: 500;
+  --chrx-fw-semibold: 600;
+  --chrx-fw-bold: 650;
+
+  /* ───── Spacing (4-pt, with v3's 22px between 16 and 24) ───── */
+  --chrx-space-0: 0;
+  --chrx-space-1: 4px;
+  --chrx-space-2: 8px;
+  --chrx-space-3: 12px;
+  --chrx-space-4: 16px;
+  --chrx-space-5: 22px;
+  --chrx-space-6: 24px;
+  --chrx-space-8: 32px;
+  --chrx-space-10: 40px;
+
+  /* ───── Radius (v3, generous) ───── */
+  --chrx-radius-xs: 4px;
+  --chrx-radius-sm: 6px;
+  --chrx-radius-md: 10px;
+  --chrx-radius-lg: 14px;
+  --chrx-radius-xl: 22px;
+  --chrx-radius-pill: 999px;
+
+  /* ───── Motion ───── */
+  --chrx-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --chrx-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --chrx-ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --chrx-duration-micro: 60ms;
+  --chrx-duration-fast: 140ms;
+  --chrx-duration-base: 240ms;
+  --chrx-duration-slow: 280ms;
+
+  /* ───── Z-stack ───── */
+  --chrx-z-grid: 1;
+  --chrx-z-drawer: 50;
+  --chrx-z-sheet: 80;
+  --chrx-z-palette: 90;
+  --chrx-z-toast: 100;
+
+  /* ───── Subject hues (used in hsl(var(--chrx-hue-math) sat% lum%)) ───── */
+  --chrx-hue-math: 220;
+  --chrx-hue-eng: 12;
+  --chrx-hue-hin: 32;
+  --chrx-hue-sci: 150;
+  --chrx-hue-sst: 50;
+  --chrx-hue-mus: 285;
+  --chrx-hue-art: 330;
+  --chrx-hue-pe: 110;
+  --chrx-hue-it: 250;
+  --chrx-hue-lib: 200;
+
+  /* ───── Surface palette (paper-light) ───── */
+  --chrx-bg:           #f6f1e6;
+  --chrx-bg-window:    #f6f1e6;
+  --chrx-bg-canvas:    #fbf7eb;
+  --chrx-bg-sheet:     #f6f1e6;
+  --chrx-bg-panel:     #f6f1e6;
+  --chrx-bg-elev:      #ffffff;
+  --chrx-bg-tile:      #efe9da;
+  --chrx-bg-tile-thin: #f6f1e6;
+  --chrx-bg-input:     #f6f1e6;
+  --chrx-bg-modal:     rgba(246, 241, 230, 0.92);
+  --chrx-bg-drawer:    rgba(246, 241, 230, 0.82);
+  --chrx-bg-grid-line: rgba(26, 23, 20, 0.07);
+
+  /* V3 compatibility aliases. These are tokens too, kept here so shell,
+     ribbon, print-preview and editor CSS do not define competing palettes. */
+  --paper:        var(--chrx-bg);
+  --paper-2:      var(--chrx-bg-tile);
+  --paper-3:      #e8e2d2;
+  --ink:          var(--chrx-fg);
+  --ink-2:        var(--chrx-fg-secondary);
+  --ink-3:        var(--chrx-fg-tertiary);
+  --line:         #d8cfbb;
+  --line-soft:    #e5dfce;
+  --teal:         var(--chrx-accent);
+  --teal-2:       var(--chrx-accent-hover);
+  --teal-soft:    var(--chrx-accent-soft);
+  --gold:         var(--chrx-yellow);
+  --rust:         var(--chrx-red);
+  --moss:         #5b6e3d;
+  --sky:          var(--chrx-blue);
+
+  /* ───── Foreground / line ───── */
+  --chrx-fg:           #1a1714;
+  --chrx-fg-secondary: #4a4339;
+  --chrx-fg-tertiary:  #837a6d;
+  --chrx-fg-faint:     rgba(26, 23, 20, 0.25);
+  --chrx-fg-muted:     #837a6d;
+
+  --chrx-line:         rgba(26, 23, 20, 0.10);
+  --chrx-line-soft:    rgba(26, 23, 20, 0.06);
+
+  /* ───── Accent (Teal) ───── */
+  --chrx-accent:        #0d4f54;
+  --chrx-accent-hover:  #084146;
+  --chrx-accent-on:     #f6f1e6;
+  --chrx-accent-soft:   rgba(13, 79, 84, 0.08);
+  --chrx-accent-bg:        rgba(13, 79, 84, 0.10);
+  --chrx-accent-bg-strong: rgba(13, 79, 84, 0.18);
+
+  /* ───── Functional / status ───── */
+  --chrx-green:        #16a34a; /* matches moss palette for status pills */
+  --chrx-green-bg:     rgba(91, 110, 61, 0.12);
+  --chrx-green-border: rgba(22, 163, 74, 0.45);
+
+  --chrx-red:          #9c4322; /* rust */
+  --chrx-red-bg:       rgba(156, 67, 34, 0.10);
+  --chrx-red-border:   rgba(156, 67, 34, 0.45);
+
+  --chrx-amber:        #d97706; /* legacy dsv2 alias */
+  --chrx-amber-bg:     rgba(217, 119, 6, 0.10);
+
+  --chrx-orange:       #d97706;
+  --chrx-orange-bg:    rgba(217, 119, 6, 0.10);
+
+  --chrx-yellow:       #b08a3e; /* gold */
+  --chrx-yellow-bg:    rgba(176, 138, 62, 0.20);
+
+  --chrx-purple:       #7c4dff;
+  --chrx-purple-bg:    rgba(124, 77, 255, 0.16);
+  --chrx-focus-purple: #8a3fc7;
+
+  --chrx-blue:         #4c6e91; /* sky */
+  --chrx-blue-bg:      rgba(76, 110, 145, 0.18);
+  --chrx-blue-border:  rgba(76, 110, 145, 0.45);
+
+  /* ───── Kbd / scrim ───── */
+  --chrx-kbd-bg:       rgba(26, 23, 20, 0.06);
+  --chrx-kbd-fg:       rgba(26, 23, 20, 0.55);
+  --chrx-scrim:        rgba(26, 23, 20, 0.42);
+
+  /* ───── Shadows (4 layered stops; tinted by ink) ───── */
+  --chrx-shadow-sm:
+    0 1px 0 rgba(26, 23, 20, 0.04),
+    0 1px 2px rgba(26, 23, 20, 0.06);
+  --chrx-shadow-md:
+    0 1px 0 rgba(26, 23, 20, 0.04),
+    0 2px 4px rgba(26, 23, 20, 0.06),
+    0 8px 16px rgba(26, 23, 20, 0.05);
+  --chrx-shadow-lg:
+    0 1px 0 rgba(26, 23, 20, 0.04),
+    0 4px 8px rgba(26, 23, 20, 0.06),
+    0 12px 24px rgba(26, 23, 20, 0.08),
+    0 24px 48px rgba(26, 23, 20, 0.06);
+  --chrx-shadow-sheet: var(--chrx-shadow-lg);
+  --chrx-shadow-tile:  var(--chrx-shadow-sm);
+  --chrx-shadow-drawer:
+    0 -1px 0 rgba(26, 23, 20, 0.04),
+    0 -8px 24px rgba(26, 23, 20, 0.06);
+
+  /* ───── Layout / runtime vars (defaults overridden by JS where useful) ───── */
+  --chrx-grid-zoom: 1;
+  --chrx-periods: 8;
+  --chrx-cell-min: 34px;
+  --chrx-rowlabel-w: 64px;
+  --chrx-stack-depth: 0;
+}
+
+/* ───── DARK ─────────────────────────────────────────────────────────────
+   System preference: inverted ink-on-paper palette, teal accent brightened
+   enough for ≥4.5:1 contrast against the canvas. */
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --chrx-bg:            #15130f;
+    --chrx-bg-window:     #15130f;
+    --chrx-bg-canvas:     #1c1a16;
+    --chrx-bg-sheet:      #1c1a16;
+    --chrx-bg-panel:      #1c1a16;
+    --chrx-bg-elev:       #22201c;
+    --chrx-bg-tile:       #22201c;
+    --chrx-bg-tile-thin:  #1c1a16;
+    --chrx-bg-input:      #1c1a16;
+    --chrx-bg-modal:      rgba(28, 26, 22, 0.92);
+    --chrx-bg-drawer:     rgba(28, 26, 22, 0.82);
+    --chrx-bg-grid-line:  rgba(241, 236, 224, 0.06);
+
+    --paper:        var(--chrx-bg);
+    --paper-2:      var(--chrx-bg-canvas);
+    --paper-3:      var(--chrx-bg-elev);
+    --ink:          var(--chrx-fg);
+    --ink-2:        var(--chrx-fg-secondary);
+    --ink-3:        var(--chrx-fg-tertiary);
+    --line:         #2c2823;
+    --line-soft:    #22201c;
+    --teal:         var(--chrx-accent);
+    --teal-2:       var(--chrx-accent-hover);
+    --teal-soft:    var(--chrx-accent-soft);
+    --gold:         var(--chrx-yellow);
+    --rust:         var(--chrx-red);
+    --moss:         var(--chrx-green);
+    --sky:          var(--chrx-blue);
+
+    --chrx-fg:           #f1ece0;
+    --chrx-fg-secondary: #bab3a5;
+    --chrx-fg-tertiary:  #a49b8d;
+    --chrx-fg-faint:     rgba(241, 236, 224, 0.25);
+    --chrx-fg-muted:     #a49b8d;
+
+    --chrx-line:         rgba(241, 236, 224, 0.10);
+    --chrx-line-soft:    rgba(241, 236, 224, 0.05);
+
+    --chrx-accent:        #5fb3b9;
+    --chrx-accent-hover:  #4a9da3;
+    --chrx-accent-on:     #15130f;
+    --chrx-accent-soft:   rgba(95, 179, 185, 0.14);
+    --chrx-accent-bg:        rgba(95, 179, 185, 0.18);
+    --chrx-accent-bg-strong: rgba(95, 179, 185, 0.28);
+
+    --chrx-green:        #6ea25b;
+    --chrx-green-bg:     rgba(91, 110, 61, 0.20);
+    --chrx-green-border: rgba(110, 162, 91, 0.55);
+
+    --chrx-red:          #c46a4d;
+    --chrx-red-bg:       rgba(196, 106, 77, 0.18);
+    --chrx-red-border:   rgba(196, 106, 77, 0.55);
+
+    --chrx-amber:        #c98c2a;
+    --chrx-amber-bg:     rgba(217, 119, 6, 0.18);
+
+    --chrx-orange:       #c98c2a;
+    --chrx-orange-bg:    rgba(217, 119, 6, 0.18);
+
+    --chrx-yellow:       #cda651;
+    --chrx-yellow-bg:    rgba(205, 166, 81, 0.22);
+
+    --chrx-purple:       #a586ff;
+    --chrx-purple-bg:    rgba(165, 134, 255, 0.18);
+    --chrx-focus-purple: #c190ff;
+
+    --chrx-blue:         #82a6c4;
+    --chrx-blue-bg:      rgba(130, 166, 196, 0.18);
+    --chrx-blue-border:  rgba(130, 166, 196, 0.55);
+
+    --chrx-kbd-bg:       rgba(241, 236, 224, 0.10);
+    --chrx-kbd-fg:       rgba(241, 236, 224, 0.65);
+    --chrx-scrim:        rgba(0, 0, 0, 0.60);
+
+    --chrx-shadow-sm:
+      0 1px 0 rgba(0, 0, 0, 0.30),
+      0 1px 2px rgba(0, 0, 0, 0.40);
+    --chrx-shadow-md:
+      0 1px 0 rgba(0, 0, 0, 0.30),
+      0 2px 4px rgba(0, 0, 0, 0.40),
+      0 8px 16px rgba(0, 0, 0, 0.35);
+    --chrx-shadow-lg:
+      0 1px 0 rgba(0, 0, 0, 0.30),
+      0 4px 8px rgba(0, 0, 0, 0.40),
+      0 12px 24px rgba(0, 0, 0, 0.45),
+      0 24px 48px rgba(0, 0, 0, 0.35);
+    --chrx-shadow-sheet: var(--chrx-shadow-lg);
+    --chrx-shadow-tile:  var(--chrx-shadow-sm);
+    --chrx-shadow-drawer:
+      0 -1px 0 rgba(0, 0, 0, 0.30),
+      0 -8px 24px rgba(0, 0, 0, 0.40);
+  }
+}
+
+/* ───── Explicit user toggle (always wins, triggers even when prefers-light) ───── */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --chrx-bg:            #15130f;
+  --chrx-bg-window:     #15130f;
+  --chrx-bg-canvas:     #1c1a16;
+  --chrx-bg-sheet:      #1c1a16;
+  --chrx-bg-panel:      #1c1a16;
+  --chrx-bg-elev:       #22201c;
+  --chrx-bg-tile:       #22201c;
+  --chrx-bg-tile-thin:  #1c1a16;
+  --chrx-bg-input:      #1c1a16;
+  --chrx-bg-modal:      rgba(28, 26, 22, 0.92);
+  --chrx-bg-drawer:     rgba(28, 26, 22, 0.82);
+  --chrx-bg-grid-line:  rgba(241, 236, 224, 0.06);
+
+  --paper:        var(--chrx-bg);
+  --paper-2:      var(--chrx-bg-canvas);
+  --paper-3:      var(--chrx-bg-elev);
+  --ink:          var(--chrx-fg);
+  --ink-2:        var(--chrx-fg-secondary);
+    --ink-3:        var(--chrx-fg-tertiary);
+  --line:         #2c2823;
+  --line-soft:    #22201c;
+  --teal:         var(--chrx-accent);
+  --teal-2:       var(--chrx-accent-hover);
+  --teal-soft:    var(--chrx-accent-soft);
+  --gold:         var(--chrx-yellow);
+  --rust:         var(--chrx-red);
+  --moss:         var(--chrx-green);
+  --sky:          var(--chrx-blue);
+
+  --chrx-fg:           #f1ece0;
+  --chrx-fg-secondary: #bab3a5;
+  --chrx-fg-tertiary:  #a49b8d;
+  --chrx-fg-faint:     rgba(241, 236, 224, 0.25);
+  --chrx-fg-muted:     #a49b8d;
+
+  --chrx-line:         rgba(241, 236, 224, 0.10);
+  --chrx-line-soft:    rgba(241, 236, 224, 0.05);
+
+  --chrx-accent:        #5fb3b9;
+  --chrx-accent-hover:  #4a9da3;
+  --chrx-accent-on:     #15130f;
+  --chrx-accent-soft:   rgba(95, 179, 185, 0.14);
+  --chrx-accent-bg:        rgba(95, 179, 185, 0.18);
+  --chrx-accent-bg-strong: rgba(95, 179, 185, 0.28);
+
+  --chrx-green:        #6ea25b;
+  --chrx-green-bg:     rgba(91, 110, 61, 0.20);
+  --chrx-green-border: rgba(110, 162, 91, 0.55);
+
+  --chrx-red:          #c46a4d;
+  --chrx-red-bg:       rgba(196, 106, 77, 0.18);
+  --chrx-red-border:   rgba(196, 106, 77, 0.55);
+
+  --chrx-amber:        #c98c2a;
+  --chrx-amber-bg:     rgba(217, 119, 6, 0.18);
+
+  --chrx-orange:       #c98c2a;
+  --chrx-orange-bg:    rgba(217, 119, 6, 0.18);
+
+  --chrx-yellow:       #cda651;
+  --chrx-yellow-bg:    rgba(205, 166, 81, 0.22);
+
+  --chrx-purple:       #a586ff;
+  --chrx-purple-bg:    rgba(165, 134, 255, 0.18);
+  --chrx-focus-purple: #c190ff;
+
+  --chrx-blue:         #82a6c4;
+  --chrx-blue-bg:      rgba(130, 166, 196, 0.18);
+  --chrx-blue-border:  rgba(130, 166, 196, 0.55);
+
+  --chrx-kbd-bg:       rgba(241, 236, 224, 0.10);
+  --chrx-kbd-fg:       rgba(241, 236, 224, 0.65);
+  --chrx-scrim:        rgba(0, 0, 0, 0.60);
+
+  --chrx-shadow-sm:
+    0 1px 0 rgba(0, 0, 0, 0.30),
+    0 1px 2px rgba(0, 0, 0, 0.40);
+  --chrx-shadow-md:
+    0 1px 0 rgba(0, 0, 0, 0.30),
+    0 2px 4px rgba(0, 0, 0, 0.40),
+    0 8px 16px rgba(0, 0, 0, 0.35);
+  --chrx-shadow-lg:
+    0 1px 0 rgba(0, 0, 0, 0.30),
+    0 4px 8px rgba(0, 0, 0, 0.40),
+    0 12px 24px rgba(0, 0, 0, 0.45),
+    0 24px 48px rgba(0, 0, 0, 0.35);
+  --chrx-shadow-sheet: var(--chrx-shadow-lg);
+  --chrx-shadow-tile:  var(--chrx-shadow-sm);
+  --chrx-shadow-drawer:
+    0 -1px 0 rgba(0, 0, 0, 0.30),
+    0 -8px 24px rgba(0, 0, 0, 0.40);
+}
+
+/* Explicit user-pinned light (wins over prefers-color-scheme: dark). */
+:root[data-theme="light"] {
+  color-scheme: light;
+  /* Inherits the Section A :root values — selector specificity keeps it. */
+}
+
+/* ───── Helpers (FOUC-safe, no) ───── */
+.chrx-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.chrx-focus-ring:focus-visible {
+  outline: 2px solid var(--chrx-accent);
+  outline-offset: 2px;
+  border-radius: var(--chrx-radius-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --chrx-duration-micro: 0ms;
+    --chrx-duration-fast: 0ms;
+    --chrx-duration-base: 0ms;
+    --chrx-duration-slow: 0ms;
+  }
+}

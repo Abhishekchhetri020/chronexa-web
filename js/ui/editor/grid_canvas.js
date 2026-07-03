@@ -506,7 +506,7 @@ window.Editor = (function () {
     // No native title attribute — ConstraintExplainer renders the single
     // rich hover tooltip (info header + violations). A title here made the
     // browser's native tooltip overlap the explainer with duplicate text.
-    const bgStyle = stripeBg ? `;background:${stripeBg} !important;border-left-color:transparent !important` : "";
+    const bgStyle = stripeBg ? `;background:${stripeBg};border-left-color:transparent` : "";
     // Screen-reader label: the full human description regardless of how the cell
     // is abbreviated visually (Plan E a11y). e.g. "Maths, X A, Ms. Yachna —
     // Monday period 3, locked".

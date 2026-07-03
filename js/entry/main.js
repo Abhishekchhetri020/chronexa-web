@@ -4,12 +4,14 @@
  * Import order below IS the canonical module load order (same as the old
  * bundle manifest); many modules register into shared namespaces at eval
  * time, so do not re-sort. CSS import order mirrors the old <link> order —
- * later files intentionally override earlier ones (design-v3 et al).
+ * later files intentionally override earlier ones. css/tokens.css owns the
+ * --chrx-* namespace as the single source of truth; theme-specific styling
+ * layers on top.
  */
 
+import "../../css/tokens.css";
 import "../../css/tailwind.css";
 import "../../css/style.css";
-import "../../css/chronexa-theme.css";
 import "../../css/components.css";
 import "../../css/solver_ui.css";
 import "../../css/ribbon.css";

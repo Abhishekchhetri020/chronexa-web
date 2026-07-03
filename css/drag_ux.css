@@ -3,7 +3,7 @@
  * dashed-green outline; we extend it with per-slot validity halos
  * (green/amber/red) and a brief bump animation on rejected drops.
  *
- * Tokens from chronexa-theme.css; amber has no theme token yet so we use
+ * Tokens from css/tokens.css; amber has no theme token yet so we use
  * the system orange (#FF9F0A is Apple's systemOrange dark, #FF9500 light).
  */
 
@@ -25,15 +25,15 @@
   transform:scale(1.08) rotate(-2deg);
   font-size:13px;
   padding:4px 6px;
-  display: flex !important;
-  flex-direction: column !important;
-  align-items: flex-start !important;
-  justify-content: flex-start !important;
-  text-align: left !important;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  text-align: left;
 }
-.chrx-card-ghost > .chrx-vkarta .chrx-vk-line1{font-size:13px;font-weight:700;line-height:1.1;text-align:left !important;width:100% !important;}
+.chrx-card-ghost > .chrx-vkarta .chrx-vk-line1{font-size:13px;font-weight:700;line-height:1.1;text-align:left;width:100%;}
 .chrx-card-ghost > .chrx-vkarta .chrx-vk-line2,
-.chrx-card-ghost > .chrx-vkarta .chrx-vk-line3{font-size:10px;line-height:1.1;text-align:left !important;width:100% !important;}
+.chrx-card-ghost > .chrx-vkarta .chrx-vk-line3{font-size:10px;line-height:1.1;text-align:left;width:100%;}
 
 /* Pickup pulse on origin slot — green halo brief flash so user sees "lifted". */
 @keyframes chrx-pickup-pulse{
@@ -118,54 +118,54 @@ body.chrx-card-in-hand{
 
 /* Selected card visual state */
 .chrx-vkarta.chrx-vkarta--selected {
-  outline: 3px solid #ffcc00 !important;
+  outline: 3px solid #ffcc00;
   outline-offset: 1px;
-  box-shadow: 0 0 16px rgba(255, 204, 0, 0.7), 0 4px 10px rgba(0,0,0,0.3) !important;
-  transform: scale(1.05) translateY(-2px) !important;
-  z-index: 10 !important;
+  box-shadow: 0 0 16px rgba(255, 204, 0, 0.7), 0 4px 10px rgba(0,0,0,0.3);
+  transform: scale(1.05) translateY(-2px);
+  z-index: 10;
   transition: all 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 /* Highlighted place slot */
 .chrx-slot.chrx-slot--highlight-place {
-  outline: 2px dashed #ffcc00 !important;
+  outline: 2px dashed #ffcc00;
   outline-offset: -3px;
-  background: rgba(255, 204, 0, 0.12) !important;
-  cursor: pointer !important;
+  background: rgba(255, 204, 0, 0.12);
+  cursor: pointer;
   transition: all 140ms ease-out;
 }
 .chrx-slot.chrx-slot--highlight-place:hover {
-  background: rgba(255, 204, 0, 0.22) !important;
+  background: rgba(255, 204, 0, 0.22);
   box-shadow: inset 0 0 8px rgba(255, 204, 0, 0.3);
 }
 
 /* Highlighted swap slot */
 .chrx-slot.chrx-slot--highlight-swap {
-  outline: 2px solid #ff9f0a !important;
+  outline: 2px solid #ff9f0a;
   outline-offset: -3px;
-  background: rgba(255, 159, 10, 0.15) !important;
-  cursor: pointer !important;
+  background: rgba(255, 159, 10, 0.15);
+  cursor: pointer;
   transition: all 140ms ease-out;
 }
 .chrx-slot.chrx-slot--highlight-swap:hover {
-  background: rgba(255, 159, 10, 0.25) !important;
+  background: rgba(255, 159, 10, 0.25);
 }
 
 /* Highlight target cards to show swap capability */
 .chrx-vkarta.chrx-vkarta--highlight-swap-target {
-  outline: 2px solid #ff9f0a !important;
+  outline: 2px solid #ff9f0a;
   outline-offset: 1px;
-  box-shadow: 0 0 10px rgba(255, 159, 10, 0.5) !important;
+  box-shadow: 0 0 10px rgba(255, 159, 10, 0.5);
   animation: chrx-pulse-swap 1.6s infinite alternate cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 @keyframes chrx-pulse-swap {
   0% {
     transform: scale(0.98);
-    box-shadow: 0 0 6px rgba(255, 159, 10, 0.3) !important;
+    box-shadow: 0 0 6px rgba(255, 159, 10, 0.3);
   }
   100% {
     transform: scale(1.02);
-    box-shadow: 0 0 14px rgba(255, 159, 10, 0.6) !important;
+    box-shadow: 0 0 14px rgba(255, 159, 10, 0.6);
   }
 }

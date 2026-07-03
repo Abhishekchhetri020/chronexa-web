@@ -1,4 +1,4 @@
-/* Chronexa motion utilities. Tokens from chronexa-theme.css.
+/* Chronexa motion utilities. Tokens from css/tokens.css.
  *
  * One curve, three speeds. Every state change uses ease-out so the UI
  * feels like it's settling into place rather than bouncing.
@@ -11,11 +11,6 @@
  *   .chrx-lift       — hover translateY(-2px) + soft shadow
  *
  * Apply via class hook from JS. Respects prefers-reduced-motion. */
-
-:root {
-  --chrx-ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
-  --chrx-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
-}
 
 @keyframes chrx-fade-in {
   from { opacity: 0; }
@@ -72,7 +67,7 @@
     0 0 0 0.5px var(--chrx-line);
 }
 :root[data-theme="dark"] .chrx-lift:hover,
-:root:not([data-theme="light"]) .chrx-lift:hover {
+:root[data-theme="dark"] .chrx-lift:hover {
   box-shadow:
     0 12px 28px -10px rgba(0, 0, 0, 0.55),
     0 4px 10px -6px rgba(0, 0, 0, 0.40),
@@ -84,9 +79,9 @@
   .chrx-rise,
   .chrx-pop,
   .chrx-slide-down,
-  .chrx-rise-stagger > * { animation: none !important; }
+  .chrx-rise-stagger > * { animation: none; }
   .chrx-press,
-  .chrx-lift { transition: none !important; }
+  .chrx-lift { transition: none; }
   .chrx-press:active,
-  .chrx-lift:hover { transform: none !important; }
+  .chrx-lift:hover { transform: none; }
 }

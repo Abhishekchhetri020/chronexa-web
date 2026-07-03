@@ -268,7 +268,7 @@ import "../state.js";
         style: "position:absolute;right:2px;top:1px;font-size:clamp(6px,20cqi,11px);font-weight:700;line-height:1;z-index:1",
       }, String(count)));
       cell.appendChild(el("div", {
-        style: "font-size:clamp(4.5px,10cqi,7px);line-height:1.1;color:#333;text-align:center;overflow-wrap:anywhere;word-break:break-word;padding-top:1px",
+        style: "font-size:clamp(4.5px,10cqi,7px);line-height:1.1;color:var(--chrx-fg);text-align:center;overflow-wrap:anywhere;word-break:break-word;padding-top:1px",
       }, classes.length ? classes.join(", ") : ""));
       return cell;
     }
@@ -286,7 +286,7 @@ import "../state.js";
         style: "font-weight:700;font-size:clamp(7px,18cqi,11px);line-height:1.12;overflow-wrap:anywhere",
       }, title || String(count)));
       cell.appendChild(el("div", {
-        style: "position:absolute;right:3px;bottom:2px;font-size:clamp(6px,13cqi,9px);color:#555",
+        style: "position:absolute;right:3px;bottom:2px;font-size:clamp(6px,13cqi,9px);color:var(--chrx-fg-secondary)",
       }, String(count)));
       return cell;
     }
@@ -303,7 +303,7 @@ import "../state.js";
     // periods) print white, so coloured teaching cards stand out against
     // them. This wins over the colour key.
     const hasTeacher = (card.teacherIds || []).length > 0;
-    if (!hasTeacher) return "#ffffff";
+    if (!hasTeacher) return isDarkTheme() ? "var(--chrx-bg-tile)" : "#ffffff";
     let id = null;
     if (key === "subject")   id = card.subjectId;
     else if (key === "teacher")   id = (card.teacherIds || [])[0];
@@ -311,6 +311,12 @@ import "../state.js";
     else if (key === "classroom") id = card.roomId || (card.roomIds || [])[0];
     if (!id) return null;
     return entityColor(school, key, id);
+  }
+
+  function isDarkTheme() {
+    return typeof document !== "undefined" &&
+      document.documentElement &&
+      document.documentElement.getAttribute("data-theme") === "dark";
   }
 
   function ordinal(n) {
@@ -467,7 +473,7 @@ import "../state.js";
     });
     for (const line of renderedLines.slice(0, periodMode ? maxLines : renderedLines.length)) {
       cell.appendChild(el("div", {
-        style: "white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;color:#222",
+        style: "white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;color:var(--chrx-fg)",
       }, line));
     }
 

@@ -1,5 +1,5 @@
 /* Chronexa — Substitution module styles.
- * Requires chronexa-theme.css for design tokens.
+ * Requires css/tokens.css for design tokens.
  */
 
 /* ---------------- dialog shell ---------------- */
@@ -126,7 +126,7 @@
   background: var(--chrx-bg-elev, #fff);
   border: 1px solid var(--chrx-line);
   border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0,0,0,.12);
+  box-shadow: var(--chrx-shadow-md);
   z-index: 5;
 }
 .chrx-sub-dropdown.is-hidden { display: none; }
@@ -320,5 +320,42 @@
     padding: 0; margin: 0;
     box-shadow: none; border: none;
   }
-  .chrx-sub-print-toolbar { display: none !important; }
+  .chrx-sub-print-toolbar { display: none; }
+}
+
+/* ───── Dark-mode overrides ──────────────────────────────────────────────
+   Substitution surfaces (dialog scrim, substitution panel, candidate
+   search dropdown, absence rows, print memo) all cascade through tokens.
+   These selectors are explicit re-assertions that survive if a future
+   override sets --chrx-bg-elev somewhere. */
+:root[data-theme="dark"] .chrx-sub-dialog {
+  background: var(--chrx-scrim);
+}
+:root[data-theme="dark"] .chrx-sub-panel {
+  background: var(--chrx-bg-elev);
+  border: 1px solid var(--chrx-line);
+}
+:root[data-theme="dark"] .chrx-sub-head {
+  border-bottom-color: var(--chrx-line);
+}
+:root[data-theme="dark"] .chrx-sub-tab.is-active {
+  background: var(--chrx-accent-bg);
+  color: var(--chrx-accent);
+  border-color: var(--chrx-accent);
+}
+:root[data-theme="dark"] .chrx-sub-date,
+:root[data-theme="dark"] .chrx-sub-search,
+:root[data-theme="dark"] .chrx-sub-dropdown {
+  background: var(--chrx-bg-input);
+  border-color: var(--chrx-line);
+  color: var(--chrx-fg);
+}
+:root[data-theme="dark"] .chrx-sub-chip {
+  background: var(--chrx-bg-tile);
+  border-color: var(--chrx-line);
+  color: var(--chrx-fg);
+}
+:root[data-theme="dark"] .chrx-sub-chip__x:hover {
+  background: var(--chrx-red-bg);
+  color: var(--chrx-red);
 }

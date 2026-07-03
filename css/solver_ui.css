@@ -1,5 +1,5 @@
 /* Chronexa Solver UI -- styles for prelaunch, progress, result, verification, test.
-   Requires chronexa-theme.css + components.css.
+   Requires css/tokens.css + components.css.
    Class prefix: `csu-` so we never collide with Agent D's `chrx-`.
 */
 
@@ -84,7 +84,7 @@
 .csu-modebtn__icon {
   display: inline-grid; place-items: center;
   width: 28px; height: 28px; border-radius: 8px;
-  background: var(--chrx-accent, #007AFF); color: #fff;
+  background: var(--chrx-accent, #007AFF); color: var(--chrx-accent-on);
   font-weight: 700; font-size: 14px;
 }
 .csu-modebtn__title { font-weight: var(--chrx-fw-bold, 700); font-size: 15px; }
@@ -601,7 +601,7 @@
 .csu-result__diagMore {
   color: var(--chrx-fg-secondary, rgba(0,0,0,0.55));
   font-style: italic;
-  margin-top: 4px !important;
+  margin-top: 4px;
 }
 .csu-result__diagTip {
   margin: 8px 14px 10px 14px;

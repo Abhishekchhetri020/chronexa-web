@@ -110,17 +110,17 @@ import "./bulk_add_wizard.js";
     const hero = document.createElement("div");
     hero.className = "chrx-ent-empty-hero";
     hero.style.cssText =
-      "border:2px dashed #cbd5e1;border-radius:14px;padding:24px 20px;margin:12px;background:#f8fafc;" +
+      "border:2px dashed var(--chrx-line);border-radius:14px;padding:24px 20px;margin:12px;background:var(--chrx-bg-tile);" +
       "display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center";
     hero.innerHTML =
       '<div style="width:48px;height:48px;border-radius:12px;background:' + l.bg +
       ';color:' + l.color + ';display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px;letter-spacing:.5px">' + l.icon + '</div>' +
-      '<div style="font-size:15px;font-weight:600;color:#0f172a">No ' + l.plural + ' yet</div>' +
-      '<div style="font-size:13px;color:#64748b;max-width:360px">Click <strong>New</strong> on the right to add your first ' + l.single +
+      '<div style="font-size:15px;font-weight:600;color:var(--chrx-fg)">No ' + l.plural + ' yet</div>' +
+      '<div style="font-size:13px;color:var(--chrx-fg-secondary);max-width:360px">Click <strong>New</strong> on the right to add your first ' + l.single +
       ', or paste a list from your spreadsheet.</div>' +
       '<div style="display:flex;gap:8px;margin-top:6px">' +
-        '<button type="button" class="chrx-ent-empty-add" style="background:' + l.color + ';color:white;border:0;padding:8px 16px;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer">+ Add your first ' + l.single + '</button>' +
-        '<button type="button" class="chrx-ent-empty-bulk" style="background:white;color:' + l.color + ';border:1px solid ' + l.color + ';padding:8px 16px;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer">Bulk-add from list</button>' +
+        '<button type="button" class="chrx-ent-empty-add" style="background:' + l.color + ';color:var(--chrx-accent-on);border:0;padding:8px 16px;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer">+ Add your first ' + l.single + '</button>' +
+        '<button type="button" class="chrx-ent-empty-bulk" style="background:var(--chrx-bg-input);color:' + l.color + ';border:1px solid ' + l.color + ';padding:8px 16px;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer">Bulk-add from list</button>' +
       '</div>';
     tableWrap.parentNode.insertBefore(hero, tableWrap);
 
@@ -151,7 +151,7 @@ import "./bulk_add_wizard.js";
     link.textContent = "+ Bulk-add";
     link.title = "Add many " + kind + " at once";
     link.style.cssText =
-      "background:transparent;border:1px dashed #94a3b8;color:#475569;padding:6px 10px;border-radius:6px;" +
+      "background:transparent;border:1px dashed var(--chrx-line);color:var(--chrx-fg-secondary);padding:6px 10px;border-radius:6px;" +
       "font-size:12px;font-weight:600;cursor:pointer;margin-top:8px;display:block;width:100%";
     link.onclick = () => openBulk(kind);
     sidebar.appendChild(link);
