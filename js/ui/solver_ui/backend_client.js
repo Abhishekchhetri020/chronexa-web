@@ -224,12 +224,15 @@
     let cancelled = false;
     let stage2 = null;
     const budget = Math.max(15, options.timeLimitSec || 60);
+    const hasWarmCards = Array.isArray(school.cards) && school.cards.some((c) => c && c.day != null && c.period != null);
     // Adaptive draft budget: the JS solver reaches a good draft in seconds,
     // so give it clamp(totalCards/500, 1, 5)s and leave the rest to the
     // CP-SAT polish (which does the real quality work).
     const totalCards = (school.lessons || []).reduce(
       (n, L) => n + (Number(L.periodsPerWeek) || 0), 0) || (school.lessons || []).length || 1;
-    const t1 = Math.min(5, Math.max(1, Math.round(totalCards / 500)));
+    const t1 = hasWarmCards
+      ? Math.min(15, budget)
+      : Math.min(5, Math.max(1, Math.round(totalCards / 500)));
     // Reserve ~7s of the user-facing budget for fixed pipeline overhead
     // (worker spawn + WASM runtime init + CP-SAT model build + extraction),
     // so the wall clock lands on the requested budget instead of 20% over.
@@ -248,13 +251,25 @@
       }, 80);
     });
 
-    const stage1 = runBrowser(school, { ...options, timeLimitSec: t1 });
+    const stage1 = runBrowser(school, {
+      ...options,
+      timeLimitSec: t1,
+      warmStart: hasWarmCards || options.warmStart,
+      useIterativeRepair: true,
+    });
     stage1.subscribe((ev) => {
       if (cancelled) return;
       if (ev.type === "progress") { sub.emit({ ...ev, stage: 1 }); return; }
       if (ev.type === "error") { sub.emit({ type: "error", message: "draft failed: " + ev.message }); return; }
       if (ev.type !== "done") return;
       draft = ev.result;
+      const ds = (draft && draft.stats) || {};
+      const draftComplete = (ds.unplaced || 0) === 0 && (ds.hardConflicts || 0) === 0;
+      if (draftComplete) {
+        sub.emit({ type: "phase", phase: "applying" });
+        sub.emit({ type: "done", result: draft });
+        return;
+      }
       const cards = (draft && draft.assignment)
         ? draft.assignment.map((a) => ({ lessonId: a.lessonId, day: a.day, period: a.period, classroomId: a.classroomId }))
         // Cold generate must NOT fall back to the school's existing cards —
