@@ -14,6 +14,14 @@ import vm from "node:vm";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createRequire } from "node:module";
 
+// [vite-esm] The 2026-07 Vite migration added ESM import/export lines to the
+// classic UI modules. Strip them so vm.runInThisContext keeps working; the
+// module BODIES are unchanged.
+const stripVite = (s) => s
+  .replace(/^import "[^"]+";$/gm, "")
+  .replace(/^export const [A-Za-z_$][\w$]* = window\.[A-Za-z_$][\w$]*;$/gm, "");
+
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
 const repoRoot   = path.resolve(__dirname, "..");
@@ -200,7 +208,7 @@ function check(name, ok, detail) {
     ],
   }};
   const src = fs.readFileSync(path.join(repoRoot, "js/ui/io/export_html.js"), "utf8");
-  vm.runInThisContext(src, { filename: "export_html.js" });
+  vm.runInThisContext(stripVite(src), { filename: "export_html.js" });
   const html = globalThis.window.APP.io.buildHtmlExport(globalThis.window.APP.school);
   const monRow = html.match(/<th class="day">Mon<\/th>([\s\S]*?)<\/tr>/);
   if (!monRow) {
@@ -244,7 +252,7 @@ function check(name, ok, detail) {
   }};
   // Load the export module
   const exportSrc = fs.readFileSync(path.join(repoRoot, "js/ui/io/export_timetable_xml.js"), "utf8");
-  vm.runInThisContext(exportSrc, { filename: "export_timetable_xml.js" });
+  vm.runInThisContext(stripVite(exportSrc), { filename: "export_timetable_xml.js" });
   const APP = globalThis.window.APP;
   const out = APP.io.exportFromTemplate(APP.school);
   check(

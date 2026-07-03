@@ -1,0 +1,5 @@
+/* Tailwind entry — compiled by PostCSS at build time.
+ * Replaces the cdn.tailwindcss.com play CDN (same v3 utility set). */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

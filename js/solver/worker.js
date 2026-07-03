@@ -12,14 +12,12 @@
 //
 // The worker is an ES module: load it as `new Worker(url, { type: "module" })`.
 
-// Dynamic import with cache-bust so APP_VER bumps actually take effect.
-// Workers don't inherit the page's import-map; static "./csp_solver.js"
-// would get served from the HTTP cache after a deploy without a query.
+// Static-analyzable dynamic import — Vite splits csp_solver into its own
+// hashed chunk, so cache-busting no longer needs a ?v= query.
 // Buffer messages received before the dynamic import resolves.
 let solve = null;
 const _pending = [];
-const _ver = (self && self.location && new URL(self.location.href).searchParams.get("v")) || "";
-import(`./csp_solver.js${_ver ? "?v=" + encodeURIComponent(_ver) : ""}`).then(mod => {
+import("./csp_solver.js").then(mod => {
   solve = mod.solve;
   while (_pending.length) handle(_pending.shift());
 }).catch(err => {

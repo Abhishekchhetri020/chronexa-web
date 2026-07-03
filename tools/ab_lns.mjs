@@ -6,6 +6,14 @@ import { fork } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+// [vite-esm] The 2026-07 Vite migration added ESM import/export lines to the
+// classic UI modules. Strip them so vm.runInThisContext keeps working; the
+// module BODIES are unchanged.
+const stripVite = (s) => s
+  .replace(/^import "[^"]+";$/gm, "")
+  .replace(/^export const [A-Za-z_$][\w$]* = window\.[A-Za-z_$][\w$]*;$/gm, "");
+
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(__dirname, "..");
 const xml = path.join(repo, "docs/demo_sample-school.xml");
@@ -22,7 +30,7 @@ if (process.env.AB_CHILD) {
   const { JSDOM } = createRequire("/private/tmp/chronexa_smoke/")("jsdom");
   const dom = new JSDOM("<!doctype html><html><body></body></html>");
   globalThis.window = dom.window; globalThis.document = dom.window.document; globalThis.DOMParser = dom.window.DOMParser;
-  vm.runInThisContext(fs.readFileSync(path.join(repo, "js/xml/parse_timetable_xml.js"), "utf8"));
+  vm.runInThisContext(stripVite(fs.readFileSync(path.join(repo, "js/xml/parse_timetable_xml.js"), "utf8")));
   const school = window.parseTimetableXml.parseText(fs.readFileSync(xml, "utf8"), "demo.xml");
   const { solve } = await import(new URL("file://" + path.join(repo, "js/solver/csp_solver.js")).href);
   const opts = { timeLimitSec: Number(process.env.AB_TIME), seed: Number(process.env.AB_SEED), disableLearning: true };

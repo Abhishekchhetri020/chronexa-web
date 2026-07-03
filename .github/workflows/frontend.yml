@@ -8,12 +8,16 @@ on:
       - "index.html"
       - "css/**"
       - "js/**"
+      - "package.json"
+      - "vite.config.js"
       - ".github/workflows/frontend.yml"
   pull_request:
     paths:
       - "index.html"
       - "css/**"
       - "js/**"
+      - "package.json"
+      - "vite.config.js"
 
 jobs:
   static-check:
@@ -24,17 +28,27 @@ jobs:
         run: |
           test -s index.html
           grep -q "<title>" index.html
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
       - name: JS smoke check
         run: |
-          # Every js/**/*.js must parse cleanly via node (no syntax errors)
-          find js -type f -name "*.js" | while read f; do
+          # Every js/**/*.js must parse cleanly via node (no syntax errors).
+          # package.json sets "type": "module", so .js files parse as ESM.
+          find js -type f -name "*.js" -not -path "js/solver/wasm/node_modules/*" | while read f; do
             node --check "$f" || (echo "SYNTAX ERROR: $f" && exit 1)
           done
-      - name: Page serves
+      - name: Vite build
         run: |
-          python3 -m http.server 8000 &
+          npm ci
+          npm run build
+      - name: Built page serves
+        run: |
+          python3 -m http.server 8000 --directory dist &
           SERVER=$!
           sleep 2
           curl -sf http://localhost:8000/ > /dev/null
           curl -sf http://localhost:8000/index.html > /dev/null
+          curl -sf http://localhost:8000/sw.js > /dev/null
           kill $SERVER

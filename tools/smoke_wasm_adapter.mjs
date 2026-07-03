@@ -7,6 +7,14 @@ import vm from "node:vm";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createRequire } from "node:module";
 
+// [vite-esm] The 2026-07 Vite migration added ESM import/export lines to the
+// classic UI modules. Strip them so vm.runInThisContext keeps working; the
+// module BODIES are unchanged.
+const stripVite = (s) => s
+  .replace(/^import "[^"]+";$/gm, "")
+  .replace(/^export const [A-Za-z_$][\w$]* = window\.[A-Za-z_$][\w$]*;$/gm, "");
+
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot  = path.resolve(__dirname, "..");
 const require_  = createRequire(import.meta.url);
@@ -20,7 +28,7 @@ globalThis.document = dom.window.document;
 globalThis.DOMParser = dom.window.DOMParser;
 
 const parserSrc = fs.readFileSync(path.join(repoRoot, "js/xml/parse_timetable_xml.js"), "utf8");
-vm.runInThisContext(parserSrc);
+vm.runInThisContext(stripVite(parserSrc));
 const parseTimetableXml = globalThis.window.parseTimetableXml;
 
 const adapterUrl = pathToFileURL(path.join(repoRoot, "js/solver/wasm/adapter.js")).href;

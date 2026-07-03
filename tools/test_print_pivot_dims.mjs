@@ -17,6 +17,14 @@ import vm from "node:vm";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 
+// [vite-esm] The 2026-07 Vite migration added ESM import/export lines to the
+// classic UI modules. Strip them so vm.runInThisContext keeps working; the
+// module BODIES are unchanged.
+const stripVite = (s) => s
+  .replace(/^import "[^"]+";$/gm, "")
+  .replace(/^export const [A-Za-z_$][\w$]* = window\.[A-Za-z_$][\w$]*;$/gm, "");
+
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
 const repoRoot   = path.resolve(__dirname, "..");
@@ -33,7 +41,7 @@ window.APP = window.APP || {};
 window.APP.PrintReportSchema = { activeDims: () => [] };
 
 const src = fs.readFileSync(path.join(repoRoot, "js/ui/print_preview/pivot_engine.js"), "utf8");
-vm.runInThisContext(src, { filename: "pivot_engine.js" });
+vm.runInThisContext(stripVite(src), { filename: "pivot_engine.js" });
 
 const PivotPrivate = window.APP.PrintPivot;
 // entitiesFor isn't exported; smoke-test via renderReport with a minimal

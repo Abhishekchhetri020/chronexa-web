@@ -10,6 +10,14 @@ import vm from "node:vm";
 import { fileURLToPath } from "node:url";
 import { JSDOM } from "/private/tmp/chronexa_smoke/node_modules/jsdom/lib/api.js";
 
+// [vite-esm] The 2026-07 Vite migration added ESM import/export lines to the
+// classic UI modules. Strip them so vm.runInThisContext keeps working; the
+// module BODIES are unchanged.
+const stripVite = (s) => s
+  .replace(/^import "[^"]+";$/gm, "")
+  .replace(/^export const [A-Za-z_$][\w$]* = window\.[A-Za-z_$][\w$]*;$/gm, "");
+
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..");
@@ -44,7 +52,7 @@ window.APP = { school, editor: { perspective: "class", colorBy: "subject" } };
 globalThis.APP = window.APP;
 
 const src = fs.readFileSync(path.join(repoRoot, "js/ui/editor/grid_canvas.js"), "utf8");
-vm.runInThisContext(src, { filename: "grid_canvas.js" });
+vm.runInThisContext(stripVite(src), { filename: "grid_canvas.js" });
 
 const host = document.getElementById("editor");
 window.Editor.render(host);

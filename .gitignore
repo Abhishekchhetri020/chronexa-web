@@ -22,3 +22,6 @@ build/
 .mission/
 .gstack/
 .vercel
+
+# Node
+node_modules/

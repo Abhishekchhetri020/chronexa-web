@@ -38,12 +38,12 @@ export async function solve(school, options) {
   return _mod.solve(school, options);
 }
 
-// Heuristic used by the worker's adapter to decide WASM-vs-JS routing.
-// Today: only escalate to WASM when the JS solver would be slow. Numbers
-// derived from the GD Goenka benchmark — 951 cards solves in 30 ms warm /
-// 15 s cold; schools 5× bigger should still complete within the same
-// wall budget on WASM.
-export function shouldPreferWasm(school) {
-  const lessons = (school?.lessons || []).length;
-  return lessons > 5000;
+// WASM-vs-JS routing for the adapter. Prefer WASM for every school: the
+// adapter degrades gracefully (csp_wasm.js falls through to the JS solver
+// when the .wasm binary or its acceleration path is unavailable), so there
+// is no size threshold to protect. NOTE: this adapter is currently only
+// exercised by tools/smoke_wasm_adapter.mjs — the app's real WASM routing
+// is the Best-mode pipeline in js/ui/solver_ui/ (JS draft → CP-SAT polish).
+export function shouldPreferWasm(_school) {
+  return true;
 }

@@ -13,6 +13,14 @@ import { fork } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+// [vite-esm] The 2026-07 Vite migration added ESM import/export lines to the
+// classic UI modules. Strip them so vm.runInThisContext keeps working; the
+// module BODIES are unchanged.
+const stripVite = (s) => s
+  .replace(/^import "[^"]+";$/gm, "")
+  .replace(/^export const [A-Za-z_$][\w$]* = window\.[A-Za-z_$][\w$]*;$/gm, "");
+
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 function arg(name, def) {
@@ -39,7 +47,7 @@ if (process.env.CHRONEXA_SIM_CHILD) {
   globalThis.document = dom.window.document;
   globalThis.DOMParser = dom.window.DOMParser;
   const parserSrc = fs.readFileSync(path.join(repo, "js/xml/parse_timetable_xml.js"), "utf8");
-  vm.runInThisContext(parserSrc, { filename: "parse_timetable_xml.js" });
+  vm.runInThisContext(stripVite(parserSrc), { filename: "parse_timetable_xml.js" });
   const parseTimetableXml = globalThis.window.parseTimetableXml;
   const xmlText = fs.readFileSync(xml, "utf8");
   const school = parseTimetableXml.parseText(xmlText, path.basename(xml));

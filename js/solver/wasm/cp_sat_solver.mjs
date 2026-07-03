@@ -13,6 +13,12 @@
 // no bundler/import-map). For Node CLI testing use the standalone scripts
 // (logcheck.mjs etc.) which import the bare 'or-tools-wasm/cp-sat' specifier.
 import { CpModel, CpSolver, CpSolverSolutionCallback, LinearExpr } from './dist/browser/cp-sat.js';
+// The JS solver's model builder is the single source of truth for all
+// school-data parsing (time-off masks, windows, tags, caps, homerooms…).
+// The extended soft-constraint section reuses it so the two backends can
+// never drift on data interpretation.
+import { __test_internals as __jsInternals } from '../csp_solver.js';
+const jsBuildModel = __jsInternals.buildModel;
 
 function teachingPeriods(school) {
   return school.bell.periods
@@ -189,7 +195,11 @@ export async function buildAndSolve(school, options = {}) {
     const byDiv = new Map();
     const byDivGroup = new Map();
     for (const [occ, v] of entries) {
-      const dk = occ[0];
+      // Per-scheme division key, matching Python's ("D", div) tuple. The port
+      // originally used the literal 'D' (occ[0]), which collapsed every
+      // division scheme of a class into ONE bucket — so two different schemes
+      // could co-occur in the same slot, splitting the class two ways at once.
+      const dk = occ[0] === 'W' ? 'W' : `D${occ[1]}`;
       const gk = occ[1] === 'W' ? 'W' : `${dk}|${occ[1]}|${occ[2]}`;
       if (!byDiv.has(dk)) byDiv.set(dk, []);
       byDiv.get(dk).push(v);
@@ -197,19 +207,40 @@ export async function buildAndSolve(school, options = {}) {
       byDivGroup.get(gk).push(v);
     }
     for (const vs of byDivGroup.values()) if (vs.length > 1) atMost(m, sum(vs), 1);
-    if (byDiv.size > 1) {
-      // PAIRWISE formulation: for each (W entry, D entry) pair, at most 1 is true.
-      // This is logically equivalent to "at most 1 active division" but avoids
-      // using addMaxEquality, which the WASM solver cannot combine with a
-      // subsequent sum<=1 constraint over its result (CP-SAT finds 0 solutions
-      // on the 951-card demo when the addMaxEquality+sum<=1 form is used).
-      // The Python version uses addMaxEquality+sum<=1 and works fine — this is
-      // a WASM-specific work-around. (See /Users/abhishekchhetri/.claude/.../
-      // /debug-chronexa-wasm-2026-06-19.md for the bisect evidence.)
-      const wEntries = byDiv.get('W') || [];
-      const dEntries = [];
-      for (const [dk, vs] of byDiv) if (dk !== 'W') dEntries.push(...vs);
-      for (const vw of wEntries) for (const vd of dEntries) atMost(m, sum([vw, vd]), 1);
+    if (byDiv.size > 1 && options.divisionForm === "maxeq") {
+      // Python-reference formulation (backend/solver_cpsat.py): one aux bool
+      // per division key (including W), addMaxEquality, then sum(active) <= 1.
+      // Stronger than the pairwise form below — it also forbids two DIFFERENT
+      // division schemes from co-occurring in the same class-slot. Behind an
+      // option while we re-validate it against the WASM build (the 2026-06-19
+      // bisect blamed addMaxEquality+sum<=1 for "0 solutions" here).
+      const divActive = [];
+      for (const [dk, vs] of byDiv) {
+        const da = m.newBoolVar(`divact_${String(k).replace(/[^A-Za-z0-9]/g, "_")}_${String(dk).replace(/[^A-Za-z0-9]/g, "_")}`);
+        m.addMaxEquality(da, vs);
+        divActive.push(da);
+      }
+      atMost(m, sum(divActive), 1);
+    } else if (byDiv.size > 1) {
+      // PAIRWISE formulation: at most one of any two entries from DIFFERENT
+      // buckets (W vs each division scheme, and scheme vs scheme). Same
+      // semantics as Python's addMaxEquality+sum<=1, but encoded as plain
+      // 2-literal at-most-ones, which CP-SAT's presolve folds into its
+      // dedicated at_most_one structures.
+      //
+      // History: the 2026-06-19 bisect blamed "addMaxEquality+sum<=1 finds 0
+      // solutions" and this was believed to be a WASM presolve bug. The
+      // 2026-07-02 re-validation (toy + 500-slot synthetic + full-school A/B
+      // on the JSPI build) shows linMax is CORRECT on this build — the maxeq
+      // form is just slower to search (880 vs 913 placed in the same 60s
+      // budget), so pairwise stays the default. maxeq remains available via
+      // options.divisionForm = "maxeq" for A/B runs.
+      const buckets = [...byDiv.values()];
+      for (let a = 0; a < buckets.length; a++) {
+        for (let b = a + 1; b < buckets.length; b++) {
+          for (const va of buckets[a]) for (const vb of buckets[b]) atMost(m, sum([va, vb]), 1);
+        }
+      }
     }
   }
 
@@ -433,6 +464,13 @@ export async function buildAndSolve(school, options = {}) {
   }
   console.error('RELATIONS: encoded constraints=', relCons, 'locked lessons=', relationLockedLessons.size);
 
+  // CP-SAT invalidates the model if the solution hint repeats a variable
+  // ("duplicate variables ... index #N"). Hints are added from two places
+  // (warm-start cards below, phase-2 solution carry-over later), and a card
+  // that phase 1 places at its warm-start slot would be hinted by both.
+  const _hintedVars = new Set();
+  const hintOnce = (v, val) => { if (!v || _hintedVars.has(v)) return; _hintedVars.add(v); m.addHint(v, val); };
+
   let hintedCards = 0, lockedCards = 0;
   for (const [lid, cis] of lessonCards) {
     const sc = (saved.get(lid) || []).sort((a, b) => a.day - b.day || a.period - b.period);
@@ -443,14 +481,14 @@ export async function buildAndSolve(school, options = {}) {
     for (let i = 0; i < cis.length && i < starts.length; i++) {
       const s = `${starts[i].day},${starts[i].period}`;
       if (assign[cis[i]].has(s)) {
-        m.addHint(assign[cis[i]].get(s), 1);
+        hintOnce(assign[cis[i]].get(s), 1);
         hintedCards++;
         // Hard relation the model can't express -> pin the card to its draft slot.
         if (lock) { m.addEquality(assign[cis[i]].get(s), 1); lockedCards++; }
         const rm = starts[i].classroomId;
         if (rm) {
           const yv = yroom.get(`${cis[i]}|${s}|${rm}`);
-          if (yv) m.addHint(yv, 1);
+          if (yv) hintOnce(yv, 1);
         }
       }
     }
@@ -460,13 +498,26 @@ export async function buildAndSolve(school, options = {}) {
   // Improve mode: lock placement at the warm-start level so the solver keeps
   // the given timetable and only improves it (places more / better soft),
   // instead of searching from scratch and possibly landing on fewer cards.
+  // The placement floor protects a USER's real timetable in Improve mode.
+  // For machine drafts (two-stage cold generate, mode "generate") the draft
+  // may contain placements that are infeasible in THIS model (the JS solver
+  // permits cross-scheme division overlaps this model forbids, and lab-double
+  // cover rows can inflate the hint count) — a floor above the model optimum
+  // makes the WHOLE model INFEASIBLE (placed=0). Drafts get a slack floor:
+  // still anchors phase 1 near the draft, provably below the optimum.
   if (improve && hintedCards > 0) {
-    atLeast(m, sum(placed), Math.min(hintedCards, cards.length));
-    console.error('IMPROVE mode: placement floor =', hintedCards);
+    const slack = options.mode === "generate" ? 10 : 0;
+    const floorN = Math.min(hintedCards, cards.length) - slack;
+    if (floorN > 0) atLeast(m, sum(placed), floorN);
+    console.error('IMPROVE mode: placement floor =', floorN, '(hinted:', hintedCards + ')');
   }
 
   const softTerms = [];
-  if (soft) {
+  // Deferred: called AFTER phase 1. Phase 1 solves the pure-hard model (soft
+  // aux vars/constraints only add propagation load without pruning placement);
+  // phase 2 mutates the same model with the floor + soft objective.
+  const buildSoftModel = () => {
+    if (!soft) return;
     const W_SPREAD = 1000, W_B2B = 200;
     for (const [k, vs] of csd) {
       const [c, subj, d] = k.split('|');
@@ -563,11 +614,547 @@ export async function buildAndSolve(school, options = {}) {
       }
     }
     if (softRelCount) console.error('SOFT RELATIONS: terms added=', softRelCount);
-  }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // Extended soft constraints — port of the JS solver's softScore() family
+    // (csp_solver.js ~2303). All school-data parsing is delegated to the JS
+    // solver's buildModel() (imported via __test_internals) so masks, caps
+    // and tags stay byte-identical between the two backends; here we only
+    // translate each penalty into linear terms over the existing booleans.
+    //
+    // Weights = JS DEFAULT_SOFT_WEIGHTS ratios × 20 (anchored so JS
+    // NEAR_HARD=50 → 1000 = W_SPREAD). JS per-hit multipliers (e.g.
+    // afternoon-heavy ×2) are folded into the weight.
+    //
+    // Deliberately NOT ported:
+    //  - sibling_subject_deficit: a search-order bias for greedy/backtracking
+    //    solvers; under CP-SAT's global phase-1 placement maximization it has
+    //    no equivalent decision to bias.
+    //  - koncitNaraz ("classes end together"): cross-class variance of last
+    //    periods — quadratic shape, poor linear fit; revisit if user demand.
+    if (options.extSoft !== false) {
+      const jm = jsBuildModel(school);
+      const S = 20; // JS-weight → CP-SAT-weight scale
+      const jw = jm.weights; // Int32Array, indexes match csp_solver softScore
+      const W = {
+        teacherGaps: (jw[0] || 50) * S,
+        classGaps: (jw[1] || 10) * S,
+        roomStab: (jw[3] || 5) * S,
+        tConsec: (jw[4] || 50) * S,
+        cConsec: (jw[5] || 50) * S,
+        lastPeriod: (jw[6] || 25) * S,
+        loadBal: (jw[7] || 20) * S,
+        consecHeavy: (jw[9] || 10) * S,
+        conditional: (jw[11] || 20) * S,
+        teacherPos: (jw[12] || 20) * S,
+        window: (jw[1] || 10) * S,     // lunch/teaching/block windows reuse w[1] in JS
+        buildings: (jw[3] || 5) * S,
+        tagCap: (jw[2] || 20) * S,
+        resting: (jw[0] || 50) * S,
+        roomTag: (jw[3] || 5) * S,
+        afternoon: 2 * (jw[1] || 10) * S,
+        blockPair: (jw[1] || 10) * S,
+        interval: 3 * (jw[0] || 50) * S,
+        supervision: (jw[0] || 50) * S,
+        studentConf: (jw[1] || 10) * S,
+      };
+      const nExtBefore = softTerms.length;
+
+      // ---- shared lookups ------------------------------------------------
+      const ppdJS = jm.periodsPerDay;
+      const bellPeriods = school.bell.periods || [];
+      const bellPosOf = new Map(bellPeriods.map((bp, i) => [bp.index, i]));
+      const tIdxOf = new Map(jm.teacherIds.map((id, i) => [id, i]));
+      const cIdxOf = new Map(jm.classIds.map((id, i) => [id, i]));
+      const rIdxOf = new Map(jm.roomIds.map((id, i) => [id, i]));
+      const teacherIdsInUse = [...new Set(cards.flatMap((c) => c.teachers))];
+      const classIdsInUse = [...new Set(cards.flatMap((c) => c.classes))];
+      // tSum(t,d,P): linear 0/1 occupancy expr (hard ≤1 via tOcc at-most-one).
+      const tVars = (t, d, P) => tOcc.get(`t|${t}|${d},${P}`) || null;
+      // cBusy(c,d,P): BoolVar — 1 iff the class has ANY activity (group sums
+      // can exceed 1, so a literal is required). b ≥ each v, b ≤ Σv.
+      const cBusyCache = new Map();
+      const cBusy = (c, d, P) => {
+        const key = `${c}|${d},${P}`;
+        if (cBusyCache.has(key)) return cBusyCache.get(key);
+        const entries = clsAt.get(`c|${c}|${d},${P}`);
+        if (!entries || !entries.length) { cBusyCache.set(key, null); return null; }
+        const vs = entries.map(([, v]) => v);
+        const b = m.newBoolVar(`cb_${c}_${d}_${P}`);
+        for (const v of vs) atLeast(m, LinearExpr.sum([b, ...neg([v])]), 0); // b >= v
+        atMost(m, LinearExpr.sum([b, ...neg(vs)]), 0);                       // b <= Σv
+        cBusyCache.set(key, b);
+        return b;
+      };
+
+      // ---- 1+2. teacher gaps / class gaps (island counting) --------------
+      // gaps(day) = (#teaching islands) − (any teaching at all). starts_p is
+      // forced up by starts_p ≥ busy_p − busy_{p−1}; `active` carries a
+      // NEGATIVE weight and is capped by Σbusy, so the minimizer sets it to 1
+      // exactly when the entity teaches that day.
+      const addGapTerms = (busyExprAt, tag, weight) => {
+        for (const d of days) {
+          const seq = [];
+          for (const P of periods) { seq.push(busyExprAt(d, P)); }
+          if (!seq.some(Boolean)) continue;
+          const active = m.newBoolVar(`gap_act_${tag}_${d}`);
+          const allVars = [];
+          let prev = null;
+          for (let i = 0; i < seq.length; i++) {
+            const cur = seq[i];
+            if (!cur) { prev = cur; continue; }
+            const curVars = Array.isArray(cur) ? cur : [cur];
+            allVars.push(...curVars);
+            const st = m.newBoolVar(`gap_st_${tag}_${d}_${i}`);
+            const prevVars = prev ? (Array.isArray(prev) ? prev : [prev]) : [];
+            // st >= Σcur − Σprev
+            atLeast(m, LinearExpr.sum([st, ...prevVars, ...neg(curVars)]), 0);
+            softTerms.push([weight, st]);
+            prev = cur;
+          }
+          atMost(m, LinearExpr.sum([active, ...neg(allVars)]), 0); // active ≤ Σbusy
+          softTerms.push([-weight, active]);
+        }
+      };
+      for (const t of teacherIdsInUse) {
+        addGapTerms((d, P) => tVars(t, d, P), `t${t}`, W.teacherGaps);
+      }
+      for (const c of classIdsInUse) {
+        addGapTerms((d, P) => cBusy(c, d, P), `c${c}`, W.classGaps);
+      }
+
+      // ---- 3. teacher room stability (distinct rooms per day − 1) --------
+      // ---- 11. teacher building changes (distinct buildings per day − 1) -
+      {
+        const perTD = new Map(); // `${t}|${d}` -> Map(room -> yvars[])
+        for (let ci = 0; ci < cards.length; ci++) {
+          const card = cards[ci];
+          if (!card.rooms.length) continue;
+          for (const skey of assign[ci].keys()) {
+            const d = Number(skey.split(',')[0]);
+            for (const r of card.rooms) {
+              const yv = yroom.get(`${ci}|${skey}|${r}`);
+              if (!yv) continue;
+              for (const t of card.teachers) {
+                const k = `${t}|${d}`;
+                if (!perTD.has(k)) perTD.set(k, new Map());
+                const rm = perTD.get(k);
+                if (!rm.has(r)) rm.set(r, []);
+                rm.get(r).push(yv);
+              }
+            }
+          }
+        }
+        const haveBuildings = jm.classroomBuilding && jm.buildingCount > 1;
+        for (const [k, roomsMap] of perTD) {
+          if (roomsMap.size < 2) continue;
+          const used = [];
+          const byBld = new Map();
+          for (const [r, yvs] of roomsMap) {
+            const u = m.newBoolVar(`ru_${k}_${r}`);
+            for (const yv of yvs) atLeast(m, LinearExpr.sum([u, ...neg([yv])]), 0); // u ≥ yv
+            used.push(u);
+            if (haveBuildings) {
+              const bi = jm.classroomBuilding[rIdxOf.get(r) ?? -1];
+              if (bi >= 0) { if (!byBld.has(bi)) byBld.set(bi, []); byBld.get(bi).push(u); }
+            }
+          }
+          const over = m.newIntVar(0, used.length, `ro_${k}`);
+          atMost(m, LinearExpr.sum([...used, LinearExpr.term(over, -1)]), 1); // over ≥ Σused − 1
+          softTerms.push([W.roomStab, over]);
+          if (haveBuildings && byBld.size > 1) {
+            const bldUsed = [];
+            for (const [bi, us] of byBld) {
+              const bu = m.newBoolVar(`bu_${k}_${bi}`);
+              for (const u of us) atLeast(m, LinearExpr.sum([bu, ...neg([u])]), 0);
+              bldUsed.push(bu);
+            }
+            const bover = m.newIntVar(0, bldUsed.length, `bo_${k}`);
+            atMost(m, LinearExpr.sum([...bldUsed, LinearExpr.term(bover, -1)]), 1);
+            softTerms.push([W.buildings, bover]);
+          }
+        }
+      }
+
+      // ---- 4+5. consecutive overload (sliding window over bell positions) -
+      const addConsecTerms = (busyExprAt, maxConsec, tag, weight) => {
+        if (maxConsec == null || maxConsec <= 0) return;
+        for (const d of days) {
+          for (let i = 0; i + maxConsec < periods.length; i++) {
+            const windowVars = [];
+            for (let j = i; j <= i + maxConsec; j++) {
+              const b = busyExprAt(d, periods[j]);
+              if (b) windowVars.push(...(Array.isArray(b) ? b : [b]));
+            }
+            if (windowVars.length <= maxConsec) continue;
+            const over = m.newIntVar(0, periods.length, `cw_${tag}_${d}_${i}`);
+            atMost(m, LinearExpr.sum([...windowVars, LinearExpr.term(over, -1)]), maxConsec);
+            softTerms.push([weight, over]);
+          }
+        }
+      };
+      for (const t of teacherIdsInUse) {
+        const ti = tIdxOf.get(t);
+        const mc = ti != null && jm.teacherMaxConsec ? jm.teacherMaxConsec[ti] : -1;
+        if (mc > 0) addConsecTerms((d, P) => tVars(t, d, P), mc, `t${t}`, W.tConsec);
+      }
+      for (const c of classIdsInUse) {
+        const ci2 = cIdxOf.get(c);
+        const mc = ci2 != null && jm.classMaxConsec ? jm.classMaxConsec[ci2] : -1;
+        if (mc > 0) addConsecTerms((d, P) => cBusy(c, d, P), mc, `c${c}`, W.cConsec);
+      }
+
+      // ---- 6. teacher last-period overflow --------------------------------
+      {
+        const lastTeachingP = periods[periods.length - 1];
+        if (bellPosOf.get(lastTeachingP) === ppdJS - 1) {
+          for (const t of teacherIdsInUse) {
+            const ti = tIdxOf.get(t);
+            const cap = ti != null && jm.teacherLastPeriodCap ? jm.teacherLastPeriodCap[ti] : -1;
+            if (cap == null || cap < 0) continue;
+            const vs = [];
+            for (const d of days) { const v = tVars(t, d, lastTeachingP); if (v) vs.push(...v); }
+            if (vs.length <= cap) continue;
+            const over = m.newIntVar(0, days.length, `lp_${t}`);
+            atMost(m, LinearExpr.sum([...vs, LinearExpr.term(over, -1)]), cap);
+            softTerms.push([W.lastPeriod, over]);
+          }
+        }
+      }
+
+      // ---- 7. period load balance (periodPref score per placement) --------
+      // Mirrors JS exactly: every occupied (entity-agnostic) placement scores
+      // periodPref[bellPos]. Weight folds jw[7] in; per-cover like teacherOcc.
+      {
+        const pref = jm.periodPref;
+        for (let ci = 0; ci < cards.length; ci++) {
+          for (const [skey, avar] of assign[ci]) {
+            const s = skey.split(',').map(Number);
+            let score = 0;
+            for (const ps of cover(cards[ci], s)) {
+              const pos = bellPosOf.get(ps[1]);
+              if (pos != null) score += pref[pos] || 0;
+            }
+            if (score) softTerms.push([score * (jw[7] || 20), avar]);
+          }
+        }
+      }
+
+      // ---- 8. consecutive heavy days (CKritResty) --------------------------
+      // heavy_d forced 1 when dayLoad > thr; pair penalty ≥ ex_d + ex_{d+1}
+      // − M(2 − heavy_d − heavy_{d+1}) counts both days' excess only when
+      // both are heavy (big-M relaxation, M = periods/day).
+      for (const t of teacherIdsInUse) {
+        const ti = tIdxOf.get(t);
+        const cap = ti != null && jm.teacherMaxPerDay ? (jm.teacherMaxPerDay[ti] | 0) : 0;
+        const thr = cap > 0 ? Math.max(2, Math.floor(cap / 2)) : 5;
+        const M = periods.length;
+        const exs = [], heavies = [];
+        for (const d of days) {
+          const vs = [];
+          for (const P of periods) { const v = tVars(t, d, P); if (v) vs.push(...v); }
+          if (!vs.length) { exs.push(null); heavies.push(null); continue; }
+          const ex = m.newIntVar(0, M, `hx_${t}_${d}`);
+          atMost(m, LinearExpr.sum([...vs, LinearExpr.term(ex, -1)]), thr); // ex ≥ Σ − thr
+          const hv = m.newBoolVar(`hv_${t}_${d}`);
+          atMost(m, LinearExpr.sum([...vs, LinearExpr.term(hv, -M)]), thr); // M·hv ≥ Σ − thr
+          exs.push(ex); heavies.push(hv);
+        }
+        for (let d = 0; d + 1 < days.length; d++) {
+          if (!exs[d] || !exs[d + 1]) continue;
+          const pen = m.newIntVar(0, 2 * M, `hp_${t}_${d}`);
+          // pen ≥ ex_d + ex_{d+1} − M(2 − hv_d − hv_{d+1})
+          atMost(m, LinearExpr.sum([
+            exs[d], exs[d + 1],
+            LinearExpr.term(heavies[d], M), LinearExpr.term(heavies[d + 1], M),
+            LinearExpr.term(pen, -1),
+          ]), 2 * M);
+          softTerms.push([W.consecHeavy, pen]);
+        }
+      }
+
+      // ---- 9. teacher conditional time-off ('?' slots) ---------------------
+      if (jm.teacherConditionalMask) {
+        for (const t of teacherIdsInUse) {
+          const ti = tIdxOf.get(t);
+          if (ti == null) continue;
+          for (const d of days) {
+            const mask = jm.teacherConditionalMask[ti * days.length + d];
+            if (!mask) continue;
+            for (const P of periods) {
+              const pos = bellPosOf.get(P);
+              if (pos == null || ((mask >>> pos) & 1) !== 1) continue;
+              const vs = tVars(t, d, P);
+              if (vs) for (const v of vs) softTerms.push([W.conditional, v]);
+            }
+          }
+        }
+      }
+
+      // ---- 10. lunch window / teaching window / block prefs (per class) ---
+      // JS scores the START period of each assigned lesson (not covers).
+      for (let ci = 0; ci < cards.length; ci++) {
+        const card = cards[ci];
+        const cIdxs = card.classes.map((c) => cIdxOf.get(c)).filter((x) => x != null);
+        if (!cIdxs.length) continue;
+        for (const [skey, avar] of assign[ci]) {
+          const P = Number(skey.split(',')[1]);
+          const pos = bellPosOf.get(P);
+          if (pos == null) continue;
+          const bit = (1 << pos) >>> 0;
+          let w = 0;
+          for (const cx of cIdxs) {
+            if (jm.classLunchMask && (jm.classLunchMask[cx] & bit)) w += W.window;
+            const tm = jm.classTeachingMask ? jm.classTeachingMask[cx] : 0;
+            if (tm !== 0 && (tm & bit) === 0) w += W.window;
+            if (jm.classDruheHodiny && jm.classDruheHodiny[cx] && pos === 0) w += W.window;
+          }
+          if (w) softTerms.push([w, avar]);
+        }
+      }
+      // block window: penalise (class, day) that is active but has no
+      // teaching inside the class's required block window.
+      if (jm.classBlockMask) {
+        for (const c of classIdsInUse) {
+          const cx = cIdxOf.get(c);
+          if (cx == null || !jm.classBlockMask[cx]) continue;
+          const mask = jm.classBlockMask[cx];
+          const wBlock = W.window * ((jm.classManualnyBlok && jm.classManualnyBlok[cx] === 2) ? 2 : 1);
+          for (const d of days) {
+            const inWin = [], allB = [];
+            for (const P of periods) {
+              const b = cBusy(c, d, P);
+              if (!b) continue;
+              allB.push(b);
+              const pos = bellPosOf.get(P);
+              if (pos != null && ((mask >>> pos) & 1)) inWin.push(b);
+            }
+            if (!allB.length) continue;
+            // act is exact: ≥ every busy bool (forced up), ≤ their sum (0 when idle).
+            const act = m.newBoolVar(`blk_act_${c}_${d}`);
+            for (const b of allB) atLeast(m, LinearExpr.sum([act, ...neg([b])]), 0);
+            atMost(m, LinearExpr.sum([act, ...neg(allB)]), 0);
+            const hasWin = m.newBoolVar(`blk_win_${c}_${d}`);
+            atMost(m, LinearExpr.sum([hasWin, ...neg(inWin)]), 0); // hasWin ≤ Σin-window
+            const miss = m.newBoolVar(`blk_miss_${c}_${d}`);
+            // miss ≥ act − hasWin
+            atLeast(m, LinearExpr.sum([miss, hasWin, ...neg([act])]), 0);
+            softTerms.push([wBlock, miss]);
+          }
+        }
+      }
+
+      // ---- 12. classTeacherPos (homeroom teacher at marked slots) ---------
+      if (jm.classTeacherPosMask && jm.classHomeroomTeacher) {
+        for (let ci = 0; ci < cards.length; ci++) {
+          const card = cards[ci];
+          for (const c of card.classes) {
+            const cx = cIdxOf.get(c);
+            if (cx == null) continue;
+            const hrT = jm.classHomeroomTeacher[cx];
+            if (hrT < 0) continue;
+            const hrId = jm.teacherIds[hrT];
+            if (card.teachers.includes(hrId)) continue;
+            for (const [skey, avar] of assign[ci]) {
+              const [d, P] = skey.split(',').map(Number);
+              const pos = bellPosOf.get(P);
+              if (pos == null) continue;
+              if (jm.classTeacherPosMask[(cx * days.length + d) * ppdJS + pos]) {
+                softTerms.push([W.teacherPos, avar]);
+              }
+            }
+          }
+        }
+      }
+
+      // ---- 13. min resting hours between days ------------------------------
+      {
+        const minRest = jm.minRestingPeriods | 0;
+        if (minRest > 0) {
+          for (const t of teacherIdsInUse) {
+            for (let d = 0; d + 1 < days.length; d++) {
+              for (const P1 of periods) {
+                const pos1 = bellPosOf.get(P1);
+                for (const P2 of periods) {
+                  const pos2 = bellPosOf.get(P2);
+                  const gap = (ppdJS - 1 - pos1) + pos2;
+                  if (gap >= minRest) continue;
+                  const v1 = tVars(t, days[d], P1), v2 = tVars(t, days[d + 1], P2);
+                  if (!v1 || !v2) continue;
+                  const viol = m.newBoolVar(`rest_${t}_${d}_${pos1}_${pos2}`);
+                  // viol ≥ busy1 + busy2 − 1, weighted by shortfall
+                  atLeast(m, LinearExpr.sum([viol, ...neg([...v1, ...v2])]), -1);
+                  softTerms.push([W.resting * (minRest - gap), viol]);
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // ---- 14. supervision criteria (avoid first/last period) -------------
+      {
+        const crit = jm.supervisionCriteria;
+        if (crit && (crit.avoidFirstPeriod || crit.avoidLastPeriod)) {
+          for (let ci = 0; ci < cards.length; ci++) {
+            for (const [skey, avar] of assign[ci]) {
+              const pos = bellPosOf.get(Number(skey.split(',')[1]));
+              if (pos == null) continue;
+              if ((crit.avoidFirstPeriod && pos === 0) || (crit.avoidLastPeriod && pos === ppdJS - 1)) {
+                softTerms.push([W.supervision, avar]);
+              }
+            }
+          }
+        }
+      }
+
+      // ---- 15. student subject conflicts -----------------------------------
+      // jm.lessonStudentSets indexes jm.lessons (per-card expansion in the SAME
+      // source order as our cards[] — both expand school.lessons sequentially);
+      // map via source lesson id to stay order-independent.
+      if (jm.studentElectiveSets && jm.studentElectiveSets.length && jm.lessonStudentSets) {
+        const setsByLessonId = new Map();
+        for (let i = 0; i < jm.lessons.length; i++) {
+          const lid = jm.lessons[i].id;
+          if (!setsByLessonId.has(lid) && jm.lessonStudentSets[i]) setsByLessonId.set(lid, jm.lessonStudentSets[i]);
+        }
+        const perStudentSlot = new Map(); // `${sidx}|${d},${P}` -> avars
+        for (let ci = 0; ci < cards.length; ci++) {
+          const tags = setsByLessonId.get(cards[ci].lesson_id);
+          if (!tags || !tags.length) continue;
+          for (const [skey, avar] of assign[ci]) {
+            for (const sidx of tags) {
+              const k = `${sidx}|${skey}`;
+              if (!perStudentSlot.has(k)) perStudentSlot.set(k, []);
+              perStudentSlot.get(k).push(avar);
+            }
+          }
+        }
+        for (const [k, vs] of perStudentSlot) {
+          if (vs.length < 2) continue;
+          const over = m.newIntVar(0, vs.length, `stc_${k.replace(/[^A-Za-z0-9]/g, '_')}`);
+          atMost(m, LinearExpr.sum([...vs, LinearExpr.term(over, -1)]), 1);
+          softTerms.push([W.studentConf, over]);
+        }
+      }
+
+      // ---- 16+17. mode scorers (afternoon-heavy / block-pairing) ----------
+      if (jm.schoolMode === 'morning-afternoon' || jm.schoolMode === 'block-planning') {
+        const cutoff = jm.afternoonStartsAt | 0;
+        const tagsByLessonId = new Map();
+        for (let i = 0; i < jm.lessons.length; i++) {
+          const lid = jm.lessons[i].id;
+          if (!tagsByLessonId.has(lid) && jm.lessonTags && jm.lessonTags[i]) tagsByLessonId.set(lid, jm.lessonTags[i]);
+        }
+        for (let ci = 0; ci < cards.length; ci++) {
+          const card = cards[ci];
+          const t = tagsByLessonId.get(card.lesson_id);
+          for (const [skey, avar] of assign[ci]) {
+            const pos = bellPosOf.get(Number(skey.split(',')[1]));
+            if (pos == null) continue;
+            if (jm.schoolMode === 'morning-afternoon' && t && t.includes('HEAVY') && pos >= cutoff) {
+              softTerms.push([W.afternoon, avar]);
+            }
+            if (jm.schoolMode === 'block-planning' && pos % 2 !== 0) {
+              softTerms.push([W.blockPair * (card.length === 2 ? 2 : 1), avar]);
+            }
+          }
+        }
+      }
+
+      // ---- 18. teacher interval-max-days -----------------------------------
+      if (jm.teacherIntervalMaxDays) {
+        for (const t of teacherIdsInUse) {
+          const ti = tIdxOf.get(t);
+          const iv = ti != null ? jm.teacherIntervalMaxDays[ti] : null;
+          if (!iv) continue;
+          const workedBools = [];
+          const M = periods.length;
+          for (const d of days) {
+            const vs = [];
+            for (const P of periods) {
+              const pos = bellPosOf.get(P);
+              if (pos == null || pos < iv.fromPeriod || pos > iv.toPeriod) continue;
+              const v = tVars(t, d, P);
+              if (v) vs.push(...v);
+            }
+            if (!vs.length) continue;
+            const wk = m.newBoolVar(`ivw_${t}_${d}`);
+            atMost(m, LinearExpr.sum([...vs, LinearExpr.term(wk, -M)]), 0); // M·wk ≥ Σ
+            workedBools.push(wk);
+          }
+          if (workedBools.length > iv.maxDays) {
+            const over = m.newIntVar(0, days.length, `ivo_${t}`);
+            atMost(m, LinearExpr.sum([...workedBools, LinearExpr.term(over, -1)]), iv.maxDays);
+            softTerms.push([W.interval, over]);
+          }
+        }
+      }
+
+      // ---- 19. lesson-tag daily caps ---------------------------------------
+      if (jm.tagDailyCaps && jm.tagDailyCaps.length) {
+        const tagsByLessonId = new Map();
+        for (let i = 0; i < jm.lessons.length; i++) {
+          const lid = jm.lessons[i].id;
+          if (!tagsByLessonId.has(lid) && jm.lessonTags && jm.lessonTags[i]) tagsByLessonId.set(lid, jm.lessonTags[i]);
+        }
+        for (const cap of jm.tagDailyCaps) {
+          const perKey = new Map(); // `${entity}|${d}` -> avars
+          for (let ci = 0; ci < cards.length; ci++) {
+            const card = cards[ci];
+            const lt = tagsByLessonId.get(card.lesson_id);
+            if (!lt || !lt.includes(cap.tag)) continue;
+            const ents = cap.scope === 'teacher' ? card.teachers : card.classes;
+            for (const [skey, avar] of assign[ci]) {
+              const d = Number(skey.split(',')[0]);
+              for (const e of ents) {
+                const k = `${e}|${d}`;
+                if (!perKey.has(k)) perKey.set(k, []);
+                perKey.get(k).push(avar);
+              }
+            }
+          }
+          const w = W.tagCap * (cap.scope === 'teacher' ? 2 : 1);
+          for (const [k, vs] of perKey) {
+            if (vs.length <= cap.max) continue;
+            const over = m.newIntVar(0, vs.length, `tgc_${cap.tag}_${k.replace(/[^A-Za-z0-9]/g, '_')}`);
+            atMost(m, LinearExpr.sum([...vs, LinearExpr.term(over, -1)]), cap.max);
+            softTerms.push([w, over]);
+          }
+        }
+      }
+
+      // ---- 20. subject-tag → room mismatch ---------------------------------
+      if (jm.classroomAllowedTags && jm.lessonTags) {
+        const tagsByLessonId = new Map();
+        for (let i = 0; i < jm.lessons.length; i++) {
+          const lid = jm.lessons[i].id;
+          if (!tagsByLessonId.has(lid) && jm.lessonTags[i]) tagsByLessonId.set(lid, jm.lessonTags[i]);
+        }
+        for (let ci = 0; ci < cards.length; ci++) {
+          const card = cards[ci];
+          const lt = tagsByLessonId.get(card.lesson_id);
+          if (!lt || !lt.length || !card.rooms.length) continue;
+          for (const r of card.rooms) {
+            const ri = rIdxOf.get(r);
+            const ra = ri != null ? jm.classroomAllowedTags[ri] : null;
+            if (!ra || !ra.length) continue;
+            if (lt.some((tag) => ra.includes(tag))) continue;
+            for (const skey of assign[ci].keys()) {
+              const yv = yroom.get(`${ci}|${skey}|${r}`);
+              if (yv) softTerms.push([W.roomTag, yv]);
+            }
+          }
+        }
+      }
+
+      console.error('EXTENDED SOFT: terms added=', softTerms.length - nExtBefore);
+    }
+  };
 
   const totalCards = cards.length;
   console.error('MODEL BUILD: cards=', cards.length, 'placed_vars=', placed.length, 'slot_vars=', assign.reduce((acc, m) => acc + m.size, 0), 'soft_terms=', softTerms.length);
-  const doQuality = soft && softTerms.length > 0;
+  const doQuality = soft;
   let elapsed = 0;
   const cancelled = () => cancelCheck && cancelCheck();
 
@@ -585,11 +1172,32 @@ export async function buildAndSolve(school, options = {}) {
   }
 
   m.maximize(sum(placed));
+  // Adaptive phase split (was a fixed 60/40). Phase 1 (placement) gets a
+  // share that grows with problem size — small models prove placement
+  // optimality in seconds and the quality phase deserves the remainder;
+  // huge models need most of the budget just to place. Phase 2 then gets
+  // whatever phase 1 didn't actually use (solvers stop early on OPTIMAL),
+  // so a fast phase 1 automatically funds a longer polish.
+  //   share = clamp(0.35 + cards/4000, 0.40, 0.75)
+  //   improve mode: the placement floor makes phase 1 trivial — cap at 0.40.
+  // Improve mode: the hints make phase 1 cheap per-solution but it is also
+  // the placement CLIMBER (floor -> 100%), and the early-exit callback stops
+  // it the moment every card is placed — so a generous share is safe: unused
+  // time rolls over to phase 2 automatically.
+  const p1Share = improve
+    ? 0.60
+    : Math.min(0.75, Math.max(0.40, 0.35 + cards.length / 4000));
   const solver1 = new CpSolver();
-  solver1.parameters.maxTimeInSeconds = Math.max(5, timeLimitSec * (doQuality ? 0.6 : 1.0));
+  solver1.parameters.maxTimeInSeconds = Math.max(5, timeLimitSec * (doQuality ? p1Share : 1.0));
   solver1.parameters.numSearchWorkers = numWorkers;
   solver1.parameters.randomSeed = seed;
-  const status1 = await solver1.solve(m);
+  class Phase1Cb extends ProgressCb {
+    onSolutionCallback() {
+      super.onSolutionCallback();
+      try { if (Math.round(this.objectiveValue) >= cards.length) this.stopSearch(); } catch {}
+    }
+  }
+  const status1 = await solver1.solve(m, new Phase1Cb(null));
   console.error('PHASE 1 status:', status1);
   const pstar = (status1 === 'OPTIMAL' || status1 === 'FEASIBLE')
     ? Math.round(solver1.objectiveValue()) : 0;
@@ -597,16 +1205,47 @@ export async function buildAndSolve(school, options = {}) {
   elapsed += solver1.wallTime;
 
   let solver = solver1, status = status1;
-  if (doQuality && pstar > 0 && !cancelled()) {
+  if (doQuality && pstar > 0 && !cancelled()) buildSoftModel();
+  if (doQuality && pstar > 0 && !cancelled() && softTerms.length) {
     atLeast(m, sum(placed), pstar);
+    // Seed phase 2 with phase 1's solution so it starts from an incumbent
+    // instead of re-discovering placement from scratch. (Improve mode already
+    // carries its own hints — don't double-hint.)
+    if (!improve && options.phase2Hints !== false) {
+      const val1 = (x) => { try { return solver1.value(x); } catch { return 0; } };
+      let nh = 0, nhr = 0;
+      for (let ci = 0; ci < cards.length; ci++) {
+        for (const [skey, avar] of assign[ci]) {
+          if (val1(avar) === 1) {
+            hintOnce(avar, 1); nh++;
+            for (const r of cards[ci].rooms) {
+              const yv = yroom.get(`${ci}|${skey}|${r}`);
+              if (yv && val1(yv) === 1) { hintOnce(yv, 1); nhr++; }
+            }
+          }
+        }
+      }
+      console.error('PHASE 2 hints:', nh, 'card vars +', nhr, 'room vars');
+    }
     const weightedTerms = softTerms.map(([w, v]) => LinearExpr.term(v, w));
     const softSum = weightedTerms.length ? LinearExpr.sum(weightedTerms) : 0;
     m.minimize(softSum);
     const solver2 = new CpSolver();
-    solver2.parameters.maxTimeInSeconds = Math.max(5, (timeLimitSec - elapsed) * 0.6);
+    // Phase 2 spends the REMAINING wall budget (phase 1 stopping early on
+    // OPTIMAL leaves more polish time), minus a small margin for extraction.
+    solver2.parameters.maxTimeInSeconds = Math.max(5, (timeLimitSec - elapsed) * 0.9);
     solver2.parameters.numSearchWorkers = numWorkers;
     solver2.parameters.randomSeed = seed;
-    const st2 = await solver2.solve(m);
+    let st2 = null;
+    try {
+      st2 = await solver2.solve(m);
+    } catch (e) {
+      console.error('PHASE 2 solve threw:', (e && e.message) || String(e));
+    }
+    console.error('PHASE 2 status:', st2, 'wall:', st2 ? solver2.wallTime : 'n/a', 'terms:', softTerms.length);
+    if (st2 === 'MODEL_INVALID') {
+      try { console.error('PHASE 2 validator:', solver2.solutionInfo()); } catch (e) { console.error('PHASE 2 validator read failed:', String(e).slice(0, 120)); }
+    }
     if (st2 === 'OPTIMAL' || st2 === 'FEASIBLE') {
       solver = solver2; status = st2;
       elapsed += solver2.wallTime;

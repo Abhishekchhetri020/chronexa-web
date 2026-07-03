@@ -8,6 +8,14 @@ import vm from "node:vm";
 import { fileURLToPath } from "node:url";
 import { JSDOM } from "/private/tmp/chronexa_smoke/node_modules/jsdom/lib/api.js";
 
+// [vite-esm] The 2026-07 Vite migration added ESM import/export lines to the
+// classic UI modules. Strip them so vm.runInThisContext keeps working; the
+// module BODIES are unchanged.
+const stripVite = (s) => s
+  .replace(/^import "[^"]+";$/gm, "")
+  .replace(/^export const [A-Za-z_$][\w$]* = window\.[A-Za-z_$][\w$]*;$/gm, "");
+
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..");
@@ -30,7 +38,7 @@ document.querySelectorAll(".step-btn").forEach(btn => {
 });
 
 const src = fs.readFileSync(path.join(repoRoot, "js/ui/shell_v3.js"), "utf8");
-vm.runInThisContext(src, { filename: "shell_v3.js" });
+vm.runInThisContext(stripVite(src), { filename: "shell_v3.js" });
 window.ChrxShell.mount();
 
 let pass = 0, fail = 0;

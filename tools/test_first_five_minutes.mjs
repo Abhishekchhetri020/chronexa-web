@@ -7,6 +7,14 @@ import vm from "node:vm";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
+// [vite-esm] The 2026-07 Vite migration added ESM import/export lines to the
+// classic UI modules. Strip them so vm.runInThisContext keeps working; the
+// module BODIES are unchanged.
+const stripVite = (s) => s
+  .replace(/^import "[^"]+";$/gm, "")
+  .replace(/^export const [A-Za-z_$][\w$]* = window\.[A-Za-z_$][\w$]*;$/gm, "");
+
+
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = path.resolve(path.dirname(__filename), "..");
 const require_ = createRequire(import.meta.url);
@@ -26,7 +34,7 @@ window.confirm = globalThis.confirm;
 window.matchMedia = () => ({ matches: true, addEventListener() {}, removeEventListener() {} });
 
 function load(rel) {
-  vm.runInThisContext(fs.readFileSync(path.join(repoRoot, rel), "utf8"), { filename: rel });
+  vm.runInThisContext(stripVite(fs.readFileSync(path.join(repoRoot, rel), "utf8")), { filename: rel });
 }
 
 let pass = 0;

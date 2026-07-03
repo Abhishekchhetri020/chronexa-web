@@ -20,6 +20,17 @@
 // loader auto-selects JSPI when promising is a function.
 import { buildAndSolve } from "./cp_sat_solver.mjs";
 
+// Mirror solver diagnostics to the page: worker console output is invisible
+// in some tooling contexts, so forward console.error lines as {type:"log"}
+// messages (clients that don't handle the type ignore them).
+{
+  const _err = console.error.bind(console);
+  console.error = (...a) => {
+    _err(...a);
+    try { self.postMessage({ type: "log", line: a.map(String).join(" ") }); } catch {}
+  };
+}
+
 self.onmessage = async (ev) => {
   const m = ev.data || {};
   if (m.type !== "solve") return;

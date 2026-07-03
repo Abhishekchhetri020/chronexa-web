@@ -8,6 +8,14 @@ import vm from "node:vm";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
+// [vite-esm] The 2026-07 Vite migration added ESM import/export lines to the
+// classic UI modules. Strip them so vm.runInThisContext keeps working; the
+// module BODIES are unchanged.
+const stripVite = (s) => s
+  .replace(/^import "[^"]+";$/gm, "")
+  .replace(/^export const [A-Za-z_$][\w$]* = window\.[A-Za-z_$][\w$]*;$/gm, "");
+
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..");
@@ -28,7 +36,7 @@ window.prompt = globalThis.prompt;
 window._chrxNotify = () => {};
 
 const src = fs.readFileSync(path.join(repoRoot, "js/ui/components/lessons_grid_matrix.js"), "utf8");
-vm.runInThisContext(src, { filename: "lessons_grid_matrix.js" });
+vm.runInThisContext(stripVite(src), { filename: "lessons_grid_matrix.js" });
 const T = window.LessonsGridMatrix.__test;
 
 let pass = 0, fail = 0;
@@ -192,7 +200,7 @@ function baseSchool() {
   const school = baseSchool();
   window.APP = { school, io: {} };
   const exportSrc = fs.readFileSync(path.join(repoRoot, "js/ui/io/export_timetable_xml.js"), "utf8");
-  vm.runInThisContext(exportSrc, { filename: "export_timetable_xml.js" });
+  vm.runInThisContext(stripVite(exportSrc), { filename: "export_timetable_xml.js" });
   const xml = window.APP.io.exportSynthesized(school);
   const parsed = new dom.window.DOMParser().parseFromString(xml, "application/xml");
   const group = parsed.querySelector('groups > group[id="BOYS"]');
@@ -212,7 +220,7 @@ function baseSchool() {
 
 {
   const parserSrc = fs.readFileSync(path.join(repoRoot, "js/xml/parse_timetable_xml.js"), "utf8");
-  vm.runInThisContext(parserSrc, { filename: "parse_timetable_xml.js" });
+  vm.runInThisContext(stripVite(parserSrc), { filename: "parse_timetable_xml.js" });
   const parsed = window.parseTimetableXml.parseText(`<?xml version="1.0"?>
     <timetable displayname="Metadata test">
       <periods><period period="1" name="1" short="1" starttime="08:00" endtime="08:40"/></periods>
