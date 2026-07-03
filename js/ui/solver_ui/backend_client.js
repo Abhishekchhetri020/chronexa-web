@@ -480,13 +480,7 @@
     const options = spec.options || {};
     const algo = spec.algorithm || "browser";
     if (algo === "auto" || spec.mode === "best") return runTwoStage(school, options);
-    // Cold Generate: transparently run the same draft→polish pipeline. A
-    // 1-5s JS draft seeds the WASM CP-SAT polish as its hint source, which
-    // reaches full placement far faster than a cold CP-SAT search. Explicit
-    // "cloud"/"wasm" algorithm picks are respected and bypass this.
-    if (algo === "browser" && options.mode === "generate" && !options.warmStart) {
-      return runTwoStage(school, options);
-    }
+
     if (algo === "cloud") return runCloud(school, options, spec.onFallback);
     if (algo === "wasm")  return runWasm(school, options);
     return runBrowser(school, options);
