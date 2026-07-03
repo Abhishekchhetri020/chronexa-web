@@ -139,10 +139,13 @@
   function runWasm(school, options) {
     const sub = makeSubscribable();
     let cancelled = false;
+    let finished = false;
     // Deliberately a plain path string, NOT new URL(import.meta.url): the
     // Emscripten pthread runtime under wasm/dist must stay un-bundled, so
     // the whole wasm/ subtree is copied verbatim into the build output.
     const url = "js/solver/wasm/cp_sat_worker.js?v=" + (window.APP_VER || "");
+    const timeLimitSec = Math.max(1, Number(options && options.timeLimitSec) || 90);
+    const watchdogMs = Math.ceil(timeLimitSec * 1300);
     let worker;
     try {
       worker = new Worker(url, { type: "module" });
@@ -156,26 +159,51 @@
       };
     }
 
+    function finish(ev) {
+      if (finished || cancelled) return;
+      finished = true;
+      clearTimeout(watchdog);
+      sub.emit(ev);
+      try { worker.terminate(); } catch {}
+    }
+
+    // This watchdog must live in the parent page, not inside cp_sat_worker.js.
+    // If OR-Tools/JSPI wedges inside solver.solve(), the worker event loop is
+    // blocked and its own setTimeout cannot fire. The parent can still kill
+    // the stuck worker and let Best mode fall back to the JS draft.
+    const watchdog = setTimeout(() => {
+      finish({
+        type: "error",
+        message: "WASM solver watchdog timed out (> " + (timeLimitSec * 1.3).toFixed(1) + "s). Falling back to the draft timetable.",
+      });
+    }, watchdogMs);
+
     worker.onmessage = (ev) => {
       const m = ev.data || {};
-      if (cancelled) return;
+      if (cancelled || finished) return;
       if (m.type === "done") {
-        sub.emit({ type: "done", result: m.result });
-        worker.terminate();
+        finish({ type: "done", result: m.result });
       } else if (m.type === "error") {
-        sub.emit({ type: "error", message: m.message || "wasm worker error" });
-        worker.terminate();
+        finish({ type: "error", message: m.message || "wasm worker error" });
       } else if (m.type === "progress") {
         sub.emit(m);
+      } else if (m.type === "log") {
+        try { console.error("[wasm-cp-sat]", m.line); } catch {}
       }
     };
-    worker.onerror = (e) => sub.emit({ type: "error", message: (e && e.message) || "wasm worker error" });
+    worker.onerror = (e) => finish({ type: "error", message: (e && e.message) || "wasm worker error" });
     worker.postMessage({ type: "solve", school, options });
 
     return {
       mode: "wasm",
       subscribe: sub.subscribe,
-      cancel() { cancelled = true; try { worker.terminate(); } catch {} sub.emit({ type: "cancelled" }); },
+      cancel() {
+        if (finished || cancelled) return;
+        cancelled = true;
+        clearTimeout(watchdog);
+        try { worker.terminate(); } catch {}
+        sub.emit({ type: "cancelled" });
+      },
       pause()  {},
       resume() {},
     };
