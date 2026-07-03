@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vite Reference</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root { --bg: #faf9f6; --text: #1a1a2e; --accent: #6366f1; --code-bg: #1e1e2e; --code-text: #cdd6f4; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', -apple-system, sans-serif; background: var(--bg); color: var(--text);
+      line-height: 1.6; padding: 2rem; max-width: 800px; margin: 0 auto;
+    }
+    h1 { font-size: 1.75rem; font-weight: 700; margin-bottom: 0.25rem; }
+    h2 { font-size: 1.25rem; font-weight: 600; margin-top: 2rem; margin-bottom: 0.5rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.25rem; }
+    h3 { font-size: 1rem; font-weight: 600; margin-top: 1.25rem; margin-bottom: 0.25rem; }
+    p { margin-bottom: 0.5rem; color: #475569; }
+    code { font-family: 'JetBrains Mono', monospace; font-size: 0.85em; background: #f1f5f9; padding: 0.15em 0.4em; border-radius: 4px; }
+    pre { background: var(--code-bg); color: var(--code-text); padding: 0.75rem 1rem; border-radius: 6px; overflow-x: auto; font-size: 0.8rem; line-height: 1.5; margin-bottom: 0.75rem; }
+    pre code { background: none; padding: 0; font-size: inherit; color: inherit; }
+    .cmd { display: flex; align-items: center; gap: 0.5rem; }
+    .cmd code { flex: 1; }
+    ul { padding-left: 1.25rem; margin-bottom: 0.75rem; font-size: 0.9rem; }
+    li { margin-bottom: 0.25rem; }
+    .tag { display: inline-block; background: #e0e7ff; color: var(--accent); font-size: 0.7rem; font-weight: 600; padding: 0.15em 0.5em; border-radius: 3px; }
+    @media print { body { font-size: 11pt; } pre { break-inside: avoid; } h2 { break-after: avoid; } }
+  </style>
+</head>
+<body>
+
+<h1>Vite Reference</h1>
+<p>Commands, config patterns, and CLI flags for daily use.</p>
+
+<h2>Commands</h2>
+
+<pre><code>npm create vite@latest my-app -- --template vanilla   # New project
+npm install                                            # Install deps
+npm run dev                                            # Start dev server (localhost:5173)
+npm run build                                          # Production build → dist/
+npm run preview                                        # Preview the production build locally</code></pre>
+
+<h2>Key flags</h2>
+
+<pre><code>vite --port 4000        # Custom port
+vite --open             # Auto-open browser
+vite build --watch      # Rebuild on change
+vite build --minify false   # Skip minification (debugging)</code></pre>
+
+<h2><code>vite.config.js</code> for vanilla JS projects</h2>
+
+<pre><code>import { defineConfig } from 'vite'
+import tailwindcss from '@tailwindcss/vite'
+
+export default defineConfig({
+  plugins: [tailwindcss()],
+  build: {
+    rollupOptions: {
+      input: { main: 'index.html' },
+      output: { manualChunks: { solver: ['js/solver/csp_solver.js'] } }
+    }
+  }
+})</code></pre>
+
+<h2>HTMX / multi-page apps</h2>
+
+<pre><code>import { resolve } from 'path'
+export default defineConfig({
+  build: {
+    rollupOptions: {
+      input: {
+        main: resolve(__dirname, 'index.html'),
+        about: resolve(__dirname, 'about.html'),
+      }
+    }
+  }
+})</code></pre>
+
+<h2>Environment variables</h2>
+
+<pre><code>import.meta.env.VITE_API_URL   # Must be prefixed VITE_
+import.meta.env.MODE            # 'development' | 'production'
+import.meta.env.DEV             # true in dev
+import.meta.env.PROD            # true in production</code></pre>
+
+<h2>Common plugins</h2>
+
+<table>
+  <tr><td><code>@vitejs/plugin-vue</code></td><td>Vue SFC support</td></tr>
+  <tr><td><code>@vitejs/plugin-react</code></td><td>React + HMR</td></tr>
+  <tr><td><code>@tailwindcss/vite</code></td><td>Tailwind v4 as plugin (no CDN)</td></tr>
+  <tr><td><code>vite-plugin-pwa</code></td><td>Service Worker + manifest</td></tr>
+  <tr><td><code>vite-plugin-static-copy</code></td><td>Copy static assets to dist/</td></tr>
+</table>
+
+<h2>Directory output structure</h2>
+
+<pre><code>dist/
+├── index.html
+├── assets/
+│   ├── index-C3bUnf5n.js        # main bundle (cache-busted)
+│   ├── solver-Df8kLm91.js       # solver chunk (lazy loaded)
+│   └── style-B2cXm7fT.css       # extracted CSS
+├── sw.js                        # via vite-plugin-pwa
+└── manifest.webmanifest</code></pre>
+
+<h2>Tips</h2>
+
+<ul>
+  <li>Put all your source in <code>src/</code> (convention, not required)</li>
+  <li>Vite treats <code>index.html</code> as the entry point — it auto-injects <code>&lt;script type="module"&gt;</code></li>
+  <li>Use relative paths in HTML; Vite resolves them</li>
+  <li>Existing IIFE scripts work without changes — just add them to <code>index.html</code> as normal <code>&lt;script&gt;</code> tags or import them in <code>main.js</code></li>
+  <li>For Chronexa's 168 IIFE files, you can keep concatenating with <code>build_bundle.sh</code> and point Vite at the output — no need to rewrite everything at once</li>
+</ul>
+
+<h2>See also</h2>
+
+<ul>
+  <li><code>lessons/0001-what-is-vite.html</code> — the lesson</li>
+  <li><a href="https://vite.dev/guide/">Official Vite guide</a></li>
+  <li><a href="https://vite.dev/config/">Config reference</a></li>
+</ul>
+
+</body>
+</html>

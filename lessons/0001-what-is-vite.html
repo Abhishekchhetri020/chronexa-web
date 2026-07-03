@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson 1: What is Vite?</title>
+  <style>
+    :root {
+      --bg: #faf9f6;
+      --text: #1a1a2e;
+      --accent: #6366f1;
+      --accent-light: #e0e7ff;
+      --code-bg: #1e1e2e;
+      --code-text: #cdd6f4;
+      --border: #e2e8f0;
+      --warm: #f59e0b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 2rem 1rem;
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    h1 { font-size: 2rem; font-weight: 700; letter-spacing: -0.025em; margin-bottom: 0.25rem; }
+    h2 { font-size: 1.35rem; font-weight: 600; margin-top: 2rem; margin-bottom: 0.75rem; letter-spacing: -0.01em; }
+    h3 { font-size: 1.1rem; font-weight: 600; margin-top: 1.5rem; margin-bottom: 0.5rem; }
+    p, li { margin-bottom: 0.75rem; }
+    ul, ol { padding-left: 1.25rem; margin-bottom: 1rem; }
+    .subtitle { color: #64748b; font-size: 0.95rem; margin-bottom: 2rem; }
+    code {
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      font-size: 0.875em;
+      background: #f1f5f9;
+      padding: 0.15em 0.4em;
+      border-radius: 4px;
+    }
+    pre {
+      background: var(--code-bg);
+      color: var(--code-text);
+      padding: 1rem 1.25rem;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-size: 0.85rem;
+      line-height: 1.5;
+      margin-bottom: 1rem;
+    }
+    pre code { background: none; padding: 0; font-size: inherit; color: inherit; }
+    .highlight {
+      background: var(--accent-light);
+      border-left: 4px solid var(--accent);
+      padding: 1rem 1.25rem;
+      border-radius: 0 8px 8px 0;
+      margin-bottom: 1rem;
+    }
+    .highlight strong { color: var(--accent); }
+    .callout {
+      background: #fef3c7;
+      border-left: 4px solid var(--warm);
+      padding: 1rem 1.25rem;
+      border-radius: 0 8px 8px 0;
+      margin-bottom: 1rem;
+      font-size: 0.9rem;
+    }
+    .comparison { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem; }
+    .comparison > div {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      font-size: 0.9rem;
+    }
+    .comparison > div h4 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-bottom: 0.5rem; }
+    .comparison > div.before { background: #fef2f2; }
+    .comparison > div.after { background: #f0fdf4; }
+    .tag {
+      display: inline-block;
+      background: var(--accent-light);
+      color: var(--accent);
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 0.2em 0.6em;
+      border-radius: 4px;
+      margin-right: 0.3em;
+    }
+    hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
+    .footer { font-size: 0.85rem; color: #94a3b8; text-align: center; margin-top: 3rem; border-top: 1px solid var(--border); padding-top: 1.5rem; }
+    .footer a { color: var(--accent); }
+    @media (max-width: 600px) { .comparison { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+
+<h1>What is Vite?</h1>
+<p class="subtitle">Lesson 1 &mdash; One tool to replace your build script, dev server, and bundler</p>
+
+<div class="highlight">
+  <strong>Vite</strong> (French for "quick") is a build tool that does three things that <code>build_bundle.sh</code> cannot: a <strong>dev server with instant hot-reload</strong>, a <strong>bundler with minification + tree-shaking</strong>, and a <strong>plugin system</strong> for TypeScript, Tailwind, etc.
+</div>
+
+<h2>Where Chronexa is today</h2>
+
+<p>Your current setup in <code>build_bundle.sh</code>:</p>
+
+<pre><code># Concatenates 168 files. No minification. No source maps.
+cat js/ui/state.js js/ui/i18n.js ... > js/bundle.js</code></pre>
+
+<div class="comparison">
+  <div class="before">
+    <h4>Before (current)</h4>
+    <ul>
+      <li>Shell script concatenation</li>
+      <li>No dev server</li>
+      <li>Manual reload browser</li>
+      <li>1 MB+ unminified bundle</li>
+      <li>Tailwind via CDN (300 KB extra)</li>
+      <li>No source maps</li>
+      <li>No dead-code elimination</li>
+    </ul>
+  </div>
+  <div class="after">
+    <h4>After (with Vite)</h4>
+    <ul>
+      <li><code>npm run dev</code> to start</li>
+      <li>Hot reload on every save</li>
+      <li>Minified + compressed output</li>
+      <li>Tailwind as a plugin (no CDN)</li>
+      <li>Source maps for debugging</li>
+      <li>Tree-shaking removes unused code</li>
+      <li>Code splitting (load solver only when needed)</li>
+    </ul>
+  </div>
+</div>
+
+<h2>What Vite actually does</h2>
+
+<p>Vite has two modes:</p>
+
+<h3>1. Dev server (<code>vite</code> / <code>npm run dev</code>)</h3>
+
+<p>It starts a local server at <code>http://localhost:5173</code>. When you edit a file, it sends the change to the browser instantly — no page reload. This is called <strong>Hot Module Replacement (HMR)</strong>. You edit CSS and see it change immediately. You edit a JS file and only that module re-runs.</p>
+
+<p>In dev mode, Vite doesn't bundle anything. It serves native ES modules straight from your source files. That's why it's fast — no waiting for a build.</p>
+
+<h3>2. Production build (<code>vite build</code> / <code>npm run build</code>)</h3>
+
+<p>This does the heavy lifting. Vite uses <strong>Rollup</strong> (a battle-tested bundler) under the hood to:</p>
+
+<ul>
+  <li><strong>Minify</strong> — remove whitespace, shorten variable names (saves ~60% file size)</li>
+  <li><strong>Tree-shake</strong> — eliminate functions you never call</li>
+  <li><strong>Code-split</strong> — produce separate chunks for the solver, editor, and print preview so users only download what they need</li>
+  <li><strong>Cache-bust</strong> — add hashes to filenames so browsers always load fresh code</li>
+  <li><strong>Compress</strong> — output gzip-friendly assets</li>
+</ul>
+
+<h2>Plugins are the secret weapon</h2>
+
+<p>Vite does almost nothing by default. Everything useful comes from plugins:</p>
+
+<ul>
+  <li><span class="tag">@vitejs/plugin-vue</span> Vue support</li>
+  <li><span class="tag">@vitejs/plugin-react</span> React support</li>
+  <li><span class="tag">@tailwindcss/vite</span> Tailwind CSS (removes the CDN)</li>
+  <li><span class="tag">vite-plugin-pwa</span> Service Worker generation</li>
+  <li><span class="tag">vite-plugin-static-copy</span> Copy static assets like your existing CSS</li>
+</ul>
+
+<p>For Chronexa, you wouldn't add React/Vue plugins. You'd use <strong>@tailwindcss/vite</strong> and <strong>vite-plugin-pwa</strong> — that's it.</p>
+
+<h2>The key insight</h2>
+
+<div class="callout">
+  <strong>Vite doesn't care what framework you use.</strong> It works with vanilla JS, vanilla HTML, and plain CSS. You can adopt Vite <em>without</em> rewriting any of your existing code.
+</div>
+
+<p>Here's the minimum migration for Chronexa:</p>
+
+<pre><code>npm create vite@latest chronexa-web -- --template vanilla
+npm install
+
+# Install the plugins you actually need:
+npm install -D @tailwindcss/vite vite-plugin-pwa
+
+# That's it. npm run dev starts the server,
+# npm run build produces dist/ with minified output.</code></pre>
+
+<h2>A real-world analogy</h2>
+
+<p>Think of <code>build_bundle.sh</code> like packing a suitcase by hand — one item at a time, no compression, and you have to unpack and repack every time you want to change a shirt.</p>
+
+<p>Vite is like having a robot that watches you pick clothes, folds them automatically, compresses them into a vacuum bag, and labels each bag so you know exactly what's inside.</p>
+
+<hr>
+
+<h2>Try it yourself (2 minutes)</h2>
+
+<p>Create a test project to see Vite in action:</p>
+
+<pre><code>cd /tmp
+npm create vite@latest my-first-vite -- --template vanilla
+cd my-first-vite
+npm install
+npm run dev</code></pre>
+
+<p>Open <code>http://localhost:5173</code>. Now edit <code>main.js</code> — notice the browser updates instantly without reloading. Press <code>Ctrl+C</code> to stop, then run <code>npm run build</code>. Look at the <code>dist/</code> folder — that's your production output.</p>
+
+<h2>Reference</h2>
+
+<p>See the reference sheet at <code><a href="../reference/vite.html">reference/vite.html</a></code> for commands, config, and common patterns.</p>
+
+<h2>Questions?</h2>
+
+<p>Ask the agent — that's what I'm here for. Anything unclear from this lesson, just ask and I'll explain.</p>
+
+<div class="footer">
+  Lesson 1 of Chronexa toolchain series &middot; Next: <a href="#">Lesson 2: Your first vite.config.js</a>
+</div>
+
+</body>
+</html>
