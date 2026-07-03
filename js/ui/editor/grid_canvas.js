@@ -1012,6 +1012,12 @@ window.Editor = (function () {
   }
 
   function onMouseDown(ev) {
+    // Only the primary button drives pickup/place/swap. Right-click must fall
+    // through to the context menu — without this guard a right-click on a
+    // card PICKED IT UP first, and the menu's "Remove" then early-returned
+    // (card already out of school.cards), stranding the card in hand and
+    // leaving the pending strip stale (found by the drag-card E2E flow).
+    if (ev.button !== 0) return;
     // If click-to-swap selection is active, intercept clicks on empty or occupied slots
     if (window.APP.editor.cardInHand && window.APP.editor.cardInHand.mode === "click") {
       const slot = ev.target.closest(".chrx-slot");

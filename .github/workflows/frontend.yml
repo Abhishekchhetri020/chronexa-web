@@ -43,6 +43,19 @@ jobs:
         run: |
           npm ci
           npm run build
+      - name: Unit tests (vitest)
+        run: npx vitest run
+      - name: E2E tests (playwright)
+        run: |
+          npx playwright install --with-deps chromium
+          npx playwright test
+      - name: Upload E2E traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: test-results/
+          retention-days: 7
       - name: Built page serves
         run: |
           python3 -m http.server 8000 --directory dist &

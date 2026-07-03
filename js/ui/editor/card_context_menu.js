@@ -41,6 +41,14 @@ import "./card_in_hand.js";
   function removeCard(lessonId, day, period) {
     const S = window.APP && window.APP.school;
     if (!S || !S.cards) return;
+    // A right-click can put the card in hand before the menu opens; clear
+    // that state or the pending strip's countPlaced() keeps counting the
+    // removed card as placed (phantom in-hand card, strip stays empty).
+    // Mirrors editLesson()'s cleanup below.
+    if (window.CardInHand && typeof window.CardInHand._cleanup === "function") {
+      try { window.CardInHand._cleanup(); } catch {}
+    }
+    if (window.APP && window.APP.editor) window.APP.editor.cardInHand = null;
     const idx = S.cards.findIndex(c =>
       c.lessonId === lessonId && c.day === day && c.period === period);
     if (idx === -1) return;

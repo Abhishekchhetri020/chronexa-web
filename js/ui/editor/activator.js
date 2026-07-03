@@ -230,6 +230,17 @@ import "../wizard/create_new.js";
   // Re-render pending count on every place/pickup
   document.addEventListener("editor:place", updatePendingCount);
   document.addEventListener("editor:pickup", updatePendingCount);
+  // Unplacing (e.g. card context menu -> Remove) sends a card back to the
+  // pending strip -- refresh BOTH the count and the strip itself. Without
+  // this the strip kept showing "All cards placed." until the next full
+  // editor re-activation (found by the drag-card E2E flow, 2026-07-03).
+  document.addEventListener("editor:unplace", () => {
+    updatePendingCount();
+    const pendingRoot = document.getElementById("pending-strip-root");
+    if (pendingRoot && window.PendingStrip && typeof window.PendingStrip.render === "function") {
+      try { window.PendingStrip.render(pendingRoot); } catch {}
+    }
+  });
 
   // Re-render the editor whenever an entity changes (so the hero card swaps to grid).
   // Debounced: rapid-fire undo/redo bursts dispatch many entity:changed events; coalesce them.

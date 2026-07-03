@@ -45,7 +45,8 @@ describe("checkPlacement on the sample school", () => {
 
     const res = checkPlacement(school, other.id, placedCard.day, placedCard.period, null);
     expect(res.hard.length).toBeGreaterThan(0);
-    expect(res.hard.join(" ")).toMatch(/teacher|busy|conflict/i);
+    // Messages are human-phrased, e.g. "Mr. X already teaches VIII C → CHEM…".
+    expect(res.hard.join(" ")).toMatch(/already teaches|already has|teacher|busy/i);
   });
 
   it("returns a shaped result for an unknown lesson", () => {

@@ -3,11 +3,14 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Browser-based school timetable planner. Vite build — replaces build_bundle.sh.",
+  "description": "Browser-based school timetable planner. Vite build \u2014 replaces build_bundle.sh.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run && playwright test",
+    "test:unit": "vitest run",
+    "test:e2e": "playwright test"
   },
   "devDependencies": {
     "@playwright/test": "1.61.0",
