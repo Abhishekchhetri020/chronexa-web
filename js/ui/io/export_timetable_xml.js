@@ -72,7 +72,10 @@ import "../ribbon/topbar.js";
       const color = t.color || "";
       const email = t.email || "";
       const mobile = t.mobile || "";
-      lines.push(`    <teacher id="${xmlEscape(t.id)}" name="${xmlEscape(t.name || "")}" short="${xmlEscape(t.abbr || t.short || t.name || "")}" gender="" color="${xmlEscape(color)}" email="${xmlEscape(email)}" mobile="${xmlEscape(mobile)}" partner_id="" firstname="" lastname=""/>`);
+      const gender = t.gender || "";
+      const firstName = t.firstName || t.firstname || "";
+      const lastName = t.lastName || t.lastname || "";
+      lines.push(`    <teacher id="${xmlEscape(t.id)}" name="${xmlEscape(t.name || "")}" short="${xmlEscape(t.abbr || t.short || t.name || "")}" gender="${xmlEscape(gender)}" color="${xmlEscape(color)}" email="${xmlEscape(email)}" mobile="${xmlEscape(mobile)}" partner_id="" firstname="${xmlEscape(firstName)}" lastname="${xmlEscape(lastName)}"/>`);
     }
     lines.push("  </teachers>");
     return lines.join("\n");
@@ -110,6 +113,24 @@ import "../ribbon/topbar.js";
     lines.push("  </groups>");
     return lines.join("\n");
   }
+  // Fallback def ids for lessons created inside Chronexa (no stored def
+  // reference). MUST resolve to an id that exists in the exported
+  // daysdefs/weeksdefs/termsdefs blocks — for an imported school those are
+  // the source file's own defs, so a synthetic "DAY_ANY" would dangle and
+  // the source application rejects the lesson on re-import.
+  function defFallbacks(school) {
+    const pick = (defs, re) => {
+      if (!defs || !defs.length) return null;
+      const named = defs.find(d => re.test(d.name || ""));
+      return (named || defs[defs.length - 1]).id;
+    };
+    return {
+      days:  pick(school.daysDefs,  /any/i)   || "DAY_ANY",
+      weeks: pick(school.weeksDefs, /all/i)   || "WEEK_ALL",
+      terms: pick(school.termsDefs, /year|yr/i) || "TERM_YR",
+    };
+  }
+
   function lessonRoomIds(lesson) {
     if (Array.isArray(lesson.classroomIdsExpanded) && lesson.classroomIdsExpanded.length)
       return lesson.classroomIdsExpanded;
@@ -119,6 +140,7 @@ import "../ribbon/topbar.js";
   }
   function renderLessonsBlock(school) {
     const lines = [];
+    const fb = defFallbacks(school);
     lines.push('  <lessons options="canadd,export:silent" columns="id,subjectid,classids,groupids,teacherids,classroomids,periodspercard,periodsperweek,daysdefid,weeksdefid,termsdefid,seminargroup,capacity,partner_id">');
     for (const l of (school.lessons || [])) {
       const cls = (l.classIds || []).join(",");
@@ -126,9 +148,9 @@ import "../ribbon/topbar.js";
       const grp = (l.groupIds || []).join(",");
       const rooms = lessonRoomIds(l).join(",");
       const ppc = l.isLabDouble ? 2 : 1;
-      const daysDefId = l.daysDefId || "DAY_ANY";
-      const weeksDefId = l.weeksDefId || "WEEK_ALL";
-      const termsDefId = l.termsDefId || "TERM_YR";
+      const daysDefId = l.daysDefId || fb.days;
+      const weeksDefId = l.weeksDefId || fb.weeks;
+      const termsDefId = l.termsDefId || fb.terms;
       lines.push(`    <lesson id="${xmlEscape(l.id)}" classids="${cls}" subjectid="${xmlEscape(l.subjectId || "")}" periodspercard="${ppc}" periodsperweek="${l.periodsPerWeek || 0}" teacherids="${tch}" classroomids="${xmlEscape(rooms)}" groupids="${xmlEscape(grp)}" seminargroup="" termsdefid="${xmlEscape(termsDefId)}" weeksdefid="${xmlEscape(weeksDefId)}" daysdefid="${xmlEscape(daysDefId)}" capacity="*" partner_id=""/>`);
     }
     lines.push("  </lessons>");
@@ -210,34 +232,19 @@ import "../ribbon/topbar.js";
     }
     out.push("  </termsdefs>");
 
-    // Subjects
-    out.push('  <subjects options="canadd,export:silent" columns="id,name,short,partner_id">');
-    for (const s of (school.subjects || []))
-      out.push(`    <subject id="${xmlEscape(s.id)}" name="${xmlEscape(s.name)}" short="${xmlEscape(s.abbr || s.name)}" partner_id=""/>`);
-    out.push("  </subjects>");
-
-    // Teachers
-    out.push('  <teachers options="canadd,export:silent" columns="id,name,short,gender,color,email,mobile,partner_id,firstname,lastname">');
-    for (const t of (school.teachers || []))
-      out.push(`    <teacher id="${xmlEscape(t.id)}" name="${xmlEscape(t.name)}" short="${xmlEscape(t.abbr || t.name)}" gender="" color="" email="" mobile="" partner_id="" firstname="" lastname=""/>`);
-    out.push("  </teachers>");
-
-    // Buildings (empty) + Classrooms
+    // Subjects / Teachers / Classrooms / Classes — same shared block
+    // renderers the template path uses, so no field is wiped in one mode
+    // but preserved in the other.
+    out.push(renderSubjectsBlock(school));
+    out.push(renderTeachersBlock(school));
     out.push('  <buildings options="canadd,export:silent" columns="id,name,partner_id"/>');
-    out.push('  <classrooms options="canadd,export:silent" columns="id,name,short,capacity,buildingid,partner_id">');
-    for (const r of (school.classrooms || []))
-      out.push(`    <classroom id="${xmlEscape(r.id)}" name="${xmlEscape(r.name)}" short="${xmlEscape(r.name)}" capacity="${r.capacity || "*"}" buildingid="" partner_id=""/>`);
-    out.push("  </classrooms>");
-
-    // Classes
-    out.push('  <classes options="canadd,export:silent" columns="id,name,short,classroomids,teacherid,grade,partner_id">');
-    for (const c of (school.classes || []))
-      out.push(`    <class id="${xmlEscape(c.id)}" name="${xmlEscape(c.name)}" short="${xmlEscape(c.name)}" classroomids="" teacherid="" grade="" partner_id=""/>`);
-    out.push("  </classes>");
+    out.push(renderClassroomsBlock(school));
+    out.push(renderClassesBlock(school));
 
     out.push(renderGroupsBlock(school));
 
     // Lessons
+    const fb = defFallbacks(school);
     out.push('  <lessons options="canadd,export:silent" columns="id,subjectid,classids,groupids,teacherids,classroomids,periodspercard,periodsperweek,daysdefid,weeksdefid,termsdefid,seminargroup,capacity,partner_id">');
     for (const l of (school.lessons || [])) {
       const cls = (l.classIds || []).join(",");
@@ -245,9 +252,9 @@ import "../ribbon/topbar.js";
       const grp = (l.groupIds || []).join(",");
       const rooms = lessonRoomIds(l).join(",");
       const ppc = l.isLabDouble ? 2 : 1;
-      const daysDefId = l.daysDefId || "DAY_ANY";
-      const weeksDefId = l.weeksDefId || "WEEK_ALL";
-      const termsDefId = l.termsDefId || "TERM_YR";
+      const daysDefId = l.daysDefId || fb.days;
+      const weeksDefId = l.weeksDefId || fb.weeks;
+      const termsDefId = l.termsDefId || fb.terms;
       out.push(`    <lesson id="${xmlEscape(l.id)}" classids="${xmlEscape(cls)}" subjectid="${xmlEscape(l.subjectId || "")}" periodspercard="${ppc}" periodsperweek="${l.periodsPerWeek || 0}" teacherids="${xmlEscape(tch)}" classroomids="${xmlEscape(rooms)}" groupids="${xmlEscape(grp)}" seminargroup="" termsdefid="${xmlEscape(termsDefId)}" weeksdefid="${xmlEscape(weeksDefId)}" daysdefid="${xmlEscape(daysDefId)}" capacity="*" partner_id=""/>`);
     }
     out.push("  </lessons>");

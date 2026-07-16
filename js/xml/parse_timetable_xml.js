@@ -26,7 +26,6 @@ window.parseTimetableXml = (function () {
   "use strict";
 
   const DAYS_EN = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const SKIP_CLASS_PATTERNS = ["Floor"];
 
   function attr(el, name) { return el.getAttribute(name) || ""; }
   function pickLabel(el) {
@@ -40,10 +39,6 @@ window.parseTimetableXml = (function () {
     const [h, m] = t.split(":").map(Number);
     return (h || 0) * 60 + (m || 0);
   }
-  function isFloor(label) {
-    return SKIP_CLASS_PATTERNS.some(p => (label || "").includes(p));
-  }
-
   async function parseFile(file) {
     if (!file) throw new Error("No file provided.");
     const text = await file.text();
@@ -105,6 +100,27 @@ window.parseTimetableXml = (function () {
       });
     });
 
+    // --- Days/weeks/terms defs (lesson scheduling patterns) --------------------
+    // Parsed for round-trip fidelity and so "allowed days" restrictions on
+    // lessons stay resolvable. Shape matches the exporter's expectations.
+    const parseDefs = (selector, bitsAttr) => {
+      const out = [];
+      xml.querySelectorAll(selector).forEach(d => {
+        const id = attr(d, "id");
+        if (!id) return;
+        out.push({
+          id,
+          name: attr(d, "name") || "",
+          short: attr(d, "short") || "",
+          bits: attr(d, bitsAttr) || "",
+        });
+      });
+      return out;
+    };
+    const daysDefs  = parseDefs("daysdefs > daysdef", "days");
+    const weeksDefs = parseDefs("weeksdefs > weeksdef", "weeks");
+    const termsDefs = parseDefs("termsdefs > termsdef", "terms");
+
     // --- Subjects -------------------------------------------------------------
     const subjects = [];
     const subjectById = Object.create(null);
@@ -127,6 +143,14 @@ window.parseTimetableXml = (function () {
         id: attr(t, "id"),
         name: pickName(t),
         abbr: (t.getAttribute("short") || "").trim() || undefined,
+        // Carried for XML round-trip fidelity — the export rewrites the
+        // <teachers> block, so anything not parsed here is lost on save.
+        gender: attr(t, "gender") || undefined,
+        color: attr(t, "color") || undefined,
+        email: attr(t, "email") || undefined,
+        mobile: attr(t, "mobile") || undefined,
+        firstName: attr(t, "firstname") || undefined,
+        lastName: attr(t, "lastname") || undefined,
       };
       if (!obj.id) return;
       teachers.push(obj);
@@ -158,11 +182,16 @@ window.parseTimetableXml = (function () {
     const classes = [];
     const classById = Object.create(null);
     xml.querySelectorAll("classes > class").forEach(c => {
+      // Duty pseudo-classes ("1st Floor" etc.) are imported like any other
+      // class — an earlier "Floor" name filter silently dropped them AND
+      // every duty lesson/card that referenced only them, which also erased
+      // the teachers' duty occupancy from the solver's view.
       const name = pickName(c);
-      if (!name || isFloor(name)) return;
+      if (!name) return;
       const obj = {
         id: attr(c, "id"),
         name,
+        short: (c.getAttribute("short") || "").trim() || undefined,
         sections: undefined,
         _classroomIds: (attr(c, "classroomids") || "").split(",").filter(Boolean),
         _teacherId: attr(c, "teacherid") || undefined,
@@ -199,7 +228,7 @@ window.parseTimetableXml = (function () {
     const lessonById = Object.create(null);
     xml.querySelectorAll("lessons > lesson").forEach(l => {
       const classIds = (attr(l, "classids") || "").split(",").filter(Boolean);
-      const realClassIds = classIds.filter(id => classById[id]);  // drops Floors
+      const realClassIds = classIds.filter(id => classById[id]);  // drop dangling ids
       if (realClassIds.length === 0) return;
 
       const teacherIds = (attr(l, "teacherids") || "").split(",").filter(Boolean)
@@ -222,6 +251,12 @@ window.parseTimetableXml = (function () {
         fixedPeriod: undefined,
         isLabDouble: parseInt(attr(l, "periodspercard"), 10) > 1 || undefined,
         _lessonRoomIds: roomIds,
+        // Original def references — the export must emit ids that exist in
+        // the file's daysdefs/weeksdefs/termsdefs blocks, or the source
+        // application rejects the re-imported lesson as dangling.
+        daysDefId: attr(l, "daysdefid") || undefined,
+        weeksDefId: attr(l, "weeksdefid") || undefined,
+        termsDefId: attr(l, "termsdefid") || undefined,
       };
       if (!obj.id) return;
       lessons.push(obj);
@@ -299,9 +334,17 @@ window.parseTimetableXml = (function () {
       fixedPeriod: l.fixedPeriod,
       isLabDouble: l.isLabDouble,
       _lessonRoomIds: l._lessonRoomIds,
+      daysDefId: l.daysDefId,
+      weeksDefId: l.weeksDefId,
+      termsDefId: l.termsDefId,
     }));
     const cleanClasses = classes.map(c => ({
-      id: c.id, name: c.name, sections: c.sections,
+      id: c.id, name: c.name, short: c.short, sections: c.sections,
+      // Round-trip fields — the exporter's <classes> block reads these; when
+      // they were stripped here, every class-teacher assignment was blanked
+      // in the exported XML.
+      _classroomIds: c._classroomIds,
+      _teacherId: c._teacherId,
     }));
 
     return {
@@ -317,6 +360,9 @@ window.parseTimetableXml = (function () {
       lessons: cleanLessons,
       groups,
       cards,
+      daysDefs,
+      weeksDefs,
+      termsDefs,
       _meta: {
         sourceFilename: sourceName,
         generatedAt: new Date().toISOString(),
