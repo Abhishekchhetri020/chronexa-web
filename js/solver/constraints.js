@@ -228,8 +228,14 @@ export function CKritSluzba(assignment, lessonsById, schoolData) {
     const tids = (l && l.teacherIds && l.teacherIds.length)
       ? l.teacherIds
       : (a.teacherId != null ? [a.teacherId] : []);
+    // A multi-period card (lab double) occupies period..period+len-1; mark
+    // every occupied period, not just the start, so a supervision on the
+    // second half is still caught.
+    const len = (l && (l.lessonLength || (l.isLabDouble ? 2 : 1))) || 1;
     for (const tid of tids) {
-      taught.add(`${tid}|${a.day | 0}|${a.period | 0}`);
+      for (let ep = 0; ep < len; ep++) {
+        taught.add(`${tid}|${a.day | 0}|${(a.period | 0) + ep}`);
+      }
     }
   }
   let violations = 0;
@@ -312,8 +318,12 @@ export function CKritTriedny(assignment, lessonsById, schoolData) {
   const lookup = lessonsByIdMap(lessonsById);
   const classDayLast = new Map(); // key=`${classId}|${day}` -> Set<teacherId> at last
   for (const a of assignment) {
-    if ((a.period | 0) !== lastPeriod) continue;
     const l = lookup && lookup.get(a.lessonId);
+    // A multi-period card counts if ANY occupied period is the last one —
+    // keying on the start period alone missed a double ending at lastPeriod.
+    const len = (l && (l.lessonLength || (l.isLabDouble ? 2 : 1))) || 1;
+    const start = a.period | 0;
+    if (lastPeriod < start || lastPeriod >= start + len) continue;
     const tids = (l && l.teacherIds && l.teacherIds.length)
       ? l.teacherIds
       : (a.teacherId != null ? [a.teacherId] : []);
@@ -695,8 +705,13 @@ export function validateSupervisionCriteria(school) {
   const byTeacherWeek = {};
   for (const s of sups) {
     if (!s.teacherid) continue;
-    const tk = s.teacherid + "_" + (s.day != null ? s.day : "?");
-    byTeacherDay[tk] = (byTeacherDay[tk] || 0) + 1;
+    // Rows with no day yet (drafts) count toward the weekly total but can't
+    // belong to any per-day bucket — lumping them under a "?" pseudo-day
+    // produced false daily-limit violations.
+    if (s.day != null) {
+      const tk = s.teacherid + "_" + s.day;
+      byTeacherDay[tk] = (byTeacherDay[tk] || 0) + 1;
+    }
     byTeacherWeek[s.teacherid] = (byTeacherWeek[s.teacherid] || 0) + 1;
     const teacher = tBy[s.teacherid];
     const tName = (teacher && (teacher.abbr || teacher.name)) || s.teacherid;
@@ -709,7 +724,8 @@ export function validateSupervisionCriteria(school) {
     if (crit.avoidFirstPeriod && firstPeriod >= 0 && s.period === firstPeriod) {
       out.push(desc("on first period (avoidFirstPeriod=on)"));
     }
-    if (teacher && teacher.timeOff && crit.noSupervisionOnTimeOff) {
+    if (teacher && teacher.timeOff && crit.noSupervisionOnTimeOff &&
+        s.day != null && s.period != null) {
       const key = s.day + "_" + s.period;
       const mark = teacher.timeOff[key];
       if (mark === "unavailable") out.push(desc("on teacher's time-off slot"));

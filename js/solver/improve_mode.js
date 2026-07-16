@@ -91,6 +91,9 @@
     const startScore = totalScore(school);
     let swapsMade = 0, attempts = 0;
     const cards = school.cards.slice();
+    // trySwap accepts on the 2-card local delta, which can raise a THIRD
+    // card's penalty — snapshot placements so a net-worse run can be undone.
+    const snapshot = cards.map(c => ({ c, day: c.day, period: c.period }));
 
     // Sort by descending per-card penalty
     cards.sort((a, b) => cardScore(school, b) - cardScore(school, a));
@@ -98,8 +101,15 @@
     for (let i = 0; i < cards.length && performance.now() < deadline; i++) {
       if (attempts >= opts.maxSwapsTried) break;
       const a = cards[i];
-      // Try swapping a with up to 20 other cards
-      const candidates = cards.slice(i + 1, i + 21);
+      // Candidate partners sampled across the WHOLE penalty spectrum — the
+      // old "next 20 in the sorted list" paired high-penalty cards only with
+      // other high-penalty cards, which rarely yields an accepted swap.
+      const rest = cards.length - i - 1;
+      const step = Math.max(1, Math.floor(rest / 20));
+      const candidates = [];
+      for (let j = i + 1; j < cards.length && candidates.length < 20; j += step) {
+        candidates.push(cards[j]);
+      }
       for (const b of candidates) {
         attempts++;
         if (!compatibleForSwap(school, a, b)) continue;
@@ -111,7 +121,13 @@
       }
     }
 
-    const endScore = totalScore(school);
+    let endScore = totalScore(school);
+    if (endScore > startScore) {
+      // Locally-improving swaps made the GLOBAL score worse — roll back.
+      for (const s of snapshot) { s.c.day = s.day; s.c.period = s.period; }
+      endScore = startScore;
+      swapsMade = 0;
+    }
     const improved = startScore - endScore;
     if (window.APP?.audit?.append) {
       window.APP.audit.append({ entity: "cards", op: "improve",

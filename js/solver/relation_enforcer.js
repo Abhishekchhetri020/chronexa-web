@@ -161,26 +161,41 @@ const TYPS = Object.freeze({
           break;
         }
         case "consecutiveOrdered": {
-          // n_6: A must precede B. If placing B at (day, p), there must be an A at (day, p-1).
-          // Hard violation when A is missing OR ordering is reversed.
-          const others = placedMatching(school, rel,
-            l => lessonMatchesSecond(l, rel));
+          // n_6: A must immediately precede B on the same day. Incremental
+          // check against already-placed cards only (a missing partner is
+          // not a violation — it may simply not be placed yet):
+          //   placing A: if any B is on this day, one must sit at period+1;
+          //   placing B: if any A is on this day, one must sit at period-1.
+          // The old code only caught the reversed order (B at period-1) and
+          // never enforced the positive "B must follow A" direction.
           if (primaryMatch) {
-            // If we're placing A (the leader), no immediate violation if B isn't placed yet.
-            // If a B is placed at (day, p-1) we'd be violating order.
-            for (const o of others) {
-              if (o.card.day === day && o.card.period === period - 1) {
-                sink.push(`${meta.label} — order would be reversed`);
-                break;
-              }
+            const bs = placedMatching(school, rel, l => lessonMatchesSecond(l, rel))
+              .filter(o => o.card.lessonId !== lessonId && o.card.day === day);
+            if (bs.length && !bs.some(o => o.card.period === period + 1)) {
+              sink.push(`${meta.label} — follower must be in the next period`);
+            }
+          }
+          if (secondaryMatch) {
+            const as = placedMatching(school, rel, lessonMatches)
+              .filter(o => o.card.lessonId !== lessonId && o.card.day === day);
+            if (as.length && !as.some(o => o.card.period === period - 1)) {
+              sink.push(`${meta.label} — leader must be in the previous period`);
             }
           }
           break;
         }
         case "sameDay": {
           // n_1: cannot be the same day.  n_8 / n_10: must be same day.
+          // Exclude the candidate's own cards (same filter every other case
+          // uses) — without it a placed card evaluated in-place always found
+          // itself on `day`, so n_1 fired on every check and the must-same-day
+          // typs were masked. For binary typs match the OTHER side of the
+          // relation (subject2 when placing the primary, primary when placing
+          // the secondary), mirroring the consecutive case.
           const others = placedMatching(school, rel,
-            bin ? (l => lessonMatchesSecond(l, rel)) : lessonMatches);
+            bin ? (primaryMatch ? (l => lessonMatchesSecond(l, rel)) : lessonMatches)
+                : lessonMatches)
+            .filter(o => o.card.lessonId !== lessonId);
           const sameDay = others.some(o => o.card.day === day);
           const otherDayPresent = others.some(o => o.card.day !== day);
           if (rel.typ === "n_1") {
@@ -213,7 +228,10 @@ const TYPS = Object.freeze({
           if (others.length) {
             const ps = others.map(o => o.card.period).concat(period).sort((a, b) => a - b);
             for (let i = 1; i < ps.length; i++) {
-              const between = bell.slice(ps[i - 1] + 1, ps[i]);
+              // Select by period INDEX values (1-based, possibly sparse) —
+              // slicing by array position was off by one and even included
+              // the sibling's own slot.
+              const between = bell.filter(p => p.index > ps[i - 1] && p.index < ps[i]);
               if (between.some(p => p.isTeaching === false)) {
                 sink.push(`${meta.label} — a break falls between sibling lessons`);
                 break;
@@ -225,11 +243,15 @@ const TYPS = Object.freeze({
         case "simultaneous": {
           // n_12/n_13: subjects must start at same time across classes/groups.
           // Hard violation if another matched lesson is placed at the same day but DIFFERENT period.
+          // Only same-day siblings can be judged incrementally: a matched
+          // card on ANOTHER day may be a different weekly occurrence, so
+          // flagging cross-day period mismatches produced phantom conflicts
+          // for multi-occurrence lessons. Periods are 1-based — print as-is.
           const others = placedMatching(school, rel, lessonMatches);
           for (const o of others) {
             if (o.card.lessonId === lessonId) continue;
-            if (o.card.period !== period) {
-              sink.push(`${meta.label} — sibling lesson is at period ${o.card.period + 1}, this is ${period + 1}`);
+            if (o.card.day === day && o.card.period !== period) {
+              sink.push(`${meta.label} — sibling lesson is at period ${o.card.period}, this is ${period}`);
               break;
             }
           }
@@ -249,33 +271,43 @@ const TYPS = Object.freeze({
         }
         case "position": {
           // n_16: subject must be first or last period of the day.
-          const periodCount = (school.bell && school.bell.periods) ? school.bell.periods.length : 8;
+          // Bell periods carry 1-based (possibly sparse) `index` values —
+          // comparing against 0 / length-1 flagged every legitimate first
+          // period and accepted the second-to-last as "last".
+          const periods = (school.bell && school.bell.periods) || [];
+          const teaching = periods.filter(p => p.isTeaching !== false);
+          const firstIdx = teaching.length ? teaching[0].index : 1;
+          const lastIdx  = teaching.length ? teaching[teaching.length - 1].index : 8;
           const wantFirst = rel.positions === "first";
           const wantLast  = rel.positions === "last";
-          if (wantFirst && period !== 0)
-            sink.push(`${meta.label} — should be at period 1, this is ${period + 1}`);
-          if (wantLast && period !== periodCount - 1)
-            sink.push(`${meta.label} — should be at last period, this is ${period + 1}`);
+          if (wantFirst && period !== firstIdx)
+            sink.push(`${meta.label} — should be at period ${firstIdx}, this is ${period}`);
+          if (wantLast && period !== lastIdx)
+            sink.push(`${meta.label} — should be at last period (${lastIdx}), this is ${period}`);
           break;
         }
         case "afternoon": {
-          // n_17: subjects must be in the afternoon (outside teaching block).
-          // Heuristic: afternoon = bottom half of periods.
-          const periodCount = (school.bell && school.bell.periods) ? school.bell.periods.length : 8;
-          if (period < Math.floor(periodCount / 2))
+          // n_17: subjects must be in the afternoon. Use the school's
+          // configured cutoff (same setting csp_solver reads), falling back
+          // to the middle period's INDEX (1-based), not the array midpoint.
+          const periods = (school.bell && school.bell.periods) || [];
+          const cutoff = (school.settings && school.settings.afternoonStartsAt != null)
+            ? (school.settings.afternoonStartsAt | 0)
+            : (periods.length ? periods[Math.floor(periods.length / 2)].index : 5);
+          if (period < cutoff)
             sink.push(`${meta.label} — must be in the afternoon (later periods)`);
           break;
         }
         case "distribution": {
           // n_4: card distribution — soft pressure on uneven placement (placeholder).
-          // Real impl requires sibling-card lookup; emit a hint only.
-          const dayCounts = {};
+          // Hint only when THE CANDIDATE'S day already piles up matched cards;
+          // flagging any heavy day anywhere penalised unrelated placements.
+          let onThisDay = 0;
           for (const o of placedMatching(school, rel, lessonMatches)) {
-            dayCounts[o.card.day] = (dayCounts[o.card.day] || 0) + 1;
+            if (o.card.lessonId !== lessonId && o.card.day === day) onThisDay++;
           }
-          const max = Math.max(...Object.values(dayCounts), 0);
-          if (max >= 2) {
-            sink.push(`${meta.label} — already ${max} on one day`);
+          if (onThisDay >= 2) {
+            sink.push(`${meta.label} — already ${onThisDay} on this day`);
           }
           break;
         }
