@@ -1205,8 +1205,16 @@ export async function buildAndSolve(school, options = {}) {
   elapsed += solver1.wallTime;
 
   let solver = solver1, status = status1;
-  if (doQuality && pstar > 0 && !cancelled()) buildSoftModel();
-  if (doQuality && pstar > 0 && !cancelled() && softTerms.length) {
+  // Phase 2 (soft polish) adds tens of thousands of terms and its model
+  // BUILD time is not governed by maxTimeInSeconds — with little budget
+  // left the build alone can overrun the caller's watchdog, which kills
+  // the worker and loses phase 1's placements entirely (observed: 1441-
+  // card school, phase 1 FEASIBLE 1323, watchdog fired mid-build → the
+  // caller fell back to a 924-card draft). Only polish with real room.
+  const remainingAfterP1 = timeLimitSec - elapsed;
+  const roomForPolish = remainingAfterP1 > 20;
+  if (doQuality && pstar > 0 && !cancelled() && roomForPolish) buildSoftModel();
+  if (doQuality && pstar > 0 && !cancelled() && roomForPolish && softTerms.length) {
     atLeast(m, sum(placed), pstar);
     // Seed phase 2 with phase 1's solution so it starts from an incumbent
     // instead of re-discovering placement from scratch. (Improve mode already
@@ -1232,8 +1240,10 @@ export async function buildAndSolve(school, options = {}) {
     m.minimize(softSum);
     const solver2 = new CpSolver();
     // Phase 2 spends the REMAINING wall budget (phase 1 stopping early on
-    // OPTIMAL leaves more polish time), minus a small margin for extraction.
-    solver2.parameters.maxTimeInSeconds = Math.max(5, (timeLimitSec - elapsed) * 0.9);
+    // OPTIMAL leaves more polish time). 0.6 (was 0.9) leaves headroom for
+    // the un-metered soft-model build + extraction so the caller's 1.3×
+    // watchdog never fires mid-polish.
+    solver2.parameters.maxTimeInSeconds = Math.max(5, (timeLimitSec - elapsed) * 0.6);
     solver2.parameters.numSearchWorkers = numWorkers;
     solver2.parameters.randomSeed = seed;
     let st2 = null;

@@ -57,7 +57,9 @@ function handle(ev) {
     if (latest) self.postMessage({ type: "progress", ...latest });
     self.postMessage({ type: "done", result });
   } catch (e) {
-    self.postMessage({ type: "error", message: String((e && e.message) || e) });
+    // Include the stack — "Maximum call stack size exceeded" with no frames
+    // made a data-dependent crash undiagnosable from the UI.
+    self.postMessage({ type: "error", message: String((e && (e.stack || e.message)) || e) });
   } finally {
     clearInterval(ticker);
   }

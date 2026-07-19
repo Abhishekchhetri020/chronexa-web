@@ -3193,8 +3193,35 @@ function maybeEmitProgress(ctx, state, unassignedCount0, initiallyInfeasibleCoun
   } catch {}
 }
 
+// Deepest recursion backtrack() may reach before treating the node as a
+// leaf. Sized for Web Worker stacks (smaller than the main thread's): a
+// 946-placement chain fits, ~1400 overflows, so 1000 keeps known-good
+// behavior while the RangeError salvage at the call site covers browsers
+// with even tighter stacks.
+const MAX_STACK_DEPTH = 1000;
+
 function backtrack(model, state, unassigned, unassignedCount, ctx) {
   if (ctx.timedOut) return;
+  // Recursion-depth guard: one stack frame per placement (plus one per
+  // skipped 0-domain lesson) means a ~1400-card school overflows a Web
+  // Worker's stack — workers get less stack than the main thread, so the
+  // same school solved inline but killed every branch worker with
+  // "Maximum call stack size exceeded". Past the cap, record the current
+  // partial as best-so-far and let the repair phases finish placement.
+  if (ctx.stackDepth >= MAX_STACK_DEPTH) {
+    const entries = state.assignedLessonCount;
+    if (entries >= state.bestAssignedEntries) {
+      const score = -softScore(model, state);
+      if (entries > state.bestAssignedEntries ||
+          (entries === state.bestAssignedEntries && score > state.bestSoftScore)) {
+        state.bestSoftScore = score;
+        state.bestAssignedEntries = entries;
+        state.bestHardCount = unassignedCount;
+        snapshotBest(state);
+      }
+    }
+    return;
+  }
   // Track search progress: a new maximum placement depth means the run is
   // still productive. Used by the stagnation bail below.
   if (state.assignedLessonCount > ctx.runMaxAssigned) {
@@ -3288,7 +3315,9 @@ function backtrack(model, state, unassigned, unassignedCount, ctx) {
     if (ctx.learning) ctx.learning.onBacktrack(selected);
     // Drop the 0-domain lesson from the active set, recurse, then restore.
     const reducedCount = removeFromUnassigned(unassigned, unassignedCount, selected);
+    ctx.stackDepth += 1;
     backtrack(model, state, unassigned, reducedCount, ctx);
+    ctx.stackDepth -= 1;
     addToUnassigned(unassigned, reducedCount, selected);
     ctx.backtracks += 1;
     return;
@@ -3372,7 +3401,9 @@ function backtrack(model, state, unassigned, unassignedCount, ctx) {
     // }
 
     ctx.depth += 1;
+    ctx.stackDepth += 1;
     backtrack(model, state, unassigned, reducedCount, ctx);
+    ctx.stackDepth -= 1;
     ctx.depth -= 1;
 
     undoToMark(model, state, ctx.undoStack, mark);
@@ -4921,6 +4952,7 @@ export function solve(school, options = {}) {
     const ctx = {
       branchSeed: seed + run * 17 + run * run * 3,  // more diverse seeds for restarts
       depth: 0,
+      stackDepth: 0,   // true recursion depth (incl. 0-domain skips) for the overflow guard
       undoStack: [],
       candidateScratch: new Int32Array(maxCandidatesPerLesson(model)),
       nodesVisited: 0,
@@ -4979,6 +5011,13 @@ export function solve(school, options = {}) {
     }, 500);
     try {
       backtrack(model, state, unassigned, actualUnassigned, ctx);
+    } catch (e) {
+      // Stack overflow despite the MAX_STACK_DEPTH guard (some engines give
+      // workers even less stack). The best-so-far snapshot is intact and
+      // materializeBestIntoState() rebuilds live state from it, so salvage
+      // the run instead of failing the whole branch.
+      if (!(e instanceof RangeError)) throw e;
+      try { console.error("[solver] search hit the engine stack limit — continuing from best snapshot (" + state.bestAssignedEntries + " placed)"); } catch {}
     } finally {
       clearIntervalShim(tickInterval);
     }
