@@ -8,10 +8,12 @@ test("run the solver from the workspace Generate button → result panel shows p
   // id=cta-generate is hidden in editor mode).
   await page.locator("button.chrx-btn--primary", { hasText: "Generate" }).first().click();
 
-  // Pre-launch dialog: pick the 30s "Fast preview" preset, keep the default
-  // "Generate timetable" mode (cold two-stage pipeline), and start.
+  // Pre-launch dialog: "Best timetable" (JS draft → WASM CP-SAT polish) is
+  // the default mode — assert that, pick the 30s "Fast preview" preset
+  // (time/complexity only; mode is untouched), and start.
+  await expect(page.locator(".csu-modebtn.is-selected")).toContainText(/best timetable/i);
   await page.locator(".chrx-preset-card", { hasText: /fast preview/i }).click();
-  await page.locator("button.chrx-btn--primary", { hasText: /start generation/i }).click();
+  await page.locator("button.chrx-btn--primary", { hasText: /build best timetable/i }).click();
 
   // The pipeline (JS draft → WASM CP-SAT polish) runs ~27s at the 30s
   // budget, then the result panel appears with the placed-count tile.
