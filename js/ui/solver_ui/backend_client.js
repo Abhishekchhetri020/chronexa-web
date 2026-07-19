@@ -387,6 +387,13 @@
     let jobId = null;
     let pollTimer = null;
     let cancelInFlight = false;
+    let pollInFlight = false;
+    let pollFailures = 0;
+    // Job-level watchdog: a saturated backend can accept the job and then
+    // crawl. If neither done nor error arrives well past the solve budget,
+    // stop polling and surface it — a silent forever-spinner is the worst
+    // outcome for the user.
+    const jobBudgetMs = Math.max(60_000, ((options && options.timeLimitSec) || 60) * 4000 + 60_000);
 
     function clearPoll() {
       if (pollTimer != null) { clearInterval(pollTimer); pollTimer = null; }
@@ -394,13 +401,28 @@
 
     function poll() {
       if (!jobId || cancelled) return;
-      fetch(`${baseUrl}/solve/status/${encodeURIComponent(jobId)}`, { method: "GET" })
+      // Never stack requests: a slow backend answering in >1s otherwise
+      // accumulates hung fetches until the per-origin connection pool is
+      // exhausted and NO poll ever resolves again (observed on HF Spaces
+      // under concurrent solves — progress froze with no error).
+      if (pollInFlight) return;
+      if (performance.now() - t0 > jobBudgetMs) {
+        clearPoll();
+        sub.emit({ type: "error", message: "cloud job exceeded " + Math.round(jobBudgetMs / 1000) + "s with no result — backend overloaded? Try the in-browser solver." });
+        return;
+      }
+      pollInFlight = true;
+      fetch(`${baseUrl}/solve/status/${encodeURIComponent(jobId)}`, {
+        method: "GET",
+        signal: (typeof AbortSignal !== "undefined" && AbortSignal.timeout) ? AbortSignal.timeout(8000) : undefined,
+      })
         .then(r => {
           if (r.status === 404) throw new Error("status-404");
           if (!r.ok) return r.text().then(t => Promise.reject(new Error(t || ("HTTP " + r.status))));
           return r.json();
         })
         .then(snap => {
+          pollFailures = 0;
           if (cancelled) return;
           const p = snap.progress || {};
           const ev = {
@@ -421,16 +443,21 @@
             sub.emit({ type: "error", message: snap.error || "backend error" });
           } else if (snap.state === "cancelled") {
             clearPoll();
-            // Don't double-emit cancelled here; cancel() already did.
+            // Surface it — a server-side cancel with no client event left
+            // the progress modal spinning forever.
+            if (!cancelInFlight) sub.emit({ type: "error", message: "job was cancelled on the backend" });
           }
         })
         .catch(err => {
           if (cancelled) return;
-          // Transient errors are tolerated; surface only on persistent failure.
-          // For simplicity, emit error and stop on any non-404 fault.
+          // Tolerate transient faults (timeouts, 5xx blips under load);
+          // surface only after several consecutive failures.
+          pollFailures++;
+          if (pollFailures < 5 && String(err && err.message).indexOf("status-404") === -1) return;
           clearPoll();
           sub.emit({ type: "error", message: (err && err.message) || String(err) });
-        });
+        })
+        .finally(() => { pollInFlight = false; });
     }
 
     return {
@@ -438,6 +465,10 @@
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ school, options }),
+        // Without a timeout a sleeping/overloaded backend hangs the start
+        // forever with zero UI feedback; on abort the caller falls back to
+        // the in-browser solver via onFallback.
+        signal: (typeof AbortSignal !== "undefined" && AbortSignal.timeout) ? AbortSignal.timeout(30_000) : undefined,
       })
         .then(r => {
           if (r.status === 404) {

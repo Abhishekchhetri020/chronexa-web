@@ -407,7 +407,7 @@
         var lessons = (window.APP.school.lessons || []);
         if (lessons.length === 0) { showNoLessonsPrompt(); return; }
         window.SolverUI.PreLaunch.open({
-          defaultMode: "generate",
+          defaultMode: "best",
           school: window.APP.school,
           onConfirm: function (cfg) {
             if (cfg.mode === "test") return window.SolverUI._runTest(window.APP.school);

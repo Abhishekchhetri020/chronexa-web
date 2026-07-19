@@ -39,9 +39,20 @@ self.onmessage = async (ev) => {
     return;
   }
   try {
-    // Single search worker: the OR-Tools WASM JSPI build does not reliably
-    // enforce maxTimeInSeconds with multiple pthread workers (nested worker
-    // deadlock). Single-threaded solve is slower but actually terminates.
+    // Multi-threaded portfolio needs SharedArrayBuffer (cross-origin
+    // isolation). The 2026-07-03 "deadlock" that forced numWorkers:1 was
+    // the missing COI right after the Vite migration: without SAB the
+    // pthread pool can't spawn and the runtime blocks forever. With COI
+    // active the committed pool build runs the full portfolio (verified:
+    // phase 1 OPTIMAL 946/946 in ~11s at 4 workers vs UNKNOWN/0 placed at
+    // 1 worker on the same school). Keep 1 worker as the non-isolated
+    // fallback — slow but functional — and rely on the parent-page
+    // watchdog in backend_client.runWasm() for any residual hang.
+    const cores = (typeof navigator !== "undefined" && navigator.hardwareConcurrency) || 4;
+    const numWorkers = self.crossOriginIsolated ? Math.min(Math.max(2, cores - 1), 8) : 1;
+    if (!self.crossOriginIsolated) {
+      console.error("[wasm-cp-sat] page not cross-origin isolated — running single-threaded (slow)");
+    }
     const timeLimit = (m.options && m.options.timeLimitSec) || 90;
     // JS-level watchdog: if the solver exceeds the budget by 30%, force-abort.
     // The OR-Tools maxTimeInSeconds is our primary limiter, but the WASM
@@ -58,7 +69,7 @@ self.onmessage = async (ev) => {
     const result = await buildAndSolve(m.school, {
       symBreak: false,
       ...(m.options || {}),
-      numWorkers: 1,           // forced — JSPI pthread deadlock workaround (caller override ignored)
+      numWorkers,              // adaptive — see COI note above (caller override ignored)
       cancelCheck: () => watchdogFired,
       progressFn: (placed, ms) => {
         try {
@@ -73,7 +84,18 @@ self.onmessage = async (ev) => {
       },
     });
     clearTimeout(watchdog);
-    if (!watchdogFired) self.postMessage({ type: "done", result });
+    if (!watchdogFired) {
+      // A run that found NO solution (cpStatus UNKNOWN/INFEASIBLE) must not
+      // masquerade as success: the empty assignment would replace the user's
+      // timetable in direct CP-SAT mode. Surfacing it as an error makes the
+      // two-stage Best pipeline fall back to its draft automatically.
+      const cp = result && result.stats && result.stats.cpStatus;
+      if (cp && cp !== "OPTIMAL" && cp !== "FEASIBLE") {
+        self.postMessage({ type: "error", message: "CP-SAT found no solution within the time budget (status " + cp + "). Try a longer time limit or another algorithm." });
+      } else {
+        self.postMessage({ type: "done", result });
+      }
+    }
   } catch (err) {
     self.postMessage({ type: "error", message: (err && (err.stack || err.message)) || String(err) });
   }
