@@ -9,6 +9,10 @@
  * layers on top.
  */
 
+import "@astryxdesign/core/reset.css";
+import "@astryxdesign/core/astryx.css";
+import "../../css/chronexa-theme.css";
+
 import "../../css/tokens.css";
 import "../../css/tailwind.css";
 import "../../css/style.css";

@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Browser-based school timetable planner. Vite build \u2014 replaces build_bundle.sh.",
+  "description": "Browser-based school timetable planner. Vite build — replaces build_bundle.sh.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -21,5 +21,12 @@
     "tailwindcss": "3.4.19",
     "vite": "8.0.9",
     "vitest": "4.1.9"
+  },
+  "dependencies": {
+    "@astryxdesign/cli": "^0.1.4",
+    "@astryxdesign/core": "^0.1.4",
+    "@astryxdesign/theme-neutral": "^0.1.4",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   }
 }
