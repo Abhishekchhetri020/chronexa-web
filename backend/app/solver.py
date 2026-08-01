@@ -86,6 +86,31 @@ class _ProgressCallback(cp_model.CpSolverSolutionCallback):
 NUM_DAYS = 6
 
 
+def _resolve_days(payload: Dict[str, Any]) -> int:
+    """Audit #9: derive day count from the payload, not the module constant.
+
+    Precedence, highest first:
+      1. payload.daysPerWeek (explicit)
+      2. max referenced day in payload.cards + 1
+      3. NUM_DAYS (Classic default)
+
+    A 5-day school must never see a phantom day 5; a 7-day school must not
+    be truncated to 6 — the pre-fix NUM_DAYS=6 constant made any day_6 card
+    turn the whole model INFEASIBLE and ignored explicit daysPerWeek entirely.
+    """
+    dpw = payload.get("daysPerWeek")
+    if isinstance(dpw, int) and dpw > 0:
+        return dpw
+    max_ref = -1
+    for c in (payload.get("cards") or []):
+        d = c.get("day")
+        if isinstance(d, int) and d > max_ref:
+            max_ref = d
+    if max_ref >= 0:
+        return max_ref + 1
+    return NUM_DAYS
+
+
 def _teaching_period_indices(school: Dict[str, Any]) -> List[int]:
     """Return the 1-based period indices that are teaching periods."""
     periods = school.get("bell", {}).get("periods") or []
@@ -161,7 +186,8 @@ def solve(
     # We accumulate weights on each term in `soft_terms` separately.
     soft_weights: List[int] = []
 
-    num_slots = NUM_DAYS * max(teaching_periods)  # safe upper bound
+    num_days = _resolve_days(payload)
+    num_slots = num_days * max(teaching_periods)  # safe upper bound
 
     # period index → (0-based slot offset). teaching_periods aren't necessarily contiguous,
     # so use enumerate to make day*P + p_offset a contiguous slot id for AllDifferent.
@@ -219,7 +245,7 @@ def solve(
             continue
 
         for occ_idx in range(periods_per_week):
-            day_var = model.NewIntVar(0, NUM_DAYS - 1, f"L{lesson_idx}_O{occ_idx}_day")
+            day_var = model.NewIntVar(0, num_days - 1, f"L{lesson_idx}_O{occ_idx}_day")
             period_var = model.NewIntVarFromDomain(
                 cp_model.Domain.FromValues(teaching_periods),
                 f"L{lesson_idx}_O{occ_idx}_period",
@@ -238,8 +264,8 @@ def solve(
             # period_var = teaching_periods[period_offset_var]
             model.AddElement(period_offset_var, teaching_periods, period_var)
 
-            # Slot id = day * P + period_offset  (contiguous integer 0..NUM_DAYS*P-1).
-            slot_var = model.NewIntVar(0, NUM_DAYS * P - 1, f"L{lesson_idx}_O{occ_idx}_slot")
+            # Slot id = day * P + period_offset  (contiguous integer 0..num_days*P-1).
+            slot_var = model.NewIntVar(0, num_days * P - 1, f"L{lesson_idx}_O{occ_idx}_slot")
             model.Add(slot_var == day_var * P + period_offset_var)
 
             # A lab-double occupies this period AND the next contiguous one, so it
@@ -250,13 +276,13 @@ def solve(
             slot_vars = [slot_var]
             if is_lab:
                 model.AddAllowedAssignments([period_offset_var], [[o] for o in lab_start_offsets])
-                slot_var2 = model.NewIntVar(0, NUM_DAYS * P - 1, f"L{lesson_idx}_O{occ_idx}_slot2")
+                slot_var2 = model.NewIntVar(0, num_days * P - 1, f"L{lesson_idx}_O{occ_idx}_slot2")
                 model.Add(slot_var2 == slot_var + 1)
                 slot_vars.append(slot_var2)
 
             # Fix first occurrence if pinned.
             if occ_idx == 0:
-                if isinstance(fixed_day, int) and 0 <= fixed_day < NUM_DAYS:
+                if isinstance(fixed_day, int) and 0 <= fixed_day < num_days:
                     model.Add(day_var == fixed_day)
                 if isinstance(fixed_period, int) and fixed_period in period_to_offset:
                     model.Add(period_var == fixed_period)
@@ -349,33 +375,38 @@ def solve(
             model.AddAllDifferent(slots)
 
     # Rooms — only if rooms exist.
+    # Audit #21 PERF: channelled per-room AddAllDifferent instead of pairwise
+    # reified booleans. The pre-fix shape allocated rooms × (slots²) BoolAnd
+    # intermediates — 9 rooms × 1441-slot school blew the model out to
+    # millions of little booleans before the solver even started. This path is
+    # linear in (rooms × totalSlots).
     if rooms:
         for room_idx in range(len(rooms)):
-            # Build pairwise "if rooms equal then slots differ" via channelling.
-            # Cheaper: for each pair of occurrences, add reified !=.
-            # We have potentially many occurrences, so prefer the AddAllDifferent-by-element trick:
-            # For each (room_idx), collect slot_vars conditional on room == room_idx.
-            slots_for_room: List[Any] = []
-            for o in occs:
+            # Gather every slot var that can occupy this room, and a per-var
+            # BoolVar roomEquals = (room_var == room_idx).
+            # Then channel each var through an "effective slot" var that is:
+            #   slot_value   if roomEquals is true,
+            #   a unique sentinel different from any real slot otherwise.
+            # AddAllDifferent on the effective slots enforces pairwise
+            # room-slot exclusivity without any pairwise Boolean blowup.
+            effs: List[Any] = []
+            n_slots = num_days * P
+            sentinel_base = n_slots + 1  # every sentinel will be > any real slot
+            for i, o in enumerate(occs):
                 rv = o["room_var"]
-                is_this_room = model.NewBoolVar(f"L{o['lesson_idx']}_O{o['occ_idx']}_isroom{room_idx}")
-                model.Add(rv == room_idx).OnlyEnforceIf(is_this_room)
-                model.Add(rv != room_idx).OnlyEnforceIf(is_this_room.Not())
-                # Project each slot via Booleans into a tagged slot. We accumulate
-                # pairs and use !=. A lab-double contributes both of its slots, so
-                # nothing else can take the second period of the lab's room either.
+                is_this = model.NewBoolVar(f"L{o['lesson_idx']}_O{o['occ_idx']}_room{room_idx}")
+                model.Add(rv == room_idx).OnlyEnforceIf(is_this)
+                model.Add(rv != room_idx).OnlyEnforceIf(is_this.Not())
                 for sv in o["slot_vars"]:
-                    slots_for_room.append((sv, is_this_room))
-            # Pairwise no-conflict.
-            n = len(slots_for_room)
-            for i in range(n):
-                for j in range(i + 1, n):
-                    si, bi = slots_for_room[i]
-                    sj, bj = slots_for_room[j]
-                    both = model.NewBoolVar(f"room{room_idx}_pair_{i}_{j}_both")
-                    model.AddBoolAnd([bi, bj]).OnlyEnforceIf(both)
-                    model.AddBoolOr([bi.Not(), bj.Not()]).OnlyEnforceIf(both.Not())
-                    model.Add(si != sj).OnlyEnforceIf(both)
+                    eff = model.NewIntVar(0, sentinel_base + len(occs) * 2 + 4,
+                                          f"eff_r{room_idx}_o{o['lesson_idx']}_{o['occ_idx']}_{i}_{len(effs)}")
+                    # If is_this: eff == sv (real slot).
+                    # Else:      eff == sentinel (unique so no clash).
+                    model.Add(eff == sv).OnlyEnforceIf(is_this)
+                    model.Add(eff == sentinel_base + len(effs)).OnlyEnforceIf(is_this.Not())
+                    effs.append(eff)
+            if len(effs) > 1:
+                model.AddAllDifferent(effs)
 
     # --- Hard (g): a lesson's occurrences must be on different DAYS. ---
     # Exception: a lesson that participates in a "same day" relation (n_5/n_6
@@ -621,11 +652,16 @@ def solve(
                 if p not in period_to_offset:
                     continue
                 pref_off_slot = d * P + period_to_offset[p]
-                viol = model.NewBoolVar(f"L{o['lesson_idx']}_O{o['occ_idx']}_T{tidx}_prefoff_{d}_{p}")
-                model.Add(o["slot_var"] == pref_off_slot).OnlyEnforceIf(viol)
-                model.Add(o["slot_var"] != pref_off_slot).OnlyEnforceIf(viol.Not())
-                soft_terms.append(viol)
-                soft_weights.append(3)
+                # Audit #22 — check the WHOLE occupied span, not just slot_var.
+                # A lab double lands on (slot_var, slot_var+i): the tail was
+                # previously invisible to preferred-off and never counted a hit.
+                for slot_var in o["slot_vars"]:
+                    viol = model.NewBoolVar(
+                        f"L{o['lesson_idx']}_O{o['occ_idx']}_T{tidx}_prefoff_{d}_{p}_{len(soft_terms)}")
+                    model.Add(slot_var == pref_off_slot).OnlyEnforceIf(viol)
+                    model.Add(slot_var != pref_off_slot).OnlyEnforceIf(viol.Not())
+                    soft_terms.append(viol)
+                    soft_weights.append(3)
 
     # --- Soft: teacher gaps ---
     # For each (teacher, day), count "empty middle periods" between earliest and latest teaching.
@@ -636,7 +672,7 @@ def solve(
         teacher_occs = [o for o in occs if tidx in o["teacher_idxs"]]
         if len(teacher_occs) < 2:
             continue
-        for day in range(NUM_DAYS):
+        for day in range(num_days):
             on_day_bools: List[Any] = []
             on_day_period_offs: List[Any] = []
             for o in teacher_occs:
@@ -645,13 +681,38 @@ def solve(
                 model.Add(o["day_var"] != day).OnlyEnforceIf(on_day.Not())
                 on_day_bools.append(on_day)
                 # Effective period_offset: actual if on_day else P (sentinel large).
-                eff = model.NewIntVar(0, P, f"T{tidx}_L{o['lesson_idx']}_O{o['occ_idx']}_d{day}_eff")
-                model.Add(eff == o["period_offset_var"]).OnlyEnforceIf(on_day)
-                model.Add(eff == P).OnlyEnforceIf(on_day.Not())
-                on_day_period_offs.append(eff)
+                # Audit #22 — for lab doubles, the SECOND period also counts
+                # toward today's span/coverage. We contribute both offsets.
+                for po_var, tag in ((o["period_offset_var"], "head"),):
+                    eff = model.NewIntVar(0, P, f"T{tidx}_L{o['lesson_idx']}_O{o['occ_idx']}_d{day}_eff_{tag}")
+                    model.Add(eff == po_var).OnlyEnforceIf(on_day)
+                    model.Add(eff == P).OnlyEnforceIf(on_day.Not())
+                    on_day_period_offs.append(eff)
+                # Lab tail: second occupied offset (period_offset_var + 1).
+                # Since the lab block starts at a valid offset o (so o+1 is in
+                # the same day), the tail offset is just head+1. We add it
+                # guarded by the same on_day bool.
+                if o["is_lab"]:
+                    tail = model.NewIntVar(0, P, f"T{tidx}_L{o['lesson_idx']}_O{o['occ_idx']}_d{day}_eff_tail")
+                    # on_day → tail = head + 1   (still within P-1 by lab_start_offsets)
+                    tail_plus_one = model.NewIntVar(0, P, f"T{tidx}_L{o['lesson_idx']}_O{o['occ_idx']}_d{day}_tailraw")
+                    model.Add(tail_plus_one == o["period_offset_var"] + 1)
+                    model.Add(tail == tail_plus_one).OnlyEnforceIf(on_day)
+                    model.Add(tail == P).OnlyEnforceIf(on_day.Not())
+                    on_day_period_offs.append(tail)
 
-            count_used = model.NewIntVar(0, len(teacher_occs), f"T{tidx}_d{day}_count")
-            model.Add(count_used == sum(on_day_bools))
+            # count_used should count periods, not lesson occurrences. A lab
+            # double contributes 2 to its (teacher, day) load.
+            plus_one_for_lab: List[Any] = []
+            for b, o in zip(on_day_bools, teacher_occs):
+                if o["is_lab"]:
+                    extra = model.NewBoolVar(f"T{tidx}_L{o['lesson_idx']}_O{o['occ_idx']}_d{day}_extra")
+                    model.Add(extra == 1).OnlyEnforceIf(b)
+                    model.Add(extra == 0).OnlyEnforceIf(b.Not())
+                    plus_one_for_lab.append(extra)
+            count_used = model.NewIntVar(0, len(teacher_occs) + len(plus_one_for_lab),
+                                         f"T{tidx}_d{day}_count")
+            model.Add(count_used == sum(on_day_bools) + sum(plus_one_for_lab))
 
             min_off = model.NewIntVar(0, P, f"T{tidx}_d{day}_min")
             max_off = model.NewIntVar(0, P, f"T{tidx}_d{day}_max")

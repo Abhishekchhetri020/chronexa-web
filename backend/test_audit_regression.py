@@ -180,5 +180,31 @@ check("C3 guard: a 2-period lesson is feasible and placed on different days",
       r["status"] in ("OPTIMAL", "FEASIBLE") and r["stats"]["placed"] == 2,
       f"got {r['status']} placed={r['stats']['placed']}")
 
+# --- Audit #9: dynamic day count (was hardcoded NUM_DAYS=6) -------------------
+r = solve(dict(
+    base(),
+    daysPerWeek=5,
+    bell=bell(6),
+    lessons=[{"id": "L", "subjectId": "s1", "periodsPerWeek": 3, "periodsPerDay": 1,
+              "classIds": ["c1"], "teacherIds": ["t1"]}],
+    cards=[], relations=[], settings={},
+), {"timeLimitSec": 3})
+days_used = sorted({a["day"] for a in r["assignment"]})
+check("P4/#9: 5-day school never produces a phantom day ≥5",
+      r["status"] in ("OPTIMAL", "FEASIBLE") and all(d < 5 for d in days_used),
+      f"got {r['status']} days={days_used}")
+
+r = solve(dict(
+    base(),
+    daysPerWeek=7,
+    bell=bell(6),
+    lessons=[{"id": "L", "subjectId": "s1", "periodsPerWeek": 7, "periodsPerDay": 1,
+              "classIds": ["c1"], "teacherIds": ["t1"]}],
+    cards=[], relations=[], settings={},
+), {"timeLimitSec": 3})
+check("P4/#9: 7-day school is modelled (no truncation to 6)",
+      r["status"] in ("OPTIMAL", "FEASIBLE") and r["stats"]["placed"] == 7,
+      f"got {r['status']} placed={r['stats']['placed']}")
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
