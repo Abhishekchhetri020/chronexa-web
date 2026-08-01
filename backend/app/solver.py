@@ -375,33 +375,38 @@ def solve(
             model.AddAllDifferent(slots)
 
     # Rooms — only if rooms exist.
+    # Audit #21 PERF: channelled per-room AddAllDifferent instead of pairwise
+    # reified booleans. The pre-fix shape allocated rooms × (slots²) BoolAnd
+    # intermediates — 9 rooms × 1441-slot school blew the model out to
+    # millions of little booleans before the solver even started. This path is
+    # linear in (rooms × totalSlots).
     if rooms:
         for room_idx in range(len(rooms)):
-            # Build pairwise "if rooms equal then slots differ" via channelling.
-            # Cheaper: for each pair of occurrences, add reified !=.
-            # We have potentially many occurrences, so prefer the AddAllDifferent-by-element trick:
-            # For each (room_idx), collect slot_vars conditional on room == room_idx.
-            slots_for_room: List[Any] = []
-            for o in occs:
+            # Gather every slot var that can occupy this room, and a per-var
+            # BoolVar roomEquals = (room_var == room_idx).
+            # Then channel each var through an "effective slot" var that is:
+            #   slot_value   if roomEquals is true,
+            #   a unique sentinel different from any real slot otherwise.
+            # AddAllDifferent on the effective slots enforces pairwise
+            # room-slot exclusivity without any pairwise Boolean blowup.
+            effs: List[Any] = []
+            n_slots = num_days * P
+            sentinel_base = n_slots + 1  # every sentinel will be > any real slot
+            for i, o in enumerate(occs):
                 rv = o["room_var"]
-                is_this_room = model.NewBoolVar(f"L{o['lesson_idx']}_O{o['occ_idx']}_isroom{room_idx}")
-                model.Add(rv == room_idx).OnlyEnforceIf(is_this_room)
-                model.Add(rv != room_idx).OnlyEnforceIf(is_this_room.Not())
-                # Project each slot via Booleans into a tagged slot. We accumulate
-                # pairs and use !=. A lab-double contributes both of its slots, so
-                # nothing else can take the second period of the lab's room either.
+                is_this = model.NewBoolVar(f"L{o['lesson_idx']}_O{o['occ_idx']}_room{room_idx}")
+                model.Add(rv == room_idx).OnlyEnforceIf(is_this)
+                model.Add(rv != room_idx).OnlyEnforceIf(is_this.Not())
                 for sv in o["slot_vars"]:
-                    slots_for_room.append((sv, is_this_room))
-            # Pairwise no-conflict.
-            n = len(slots_for_room)
-            for i in range(n):
-                for j in range(i + 1, n):
-                    si, bi = slots_for_room[i]
-                    sj, bj = slots_for_room[j]
-                    both = model.NewBoolVar(f"room{room_idx}_pair_{i}_{j}_both")
-                    model.AddBoolAnd([bi, bj]).OnlyEnforceIf(both)
-                    model.AddBoolOr([bi.Not(), bj.Not()]).OnlyEnforceIf(both.Not())
-                    model.Add(si != sj).OnlyEnforceIf(both)
+                    eff = model.NewIntVar(0, sentinel_base + len(occs) * 2 + 4,
+                                          f"eff_r{room_idx}_o{o['lesson_idx']}_{o['occ_idx']}_{i}_{len(effs)}")
+                    # If is_this: eff == sv (real slot).
+                    # Else:      eff == sentinel (unique so no clash).
+                    model.Add(eff == sv).OnlyEnforceIf(is_this)
+                    model.Add(eff == sentinel_base + len(effs)).OnlyEnforceIf(is_this.Not())
+                    effs.append(eff)
+            if len(effs) > 1:
+                model.AddAllDifferent(effs)
 
     # --- Hard (g): a lesson's occurrences must be on different DAYS. ---
     # Exception: a lesson that participates in a "same day" relation (n_5/n_6
