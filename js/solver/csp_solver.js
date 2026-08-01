@@ -1776,13 +1776,23 @@ function _canPlaceJS(model, state, lessonIdx, slot, roomIdx) {
   }
   // n_2: no two matched lessons at same (day, period). Sibling of the n_1 block
   // above — must NOT be nested inside it, or it is skipped for lessons that have
-  // n_2 partners but no n_1 partner.
+  // n_2: no two matched lessons at same (day, period). Span-aware for lab
+  // doubles (audit finding #6): a partner's SECOND slot also counts as
+  // occupied for the relation check.
   const partnersN2 = model.lessonN2Partners && model.lessonN2Partners[lessonIdx];
   if (partnersN2) {
+    const thisSpan = model.lessonLabDouble[lessonIdx] === 1 ? 2 : 1;
     for (const pIdx of partnersN2) {
       if (state.lessonAssigned && state.lessonAssigned[pIdx]) {
         const ps = state.lessonAssignedSlot[pIdx];
-        if (ps >= 0 && ps === slot) return FAIL.RELATION_SAME_PERIOD_FORBIDDEN;
+        if (ps < 0) continue;
+        const partnerSpan = model.lessonLabDouble[pIdx] === 1 ? 2 : 1;
+        // (slot..slot+thisSpan-1) vs (ps..ps+partnerSpan-1) must not overlap.
+        for (let s1 = 0; s1 < thisSpan; s1++) {
+          for (let s2 = 0; s2 < partnerSpan; s2++) {
+            if (slot + s1 === ps + s2) return FAIL.RELATION_SAME_PERIOD_FORBIDDEN;
+          }
+        }
       }
     }
   }
