@@ -427,32 +427,58 @@ export const CKRIT_FUNCTIONS = Object.freeze({
   ckrit_vhodne_na_spojenie: CKritVhodneNaSpojenie,
 });
 
-// Group bitmask for a (lesson, class) pair, matching the solver's
-// lessonClassGroupMask construction in csp_solver.buildModel (lines 232-246).
-// Required so checkPlacement treats Group-Boys-PE + Group-Girls-Music at the
-// same II-B slot as a legal split, not a class-conflict.
+// Group bitmask for a (lesson, class) pair — division-aware, matching the
+// solver's packed representation (csp_solver.buildModel lines ~250-360).
+// Returns { divIdx, mask } so checkPlacement can detect conflicts per the
+// solver rule: conflict iff either side is whole-class (divIdx === 0xFFFF),
+// OR divisions differ (cross-division share students), OR masks intersect
+// within the same division.
+//
+// Pre-fix this returned ONLY a flat bit-mask over the class's group LIST
+// (not grouped by divisionTag). It treated a Boys-only lesson and an
+// Art-A-only lesson at the same slot as non-conflicting even when they sit
+// in different divisions and so share real students. Audit #18.
+const WHOLE_CLASS_DIV = 0xFFFF;
 function _classGroupMask(school, lesson, classId) {
   const allGroups = Array.isArray(school && school.groups) ? school.groups : [];
-  // Per-class ordered group list — bit index = position in this filtered list.
-  const classGroups = [];
+  // Bucket this class's groups by divisionTag, preserving order so each
+  // group gets a stable bit within its own division (mirrors solver).
+  const divBuckets = new Map();
+  const groupBitByGroupId = Object.create(null);
   for (const g of allGroups) {
     if (!g || g.classId !== classId) continue;
-    if (classGroups.length >= 32) break;
-    classGroups.push(g);
+    const divIdx = (g.divisionTag | 0);
+    let bucket = divBuckets.get(divIdx);
+    if (!bucket) { bucket = []; divBuckets.set(divIdx, bucket); }
+    if (bucket.length >= 16) continue; // 16 bits per division (solver cap)
+    const bit = bucket.length;
+    bucket.push({ id: g.id, isEntire: !!g.entireClass });
+    groupBitByGroupId[g.id] = { divIdx, bit, isEntire: !!g.entireClass };
   }
-  const n = classGroups.length;
-  const fullMask = (n === 0) ? 1 : (n >= 32 ? 0xffffffff : ((1 << n) - 1) >>> 0);
   const lgIds = (lesson && lesson.groupIds) || [];
+  let chosenDiv = -1;
   let mask = 0;
   let sawEntire = false;
   for (const gid of lgIds) {
-    const bit = classGroups.findIndex(cg => cg.id === gid);
-    if (bit < 0) continue;
-    if (classGroups[bit].entireClass) { sawEntire = true; break; }
-    mask = (mask | (1 << bit)) >>> 0;
+    const bb = groupBitByGroupId[gid];
+    if (!bb) continue;
+    if (bb.isEntire) { sawEntire = true; break; }
+    if (chosenDiv === -1) chosenDiv = bb.divIdx;
+    else if (bb.divIdx !== chosenDiv) continue; // cross-division split — solver ignores
+    mask = (mask | (1 << bb.bit)) >>> 0;
   }
-  if (sawEntire || mask === 0) mask = fullMask;
-  return mask >>> 0;
+  if (sawEntire || chosenDiv === -1 || mask === 0) {
+    return { divIdx: WHOLE_CLASS_DIV, mask: 1 };  // sentinel: conflicts with anything
+  }
+  return { divIdx: chosenDiv, mask };
+}
+
+// Same-division conflict test mirroring csp_solver.canPlace lines 1766-1775:
+// both whole-class → conflict; otherwise divisions must match AND masks intersect.
+function _classGroupConflict(a, b) {
+  if (a.divIdx === WHOLE_CLASS_DIV || b.divIdx === WHOLE_CLASS_DIV) return true;
+  if (a.divIdx !== b.divIdx) return true;                      // cross-division share students
+  return (a.mask & b.mask) !== 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -531,23 +557,37 @@ export function checkPlacement(school, lessonId, day, period, roomId) {
     }
   }
 
-  // Build a per-slot view from S.cards, excluding this exact placement (so
-  // re-checking a card on its own slot doesn't flag itself). A lesson can
-  // occupy a given (day, period) at most once, so excluding by lessonId is
-  // sufficient AND correct. The previous `&& c.classroomId === rid` guard
-  // failed to exclude the card whenever its stored classroomId (often null
-  // for homeroom lessons) differed from `rid` — which falls back to the
-  // lesson's preferredRoomId — making every such card report a phantom
-  // teacher+class conflict against itself (815/911 cards red on the demo).
-  const sameSlot = (school.cards || []).filter(c =>
-    c.day === day && c.period === period && c.lessonId !== lessonId
-  );
+// Span-aware view (audit finding #3): lab-double lessons occupy TWO
+// periods. Pre-fix checkPlacement only matched a card on its start slot,
+// so placing a lesson into a lab double's second period passed all hard
+// checks and produced an invalid timetable. We must consider any card
+// whose occupied span overlaps our placement period — and if the candidate
+// itself is a lab double, check BOTH its slots.
+// NOTE: uses idx.lessonById because checkPlacement is an editor-time helper
+// driven off school._idx, NOT off school.lessonsById.
+function _cardOccupies(idx, card, period) {
+  if (card.period === period) return true;
+  const other = idx && idx.lessonById && idx.lessonById[card.lessonId];
+  if (other && other.isLabDouble && card.period === period - 1) return true;
+  return false;
+}
+const _isCandidateLab = !!lesson.isLabDouble;
+const _periodsToCheck = _isCandidateLab ? [period, period + 1] : [period];
+const overlapping = (school.cards || []).filter(c => {
+  if (c.day !== day || c.lessonId === lessonId) return false;
+  // A single card occupies [c.period, c.period + (lab?1:0)).
+  // Accept if ANY of our periods intersects it.
+  for (const p of _periodsToCheck) {
+    if (_cardOccupies(idx, c, p)) return true;
+  }
+  return false;
+});
 
   // 3. Teacher conflict + availability (hard) + preferred-off (soft).
   for (const tid of (lesson.teacherIds || [])) {
     const teacher = idx.teacherById[tid];
     const tName = teacher ? (teacher.name || teacher.abbr) : tid;
-    for (const c of sameSlot) {
+    for (const c of overlapping) {
       const other = idx.lessonById[c.lessonId];
       if (!other) continue;
       if ((other.teacherIds || []).includes(tid)) {
@@ -576,15 +616,15 @@ export function checkPlacement(school, lessonId, day, period, roomId) {
   // canPlace in csp_solver.js — lines 1075-1077). Without this guard, every
   // legitimate group-split (e.g. Group-Boys-PE + Group-Girls-Music in the
   // same class+slot) was flagged as a false-positive class-conflict.
-  for (const c of sameSlot) {
+  for (const c of overlapping) {
     const other = idx.lessonById[c.lessonId];
     if (!other) continue;
     let flagged = false;
     for (const cid of (other.classIds || [])) {
       if (!myClasses.has(cid)) continue;
-      const myMask    = _classGroupMask(school, lesson, cid);
-      const otherMask = _classGroupMask(school, other,  cid);
-      if ((myMask & otherMask) === 0) continue;
+      const myGM     = _classGroupMask(school, lesson, cid);
+      const otherGM  = _classGroupMask(school, other,  cid);
+      if (!_classGroupConflict(myGM, otherGM)) continue;
       const cls = idx.classById[cid];
       const otherSubj = idx.subjectById[other.subjectId];
       const otherSubjName = otherSubj ? (otherSubj.name || otherSubj.abbr) : other.subjectId;
@@ -599,7 +639,7 @@ export function checkPlacement(school, lessonId, day, period, roomId) {
 
   // 5. Room conflict + required-room-type (hard).
   if (rid) {
-    for (const c of sameSlot) {
+    for (const c of overlapping) {
       const otherRid = c.classroomId || (idx.lessonById[c.lessonId] || {}).preferredRoomId;
       if (otherRid === rid) {
         const other = idx.lessonById[c.lessonId];
@@ -661,7 +701,9 @@ export function checkPlacement(school, lessonId, day, period, roomId) {
           if (!other) return false;
           for (const cid of (other.classIds || [])) {
             if (!myClasses.has(cid)) continue;
-            if ((_classGroupMask(school, lesson, cid) & _classGroupMask(school, other, cid)) !== 0) {
+            const myGM    = _classGroupMask(school, lesson, cid);
+            const otherGM = _classGroupMask(school, other,  cid);
+            if (_classGroupConflict(myGM, otherGM)) {
               return true;
             }
           }
