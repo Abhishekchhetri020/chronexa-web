@@ -3293,7 +3293,14 @@ function backtrack(model, state, unassigned, unassignedCount, ctx) {
     ctx.currentlyPlacingLabel = ctx.lessonLabels[selected];
   }
 
-  const candidates = ctx.candidateScratch;
+  // Phase 1 (audit fix #1) — recursion-safe candidates.
+  // Each recursion level gets its own Int32Array; nested backtrack() calls can
+  // never overwrite the parent's candidate list mid-iteration.
+  if (!ctx.candidateScratchByDepth) ctx.candidateScratchByDepth = [];
+  if (!ctx.candidateScratchByDepth[ctx.stackDepth]) {
+    ctx.candidateScratchByDepth[ctx.stackDepth] = new Int32Array(maxCandidatesPerLesson(model));
+  }
+  const candidates = ctx.candidateScratchByDepth[ctx.stackDepth];
   let feasibleCount = fillFeasibleCandidates(model, state, selected, candidates);
 
   if (feasibleCount === 0) {
@@ -4954,7 +4961,7 @@ export function solve(school, options = {}) {
       depth: 0,
       stackDepth: 0,   // true recursion depth (incl. 0-domain skips) for the overflow guard
       undoStack: [],
-      candidateScratch: new Int32Array(maxCandidatesPerLesson(model)),
+      candidateScratch: null, // replaced by candidateScratchByDepth (audit fix #1)
       nodesVisited: 0,
       backtracks: 0,
       deadlineMs,
@@ -4979,6 +4986,10 @@ export function solve(school, options = {}) {
         : -1,
       stagnationBail: false,
       runMaxAssigned: state.assignedLessonCount,
+      // Phase 1 (audit fix #1): recursion-safe per-depth candidate buffers.
+      // ctx.candidateScratch is created lazily inside backtrack() per stack depth
+      // so nested recursive calls never overwrite the parent's candidate list.
+      candidateScratchByDepth: null,
       madeProgress: false,
       lastImproveMs: performance.now(),
       // Luby restart: per-run node budget (-1 = unlimited for last run)

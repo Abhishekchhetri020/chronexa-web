@@ -1,6 +1,9 @@
-const fs = require('fs');
-const path = require('path');
-const { solve } = require('../js/solver/csp_solver.js');
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { solve } from '../js/solver/csp_solver.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Get benchmark file from command line or default to small
 const benchmarkFile = process.argv[2];
@@ -9,7 +12,7 @@ if (!benchmarkFile) {
     console.log('Available benchmarks:');
     console.log('  - benchmarks/small_school.json (10 lessons)');
     console.log('  - benchmarks/medium_school.json (80 lessons)');
-    console.log('  - benchmarks/large_school.json (240 lessons)');
+    console.log('  - benchmarks/large_school_realistic.json (realistic large dense school)');
     process.exit(1);
 }
 
@@ -44,7 +47,7 @@ console.log(`  Hard Conflicts: ${result.stats.hardConflicts}`);
 if (result.violations && result.violations.length > 0) {
     console.log(`  Violations: ${result.violations.length}`);
     result.violations.slice(0, 5).forEach(v => {
-        console.log(`    - ${v.type}: ${v.message}`);
+        console.log(`    - ${v.type || v.ruleId}: ${v.message || v.description}`);
     });
 }
 
@@ -53,6 +56,6 @@ if (result.assignment.length > 0) {
     console.log('\nSample placements (first 5):');
     result.assignment.slice(0, 5).forEach(p => {
         const lesson = schoolData.lessons.find(l => l.id === p.lessonId);
-        console.log(`  ${lesson.subjectId} (${p.classIds[0]}) with ${p.teacherId} on day ${p.day} period ${p.period}`);
+        console.log(`  ${lesson ? lesson.subjectId : p.lessonId} (${(p.classIds && p.classIds[0]) || ''}) with ${p.teacherId} on day ${p.day} period ${p.period}`);
     });
 }

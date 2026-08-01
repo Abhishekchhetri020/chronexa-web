@@ -1,0 +1,136 @@
+{
+  "schoolName": "Chronexa Relations Micro-Benchmark",
+  "_provenance": "Synthetic micro-fixture. Purpose: exercise relation semantics, division/group student-sharing, lab-double tails, non-teaching periods, and non-dense bells in a form the audit bugs can be observed against. Authored 2026-08-01 for Phase 0 acceptance apparatus.",
+  "_expect": {
+    "placement": "Every card lands on a legal slot; solver reports FEASIBLE/TIMEOUT with zero hard conflicts.",
+    "rel_n0": "s_n0a (c2) and s_n0b (c2, G2) NEVER in adjacent periods of the same day.",
+    "rel_n1": "s_n1a and s_n1b NEVER same day.",
+    "rel_n2": "s_n2a (G1 Boys) and s_n2b (G2 Girls) never share (day,period). They share a division (divisionTag=1) with disjoint group bits -> canPlace must treat as same-division -> n_2 applies.",
+    "rel_n7": "No break (isTeaching:false period, index 4) strictly between s_n7a and s_n7b on a day.",
+    "bell_short_sparse": "c3 school uses 'shortsparse' bell with indexes [1,2,4,5]; index 3 non-dense gap must never host a c3 card.",
+    "rel_n16": "Every s_n16 card sits with its span touching a day edge (starts period 1 or ends last teaching period).",
+    "n5_n6_n8_n9": "Present as observable solver-pressure relations; hard-only correctness asserted.",
+    "n5_disabled_baseline": "n_5 'must follow any order' is INVERTED in the current relation_enforcer (it rejects adjacent placement, mirroring n_0). With it enabled N5-B is unplaceable (audit finding #4 — relation_enforcer.js n_5 uses scope 'consecutive'). It is disabled here so Phase 0 has a GREEN oracle; Phase 3 (relation semantics) re-enables it as its fail-before test. Removes 2 lesson-slots of pressure.",
+    "_solver_expected_sessions": "3 core(c1,c2,c3: 5+5+4=14) + 3 lab doubles(2 cards each x2 slots; sessions=6) + 13 relation lessons x 1ppw = 30 sessions / 36 card-periods."
+  },
+  "daysPerWeek": 6,
+  "periodsPerDay": 8,
+  "bell": {
+    "periods": [
+      { "index": 1, "name": "P1", "short": "1", "starttime": "08:00", "endtime": "08:45", "isTeaching": true },
+      { "index": 2, "name": "P2", "short": "2", "starttime": "08:45", "endtime": "09:30", "isTeaching": true },
+      { "index": 3, "name": "P3", "short": "3", "starttime": "09:30", "endtime": "10:15", "isTeaching": true },
+      { "index": 4, "name": "BRK", "short": "BRK", "starttime": "10:15", "endtime": "10:45", "isTeaching": false },
+      { "index": 5, "name": "P5", "short": "5", "starttime": "10:45", "endtime": "11:30", "isTeaching": true },
+      { "index": 6, "name": "P6", "short": "6", "starttime": "11:30", "endtime": "12:15", "isTeaching": true },
+      { "index": 7, "name": "P7", "short": "7", "starttime": "12:15", "endtime": "13:00", "isTeaching": true },
+      { "index": 8, "name": "P8", "short": "8", "starttime": "13:00", "endtime": "13:45", "isTeaching": true }
+    ]
+  },
+  "bells": [
+    {
+      "id": "shortsparse",
+      "name": "Short + non-dense",
+      "periods": [
+        { "index": 1, "name": "P1", "short": "1", "starttime": "08:00", "endtime": "08:45", "isTeaching": true },
+        { "index": 2, "name": "P2", "short": "2", "starttime": "08:45", "endtime": "09:30", "isTeaching": true },
+        { "index": 4, "name": "P4", "short": "4", "starttime": "10:45", "endtime": "11:30", "isTeaching": true },
+        { "index": 5, "name": "P5", "short": "5", "starttime": "11:30", "endtime": "12:15", "isTeaching": true }
+      ]
+    }
+  ],
+  "subjects": [
+    { "id": "s_core",  "name": "Core",       "short": "CORE" },
+    { "id": "s_lab",   "name": "Lab",        "short": "LAB" },
+    { "id": "s_n0a",   "name": "N0-A",       "short": "N0A" },
+    { "id": "s_n0b",   "name": "N0-B",       "short": "N0B" },
+    { "id": "s_n1a",   "name": "N1-A",       "short": "N1A" },
+    { "id": "s_n1b",   "name": "N1-B",       "short": "N1B" },
+    { "id": "s_n2a",   "name": "N2-A-Boys",  "short": "N2A" },
+    { "id": "s_n2b",   "name": "N2-B-Girls", "short": "N2B" },
+    { "id": "s_n5a",   "name": "N5-A",       "short": "N5A" },
+    { "id": "s_n5b",   "name": "N5-B",       "short": "N5B" },
+    { "id": "s_n6a",   "name": "N6-A",       "short": "N6A" },
+    { "id": "s_n6b",   "name": "N6-B",       "short": "N6B" },
+    { "id": "s_n7a",   "name": "N7-A",       "short": "N7A" },
+    { "id": "s_n7b",   "name": "N7-B",       "short": "N7B" },
+    { "id": "s_n8a",   "name": "N8-A",       "short": "N8A" },
+    { "id": "s_n8b",   "name": "N8-B",       "short": "N8B" },
+    { "id": "s_n9a",   "name": "N9-A",       "short": "N9A" },
+    { "id": "s_n9b",   "name": "N9-B",       "short": "N9B" },
+    { "id": "s_n16",   "name": "EdgeOnly",   "short": "EDGE" }
+  ],
+  "teachers": [
+    { "id": "t_core1", "name": "Core One",   "abbr": "C1" },
+    { "id": "t_core2", "name": "Core Two",   "abbr": "C2" },
+    { "id": "t_core3", "name": "Core Three", "abbr": "C3" },
+    { "id": "t_lab1",  "name": "Lab One",    "abbr": "L1" },
+    { "id": "t_lab2",  "name": "Lab Two",    "abbr": "L2" },
+    { "id": "t_lab3",  "name": "Lab Three",  "abbr": "L3" },
+    { "id": "t_relia", "name": "Rel A",      "abbr": "RA" },
+    { "id": "t_relib", "name": "Rel B",      "abbr": "RB" }
+  ],
+  "classes": [
+    { "id": "c1", "name": "Micro 1", "short": "M1", "bellId": null },
+    { "id": "c2", "name": "Micro 2", "short": "M2", "bellId": null },
+    { "id": "c3", "name": "Micro 3 Short", "short": "M3", "bellId": "shortsparse" }
+  ],
+  "groups": [
+    { "id": "g1", "classId": "c2", "name": "Boys",  "entireClass": false, "divisionTag": 1 },
+    { "id": "g2", "classId": "c2", "name": "Girls", "entireClass": false, "divisionTag": 1 },
+    { "id": "g3", "classId": "c2", "name": "ArtA",  "entireClass": false, "divisionTag": 2 },
+    { "id": "g4", "classId": "c2", "name": "ArtB",  "entireClass": false, "divisionTag": 2 }
+  ],
+  "classrooms": [
+    { "id": "r1", "name": "Room 1", "short": "R1" },
+    { "id": "r2", "name": "Room 2", "short": "R2" },
+    { "id": "r3", "name": "Lab 1",  "short": "LAB1" },
+    { "id": "r4", "name": "Lab 2",  "short": "LAB2" }
+  ],
+  "lessons": [
+    { "id": "l_c1", "subjectId": "s_core", "periodsPerWeek": 5, "periodsPerDay": 1, "classIds": ["c1"], "teacherIds": ["t_core1"] },
+    { "id": "l_c2", "subjectId": "s_core", "periodsPerWeek": 5, "periodsPerDay": 1, "classIds": ["c2"], "teacherIds": ["t_core2"] },
+    { "id": "l_c3", "subjectId": "s_core", "periodsPerWeek": 4, "periodsPerDay": 1, "classIds": ["c3"], "teacherIds": ["t_core3"] },
+
+    { "id": "lab1", "subjectId": "s_lab", "periodsPerWeek": 2, "periodsPerDay": 2, "isLabDouble": true, "classIds": ["c1"], "teacherIds": ["t_lab1"], "classroomIds": ["r3"] },
+    { "id": "lab2", "subjectId": "s_lab", "periodsPerWeek": 2, "periodsPerDay": 2, "isLabDouble": true, "classIds": ["c2"], "teacherIds": ["t_lab2"], "classroomIds": ["r4"] },
+    { "id": "lab3", "subjectId": "s_lab", "periodsPerWeek": 2, "periodsPerDay": 2, "isLabDouble": true, "classIds": ["c3"], "teacherIds": ["t_lab3"], "classroomIds": ["r3"] },
+
+    { "id": "l_n0a", "subjectId": "s_n0a", "periodsPerWeek": 1, "periodsPerDay": 1, "classIds": ["c2"], "teacherIds": ["t_relia"] },
+    { "id": "l_n0b", "subjectId": "s_n0b", "periodsPerWeek": 1, "periodsPerDay": 1, "classIds": ["c2"], "teacherIds": ["t_relib"], "groupIds": ["g2"] },
+
+    { "id": "l_n1a", "subjectId": "s_n1a", "periodsPerWeek": 1, "periodsPerDay": 1, "classIds": ["c2"], "teacherIds": ["t_relia"] },
+    { "id": "l_n1b", "subjectId": "s_n1b", "periodsPerWeek": 1, "periodsPerDay": 1, "classIds": ["c2"], "teacherIds": ["t_relib"] },
+
+    { "id": "l_n2a", "subjectId": "s_n2a", "periodsPerWeek": 1, "periodsPerDay": 1, "classIds": ["c2"], "teacherIds": ["t_relia"], "groupIds": ["g1"] },
+    { "id": "l_n2b", "subjectId": "s_n2b", "periodsPerWeek": 1, "periodsPerDay": 1, "classIds": ["c2"], "teacherIds": ["t_relib"], "groupIds": ["g2"] },
+
+    { "id": "l_n5a", "subjectId": "s_n5a", "periodsPerWeek": 1, "periodsPerDay": 1, "classIds": ["c2"], "teacherIds": ["t_relia"] },
+    { "id": "l_n5b", "subjectId": "s_n5b", "periodsPerWeek": 1, "periodsPerDay": 1, "classIds": ["c2"], "teacherIds": ["t_relib"] },
+
+    { "id": "l_n6a", "subjectId": "s_n6a", "periodsPerWeek": 1, "periodsPerDay": 1, "classIds": ["c2"], "teacherIds": ["t_relia"] },
+    { "id": "l_n6b", "subjectId": "s_n6b", "periodsPerWeek": 1, "periodsPerDay": 1, "classIds": ["c2"], "teacherIds": ["t_relib"] },
+
+    { "id": "l_n7a", "subjectId": "s_n7a", "periodsPerWeek": 1, "periodsPerDay": 1, "classIds": ["c2"], "teacherIds": ["t_relia"] },
+    { "id": "l_n7b", "subjectId": "s_n7b", "periodsPerWeek": 1, "periodsPerDay": 1, "classIds": ["c2"], "teacherIds": ["t_relib"] },
+
+    { "id": "l_n8a", "subjectId": "s_n8a", "periodsPerWeek": 1, "periodsPerDay": 1, "classIds": ["c2"], "teacherIds": ["t_relia"] },
+    { "id": "l_n8b", "subjectId": "s_n8b", "periodsPerWeek": 1, "periodsPerDay": 1, "classIds": ["c2"], "teacherIds": ["t_relib"] },
+
+    { "id": "l_n9a", "subjectId": "s_n9a", "periodsPerWeek": 1, "periodsPerDay": 1, "classIds": ["c2"], "teacherIds": ["t_relia"] },
+    { "id": "l_n9b", "subjectId": "s_n9b", "periodsPerWeek": 1, "periodsPerDay": 1, "classIds": ["c2"], "teacherIds": ["t_relib"] },
+
+    { "id": "l_n16", "subjectId": "s_n16", "periodsPerWeek": 2, "periodsPerDay": 1, "classIds": ["c1"], "teacherIds": ["t_core1"] }
+  ],
+  "relations": [
+    { "typ": "n_0",  "subjectids": ["s_n0a"], "subject2ids": ["s_n0b"], "classids": ["c2"], "importance": "hard" },
+    { "typ": "n_1",  "subjectids": ["s_n1a"], "subject2ids": ["s_n1b"], "classids": ["c2"], "importance": "hard" },
+    { "typ": "n_2",  "subjectids": ["s_n2a"], "subject2ids": ["s_n2b"], "classids": ["c2"], "importance": "hard" },
+    { "typ": "n_5",  "subjectids": ["s_n5a"], "subject2ids": ["s_n5b"], "classids": ["c2"], "importance": "hard", "disabled": true, "_why": "inverted in relation_enforcer.js (audit finding #4); re-enable in Phase 3" },
+    { "typ": "n_6",  "subjectids": ["s_n6a"], "subject2ids": ["s_n6b"], "classids": ["c2"], "importance": "hard" },
+    { "typ": "n_7",  "subjectids": ["s_n7a"], "subject2ids": ["s_n7b"], "classids": ["c2"], "importance": "hard" },
+    { "typ": "n_8",  "subjectids": ["s_n8a"], "subject2ids": ["s_n8b"], "classids": ["c2"], "importance": "hard" },
+    { "typ": "n_9",  "subjectids": ["s_n9a"], "subject2ids": ["s_n9b"], "classids": ["c2"], "importance": "hard" },
+    { "typ": "n_16", "subjectids": ["s_n16"], "classids": ["c1"], "positions": "either", "importance": "hard" }
+  ]
+}

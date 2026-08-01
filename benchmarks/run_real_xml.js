@@ -2,9 +2,12 @@
 // Usage: node benchmarks/run_real_xml.js [timeLimitSec]
 // Default time limit: 30s for CI, pass higher for manual testing.
 
-const fs = require('fs');
-const path = require('path');
-const { solve } = require('../js/solver/csp_solver.js');
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { solve } from '../js/solver/csp_solver.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const DATA_PATH = path.join(__dirname, 'real_school.json');
 if (!fs.existsSync(DATA_PATH)) {
