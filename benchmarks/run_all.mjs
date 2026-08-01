@@ -138,6 +138,20 @@ function check(label, cond, detail) {
     const ok = cards.length === 2 && cards.every(a => a.period === firstT || a.period === lastT);
     check(`micro n_16: cards touch day-edge`, ok, cards.map(c => `d${c.day}p${c.period}`).join(' '));
   }
+
+  // n_5 — s_n5a and s_n5b on the SAME day, in ADJACENT periods (either order).
+  // This is the positive-direction guarantee that was broken by the pre-fix
+  // inverted scope (audit finding #4 / Phase 2.1). Skips silently when the
+  // lessons weren't both placed.
+  {
+    const a5 = A.filter(a => lessonById[String(a.lessonId).replace(/#\d+$/,"")]?.subjectId === 's_n5a');
+    const b5 = A.filter(a => lessonById[String(a.lessonId).replace(/#\d+$/,"")]?.subjectId === 's_n5b');
+    if (a5.length && b5.length) {
+      const ok = a5.some(x => b5.some(y => x.day === y.day && Math.abs(x.period - y.period) === 1));
+      check('micro n_5: A and B adjacent on the same day', ok,
+        `A=${a5.map(c=>`d${c.day}p${c.period}`)}  B=${b5.map(c=>`d${c.day}p${c.period}`)}`);
+    }
+  }
 }
 
 // ── large realistic (opt-in) ────────────────────────────────────────────

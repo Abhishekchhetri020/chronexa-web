@@ -10,7 +10,7 @@
     "bell_short_sparse": "c3 school uses 'shortsparse' bell with indexes [1,2,4,5]; index 3 non-dense gap must never host a c3 card.",
     "rel_n16": "Every s_n16 card sits with its span touching a day edge (starts period 1 or ends last teaching period).",
     "n5_n6_n8_n9": "Present as observable solver-pressure relations; hard-only correctness asserted.",
-    "n5_disabled_baseline": "n_5 'must follow any order' is INVERTED in the current relation_enforcer (it rejects adjacent placement, mirroring n_0). With it enabled N5-B is unplaceable (audit finding #4 — relation_enforcer.js n_5 uses scope 'consecutive'). It is disabled here so Phase 0 has a GREEN oracle; Phase 3 (relation semantics) re-enables it as its fail-before test. Removes 2 lesson-slots of pressure.",
+    "n5_enabled_2026_08_01": "n_5 'must follow any order' was temporarily disabled during P0 (inverted scope in relation_enforcer.js, finding #4). Post-fix in this branch it is re-enabled; relations_micro should solve FEASIBLE with N5-A + N5-B adjacent on the same day.",
     "_solver_expected_sessions": "3 core(c1,c2,c3: 5+5+4=14) + 3 lab doubles(2 cards each x2 slots; sessions=6) + 13 relation lessons x 1ppw = 30 sessions / 36 card-periods."
   },
   "daysPerWeek": 6,
@@ -123,10 +123,10 @@
     { "id": "l_n16", "subjectId": "s_n16", "periodsPerWeek": 2, "periodsPerDay": 1, "classIds": ["c1"], "teacherIds": ["t_core1"] }
   ],
   "relations": [
-    { "typ": "n_0",  "subjectids": ["s_n0a"], "subject2ids": ["s_n0b"], "classids": ["c2"], "importance": "hard" },
-    { "typ": "n_1",  "subjectids": ["s_n1a"], "subject2ids": ["s_n1b"], "classids": ["c2"], "importance": "hard" },
+    { "typ": "n_0",  "subjectids": ["s_n0a", "s_n0b"], "classids": ["c2"], "importance": "hard" },
+    { "typ": "n_1",  "subjectids": ["s_n1a", "s_n1b"], "classids": ["c2"], "importance": "hard" },
     { "typ": "n_2",  "subjectids": ["s_n2a"], "subject2ids": ["s_n2b"], "classids": ["c2"], "importance": "hard" },
-    { "typ": "n_5",  "subjectids": ["s_n5a"], "subject2ids": ["s_n5b"], "classids": ["c2"], "importance": "hard", "disabled": true, "_why": "inverted in relation_enforcer.js (audit finding #4); re-enable in Phase 3" },
+    { "typ": "n_5",  "subjectids": ["s_n5a"], "subject2ids": ["s_n5b"], "classids": ["c2"], "importance": "hard" },
     { "typ": "n_6",  "subjectids": ["s_n6a"], "subject2ids": ["s_n6b"], "classids": ["c2"], "importance": "hard" },
     { "typ": "n_7",  "subjectids": ["s_n7a"], "subject2ids": ["s_n7b"], "classids": ["c2"], "importance": "hard" },
     { "typ": "n_8",  "subjectids": ["s_n8a"], "subject2ids": ["s_n8b"], "classids": ["c2"], "importance": "hard" },
