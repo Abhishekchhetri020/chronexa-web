@@ -178,13 +178,49 @@ import "../ribbon/topbar.js";
     src = replaceBlock(src, "groups",     renderGroupsBlock(school));
     src = replaceBlock(src, "lessons",    renderLessonsBlock(school));
     src = replaceBlock(src, "cards",      renderCardsBlock(school));
+
+    // Phase 6 — append/replace the relations block so relations saved in the
+    // UI survive template-driven exports. aSc template had none originally,
+    // so we append right before </timetable>.
+    const rels = school.relations || [];
+    if (rels.length) {
+      const block = renderRelationsBlock(school);
+      // Replace any existing block, else append.
+      const relsRe = /\s*<cx:relations>.*?<\/cx:relations>/s;
+      if (relsRe.test(src)) {
+        src = src.replace(relsRe, "\n" + block);
+      } else {
+        src = src.replace(/<\/timetable>\s*$/, "\n" + block + "\n</timetable>");
+      }
+    }
     return src;
+  }
+
+  function renderRelationsBlock(school) {
+    const rels = school.relations || [];
+    const out = [];
+    out.push('  <cx:relations>');
+    for (const r of rels) {
+      if (!r || !r.typ) continue;
+      const attrs = [
+        `typ="${xmlEscape(r.typ)}"`,
+        r.subjectids && r.subjectids.length   ? `subjectids="${xmlEscape(r.subjectids.join(","))}"`   : "",
+        r.subject2ids && r.subject2ids.length ? `subject2ids="${xmlEscape(r.subject2ids.join(","))}"` : "",
+        r.classids && r.classids.length       ? `classids="${xmlEscape(r.classids.join(","))}"`       : "",
+        r.disabled    ? `disabled="1"` : "",
+        r.importance  ? `importance="${xmlEscape(r.importance)}"` : "",
+        r.positions   ? `positions="${xmlEscape(r.positions)}"` : "",
+      ].filter(Boolean).join(" ");
+      out.push(`    <cx:relation ${attrs}/>`);
+    }
+    out.push('  </cx:relations>');
+    return out.join("\n");
   }
 
   function exportSynthesized(school) {
     const out = [];
     out.push('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>');
-    out.push(`<timetable importtype="database" defaultexport="1" displayname="${xmlEscape(school.schoolName || "Chronexa Export")}" displaycountries="">`);
+    out.push(`<timetable importtype="database" defaultexport="1" displayname="${xmlEscape(school.schoolName || "Chronexa Export")}" displaycountries="" xmlns:cx="urn:chronexa">`);
 
     // Periods
     out.push('  <periods options="canadd,export:silent" columns="period,name,short,starttime,endtime">');
@@ -260,6 +296,28 @@ import "../ribbon/topbar.js";
     out.push("  </lessons>");
 
     out.push(renderCardsBlock(school));
+
+    // Phase 6 — relations XML round-trip. aSc Classic doesn't carry
+    // Chronexa relation metadata; persist under a namespaced block so
+    // import → edit → export → re-import preserves the five captured types.
+    const rels = school.relations || [];
+    if (rels.length) {
+      out.push('  <cx:relations>');
+      for (const r of rels) {
+        if (!r || !r.typ) continue;
+        const attrs = [
+          `typ="${xmlEscape(r.typ)}"`,
+          r.subjectids && r.subjectids.length   ? `subjectids="${xmlEscape(r.subjectids.join(","))}"`   : "",
+          r.subject2ids && r.subject2ids.length ? `subject2ids="${xmlEscape(r.subject2ids.join(","))}"` : "",
+          r.classids && r.classids.length       ? `classids="${xmlEscape(r.classids.join(","))}"`       : "",
+          r.disabled    ? `disabled="1"` : "",
+          r.importance  ? `importance="${xmlEscape(r.importance)}"` : "",
+          r.positions   ? `positions="${xmlEscape(r.positions)}"` : "",
+        ].filter(Boolean).join(" ");
+        out.push(`    <cx:relation ${attrs}/>`);
+      }
+      out.push('  </cx:relations>');
+    }
     out.push("</timetable>");
     return out.join("\n") + "\n";
   }

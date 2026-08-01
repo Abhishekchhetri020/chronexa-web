@@ -284,6 +284,27 @@ window.parseTimetableXml = (function () {
       }
     });
 
+    // Phase 6 — relations XML round-trip. aSc Classic doesn't natively store
+    // Chronexa's relation set in this wire format; we persist them under a
+    // namespaced block <cx:relations><cx:relation …/></cx:relations> so they
+    // survive import → export → re-import. On parse, rebuild `school.relations`
+    // from that block; on export, render it (see export_timetable_xml.js).
+    const relations = [];
+    xml.querySelectorAll("cx\\:relations > cx\\:relation, relations > relation").forEach(r => {
+      const typ = r.getAttribute("typ");
+      if (!typ) return;
+      const rel = {
+        typ,
+        subjectids: (r.getAttribute("subjectids") || "").split(",").filter(Boolean),
+        subject2ids: (r.getAttribute("subject2ids") || "").split(",").filter(Boolean),
+        classids: (r.getAttribute("classids") || "").split(",").filter(Boolean),
+      };
+      if (r.getAttribute("disabled") === "1" || r.getAttribute("disabled") === "true") rel.disabled = true;
+      if (r.getAttribute("importance")) rel.importance = r.getAttribute("importance");
+      if (r.getAttribute("positions")) rel.positions = r.getAttribute("positions");
+      relations.push(rel);
+    });
+
     // --- Viewer indexes (denormalised for grid rendering) --------------------
     const cardsByClass   = Object.create(null);
     const cardsByTeacher = Object.create(null);
@@ -298,7 +319,6 @@ window.parseTimetableXml = (function () {
       const subjName = subject ? subject.name : "";
       const teacherNames = lesson.teacherIds.map(tid => teacherById[tid]?.name).filter(Boolean);
       const classNames   = lesson.classIds.map(cid => classById[cid]?.name).filter(Boolean);
-
       const entry = {
         day: c.day, period: c.period,
         lessonId: c.lessonId,
@@ -360,6 +380,7 @@ window.parseTimetableXml = (function () {
       lessons: cleanLessons,
       groups,
       cards,
+      relations,
       daysDefs,
       weeksDefs,
       termsDefs,

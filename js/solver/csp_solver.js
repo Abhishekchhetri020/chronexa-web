@@ -2406,6 +2406,16 @@ function undoToMark(model, state, undoStack, mark) {
 // Score
 // ---------------------------------------------------------------------------
 
+// Audit #13 — per-placement slot iterator that's span-aware. Lab doubles
+// occupy both (slot) and (slot+1); hard/soft scorers that previously read
+// only the start slot were blind to the tail. Yields every occupied slot.
+function* _slotsOfLesson(model, state, lessonIdx) {
+  const s = state.lessonAssignedSlot[lessonIdx];
+  if (s < 0) return;
+  yield s;
+  if (model.lessonLabDouble[lessonIdx] === 1) yield s + 1;
+}
+
 function softScore(model, state) {
   if (!state._scoreDirty) return state._cachedSoftScore;
   const w = model.weights;
@@ -2457,10 +2467,12 @@ function supervisionCriteriaSoftPenalty(model, state) {
   if (!crit.avoidLastPeriod && !crit.avoidFirstPeriod) return 0;
   for (let i = 0; i < model.lessonCount; i++) {
     if (!state.lessonAssigned[i]) continue;
-    const slot = state.lessonAssignedSlot[i];
-    const p = model.slotPeriod[slot];
-    if (crit.avoidLastPeriod && p === last) penalty += 1;
-    if (crit.avoidFirstPeriod && p === first) penalty += 1;
+    // Audit #13: include lab-tail in first/last-period detection.
+    for (const slot of _slotsOfLesson(model, state, i)) {
+      const p = model.slotPeriod[slot];
+      if (crit.avoidLastPeriod && p === last) penalty += 1;
+      if (crit.avoidFirstPeriod && p === first) penalty += 1;
+    }
   }
   return penalty;
 }
@@ -2483,12 +2495,14 @@ function studentSubjectsConflictPenalty(model, state) {
     if (!state.lessonAssigned[i]) continue;
     const tags = model.lessonStudentSets ? model.lessonStudentSets[i] : null;
     if (!tags || !tags.length) continue;
-    const slot = state.lessonAssignedSlot[i];
-    const d = model.slotDay[slot], p = model.slotPeriod[slot];
-    for (const sidx of tags) {
-      const k = (sidx * days + d) * ppd + p;
-      if (occ[k]) penalty += 1;
-      else occ[k] = 1;
+    // Audit #13: include lab-tail slots for per-student overlap.
+    for (const slot of _slotsOfLesson(model, state, i)) {
+      const d = model.slotDay[slot], p = model.slotPeriod[slot];
+      for (const sidx of tags) {
+        const k = (sidx * days + d) * ppd + p;
+        if (occ[k]) penalty += 1;
+        else occ[k] = 1;
+      }
     }
   }
   return penalty;
@@ -2532,8 +2546,10 @@ function modeAfternoonHeavyPenalty(model, state) {
     if (!state.lessonAssigned[i]) continue;
     const t = tags[i];
     if (!t || !t.includes("HEAVY")) continue;
-    const slot = state.lessonAssignedSlot[i];
-    if (model.slotPeriod[slot] >= cutoff) penalty += 2;
+    // Audit #13: heavy-afternoon penalty counts lab-tail too.
+    for (const slot of _slotsOfLesson(model, state, i)) {
+      if (model.slotPeriod[slot] >= cutoff) penalty += 2;
+    }
   }
   return penalty;
 }
@@ -2573,15 +2589,17 @@ function teacherIntervalMaxDaysPenalty(model, state) {
   const worked = new Uint8Array(tc * days);
   for (let i = 0; i < model.lessonCount; i++) {
     if (!state.lessonAssigned[i]) continue;
-    const slot = state.lessonAssignedSlot[i];
-    const d = model.slotDay[slot], p = model.slotPeriod[slot];
-    const tStart = model.lessonTeacherStart[i];
-    const tCount = model.lessonTeacherCount[i];
-    for (let k = 0; k < tCount; k++) {
-      const t = model.lessonTeacherFlat[tStart + k];
-      const iv = intervals[t];
-      if (!iv) continue;
-      if (p >= iv.fromPeriod && p <= iv.toPeriod) worked[t * days + d] = 1;
+    // Audit #13: include lab-tail so a double landing on the edge period counts.
+    for (const slot of _slotsOfLesson(model, state, i)) {
+      const d = model.slotDay[slot], p = model.slotPeriod[slot];
+      const tStart = model.lessonTeacherStart[i];
+      const tCount = model.lessonTeacherCount[i];
+      for (let k = 0; k < tCount; k++) {
+        const t = model.lessonTeacherFlat[tStart + k];
+        const iv = intervals[t];
+        if (!iv) continue;
+        if (p >= iv.fromPeriod && p <= iv.toPeriod) worked[t * days + d] = 1;
+      }
     }
   }
   let penalty = 0;
@@ -2613,13 +2631,15 @@ function teacherMinRestingHoursPenalty(model, state) {
   const occ = new Uint32Array(tc * days);
   for (let i = 0; i < model.lessonCount; i++) {
     if (!state.lessonAssigned[i]) continue;
-    const slot = state.lessonAssignedSlot[i];
-    const d = model.slotDay[slot], p = model.slotPeriod[slot];
-    const tStart = model.lessonTeacherStart[i];
-    const tCount = model.lessonTeacherCount[i];
-    for (let k = 0; k < tCount; k++) {
-      const t = model.lessonTeacherFlat[tStart + k];
-      occ[t * days + d] |= (1 << p) >>> 0;
+    // Audit #13: include lab-tail in the rest-gap occupancy.
+    for (const slot of _slotsOfLesson(model, state, i)) {
+      const d = model.slotDay[slot], p = model.slotPeriod[slot];
+      const tStart = model.lessonTeacherStart[i];
+      const tCount = model.lessonTeacherCount[i];
+      for (let k = 0; k < tCount; k++) {
+        const t = model.lessonTeacherFlat[tStart + k];
+        occ[t * days + d] |= (1 << p) >>> 0;
+      }
     }
   }
   for (let t = 0; t < tc; t++) {
@@ -2732,23 +2752,25 @@ function lessonTagDailyCapPenalty(model, state) {
       if (!state.lessonAssigned[i]) continue;
       const lt = tags[i];
       if (!lt || !lt.includes(cap.tag)) continue;
-      const slot = state.lessonAssignedSlot[i];
-      const d = model.slotDay[slot];
-      if (cap.scope === "teacher") {
-        const tStart = model.lessonTeacherStart[i];
-        const tCount = model.lessonTeacherCount[i];
-        for (let k = 0; k < tCount; k++) {
-          const t = model.lessonTeacherFlat[tStart + k];
-          const key = "t_" + t + "_" + d;
-          counts[key] = (counts[key] || 0) + 1;
-        }
-      } else {
-        const cStart = model.lessonClassStart[i];
-        const cCount = model.lessonClassCount[i];
-        for (let k = 0; k < cCount; k++) {
-          const c = model.lessonClassFlat[cStart + k];
-          const key = "c_" + c + "_" + d;
-          counts[key] = (counts[key] || 0) + 1;
+      // Audit #13: count against BOTH occupied days of a lab double.
+      for (const slot of _slotsOfLesson(model, state, i)) {
+        const d = model.slotDay[slot];
+        if (cap.scope === "teacher") {
+          const tStart = model.lessonTeacherStart[i];
+          const tCount = model.lessonTeacherCount[i];
+          for (let k = 0; k < tCount; k++) {
+            const t = model.lessonTeacherFlat[tStart + k];
+            const key = "t_" + t + "_" + d;
+            counts[key] = (counts[key] || 0) + 1;
+          }
+        } else {
+          const cStart = model.lessonClassStart[i];
+          const cCount = model.lessonClassCount[i];
+          for (let k = 0; k < cCount; k++) {
+            const c = model.lessonClassFlat[cStart + k];
+            const key = "c_" + c + "_" + d;
+            counts[key] = (counts[key] || 0) + 1;
+          }
         }
       }
     }
@@ -2840,14 +2862,17 @@ function classLunchWindowPenalty(model, state) {
   let penalty = 0;
   for (let i = 0; i < model.lessonCount; i++) {
     if (!state.lessonAssigned[i]) continue;
-    const slot = state.lessonAssignedSlot[i];
-    const p = model.slotPeriod[slot];
-    const bit = (1 << p) >>> 0;
-    const cStart = model.lessonClassStart[i];
-    const cCount = model.lessonClassCount[i];
-    for (let k = 0; k < cCount; k++) {
-      const c = model.lessonClassFlat[cStart + k];
-      if ((lunch[c] & bit) !== 0) penalty += 1;
+    // Audit #13 span-aware: lab-tail can sit in the lunch window even when
+    // the head is outside.
+    for (const slot of _slotsOfLesson(model, state, i)) {
+      const p = model.slotPeriod[slot];
+      const bit = (1 << p) >>> 0;
+      const cStart = model.lessonClassStart[i];
+      const cCount = model.lessonClassCount[i];
+      for (let k = 0; k < cCount; k++) {
+        const c = model.lessonClassFlat[cStart + k];
+        if ((lunch[c] & bit) !== 0) penalty += 1;
+      }
     }
   }
   return penalty;
@@ -2864,15 +2889,18 @@ function classTeachingWindowPenalty(model, state) {
   let penalty = 0;
   for (let i = 0; i < model.lessonCount; i++) {
     if (!state.lessonAssigned[i]) continue;
-    const slot = state.lessonAssignedSlot[i];
-    const p = model.slotPeriod[slot];
-    const bit = (1 << p) >>> 0;
-    const cStart = model.lessonClassStart[i];
-    const cCount = model.lessonClassCount[i];
-    for (let k = 0; k < cCount; k++) {
-      const c = model.lessonClassFlat[cStart + k];
-      const mask = teach[c];
-      if (mask !== 0 && (mask & bit) === 0) penalty += 1;
+    // Audit #13 span-aware: lab-tail can fall outside the teaching window even
+    // when the head is inside.
+    for (const slot of _slotsOfLesson(model, state, i)) {
+      const p = model.slotPeriod[slot];
+      const bit = (1 << p) >>> 0;
+      const cStart = model.lessonClassStart[i];
+      const cCount = model.lessonClassCount[i];
+      for (let k = 0; k < cCount; k++) {
+        const c = model.lessonClassFlat[cStart + k];
+        const mask = teach[c];
+        if (mask !== 0 && (mask & bit) === 0) penalty += 1;
+      }
     }
   }
   return penalty;
@@ -2891,24 +2919,27 @@ function classTeacherPosPenalty(model, state) {
   let penalty = 0;
   for (let i = 0; i < model.lessonCount; i++) {
     if (!state.lessonAssigned[i]) continue;
-    const slot = state.lessonAssignedSlot[i];
-    const d = model.slotDay[slot];
-    const p = model.slotPeriod[slot];
-    const cStart = model.lessonClassStart[i];
-    const cCount = model.lessonClassCount[i];
-    for (let k = 0; k < cCount; k++) {
-      const c = model.lessonClassFlat[cStart + k];
-      if (mask[(c * days + d) * ppd + p] !== 1) continue;
-      const homeroom = hr[c];
-      if (homeroom < 0) continue;
-      // Does the placement include the homeroom teacher?
-      let hasHomeroom = false;
-      const tStart = model.lessonTeacherStart[i];
-      const tCount = model.lessonTeacherCount[i];
-      for (let j = 0; j < tCount; j++) {
-        if (model.lessonTeacherFlat[tStart + j] === homeroom) { hasHomeroom = true; break; }
+    // Audit #13 span-aware: include tail — homeroom-presence mask should apply
+    // to the span, not just the period the card was started on.
+    for (const slot of _slotsOfLesson(model, state, i)) {
+      const d = model.slotDay[slot];
+      const p = model.slotPeriod[slot];
+      const cStart = model.lessonClassStart[i];
+      const cCount = model.lessonClassCount[i];
+      for (let k = 0; k < cCount; k++) {
+        const c = model.lessonClassFlat[cStart + k];
+        if (mask[(c * days + d) * ppd + p] !== 1) continue;
+        const homeroom = hr[c];
+        if (homeroom < 0) continue;
+        // Does the placement include the homeroom teacher?
+        let hasHomeroom = false;
+        const tStart = model.lessonTeacherStart[i];
+        const tCount = model.lessonTeacherCount[i];
+        for (let j = 0; j < tCount; j++) {
+          if (model.lessonTeacherFlat[tStart + j] === homeroom) { hasHomeroom = true; break; }
+        }
+        if (!hasHomeroom) penalty++;
       }
-      if (!hasHomeroom) penalty++;
     }
   }
   return penalty;
@@ -2927,14 +2958,16 @@ function teacherConditionalPlacementPenalty(model, state) {
   let penalty = 0;
   for (let i = 0; i < model.lessonCount; i++) {
     if (!state.lessonAssigned[i]) continue;
-    const slot = state.lessonAssignedSlot[i];
-    const d = model.slotDay[slot];
-    const p = model.slotPeriod[slot];
-    const tStart = model.lessonTeacherStart[i];
-    const tCount = model.lessonTeacherCount[i];
-    for (let k = 0; k < tCount; k++) {
-      const t = model.lessonTeacherFlat[tStart + k];
-      if (((mask[t * D + d] >>> p) & 1) === 1) penalty++;
+    // Audit #13 span-aware: tail must also see the conditional mask.
+    for (const slot of _slotsOfLesson(model, state, i)) {
+      const d = model.slotDay[slot];
+      const p = model.slotPeriod[slot];
+      const tStart = model.lessonTeacherStart[i];
+      const tCount = model.lessonTeacherCount[i];
+      for (let k = 0; k < tCount; k++) {
+        const t = model.lessonTeacherFlat[tStart + k];
+        if (((mask[t * D + d] >>> p) & 1) === 1) penalty++;
+      }
     }
   }
   return penalty;
@@ -5273,12 +5306,14 @@ export function solve(school, options = {}) {
         tabuTenure: options.tabuTenure,
       };
       const lnsGained = largeNeighborhoodSearch(model, globalBest.state, totalDeadlineMs, lnsCtx);
-      if (lnsGained !== 0) {
-        globalBest.assignedEntries = globalBest.state.bestAssignedEntries;
-        globalBest.softScore = globalBest.state.bestSoftScore === -Number.MAX_SAFE_INTEGER
-          ? 0
-          : globalBest.state.bestSoftScore;
-      }
+      // Audit #23 — `lnsGained !== 0` only fires when placements changed. A
+      // soft-score-only LNS improvement at equal placements previously left
+      // globalBest.softScore stale even though state.bestSoftScore moved.
+      // Always refresh both fields regardless of whether placement changed.
+      globalBest.assignedEntries = globalBest.state.bestAssignedEntries;
+      globalBest.softScore = globalBest.state.bestSoftScore === -Number.MAX_SAFE_INTEGER
+        ? 0
+        : globalBest.state.bestSoftScore;
       if (onProgress) {
         try {
           onProgress({
