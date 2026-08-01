@@ -766,19 +766,64 @@ function buildModel(school) {
   // Default to 2 so the generator cannot stack a whole week's subject load
   // into one day. Imported schools can still override this globally, and
   // "*" / "i" preserve the legacy unlimited behaviour for special cases.
+  // Audit finding #7: the auto-tighten step below previously overwrote
+  // explicit user values, INCLUDING the "i" (unlimited) sentinel.
+  // We track provenance: -1 truly unset → auto-tighten; anything else →
+  // preserve that user's choice exactly.
   const subjectDailyLimit = new Int32Array(classIds.length * subjectIds.length * days).fill(-1);
+  // Build a mask of "auto-tighten-eligible" (i.e. TRULY unset) entries.
+  const sdlIsAutoGenesis = new Uint8Array(subjectDailyLimit.length).fill(1); // 1 = still unset
   // globals.constraints.subjectDailyLimit acts as the school-wide default
   // for any (class, subject, day) not overridden by a per-class-subject value.
   const globalSDL = g.subjectDailyLimit == null ? 2 : gFallback(undefined, "subjectDailyLimit");
   if (globalSDL > 0) {
     for (let i = 0; i < subjectDailyLimit.length; i++) {
       if (subjectDailyLimit[i] < 0) subjectDailyLimit[i] = globalSDL;
+      // Global default is still "not explicit", so auto-tighten MAY apply.
+    }
+  }
+  // Where did per-(class,subject) explicit values come from? Re-read them
+  // here so auto-tighten knows which keys are user-pin'd (never overwrite).
+  // Sources, in increasing precedence order:
+  //   school.constraints.subjectDailyLimit       (school-wide default — already handled)
+  //   school.subjectDailyLimit[classId][subjectId]  per-pair override (number, "i", "*")
+  // Each can be absent, a numeric cap, or an unlimited sentinel. Explicit
+  // unlimited is stored as a large sentinel (365) so canPlace skips the cap.
+  const SDL_UNLIMITED = 365;
+  const _explicitSDL = (school && school.subjectDailyLimit) || null;
+  if (_explicitSDL && typeof _explicitSDL === "object") {
+    for (const cId of Object.keys(_explicitSDL)) {
+      const cIdx = classIdx.get(cId);
+      if (cIdx == null) continue;
+      const perSubject = _explicitSDL[cId];
+      if (!perSubject || typeof perSubject !== "object") continue;
+      for (const sId of Object.keys(perSubject)) {
+        const sIdx = subjectIdx.get(sId);
+        if (sIdx == null) continue;
+        const v = perSubject[sId];
+        const base = (cIdx * subjectIds.length + sIdx) * days;
+        if (v === "i" || v === "*" || v === -1) {
+          for (let d = 0; d < days; d++) {
+            subjectDailyLimit[base + d] = SDL_UNLIMITED;
+            sdlIsAutoGenesis[base + d] = 0;
+          }
+        } else if (typeof v === "number" && Number.isFinite(v)) {
+          const cap = Math.max(0, v | 0);
+          for (let d = 0; d < days; d++) {
+            subjectDailyLimit[base + d] = cap;
+            sdlIsAutoGenesis[base + d] = 0;
+          }
+        }
+        // other shapes (undefined/null/string) = no override, stays auto-eligible
+      }
     }
   }
   // Auto-tighten: for each (class, subject) compute the total number of
   // PERIOD-LEVEL increments per week and set the daily limit to
-  // ceil(totalPeriods / days). classSubjectDayCount is incremented once per
-  // applySingle call — for lab-doubles that's 2 per session (one per slot).
+  // ceil(totalPeriods / days) — BUT only for slots still marked auto-genesis.
+  // Explicit values (numeric caps, "i"/"*" unlimited) survive unchanged.
+  // classSubjectDayCount is incremented once per applySingle call — for
+  // lab-doubles that's 2 per session (one per slot).
   // So we must count in period units, not session units.
   const _sessionsByClassSubject = new Int32Array(classIds.length * subjectIds.length);
   // Max periods-per-card for each (class, subject). Lab-doubles have ppc=2;
@@ -810,6 +855,8 @@ function buildModel(school) {
       const idealMax = Math.max(maxPPC, Math.ceil(totalPeriods / days));
       for (let d = 0; d < days; d++) {
         const key = ((c * subjectIds.length) + s) * days + d;
+        // Never tighten over an explicit user choice.
+        if (!sdlIsAutoGenesis[key]) continue;
         const current = subjectDailyLimit[key];
         if (current < 0 || idealMax < current) {
           subjectDailyLimit[key] = idealMax;
