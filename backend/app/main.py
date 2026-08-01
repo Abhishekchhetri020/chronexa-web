@@ -299,6 +299,22 @@ async def _execute_solve(req: SolveRequest, job: Optional[Job], rid: str) -> Dic
     time_limit = float((opts.get("timeLimitSec") or 60.0))
     if job is not None:
         job.mark_running()
+    # Audit finding (#8 residual): the CP-SAT progress callback only fires on
+    # each improving solution. A stuck (long infeasible or inoptimality gap)
+    # solve may not call the callback for many seconds, so a cancel request
+    # sits until the solver cooperates. Park a tiny async watcher alongside
+    # the executor so the HTTP status flips to 'cancelled' immediately on
+    # request even when CP-SAT is silent mid-search. The background thread
+    # still finishes on its own bounded budget (solver.parameters.max_time_in_seconds).
+    watcher: Optional[asyncio.Task] = None
+    if job is not None:
+        async def _cancel_watch() -> None:
+            while True:
+                await asyncio.sleep(0.05)
+                if job.cancel_requested():
+                    job.mark_cancelled()
+                    return
+        watcher = asyncio.create_task(_cancel_watch())
     try:
         result = await asyncio.get_running_loop().run_in_executor(
             None, _run_solver_blocking, payload, opts, job, time_limit
@@ -314,6 +330,12 @@ async def _execute_solve(req: SolveRequest, job: Optional[Job], rid: str) -> Dic
         if job is not None:
             job.mark_error(str(exc))
         return crash
+    if watcher is not None:
+        watcher.cancel()
+        try:
+            await watcher
+        except asyncio.CancelledError:
+            pass
     if job is not None:
         # If cancellation was requested mid-solve we still got a result;
         # honor the user's cancel by reporting cancelled state.
