@@ -1891,8 +1891,32 @@ function _canPlaceJS(model, state, lessonIdx, slot, roomIdx) {
     }
   }
   if (model.lessonMustFirstLast && model.lessonMustFirstLast[lessonIdx]) {
-    // n_16: must be first (period index 0) or last (periodsPerDay - 1)
-    if (p !== 0 && p !== model.periodsPerDay - 1) {
+    // n_16: must be at first or last teaching period. Audit plan semantics for
+    // lab doubles: a span [P, P+span-1] satisfies iff it STARTS at the first
+    // teaching period OR ENDS at the last teaching period.
+    // Translate to 0-based span [p, p+span-1] day-local, comparing against
+    // 0 = first teaching slot and periodsPerDay-1 = last slot (note: the
+    // grid is aligned with bell indexes; the school bell's first/last
+    // teaching period INDEX may differ from these if the bell is sparse).
+    // To stay consistent across fixture shapes we use the bell-driven
+    // first/last teaching position when available, else the geometric edges.
+    const span = model.lessonLabDouble[lessonIdx] === 1 ? 2 : 1;
+    let firstTeaching = 0, lastTeaching = model.periodsPerDay - 1;
+    if (Array.isArray(model.breakPeriods) && model.breakPeriods.length >= 0) {
+      // Compute teaching grid coords = all positions except break coords.
+      const breaks = new Set(model.breakPeriods);
+      const teachingPositions = [];
+      for (let pp = 0; pp < model.periodsPerDay; pp++) {
+        if (!breaks.has(pp)) teachingPositions.push(pp);
+      }
+      if (teachingPositions.length) {
+        firstTeaching = teachingPositions[0];
+        lastTeaching  = teachingPositions[teachingPositions.length - 1];
+      }
+    }
+    const spanStart = p;
+    const spanEnd   = p + span - 1;
+    if (!(spanStart === firstTeaching || spanEnd === lastTeaching)) {
       return FAIL.RELATION_FIRST_OR_LAST;
     }
   }
