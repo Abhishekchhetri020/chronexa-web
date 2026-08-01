@@ -25,6 +25,7 @@ build/
 
 # Node
 node_modules/
+node_modules
 
 # Test artifacts
 test-results/
