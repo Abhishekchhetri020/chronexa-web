@@ -127,7 +127,9 @@ function check(label, cond, detail) {
     check(`micro lab: ${count} lab cards, tails within day`, ok && count === 3, `count=${count}`);
   }
 
-  // n_16 — every s_n16 card touches a day edge (start period 1, or end == last teaching)
+  // n_16 — every s_n16 card's SPAN touches a day edge (starts at first
+  // teaching period or ends at last teaching period). Single-period lessons
+  // must sit exactly at firstTeaching OR lastTeaching; lab-doubles can span.
   {
     const teaching = school.bell.periods.filter(p => p.isTeaching !== false).map(p => p.index);
     const firstT = Math.min(...teaching), lastT = Math.max(...teaching);
@@ -135,8 +137,63 @@ function check(label, cond, detail) {
       const id = String(a.lessonId).replace(/#\d+$/, '');
       return lessonById[id]?.subjectId === 's_n16';
     });
-    const ok = cards.length === 2 && cards.every(a => a.period === firstT || a.period === lastT);
-    check(`micro n_16: cards touch day-edge`, ok, cards.map(c => `d${c.day}p${c.period}`).join(' '));
+    const ok = cards.length === 2 && cards.every(a => {
+      const base = String(a.lessonId).replace(/#\d+$/, '');
+      const l = lessonById[base];
+      const span = l && l.isLabDouble ? 2 : 1;
+      return a.period === firstT || (a.period + span - 1) === lastT;
+    });
+    check(`micro n_16: spans touch day-edge`, ok, cards.map(c => `d${c.day}p${c.period}`).join(' '));
+  }
+
+  // n_5 — s_n5a and s_n5b on the SAME day, in ADJACENT periods (either order).
+  // This is the positive-direction guarantee that was broken by the pre-fix
+  // inverted scope (audit finding #4 / Phase 2.1). Skips silently when the
+  // lessons weren't both placed.
+  {
+    const a5 = A.filter(a => lessonById[String(a.lessonId).replace(/#\d+$/,"")]?.subjectId === 's_n5a');
+    const b5 = A.filter(a => lessonById[String(a.lessonId).replace(/#\d+$/,"")]?.subjectId === 's_n5b');
+    if (a5.length && b5.length) {
+      const ok = a5.some(x => b5.some(y => x.day === y.day && Math.abs(x.period - y.period) === 1));
+      check('micro n_5: A and B adjacent on the same day', ok,
+        `A=${a5.map(c=>`d${c.day}p${c.period}`)}  B=${b5.map(c=>`d${c.day}p${c.period}`)}`);
+    }
+  }
+
+  // Audit #5 — no card anywhere in the bell's isTeaching:false slot.
+  {
+    const breaks = new Set(school.bell.periods.filter(p => p.isTeaching === false).map(p => p.index));
+    const bad = A.filter(a => {
+      const id = String(a.lessonId).replace(/#\d+$/, '');
+      const l = lessonById[id];
+      const clsId = (l && l.classIds && l.classIds[0]) || null;
+      // classes using default bell — c1/c2 in relations_micro (c3 uses shortsparse, no break)
+      return clsId !== 'c3' && breaks.has(a.period);
+    });
+    check('micro no non-teaching: no card on isTeaching:false period', bad.length === 0,
+      bad.length ? `bad=${bad.map(c => `d${c.day}p${c.period}`).join(' ')}` : 'ok');
+  }
+}
+
+// ── WASM differential gate ───────────────────────────────────────────────
+// Run the micro fixture twice: once pure-JS, once under validateWasm:true
+// (runs both and cross-checks each canPlace). Any divergence surfaces as a
+// thrown error / mismatch / solve() rejection.
+{
+  try {
+    const school = loadBench('relations_micro.json');
+    const pureJs = solve(school, { timeLimitSec: 2, seed: 9881 });
+    const valid  = solve(school, { timeLimitSec: 2, seed: 9881, validateWasm: true });
+    // Strict equality on the observable contract the two paths must agree on.
+    const samePlaced = pureJs.stats.placed === valid.stats.placed;
+    const sameHard  = pureJs.stats.hardConflicts === valid.stats.hardConflicts;
+    const sameStatus = pureJs.status === valid.status;
+    const ok = samePlaced && sameHard && sameStatus;
+    check(`wasm-diff micro: JS vs validateWasm match`, ok,
+      `JS(${pureJs.status},${pureJs.stats.placed},HC=${pureJs.stats.hardConflicts}) ` +
+      `vs WASM(${valid.status},${valid.stats.placed},HC=${valid.stats.hardConflicts})`);
+  } catch (e) {
+    check(`wasm-diff micro: solved both sides without throw`, false, String(e).slice(0, 80));
   }
 }
 

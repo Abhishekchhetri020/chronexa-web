@@ -102,6 +102,11 @@ function buildModel(school) {
     let m = 0;
     if (!Array.isArray(periods)) return m;
     for (const p of periods) {
+      // Phase 2.1 (audit #5): isTeaching:false periods must NOT be
+      // placeable, including when they appear in the school default bell.
+      // Strict check keeps legacy data (no isTeaching field → undefined)
+      // working while explicitly barring anything marked non-teaching.
+      if (p.isTeaching === false) continue;
       // Period.index is 1-based in the data model; canPlace uses 0-based p.
       const pi = ((p.index | 0) - 1);
       if (pi >= 0 && pi < periodsPerDay) m = (m | (1 << pi)) >>> 0;
@@ -142,9 +147,23 @@ function buildModel(school) {
       const bell = _bellsList.find(b => b.id === cls.bellId);
       if (bell) mask = _maskFromPeriods(bell.periods);
     }
-    // Empty mask would block everything; fall back to default to avoid
-    // false-positive infeasibility from misconfigured per-class bell.
-    classValidPeriodMask[i] = mask || _defaultMask || ((1 << periodsPerDay) - 1) >>> 0;
+    // Audit #5: distinguish "bell was empty in source data" (misconfig —
+    // fall back to default) from "bell is non-empty but all periods are
+    // non-teaching" (no valid placement exists — the mask must be 0).
+    // The fallback was previously `mask || _defaultMask || allPeriods —`
+    // which collapsed an all-break bell to the all-periods mask and made
+    // break slots bookable. That was a live bug: any card in a school
+    // whose bell only has breaks landed there.
+    const effectivePeriods = (cls && cls.bellId)
+      ? (_bellsList.find(b => b.id === cls.bellId)?.periods)
+      : _defaultBellPeriods;
+    const hasDefinedPeriods = Array.isArray(effectivePeriods) && effectivePeriods.length > 0;
+    const isAllNonTeaching = hasDefinedPeriods && !effectivePeriods.some(p => p.isTeaching !== false);
+    if (isAllNonTeaching) {
+      classValidPeriodMask[i] = 0;
+    } else {
+      classValidPeriodMask[i] = mask || _defaultMask || ((1 << periodsPerDay) - 1) >>> 0;
+    }
     // Phase 5: warn once per school when a bell resolves to an empty mask.
     if (!mask && cls && cls.bellId) {
       recordEmptyBellWarning(cls.bellId, cls);
@@ -766,19 +785,64 @@ function buildModel(school) {
   // Default to 2 so the generator cannot stack a whole week's subject load
   // into one day. Imported schools can still override this globally, and
   // "*" / "i" preserve the legacy unlimited behaviour for special cases.
+  // Audit finding #7: the auto-tighten step below previously overwrote
+  // explicit user values, INCLUDING the "i" (unlimited) sentinel.
+  // We track provenance: -1 truly unset → auto-tighten; anything else →
+  // preserve that user's choice exactly.
   const subjectDailyLimit = new Int32Array(classIds.length * subjectIds.length * days).fill(-1);
+  // Build a mask of "auto-tighten-eligible" (i.e. TRULY unset) entries.
+  const sdlIsAutoGenesis = new Uint8Array(subjectDailyLimit.length).fill(1); // 1 = still unset
   // globals.constraints.subjectDailyLimit acts as the school-wide default
   // for any (class, subject, day) not overridden by a per-class-subject value.
   const globalSDL = g.subjectDailyLimit == null ? 2 : gFallback(undefined, "subjectDailyLimit");
   if (globalSDL > 0) {
     for (let i = 0; i < subjectDailyLimit.length; i++) {
       if (subjectDailyLimit[i] < 0) subjectDailyLimit[i] = globalSDL;
+      // Global default is still "not explicit", so auto-tighten MAY apply.
+    }
+  }
+  // Where did per-(class,subject) explicit values come from? Re-read them
+  // here so auto-tighten knows which keys are user-pin'd (never overwrite).
+  // Sources, in increasing precedence order:
+  //   school.constraints.subjectDailyLimit       (school-wide default — already handled)
+  //   school.subjectDailyLimit[classId][subjectId]  per-pair override (number, "i", "*")
+  // Each can be absent, a numeric cap, or an unlimited sentinel. Explicit
+  // unlimited is stored as a large sentinel (365) so canPlace skips the cap.
+  const SDL_UNLIMITED = 365;
+  const _explicitSDL = (school && school.subjectDailyLimit) || null;
+  if (_explicitSDL && typeof _explicitSDL === "object") {
+    for (const cId of Object.keys(_explicitSDL)) {
+      const cIdx = classIdx.get(cId);
+      if (cIdx == null) continue;
+      const perSubject = _explicitSDL[cId];
+      if (!perSubject || typeof perSubject !== "object") continue;
+      for (const sId of Object.keys(perSubject)) {
+        const sIdx = subjectIdx.get(sId);
+        if (sIdx == null) continue;
+        const v = perSubject[sId];
+        const base = (cIdx * subjectIds.length + sIdx) * days;
+        if (v === "i" || v === "*" || v === -1) {
+          for (let d = 0; d < days; d++) {
+            subjectDailyLimit[base + d] = SDL_UNLIMITED;
+            sdlIsAutoGenesis[base + d] = 0;
+          }
+        } else if (typeof v === "number" && Number.isFinite(v)) {
+          const cap = Math.max(0, v | 0);
+          for (let d = 0; d < days; d++) {
+            subjectDailyLimit[base + d] = cap;
+            sdlIsAutoGenesis[base + d] = 0;
+          }
+        }
+        // other shapes (undefined/null/string) = no override, stays auto-eligible
+      }
     }
   }
   // Auto-tighten: for each (class, subject) compute the total number of
   // PERIOD-LEVEL increments per week and set the daily limit to
-  // ceil(totalPeriods / days). classSubjectDayCount is incremented once per
-  // applySingle call — for lab-doubles that's 2 per session (one per slot).
+  // ceil(totalPeriods / days) — BUT only for slots still marked auto-genesis.
+  // Explicit values (numeric caps, "i"/"*" unlimited) survive unchanged.
+  // classSubjectDayCount is incremented once per applySingle call — for
+  // lab-doubles that's 2 per session (one per slot).
   // So we must count in period units, not session units.
   const _sessionsByClassSubject = new Int32Array(classIds.length * subjectIds.length);
   // Max periods-per-card for each (class, subject). Lab-doubles have ppc=2;
@@ -810,6 +874,8 @@ function buildModel(school) {
       const idealMax = Math.max(maxPPC, Math.ceil(totalPeriods / days));
       for (let d = 0; d < days; d++) {
         const key = ((c * subjectIds.length) + s) * days + d;
+        // Never tighten over an explicit user choice.
+        if (!sdlIsAutoGenesis[key]) continue;
         const current = subjectDailyLimit[key];
         if (current < 0 || idealMax < current) {
           subjectDailyLimit[key] = idealMax;
@@ -938,11 +1004,17 @@ function buildModel(school) {
   const lessonN2Partners = new Array(lessonCount);
   for (let i = 0; i < lessonCount; i++) lessonN2Partners[i] = null;
   const lessonMustFirstLast = new Uint8Array(lessonCount);
-  // Pre-compute break period indices (0-based) — for n_7 check.
+  // Pre-compute break period indices — for n_7 check. Audit #12: store
+  // the 1-based period.index - 1 (0-based grid coordinate), NOT the array
+  // position. Legacy fixtures where bell.periods is dense (index = position
+  // +1) see no change; sparse bells now resolve breaks at the right period.
   const breakPeriods = [];
   const bellPeriods = (school.bell && school.bell.periods) || [];
   for (let pi = 0; pi < bellPeriods.length; pi++) {
-    if (bellPeriods[pi] && bellPeriods[pi].isTeaching === false) breakPeriods.push(pi);
+    if (bellPeriods[pi] && bellPeriods[pi].isTeaching === false) {
+      const gridPos = (bellPeriods[pi].index | 0) - 1;
+      if (gridPos >= 0) breakPeriods.push(gridPos);
+    }
   }
   for (let i = 0; i < lessonCount; i++) {
     lessonN1Partners[i]  = null;
@@ -1776,13 +1848,23 @@ function _canPlaceJS(model, state, lessonIdx, slot, roomIdx) {
   }
   // n_2: no two matched lessons at same (day, period). Sibling of the n_1 block
   // above — must NOT be nested inside it, or it is skipped for lessons that have
-  // n_2 partners but no n_1 partner.
+  // n_2: no two matched lessons at same (day, period). Span-aware for lab
+  // doubles (audit finding #6): a partner's SECOND slot also counts as
+  // occupied for the relation check.
   const partnersN2 = model.lessonN2Partners && model.lessonN2Partners[lessonIdx];
   if (partnersN2) {
+    const thisSpan = model.lessonLabDouble[lessonIdx] === 1 ? 2 : 1;
     for (const pIdx of partnersN2) {
       if (state.lessonAssigned && state.lessonAssigned[pIdx]) {
         const ps = state.lessonAssignedSlot[pIdx];
-        if (ps >= 0 && ps === slot) return FAIL.RELATION_SAME_PERIOD_FORBIDDEN;
+        if (ps < 0) continue;
+        const partnerSpan = model.lessonLabDouble[pIdx] === 1 ? 2 : 1;
+        // (slot..slot+thisSpan-1) vs (ps..ps+partnerSpan-1) must not overlap.
+        for (let s1 = 0; s1 < thisSpan; s1++) {
+          for (let s2 = 0; s2 < partnerSpan; s2++) {
+            if (slot + s1 === ps + s2) return FAIL.RELATION_SAME_PERIOD_FORBIDDEN;
+          }
+        }
       }
     }
   }
@@ -1809,8 +1891,32 @@ function _canPlaceJS(model, state, lessonIdx, slot, roomIdx) {
     }
   }
   if (model.lessonMustFirstLast && model.lessonMustFirstLast[lessonIdx]) {
-    // n_16: must be first (period index 0) or last (periodsPerDay - 1)
-    if (p !== 0 && p !== model.periodsPerDay - 1) {
+    // n_16: must be at first or last teaching period. Audit plan semantics for
+    // lab doubles: a span [P, P+span-1] satisfies iff it STARTS at the first
+    // teaching period OR ENDS at the last teaching period.
+    // Translate to 0-based span [p, p+span-1] day-local, comparing against
+    // 0 = first teaching slot and periodsPerDay-1 = last slot (note: the
+    // grid is aligned with bell indexes; the school bell's first/last
+    // teaching period INDEX may differ from these if the bell is sparse).
+    // To stay consistent across fixture shapes we use the bell-driven
+    // first/last teaching position when available, else the geometric edges.
+    const span = model.lessonLabDouble[lessonIdx] === 1 ? 2 : 1;
+    let firstTeaching = 0, lastTeaching = model.periodsPerDay - 1;
+    if (Array.isArray(model.breakPeriods) && model.breakPeriods.length >= 0) {
+      // Compute teaching grid coords = all positions except break coords.
+      const breaks = new Set(model.breakPeriods);
+      const teachingPositions = [];
+      for (let pp = 0; pp < model.periodsPerDay; pp++) {
+        if (!breaks.has(pp)) teachingPositions.push(pp);
+      }
+      if (teachingPositions.length) {
+        firstTeaching = teachingPositions[0];
+        lastTeaching  = teachingPositions[teachingPositions.length - 1];
+      }
+    }
+    const spanStart = p;
+    const spanEnd   = p + span - 1;
+    if (!(spanStart === firstTeaching || spanEnd === lastTeaching)) {
       return FAIL.RELATION_FIRST_OR_LAST;
     }
   }

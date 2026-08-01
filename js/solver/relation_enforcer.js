@@ -26,7 +26,10 @@ const TYPS = Object.freeze({
     n_2:  { label: "must not be at the same time (same period)",     binary: false, hard: true,  scope: "sameTime" },
     n_3:  { label: "must alternate days (no two same-day)",          binary: false, hard: false, scope: "alternateDay" },
     n_4:  { label: "Card distribution over the week",                binary: false, hard: false, scope: "distribution" },
-    n_5:  { label: "Two subjects must follow (arbitrary order)",     binary: true,  hard: true,  scope: "consecutive" },
+    // Audit finding #4 — n_5 was incorrectly mapped to "consecutive"
+    // (n_0 semantics: forbid adjacency). Its real meaning is the inverse:
+    // A and B MUST sit in adjacent periods on the same day, either order.
+    n_5:  { label: "Two subjects must follow (arbitrary order)",     binary: true,  hard: true,  scope: "mustFollow" },
     n_6:  { label: "Two subjects must follow",                       binary: true,  hard: true,  scope: "consecutiveOrdered" },
     n_7:  { label: "Break cannot be between group of lessons",       binary: false, hard: true,  scope: "betweenBreaks" },
     n_8:  { label: "Two subjects must be in one day (arbitrary)",    binary: true,  hard: true,  scope: "sameDay" },
@@ -150,7 +153,8 @@ const TYPS = Object.freeze({
           // Check existing placements at (day, period±1) for the "other side" of the relation.
           const others = placedMatching(school, rel,
             primaryMatch ? (bin ? (l => lessonMatchesSecond(l, rel)) : lessonMatches)
-                         : lessonMatches);
+                         : lessonMatches
+          ).filter(o => o.card.lessonId !== lessonId);
           for (const o of others) {
             if (o.card.day !== day) continue;
             if (Math.abs(o.card.period - period) === 1) {
@@ -158,6 +162,20 @@ const TYPS = Object.freeze({
               break;
             }
           }
+          break;
+        }
+        case "mustFollow": {
+          // n_5: A and B MUST sit in adjacent periods on the same day, either order.
+          // Hard violation if a matching partner exists on this day but NO card of the
+          // opposite side sits at period-1 or period+1. (This is the INVERSE of n_0:
+          // n_0 forbids adjacency; n_5 requires it. The audit caught n_5 incorrectly
+          // sharing "consecutive" — rejecting the very placement it should require.)
+          const others = placedMatching(school, rel,
+            primaryMatch ? (l => lessonMatchesSecond(l, rel)) : lessonMatches
+          ).filter(o => o.card.lessonId !== lessonId && o.card.day === day);
+          if (others.length === 0) break;   // partner not on this day yet — not a violation
+          const adjacent = others.some(o => Math.abs(o.card.period - period) === 1);
+          if (!adjacent) sink.push(`${meta.label} — partner must sit in the adjacent period`);
           break;
         }
         case "consecutiveOrdered": {
@@ -208,13 +226,24 @@ const TYPS = Object.freeze({
         }
         case "sameDayOrdered": {
           // n_9: A then B both on same day, A first.
+          // Check BOTH directions: placing A (B already at same day) requires
+          // A.period < B.period; placing B (A already at same day) requires
+          // A.period < B.period. The pre-fix code only caught the first case,
+          // so a reversed B-before-A placement passed silently (audit: n_9 order
+          // fires only when placing the leader).
           const others = placedMatching(school, rel,
             primaryMatch ? (l => lessonMatchesSecond(l, rel)) : lessonMatches);
           const sameDay = others.find(o => o.card.day === day);
-          if (sameDay) {
-            // We placed A; B is at sameDay.period. Order violation if our (period) > sameDay.period
-            if (primaryMatch && period > sameDay.card.period)
-              sink.push(`${meta.label} — order would be reversed (B is earlier than A)`);
+          if (!sameDay) break;
+          const otherPeriod = sameDay.card.period;
+          if (primaryMatch) {
+            // We are A; other is B. Violation if A is NOT strictly before B.
+            if (period >= otherPeriod)
+              sink.push(`${meta.label} — order would be reversed (A not strictly before B)`);
+          } else if (secondaryMatch) {
+            // We are B; other is A. Violation if A is NOT strictly before B.
+            if (otherPeriod >= period)
+              sink.push(`${meta.label} — order would be reversed (A not strictly before B)`);
           }
           break;
         }
