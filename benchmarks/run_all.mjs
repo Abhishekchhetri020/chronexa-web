@@ -152,6 +152,20 @@ function check(label, cond, detail) {
         `A=${a5.map(c=>`d${c.day}p${c.period}`)}  B=${b5.map(c=>`d${c.day}p${c.period}`)}`);
     }
   }
+
+  // Audit #5 — no card anywhere in the bell's isTeaching:false slot.
+  {
+    const breaks = new Set(school.bell.periods.filter(p => p.isTeaching === false).map(p => p.index));
+    const bad = A.filter(a => {
+      const id = String(a.lessonId).replace(/#\d+$/, '');
+      const l = lessonById[id];
+      const clsId = (l && l.classIds && l.classIds[0]) || null;
+      // classes using default bell — c1/c2 in relations_micro (c3 uses shortsparse, no break)
+      return clsId !== 'c3' && breaks.has(a.period);
+    });
+    check('micro no non-teaching: no card on isTeaching:false period', bad.length === 0,
+      bad.length ? `bad=${bad.map(c => `d${c.day}p${c.period}`).join(' ')}` : 'ok');
+  }
 }
 
 // ── large realistic (opt-in) ────────────────────────────────────────────

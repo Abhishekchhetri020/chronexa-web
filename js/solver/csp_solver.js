@@ -102,6 +102,11 @@ function buildModel(school) {
     let m = 0;
     if (!Array.isArray(periods)) return m;
     for (const p of periods) {
+      // Phase 2.1 (audit #5): isTeaching:false periods must NOT be
+      // placeable, including when they appear in the school default bell.
+      // Strict check keeps legacy data (no isTeaching field → undefined)
+      // working while explicitly barring anything marked non-teaching.
+      if (p.isTeaching === false) continue;
       // Period.index is 1-based in the data model; canPlace uses 0-based p.
       const pi = ((p.index | 0) - 1);
       if (pi >= 0 && pi < periodsPerDay) m = (m | (1 << pi)) >>> 0;
@@ -142,9 +147,23 @@ function buildModel(school) {
       const bell = _bellsList.find(b => b.id === cls.bellId);
       if (bell) mask = _maskFromPeriods(bell.periods);
     }
-    // Empty mask would block everything; fall back to default to avoid
-    // false-positive infeasibility from misconfigured per-class bell.
-    classValidPeriodMask[i] = mask || _defaultMask || ((1 << periodsPerDay) - 1) >>> 0;
+    // Audit #5: distinguish "bell was empty in source data" (misconfig —
+    // fall back to default) from "bell is non-empty but all periods are
+    // non-teaching" (no valid placement exists — the mask must be 0).
+    // The fallback was previously `mask || _defaultMask || allPeriods —`
+    // which collapsed an all-break bell to the all-periods mask and made
+    // break slots bookable. That was a live bug: any card in a school
+    // whose bell only has breaks landed there.
+    const effectivePeriods = (cls && cls.bellId)
+      ? (_bellsList.find(b => b.id === cls.bellId)?.periods)
+      : _defaultBellPeriods;
+    const hasDefinedPeriods = Array.isArray(effectivePeriods) && effectivePeriods.length > 0;
+    const isAllNonTeaching = hasDefinedPeriods && !effectivePeriods.some(p => p.isTeaching !== false);
+    if (isAllNonTeaching) {
+      classValidPeriodMask[i] = 0;
+    } else {
+      classValidPeriodMask[i] = mask || _defaultMask || ((1 << periodsPerDay) - 1) >>> 0;
+    }
     // Phase 5: warn once per school when a bell resolves to an empty mask.
     if (!mask && cls && cls.bellId) {
       recordEmptyBellWarning(cls.bellId, cls);
@@ -985,11 +1004,17 @@ function buildModel(school) {
   const lessonN2Partners = new Array(lessonCount);
   for (let i = 0; i < lessonCount; i++) lessonN2Partners[i] = null;
   const lessonMustFirstLast = new Uint8Array(lessonCount);
-  // Pre-compute break period indices (0-based) — for n_7 check.
+  // Pre-compute break period indices — for n_7 check. Audit #12: store
+  // the 1-based period.index - 1 (0-based grid coordinate), NOT the array
+  // position. Legacy fixtures where bell.periods is dense (index = position
+  // +1) see no change; sparse bells now resolve breaks at the right period.
   const breakPeriods = [];
   const bellPeriods = (school.bell && school.bell.periods) || [];
   for (let pi = 0; pi < bellPeriods.length; pi++) {
-    if (bellPeriods[pi] && bellPeriods[pi].isTeaching === false) breakPeriods.push(pi);
+    if (bellPeriods[pi] && bellPeriods[pi].isTeaching === false) {
+      const gridPos = (bellPeriods[pi].index | 0) - 1;
+      if (gridPos >= 0) breakPeriods.push(gridPos);
+    }
   }
   for (let i = 0; i < lessonCount; i++) {
     lessonN1Partners[i]  = null;
