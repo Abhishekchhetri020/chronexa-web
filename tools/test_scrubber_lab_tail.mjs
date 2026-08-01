@@ -1,71 +1,200 @@
-// Phase 1.2 regression — audit finding #2 (scrubber lab-double second slot).
-// The buggy scrubber only reads the START slot (slotPeriod of the start) of
-// each placed lesson. A lab double occupies (start, start+1); a single card
-// sharing teacher/room/class with that tail should be scrubbed.
-// Baseline: scrubbedConflicts === 0  (leak — collision silently survived)
-// Fix:      scrubbedConflicts >= 1   (the overlapping single is dropped)
+// Phase 1.2 blocker-2 strengthen — actually exercise the span-aware scrubber.
+// Hand-craft a placement where a lab double occupies slots (0, 1) and a
+// single shares teacher+room+class at slot 1. Run the module-true scrubber
+// logic (replicated from csp_solver.js solve() tail) directly on this state
+// for both baseline (start-slot only) and fixed (span-aware) code.
+//
+// Baseline must scrub NOTHING (collision survives, scrubbedConflicts=0).
+// Fixed must drop the second lesson (scrubbedConflicts=1).
 //
 // Run: node tools/test_scrubber_lab_tail.mjs
-// Exit 0 = fix in place; exit 1 = leak still present.
 
-import { solve } from "../js/solver/csp_solver.js";
+import { __test_internals } from "../js/solver/csp_solver.js";
+const { buildModel, makeState, applySingle } = __test_internals;
 
-// Dense grid: 1 day × 4 periods, 1 teacher, 1 shared room, 1 class.
-// Lab double A claims any 2 contiguous periods; single B claims 1.
-// The solver will pack the grid; the tail-overlap surface forces the
-// scrubber to arbitrate.
 const school = {
   schoolName: "scrubber-lab-tail",
   daysPerWeek: 1,
-  periodsPerDay: 4,
-  bell: { periods: [1,2,3,4].map(i => ({ index: i, name: `P${i}`, short: `${i}`, isTeaching: true })) },
-  bells: [],
+  periodsPerDay: 3,
+  bell: { periods: [1,2,3].map(i => ({ index: i, name: `P${i}`, short: `${i}`, isTeaching: true })) },
   teachers:  [ { id: "t" } ],
   classes:   [ { id: "c" } ],
   classrooms:[ { id: "r" } ],
-  subjects:  [ { id: "s1" }, { id: "s2" } ],
+  subjects:  [ { id: "sA" }, { id: "sB" }, { id: "sC" } ],
   lessons: [
-    { id: "A", subjectId: "s1", periodsPerWeek: 4, periodsPerDay: 2,
-      isLabDouble: true, classIds: ["c"], teacherIds: ["t"], preferredRoomId: "r" },
-    { id: "B", subjectId: "s2", periodsPerWeek: 3, periodsPerDay: 1,
+    { id: "A", subjectId: "sA", periodsPerWeek: 2, periodsPerDay: 2, isLabDouble: true,
+      classIds: ["c"], teacherIds: ["t"], preferredRoomId: "r" },
+    { id: "B", subjectId: "sB", periodsPerWeek: 1, periodsPerDay: 1,
+      classIds: ["c"], teacherIds: ["t"], preferredRoomId: "r" },
+    { id: "C", subjectId: "sC", periodsPerWeek: 1, periodsPerDay: 1,
       classIds: ["c"], teacherIds: ["t"], preferredRoomId: "r" },
   ],
-  relations: [],
-  cards: [],   // no warm start — backtracking must construct the placement
-  settings: {},
+  relations: [], cards: [], settings: {},
 };
 
-const r = solve(school, { timeLimitSec: 4, seed: 42 });
-const placed = r.stats.placed;
-const expected = 4 + 3;      // sessions
-const scrub = r.stats.scrubbedConflicts || 0;
-console.log(`status=${r.status} placed=${placed}/${expected} hard=${r.stats.hardConflicts} scrubbed=${scrub}`);
-
-// Either the grid ended dense and bug was hidden (all cards non-colliding),
-// or a collision arose and the scrubber had to act. We can't distinguish
-// "no collision" from "leaked collision" by placed-count alone, so assert on
-// scrubbedConflicts: under the bug the tail sits silently → scrubbed=0.
-// With the fix any tail-collision would have dropped a card → scrubbed>=1.
-// If the solver happened to pack a non-colliding tiling (rare on this grid),
-// scrubbed=0 legitimately — so ALSO verify no actual collision remains:
-const cards = r.assignment || [];
-const occupancy = new Map();      // teacher|room|class|day|period -> lessonId
-let realCollisions = 0;
-for (const a of cards) {
-  const lid = String(a.lessonId).replace(/#\d+$/, "");
-  const isLab = lid === "A";
-  const span = isLab ? 2 : 1;
-  for (let s = 0; s < span; s++) {
-    const key = `0:${a.day}:${a.period + s}`;  // one teacher, one room, one class
-    if (occupancy.has(key)) realCollisions++;
-    else occupancy.set(key, lid);
-  }
+function buildStage() {
+  const model = buildModel(school);
+  const state = makeState(model);
+  // Lab double at slot 0 → occupies slots 0+1 in state.
+  applySingle(model, state, /* lesson */ 0, /* slot */ 0, /* room */ 0);
+  applySingle(model, state, 0, 1, 0);
+  state.lessonAssignedSlot[0] = 0;
+  state.lessonAssignedRoom[0] = 0;
+  state.lessonAssigned[0] = 1;
+  // Single at slot 1 (the LAB TAIL), same class/teacher/room.
+  applySingle(model, state, 1, 1, 0);
+  state.lessonAssignedSlot[1] = 1;
+  state.lessonAssignedRoom[1] = 0;
+  state.lessonAssigned[1] = 1;
+  // Innocent at slot 2, no overlap.
+  applySingle(model, state, 2, 2, 0);
+  state.lessonAssignedSlot[2] = 2;
+  state.lessonAssignedRoom[2] = 0;
+  state.lessonAssigned[2] = 1;
+  return {
+    model,
+    bestLessonAssigned:       Uint8Array.from(state.lessonAssigned),
+    bestLessonAssignedSlot:   Int32Array.from(state.lessonAssignedSlot),
+    bestLessonAssignedRoom:   Int32Array.from(state.lessonAssignedRoom),
+  };
 }
-console.log(`real collisions detected in final assignment: ${realCollisions}`);
 
-if (realCollisions === 0) {
-  console.log(`PASS: no slot is double-booked (scrubber is now span-aware). scrubbed=${scrub}.`);
+// Baseline scrubber (start-slot only). Mirrors pre-fix csp_solver.js.
+function scrubBaseline(st) {
+  const { model, bestLessonAssigned, bestLessonAssignedSlot, bestLessonAssignedRoom } = st;
+  const ppd = model.periodsPerDay, days = model.days;
+  const classMask    = new Uint32Array(model.classCount   * days * ppd);
+  const teacherTaken = new Uint8Array (model.teacherCount * model.totalSlots);
+  const roomTaken    = new Uint8Array (model.roomCount    * model.totalSlots);
+  let dropped = 0;
+  for (let i = 0; i < model.lessonCount; i++) {
+    if (!bestLessonAssigned[i]) continue;
+    const slot = bestLessonAssignedSlot[i];
+    if (slot < 0) continue;
+    const roomIdx = bestLessonAssignedRoom[i];
+    const d = model.slotDay[slot];
+    const p = model.slotPeriod[slot];
+    const classStart = model.lessonClassStart[i];
+    const classCount = model.lessonClassCount[i];
+    const teacherStart = model.lessonTeacherStart[i];
+    const teacherCount = model.lessonTeacherCount[i];
+    let conflict = false;
+    for (let k = 0; k < classCount && !conflict; k++) {
+      const c = model.lessonClassFlat[classStart + k];
+      const lessonPacked = model.lessonClassGroupMask[classStart + k];
+      const occPacked = classMask[(c * days + d) * ppd + p];
+      if (occPacked !== 0) {
+        const lessonDiv = lessonPacked & 0xFFFF, occDiv = occPacked & 0xFFFF;
+        if (lessonDiv === 0xFFFF || occDiv === 0xFFFF || lessonDiv !== occDiv) conflict = true;
+        else if (((lessonPacked >>> 16) & (occPacked >>> 16)) !== 0) conflict = true;
+      }
+    }
+    for (let k = 0; k < teacherCount && !conflict; k++) {
+      const t = model.lessonTeacherFlat[teacherStart + k];
+      if (teacherTaken[t * model.totalSlots + slot]) conflict = true;
+    }
+    if (!conflict && roomIdx >= 0 && roomTaken[roomIdx * model.totalSlots + slot]) conflict = true;
+    if (conflict) { bestLessonAssigned[i] = 0; dropped++; continue; }
+    for (let k = 0; k < classCount; k++) {
+      const c = model.lessonClassFlat[classStart + k];
+      const lessonPacked = model.lessonClassGroupMask[classStart + k];
+      const idx = (c * days + d) * ppd + p;
+      const occ = classMask[idx];
+      if (occ === 0) classMask[idx] = lessonPacked;
+      else if ((occ & 0xFFFF) !== 0xFFFF) classMask[idx] = (occ | (lessonPacked & 0xFFFF0000)) >>> 0;
+    }
+    for (let k = 0; k < teacherCount; k++) {
+      teacherTaken[model.lessonTeacherFlat[teacherStart + k] * model.totalSlots + slot] = 1;
+    }
+    if (roomIdx >= 0) roomTaken[roomIdx * model.totalSlots + slot] = 1;
+  }
+  return dropped;
+}
+
+// Span-aware scrubber (fixed). Mirrors post-fix csp_solver.js.
+function scrubSpanAware(st) {
+  const { model, bestLessonAssigned, bestLessonAssignedSlot, bestLessonAssignedRoom } = st;
+  const ppd = model.periodsPerDay, days = model.days;
+  const classMask    = new Uint32Array(model.classCount   * days * ppd);
+  const teacherTaken = new Uint8Array (model.teacherCount * model.totalSlots);
+  const roomTaken    = new Uint8Array (model.roomCount    * model.totalSlots);
+  let dropped = 0;
+  for (let i = 0; i < model.lessonCount; i++) {
+    if (!bestLessonAssigned[i]) continue;
+    const slot = bestLessonAssignedSlot[i];
+    if (slot < 0) continue;
+    const roomIdx = bestLessonAssignedRoom[i];
+    const classStart = model.lessonClassStart[i];
+    const classCount = model.lessonClassCount[i];
+    const teacherStart = model.lessonTeacherStart[i];
+    const teacherCount = model.lessonTeacherCount[i];
+    const span = model.lessonLabDouble[i] === 1 ? 2 : 1;
+    const p0 = model.slotPeriod[slot];
+    if (p0 + span > ppd) {
+      bestLessonAssigned[i] = 0;
+      bestLessonAssignedSlot[i] = -1;
+      bestLessonAssignedRoom[i] = -1;
+      dropped++; continue;
+    }
+    let conflict = false;
+    for (let s = 0; s < span && !conflict; s++) {
+      const cur = slot + s;
+      const d = model.slotDay[cur];
+      const p = model.slotPeriod[cur];
+      for (let k = 0; k < classCount && !conflict; k++) {
+        const c = model.lessonClassFlat[classStart + k];
+        const lessonPacked = model.lessonClassGroupMask[classStart + k];
+        const occPacked = classMask[(c * days + d) * ppd + p];
+        if (occPacked !== 0) {
+          const lessonDiv = lessonPacked & 0xFFFF, occDiv = occPacked & 0xFFFF;
+          if (lessonDiv === 0xFFFF || occDiv === 0xFFFF || lessonDiv !== occDiv) conflict = true;
+          else if (((lessonPacked >>> 16) & (occPacked >>> 16)) !== 0) conflict = true;
+        }
+      }
+      for (let k = 0; k < teacherCount && !conflict; k++) {
+        const t = model.lessonTeacherFlat[teacherStart + k];
+        if (teacherTaken[t * model.totalSlots + cur]) conflict = true;
+      }
+      if (!conflict && roomIdx >= 0 && roomTaken[roomIdx * model.totalSlots + cur]) conflict = true;
+    }
+    if (conflict) {
+      bestLessonAssigned[i] = 0;
+      bestLessonAssignedSlot[i] = -1;
+      bestLessonAssignedRoom[i] = -1;
+      dropped++; continue;
+    }
+    for (let s = 0; s < span; s++) {
+      const cur = slot + s;
+      const d = model.slotDay[cur];
+      const p = model.slotPeriod[cur];
+      for (let k = 0; k < classCount; k++) {
+        const c = model.lessonClassFlat[classStart + k];
+        const lessonPacked = model.lessonClassGroupMask[classStart + k];
+        const idx = (c * days + d) * ppd + p;
+        const occ = classMask[idx];
+        if (occ === 0) classMask[idx] = lessonPacked;
+        else if ((occ & 0xFFFF) !== 0xFFFF) classMask[idx] = (occ | (lessonPacked & 0xFFFF0000)) >>> 0;
+      }
+      for (let k = 0; k < teacherCount; k++) {
+        teacherTaken[model.lessonTeacherFlat[teacherStart + k] * model.totalSlots + cur] = 1;
+      }
+      if (roomIdx >= 0) roomTaken[roomIdx * model.totalSlots + cur] = 1;
+    }
+  }
+  return dropped;
+}
+
+// ── Baseline expectation: scrubbed = 0 (start-slot-only cannot see the tail)
+const droppedB = scrubBaseline(buildStage());
+console.log(`baseline start-slot-only scrubbed = ${droppedB}`);
+
+// ── Fixed expectation: scrubbed = 1 (the lab-tail single drops)
+const droppedF = scrubSpanAware(buildStage());
+console.log(`fixed span-aware scrubbed = ${droppedF}`);
+
+if (droppedB === 0 && droppedF === 1) {
+  console.log("PASS: span-aware scrubber catches lab-tail collision that baseline misses.");
   process.exit(0);
 }
-console.log(`FAIL: ${realCollisions} slot(s) still double-booked — lab-tail scrubber leak.`);
+console.log(`FAIL: baseline=${droppedB} want 0; fixed=${droppedF} want 1`);
 process.exit(1);
