@@ -3293,7 +3293,14 @@ function backtrack(model, state, unassigned, unassignedCount, ctx) {
     ctx.currentlyPlacingLabel = ctx.lessonLabels[selected];
   }
 
-  const candidates = ctx.candidateScratch;
+  // Phase 1 (audit fix #1) — recursion-safe candidates.
+  // Each recursion level gets its own Int32Array; nested backtrack() calls can
+  // never overwrite the parent's candidate list mid-iteration.
+  if (!ctx.candidateScratchByDepth) ctx.candidateScratchByDepth = [];
+  if (!ctx.candidateScratchByDepth[ctx.stackDepth]) {
+    ctx.candidateScratchByDepth[ctx.stackDepth] = new Int32Array(maxCandidatesPerLesson(model));
+  }
+  const candidates = ctx.candidateScratchByDepth[ctx.stackDepth];
   let feasibleCount = fillFeasibleCandidates(model, state, selected, candidates);
 
   if (feasibleCount === 0) {
@@ -4954,7 +4961,7 @@ export function solve(school, options = {}) {
       depth: 0,
       stackDepth: 0,   // true recursion depth (incl. 0-domain skips) for the overflow guard
       undoStack: [],
-      candidateScratch: new Int32Array(maxCandidatesPerLesson(model)),
+      candidateScratch: null, // replaced by candidateScratchByDepth (audit fix #1)
       nodesVisited: 0,
       backtracks: 0,
       deadlineMs,
@@ -4979,6 +4986,10 @@ export function solve(school, options = {}) {
         : -1,
       stagnationBail: false,
       runMaxAssigned: state.assignedLessonCount,
+      // Phase 1 (audit fix #1): recursion-safe per-depth candidate buffers.
+      // ctx.candidateScratch is created lazily inside backtrack() per stack depth
+      // so nested recursive calls never overwrite the parent's candidate list.
+      candidateScratchByDepth: null,
       madeProgress: false,
       lastImproveMs: performance.now(),
       // Luby restart: per-run node budget (-1 = unlimited for last run)
@@ -5199,12 +5210,25 @@ export function solve(school, options = {}) {
       const slot = globalBest.state.bestLessonAssignedSlot[i];
       if (slot < 0) continue;
       const roomIdx = globalBest.state.bestLessonAssignedRoom[i];
-      const d = model.slotDay[slot];
-      const p = model.slotPeriod[slot];
       const classStart = model.lessonClassStart[i];
       const classCount = model.lessonClassCount[i];
       const teacherStart = model.lessonTeacherStart[i];
       const teacherCount = model.lessonTeacherCount[i];
+
+      // Span-aware (audit finding #2): colliding ONLY on the lab-double start
+      // slot was the pre-fix bug. A double occupying (P,P+1) must detect + claim
+      // both, so a second period collision surfaces as a scrub drop.
+      const span = model.lessonLabDouble[i] === 1 ? 2 : 1;
+      const d0 = model.slotDay[slot];
+      const p0 = model.slotPeriod[slot];
+      // Reject span crossing a day boundary (start-of-day tail).
+      if (p0 + span > ppd) {
+        globalBest.state.bestLessonAssigned[i] = 0;
+        globalBest.state.bestLessonAssignedSlot[i] = -1;
+        globalBest.state.bestLessonAssignedRoom[i] = -1;
+        scrubbedConflicts += 1;
+        continue;
+      }
 
       // Detect collision with already-kept placements (any axis). Class
       // axis uses the packed (divIdx | mask<<16) comparison — mirrors
@@ -5212,24 +5236,29 @@ export function solve(school, options = {}) {
       // student-sharing (Boys vs GroupA from different divisions both
       // share students → must conflict).
       let conflict = false;
-      for (let k = 0; k < classCount && !conflict; k++) {
-        const c = model.lessonClassFlat[classStart + k];
-        const lessonPacked = model.lessonClassGroupMask[classStart + k];
-        const idx = (c * days + d) * ppd + p;
-        const occPacked = classMask[idx];
-        if (occPacked !== 0) {
-          const lessonDiv = lessonPacked & 0xFFFF;
-          const occDiv = occPacked & 0xFFFF;
-          if (lessonDiv === 0xFFFF || occDiv === 0xFFFF || lessonDiv !== occDiv) conflict = true;
-          else if (((lessonPacked >>> 16) & (occPacked >>> 16)) !== 0) conflict = true;
+      for (let s = 0; s < span && !conflict; s++) {
+        const cur = slot + s;
+        const d = model.slotDay[cur];
+        const p = model.slotPeriod[cur];
+        for (let k = 0; k < classCount && !conflict; k++) {
+          const c = model.lessonClassFlat[classStart + k];
+          const lessonPacked = model.lessonClassGroupMask[classStart + k];
+          const idx = (c * days + d) * ppd + p;
+          const occPacked = classMask[idx];
+          if (occPacked !== 0) {
+            const lessonDiv = lessonPacked & 0xFFFF;
+            const occDiv = occPacked & 0xFFFF;
+            if (lessonDiv === 0xFFFF || occDiv === 0xFFFF || lessonDiv !== occDiv) conflict = true;
+            else if (((lessonPacked >>> 16) & (occPacked >>> 16)) !== 0) conflict = true;
+          }
         }
-      }
-      for (let k = 0; k < teacherCount && !conflict; k++) {
-        const t = model.lessonTeacherFlat[teacherStart + k];
-        if (teacherTaken[t * model.totalSlots + slot]) conflict = true;
-      }
-      if (!conflict && roomIdx >= 0 && roomTaken[roomIdx * model.totalSlots + slot]) {
-        conflict = true;
+        for (let k = 0; k < teacherCount && !conflict; k++) {
+          const t = model.lessonTeacherFlat[teacherStart + k];
+          if (teacherTaken[t * model.totalSlots + cur]) conflict = true;
+        }
+        if (!conflict && roomIdx >= 0 && roomTaken[roomIdx * model.totalSlots + cur]) {
+          conflict = true;
+        }
       }
 
       if (conflict) {
@@ -5240,24 +5269,30 @@ export function solve(school, options = {}) {
         continue;
       }
 
-      // Record this lesson's occupancy across all axes (packed format).
-      for (let k = 0; k < classCount; k++) {
-        const c = model.lessonClassFlat[classStart + k];
-        const lessonPacked = model.lessonClassGroupMask[classStart + k];
-        const idx = (c * days + d) * ppd + p;
-        const occPacked = classMask[idx];
-        if (occPacked === 0) {
-          classMask[idx] = lessonPacked;
-        } else if ((occPacked & 0xFFFF) !== 0xFFFF) {
-          classMask[idx] = (occPacked | (lessonPacked & 0xFFFF0000)) >>> 0;
+      // Record this lesson's occupancy across all axes (packed format), per
+      // occupied slot so a later card colliding on the second period sees us.
+      for (let s = 0; s < span; s++) {
+        const cur = slot + s;
+        const d = model.slotDay[cur];
+        const p = model.slotPeriod[cur];
+        for (let k = 0; k < classCount; k++) {
+          const c = model.lessonClassFlat[classStart + k];
+          const lessonPacked = model.lessonClassGroupMask[classStart + k];
+          const idx = (c * days + d) * ppd + p;
+          const occPacked = classMask[idx];
+          if (occPacked === 0) {
+            classMask[idx] = lessonPacked;
+          } else if ((occPacked & 0xFFFF) !== 0xFFFF) {
+            classMask[idx] = (occPacked | (lessonPacked & 0xFFFF0000)) >>> 0;
+          }
         }
-      }
-      for (let k = 0; k < teacherCount; k++) {
-        const t = model.lessonTeacherFlat[teacherStart + k];
-        teacherTaken[t * model.totalSlots + slot] = 1;
-      }
-      if (roomIdx >= 0) {
-        roomTaken[roomIdx * model.totalSlots + slot] = 1;
+        for (let k = 0; k < teacherCount; k++) {
+          const t = model.lessonTeacherFlat[teacherStart + k];
+          teacherTaken[t * model.totalSlots + cur] = 1;
+        }
+        if (roomIdx >= 0) {
+          roomTaken[roomIdx * model.totalSlots + cur] = 1;
+        }
       }
     }
   }

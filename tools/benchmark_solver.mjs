@@ -113,7 +113,7 @@ async function main() {
   const benchmarks = [
     { name: "Small School (50 cards)", file: "small_school.json", timeLimit: 10000 },
     { name: "Medium School (300 cards)", file: "medium_school.json", timeLimit: 30000 },
-    { name: "Large School (800 cards)", file: "large_school.json", timeLimit: 60000 }
+    { name: "Large Realistic School (1441 cards)", file: "large_school_realistic.json", timeLimit: 60000 }
   ];
   
   const results = [];
@@ -162,16 +162,9 @@ async function main() {
     }
   }
   
-  // Save results to JSON
-  const resultsPath = join(rootDir, "benchmarks", "results.json");
-  const resultsData = {
-    timestamp: new Date().toISOString(),
-    platform: `${process.platform} ${process.arch}`,
-    nodeVersion: process.version,
-    results
-  };
-  writeFileSync(resultsPath, JSON.stringify(resultsData, null, 2));
-  console.log(`\n✓ Results saved to ${resultsPath}`);
+  // Results are emitted to stdout only — Phase 0 acceptance requires
+  // benchmarks leave the worktree clean (no write to benchmarks/results.json).
+  console.log(`\n(Results intentionally not written to disk — stdout only)`)
 }
 
 main().catch(err => {
