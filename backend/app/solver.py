@@ -86,6 +86,31 @@ class _ProgressCallback(cp_model.CpSolverSolutionCallback):
 NUM_DAYS = 6
 
 
+def _resolve_days(payload: Dict[str, Any]) -> int:
+    """Audit #9: derive day count from the payload, not the module constant.
+
+    Precedence, highest first:
+      1. payload.daysPerWeek (explicit)
+      2. max referenced day in payload.cards + 1
+      3. NUM_DAYS (Classic default)
+
+    A 5-day school must never see a phantom day 5; a 7-day school must not
+    be truncated to 6 — the pre-fix NUM_DAYS=6 constant made any day_6 card
+    turn the whole model INFEASIBLE and ignored explicit daysPerWeek entirely.
+    """
+    dpw = payload.get("daysPerWeek")
+    if isinstance(dpw, int) and dpw > 0:
+        return dpw
+    max_ref = -1
+    for c in (payload.get("cards") or []):
+        d = c.get("day")
+        if isinstance(d, int) and d > max_ref:
+            max_ref = d
+    if max_ref >= 0:
+        return max_ref + 1
+    return NUM_DAYS
+
+
 def _teaching_period_indices(school: Dict[str, Any]) -> List[int]:
     """Return the 1-based period indices that are teaching periods."""
     periods = school.get("bell", {}).get("periods") or []
@@ -161,7 +186,8 @@ def solve(
     # We accumulate weights on each term in `soft_terms` separately.
     soft_weights: List[int] = []
 
-    num_slots = NUM_DAYS * max(teaching_periods)  # safe upper bound
+    num_days = _resolve_days(payload)
+    num_slots = num_days * max(teaching_periods)  # safe upper bound
 
     # period index → (0-based slot offset). teaching_periods aren't necessarily contiguous,
     # so use enumerate to make day*P + p_offset a contiguous slot id for AllDifferent.
@@ -219,7 +245,7 @@ def solve(
             continue
 
         for occ_idx in range(periods_per_week):
-            day_var = model.NewIntVar(0, NUM_DAYS - 1, f"L{lesson_idx}_O{occ_idx}_day")
+            day_var = model.NewIntVar(0, num_days - 1, f"L{lesson_idx}_O{occ_idx}_day")
             period_var = model.NewIntVarFromDomain(
                 cp_model.Domain.FromValues(teaching_periods),
                 f"L{lesson_idx}_O{occ_idx}_period",
@@ -238,8 +264,8 @@ def solve(
             # period_var = teaching_periods[period_offset_var]
             model.AddElement(period_offset_var, teaching_periods, period_var)
 
-            # Slot id = day * P + period_offset  (contiguous integer 0..NUM_DAYS*P-1).
-            slot_var = model.NewIntVar(0, NUM_DAYS * P - 1, f"L{lesson_idx}_O{occ_idx}_slot")
+            # Slot id = day * P + period_offset  (contiguous integer 0..num_days*P-1).
+            slot_var = model.NewIntVar(0, num_days * P - 1, f"L{lesson_idx}_O{occ_idx}_slot")
             model.Add(slot_var == day_var * P + period_offset_var)
 
             # A lab-double occupies this period AND the next contiguous one, so it
@@ -250,13 +276,13 @@ def solve(
             slot_vars = [slot_var]
             if is_lab:
                 model.AddAllowedAssignments([period_offset_var], [[o] for o in lab_start_offsets])
-                slot_var2 = model.NewIntVar(0, NUM_DAYS * P - 1, f"L{lesson_idx}_O{occ_idx}_slot2")
+                slot_var2 = model.NewIntVar(0, num_days * P - 1, f"L{lesson_idx}_O{occ_idx}_slot2")
                 model.Add(slot_var2 == slot_var + 1)
                 slot_vars.append(slot_var2)
 
             # Fix first occurrence if pinned.
             if occ_idx == 0:
-                if isinstance(fixed_day, int) and 0 <= fixed_day < NUM_DAYS:
+                if isinstance(fixed_day, int) and 0 <= fixed_day < num_days:
                     model.Add(day_var == fixed_day)
                 if isinstance(fixed_period, int) and fixed_period in period_to_offset:
                     model.Add(period_var == fixed_period)
@@ -636,7 +662,7 @@ def solve(
         teacher_occs = [o for o in occs if tidx in o["teacher_idxs"]]
         if len(teacher_occs) < 2:
             continue
-        for day in range(NUM_DAYS):
+        for day in range(num_days):
             on_day_bools: List[Any] = []
             on_day_period_offs: List[Any] = []
             for o in teacher_occs:
