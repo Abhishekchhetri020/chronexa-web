@@ -1,7 +1,7 @@
 /* Chronexa editor. Tokens from css/tokens.css. */
 .chrx-editor{font-family:var(--chrx-font-sans);color:var(--chrx-fg);background:var(--chrx-bg-canvas);border-radius:var(--chrx-radius-lg);display:flex;flex-direction:column;gap:var(--chrx-space-2)}
 .chrx-editor-empty{padding:var(--chrx-space-6);text-align:center;color:var(--chrx-fg-secondary);font-size:var(--chrx-font-body)}
-.chrx-grid-scroll{overflow:auto;max-height:calc(100vh - 160px);border:1px solid var(--chrx-line);border-radius:var(--chrx-radius-md);background:var(--chrx-bg-tile);box-shadow:var(--chrx-shadow-tile)}
+.chrx-grid-scroll{overflow:auto;overscroll-behavior:contain;max-height:calc(100vh - 160px);border:1px solid var(--chrx-line);border-radius:var(--chrx-radius-md);background:var(--chrx-bg-tile);box-shadow:var(--chrx-shadow-tile)}
 /* Auto-fit grid: rows fill the scroll viewport width so the timetable
    spreads edge-to-edge for ANY period count (5/6/7/8/9…). When the columns
    genuinely can't fit at the readable minimum cell width, .chrx-grid-scroll
@@ -31,7 +31,7 @@ main:has(#step-6:not(.hidden)){max-width:none;padding:6px 10px 8px}
 @media (prefers-reduced-motion: reduce){.chrx-row{transition:none}}
 .chrx-row:last-child{border-bottom:0}
 .chrx-row-head{height:42px;background:var(--chrx-bg-panel);position:sticky;top:0;z-index:var(--chrx-z-grid);font-size:var(--chrx-font-eye);font-weight:var(--chrx-fw-semibold);color:var(--chrx-fg-secondary)}
-.chrx-rowlabel{width:var(--chrx-rowlabel-w,52px);min-width:var(--chrx-rowlabel-w,52px);padding:0 3px;display:flex;align-items:center;font-size:9.5px;line-height:1.15;font-weight:var(--chrx-fw-semibold);background:var(--chrx-bg-tile);border-right:1px solid var(--chrx-line);position:sticky;left:0;z-index:calc(var(--chrx-z-grid) + 1);overflow:hidden;white-space:nowrap}
+.chrx-rowlabel{width:var(--chrx-rowlabel-w,64px);min-width:var(--chrx-rowlabel-w,64px);padding:0 5px;display:flex;align-items:center;font-size:11px;line-height:1.15;font-weight:var(--chrx-fw-semibold);background:var(--chrx-bg-tile);border-right:1px solid var(--chrx-line);position:sticky;left:0;z-index:calc(var(--chrx-z-grid) + 1);overflow:hidden;white-space:nowrap}
 .chrx-grid .chrx-row{min-height:calc(44px * var(--chrx-grid-zoom,1))}
 /* Compact density: subject-only cards → shorter rows for max classes on screen.
    Bumped 24→32 now the toolbar row moved to the top bar — bigger, readable
@@ -76,11 +76,17 @@ body.chrx-card-in-hand .chrx-slot[data-validity="red"]{outline-color:#ef4444;bac
    period; the underlying classify() also rejects drops here. */
 .chrx-slot.empty.out-of-bell{background:repeating-linear-gradient(45deg,rgba(148,163,184,.18) 0 4px,transparent 4px 8px);cursor:not-allowed;pointer-events:none}
 body.chrx-card-in-hand .chrx-slot.empty.out-of-bell{outline:1px solid var(--chrx-line-soft);background:repeating-linear-gradient(45deg,rgba(148,163,184,.25) 0 4px,transparent 4px 8px);cursor:not-allowed}
-.chrx-vkarta{--hue:var(--chrx-card-hue,210);position:absolute;inset:1px;border-radius:1.5px;background:hsl(var(--hue) 70% 48%);color:#fff;padding:1px 3px;display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;text-align:left;font-size:var(--chrx-font-cell-m);line-height:1.05;cursor:grab;user-select:none;overflow:hidden;box-shadow:0 1px 0 hsl(var(--hue) 50% 35%/.5),inset 0 0 0 1px hsl(var(--hue) 60% 55%/.5);transition:transform var(--chrx-duration-fast) var(--chrx-ease),box-shadow var(--chrx-duration-fast) var(--chrx-ease)}
+.chrx-vkarta{--hue:var(--chrx-card-hue,210);position:absolute;inset:1px;border-radius:1.5px;background:hsl(var(--hue) 58% 84%);color:hsl(var(--hue) 55% 16%);padding:1px 3px;display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;text-align:left;font-size:var(--chrx-font-cell-m);line-height:1.05;cursor:grab;user-select:none;overflow:hidden;box-shadow:0 1px 0 hsl(var(--hue) 40% 70%/.8),inset 0 0 0 1px hsl(var(--hue) 45% 55%/.4);transition:transform var(--chrx-duration-fast) var(--chrx-ease),box-shadow var(--chrx-duration-fast) var(--chrx-ease)}
+/* A card in conflict drops the muted look: strong red fill, white text, thick
+   dashed outline + ⚠ badge. High-contrast against both muted cards and the
+   dimmed non-target rows during drag (B2/B3 from the editor audit). */
+.chrx-vkarta[data-halo="red"]{background:hsl(4 72% 42%);color:#fff;box-shadow:inset 0 0 0 2px hsl(4 90% 28%),inset 0 0 0 1px rgba(255,255,255,.35),0 1px 0 hsl(4 60% 30%/.6)}
+.chrx-vkarta[data-halo="red"] .chrx-vk-line1::after{content:"⚠";position:absolute;top:0;right:2px;font-size:9px;line-height:1;opacity:.95}
 .chrx-vkarta:hover{transform:translateY(-1px);box-shadow:0 2px 4px rgba(0,0,0,.18),inset 0 0 0 1px hsl(var(--hue) 65% 60%/.7);z-index:2}
 .chrx-vkarta:active{cursor:grabbing}
 .chrx-vk-line1{font-weight:var(--chrx-fw-bold);font-size:var(--chrx-font-cell-s);text-align:left;width:100%}
 .chrx-vk-line2,.chrx-vk-line3{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.88;text-align:left;width:100%}
+.chrx-vk-line1{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;font-weight:var(--chrx-fw-semibold)}
 /* Compact card: subject-only, centered, taller font. Title tooltip still has full detail. */
 .chrx-vkarta--compact{align-items:flex-start;justify-content:center;padding:2px 4px}
 .chrx-vkarta--compact .chrx-vk-line1{font-size:var(--chrx-font-cell-m);line-height:1.1;text-align:left;width:100%}
@@ -770,3 +776,20 @@ body.chrx-body--resizing * {
 :root[data-theme="dark"] .chrx-class-panel__meta { color: var(--chrx-fg); }
 :root[data-theme="dark"] .chrx-card-panel__chip { background: var(--chrx-bg-tile); color: var(--chrx-fg); }
 :root[data-theme="dark"] .chrx-day-tab.active { color: var(--chrx-accent-on); }
+
+/* ── Drag heatmap: rows that can never receive the in-hand card recede so the
+   legal landing strip reads at a glance. Applies in both drag mode and
+   click-to-place mode; room view keeps all rows live. */
+.chrx-row[data-drop-dim] .chrx-vkarta,
+.chrx-row[data-drop-dim] .chrx-slot{
+  opacity:.36;
+}
+.chrx-row[data-drop-dim] .chrx-rowlabel{
+  opacity:.55;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .chrx-row[data-drop-dim] .chrx-vkarta,
+  .chrx-row[data-drop-dim] .chrx-slot{
+    transition:opacity var(--chrx-duration-fast) var(--chrx-ease);
+  }
+}

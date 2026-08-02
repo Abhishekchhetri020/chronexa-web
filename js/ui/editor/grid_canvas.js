@@ -290,70 +290,85 @@ window.Editor = (function () {
     `;
   }
 
+  function bellSetFor(S, row, persp) {
+    if (persp === "class" && window.BellResolver) {
+      const bell = window.BellResolver.forClass(S, row.key);
+      if (bell && Array.isArray(bell.periods)) {
+        return new Set(bell.periods.map(p => p.index | 0));
+      }
+    }
+    return null;
+  }
+
   function rowHtml(S, row, periods, mobileDay, cardLookup, numDays) {
     const rowBucket = cardLookup[row.key] || null;
     const dayBlocks = [];
     const persp = (window.APP && window.APP.editor && window.APP.editor.perspective) || "class";
     const selected = persp === "class" && window.APP.editor && window.APP.editor.selectedClassId === row.key;
-    let bellPeriodSet = null;
-    if (persp === "class" && window.BellResolver) {
-      const bell = window.BellResolver.forClass(S, row.key);
-      if (bell && Array.isArray(bell.periods)) {
-        bellPeriodSet = new Set(bell.periods.map(p => p.index | 0));
-      }
-    }
+    const bellPeriodSet = bellSetFor(S, row, persp);
     for (let d = 0; d < numDays; d++) {
-      const slots = [];
-      for (let pi = 0; pi < periods.length; pi++) {
-        const p = periods[pi];
-        const cards = rowBucket ? rowBucket[d + "_" + p.index] : null;
-        const outOfBell = p.synthetic || (bellPeriodSet && !bellPeriodSet.has(p.index | 0));
-        if (cards && cards.length > 0) {
-          const oob = outOfBell ? " out-of-bell" : "";
-          // Exactly two cards share a cell (a group-split, or a conflict in
-          // teacher/room view) → render as a clean DIAGONAL split (aSc-style)
-          // via chrx-slot--split2. Three or more fall back to the micro-card
-          // grid (chrx-slot--split).
-          const splitClass = cards.length === 2 ? " chrx-slot--split2"
-                           : cards.length > 2  ? " chrx-slot--split" : "";
-          // Double-period BLOCK: only merge two consecutive cards into a
-          // single 2-wide block when the lesson is a real lab-double
-          // (isLabDouble=true — aSc's periodspercard=2, e.g. Sports Meet at
-          // periods 1 AND 2). Render the first spanning two columns and
-          // SKIP the second so it reads as a single block. Without the
-          // isLabDouble gate, two SOLVER-PLACED single-period cards of the
-          // same lesson (e.g. English II B landing on Tue P6+P7 by
-          // accident) also got fused into a fake block — hiding the bug.
-          // Fallback: a lone lab-double card with an empty next cell still
-          // expands to fill its block.
-          const thisCard = cards.length === 1 ? cards[0] : null;
-          const firstLesson = thisCard ? S._idx.lessonById[thisCard.lessonId] : null;
-          const nextP = periods[pi + 1];
-          const nextBucket = (nextP && rowBucket) ? rowBucket[d + "_" + nextP.index] : null;
-          const nextSameLesson = !!(thisCard && nextBucket && nextBucket.length === 1
-            && nextBucket[0].lessonId === thisCard.lessonId);
-          const nextEmpty = !!(nextP && !nextBucket);
-          const isLab = !!(firstLesson && firstLesson.isLabDouble
-            && (nextSameLesson || nextEmpty));
-          const spanClass = isLab ? " chrx-slot--span2" : "";
-          const cardListHtml = cards.map(c => vkartaHtml(S, c, d, p.index, row.key, isLab ? 2 : 1)).join("");
-          slots.push(
-            `<div class="chrx-slot${oob}${splitClass}${spanClass}" role="gridcell" data-day="${d}" data-period="${p.index}" data-row="${esc(row.key)}">${cardListHtml}</div>`
-          );
-          if (isLab) pi++; // the block covers the next period too — skip it
-        } else {
-          const oob = outOfBell ? " out-of-bell" : "";
-          slots.push(
-            `<div class="chrx-slot empty${oob}" role="gridcell" data-day="${d}" data-period="${p.index}" data-row="${esc(row.key)}"${outOfBell ? ' aria-hidden="true"' : ` aria-label="Empty, ${esc((DAY_LABELS_EN[d]||("Day "+(d+1))))} period ${p.index}"`}></div>`
-          );
-        }
-      }
       dayBlocks.push(`
         <div class="chrx-day-body-group ${d !== mobileDay ? "mobile-hidden" : ""}" data-day="${d}">
-          ${slots.join("")}
+          ${dayBodyHtml(S, row, periods, d, rowBucket, bellPeriodSet)}
         </div>
       `);
     }
+    return rowTailHtml(row, selected, dayBlocks);
+  }
+
+  // All slots for one (row, day) — shared by the full render (rowHtml) and
+  // the incremental post-drag patch (Editor.patchCells), so span2 / split /
+  // out-of-bell rendering can never drift between the two paths.
+  function dayBodyHtml(S, row, periods, d, rowBucket, bellPeriodSet) {
+    const slots = [];
+    for (let pi = 0; pi < periods.length; pi++) {
+      const p = periods[pi];
+      const cards = rowBucket ? rowBucket[d + "_" + p.index] : null;
+      const outOfBell = p.synthetic || (bellPeriodSet && !bellPeriodSet.has(p.index | 0));
+      if (cards && cards.length > 0) {
+        const oob = outOfBell ? " out-of-bell" : "";
+        // Exactly two cards share a cell (a group-split, or a conflict in
+        // teacher/room view) → render as a clean DIAGONAL split (aSc-style)
+        // via chrx-slot--split2. Three or more fall back to the micro-card
+        // grid (chrx-slot--split).
+        const splitClass = cards.length === 2 ? " chrx-slot--split2"
+                         : cards.length > 2  ? " chrx-slot--split" : "";
+        // Double-period BLOCK: only merge two consecutive cards into a
+        // single 2-wide block when the lesson is a real lab-double
+        // (isLabDouble=true — aSc's periodspercard=2, e.g. Sports Meet at
+        // periods 1 AND 2). Render the first spanning two columns and
+        // SKIP the second so it reads as a single block. Without the
+        // isLabDouble gate, two SOLVER-PLACED single-period cards of the
+        // same lesson (e.g. English II B landing on Tue P6+P7 by
+        // accident) also got fused into a fake block — hiding the bug.
+        // Fallback: a lone lab-double card with an empty next cell still
+        // expands to fill its block.
+        const thisCard = cards.length === 1 ? cards[0] : null;
+        const firstLesson = thisCard ? S._idx.lessonById[thisCard.lessonId] : null;
+        const nextP = periods[pi + 1];
+        const nextBucket = (nextP && rowBucket) ? rowBucket[d + "_" + nextP.index] : null;
+        const nextSameLesson = !!(thisCard && nextBucket && nextBucket.length === 1
+          && nextBucket[0].lessonId === thisCard.lessonId);
+        const nextEmpty = !!(nextP && !nextBucket);
+        const isLab = !!(firstLesson && firstLesson.isLabDouble
+          && (nextSameLesson || nextEmpty));
+        const spanClass = isLab ? " chrx-slot--span2" : "";
+        const cardListHtml = cards.map(c => vkartaHtml(S, c, d, p.index, row.key, isLab ? 2 : 1)).join("");
+        slots.push(
+          `<div class="chrx-slot${oob}${splitClass}${spanClass}" role="gridcell" data-day="${d}" data-period="${p.index}" data-row="${esc(row.key)}">${cardListHtml}</div>`
+        );
+        if (isLab) pi++; // the block covers the next period too — skip it
+      } else {
+        const oob = outOfBell ? " out-of-bell" : "";
+        slots.push(
+          `<div class="chrx-slot empty${oob}" role="gridcell" data-day="${d}" data-period="${p.index}" data-row="${esc(row.key)}"${outOfBell ? ' aria-hidden="true"' : ` aria-label="Empty, ${esc((DAY_LABELS_EN[d]||("Day "+(d+1))))} period ${p.index}"`}></div>`
+        );
+      }
+    }
+    return slots.join("");
+  }
+
+  function rowTailHtml(row, selected, dayBlocks) {
     return `
       <div class="chrx-row${selected ? " chrx-row--selected" : ""}" data-row="${esc(row.key)}">
         <div class="chrx-rowlabel" title="${esc(row.label)}" role="button" tabindex="0" aria-pressed="${selected ? "true" : "false"}">
@@ -904,10 +919,11 @@ window.Editor = (function () {
       window.CardInHand.cancel();
     }
     
+    const cardsBefore = snapshotCards();
     removeCardFromSchool(lessonId, day, period);
     window.APP.editor.cardInHand = { cardId, lessonId, originDay: day, originPeriod: period, originClassroomId, rowKey, mode: "click" };
     syncCardInHandClass();
-    dispatch("editor:pickup", { cardId, lessonId, day, period, originClassroomId, rowKey, mode: "click" });
+    dispatch("editor:pickup", { cardId, lessonId, day, period, originClassroomId, rowKey, mode: "click", cardsBefore });
     
     const host = vk.closest(".chrx-editor");
     if (host) render(host);
@@ -930,6 +946,7 @@ window.Editor = (function () {
     }
 
     // Lift the whole block out together (each period is a separate card).
+    const cardsBefore = snapshotCards();
     for (let k = 0; k < blockLen; k++) removeCardFromSchool(lessonId, day, period + k);
     const slot = vk.closest(".chrx-slot");
     if (slot) {
@@ -941,7 +958,7 @@ window.Editor = (function () {
     }
     window.APP.editor.cardInHand = { cardId, lessonId, originDay: day, originPeriod: period, originClassroomId, blockLen, mode: "drag" };
     syncCardInHandClass();
-    dispatch("editor:pickup", { cardId, lessonId, day, period, originClassroomId, blockLen, sourceX: startX, sourceY: startY, mode: "drag" });
+    dispatch("editor:pickup", { cardId, lessonId, day, period, originClassroomId, blockLen, sourceX: startX, sourceY: startY, mode: "drag", cardsBefore });
     if (held) {
       const host = vk.closest(".chrx-editor");
       if (host) render(host);
@@ -1287,7 +1304,53 @@ window.Editor = (function () {
     }
   });
 
-  return { render, setPerspective };
+  /** Shallow-copy snapshot of placed cards (baseline for post-drag cell diffs). */
+  function snapshotCards() {
+    const S = window.APP && window.APP.school;
+    return S && Array.isArray(S.cards) ? S.cards.map(c => ({ ...c })) : [];
+  }
+
+  /**
+   * Incremental repaint after a drag commit: regenerate just the affected
+   * (row, day) day-blocks from live data via the same dayBodyHtml generator
+   * the full render uses — replacing the ~1000-node innerHTML rebuild (plus
+   * scroll save/restore and label autofit reflows) with typically 1–2 small
+   * group updates. Returns true only when every cell was patched; any
+   * anomaly (missing row/group, out-of-range day) → false so the caller can
+   * fall back to a full render. Skips structural passes (row-label autofit)
+   * but keeps card-dependent syncs (pending count, class panel, subject
+   * code fitting) and never touches scroll — nothing is torn down.
+   */
+  function patchCells(rootEl, cells) {
+    const S = window.APP && window.APP.school;
+    if (!S || !rootEl || !cells || !cells.length) return false;
+    ensureEditorState();
+    const perspective = window.APP.editor.perspective;
+    const periods = displayPeriods(S);
+    const visiblePeriodSet = new Set(periods.map(p => p.index | 0));
+    const cardLookup = buildCardLookup(S, perspective, visiblePeriodSet);
+    const numDays = dayCount(S);
+    const rowsByKey = new Map();
+    for (const r of rowsFor(S, perspective)) rowsByKey.set(r.key, r);
+    const escSel = (window.CSS && typeof CSS.escape === "function")
+      ? CSS.escape : (s => String(s).replace(/"/g, "\\\""));
+    for (const cell of cells) {
+      const row = rowsByKey.get(cell.rowKey);
+      const day = cell.day | 0;
+      if (!row || day < 0 || day >= numDays) return false;
+      const rowEl = rootEl.querySelector(`.chrx-row[data-row="${escSel(cell.rowKey)}"]`);
+      const groupEl = rowEl && rowEl.querySelector(`.chrx-day-body-group[data-day="${day}"]`);
+      if (!groupEl) return false;
+      const bellPeriodSet = bellSetFor(S, row, perspective);
+      groupEl.innerHTML = dayBodyHtml(S, row, periods, day, cardLookup[cell.rowKey] || null, bellPeriodSet);
+    }
+    syncUnplacedCount(S);
+    updateClassPanel(S);
+    autoFitSubjectCodes(rootEl);
+    return true;
+  }
+
+  return { render, setPerspective, patchCells, snapshotCards };
 })();
 
 // [vite-esm] exports auto-generated by the 2026-07 Vite migration.

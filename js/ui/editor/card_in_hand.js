@@ -18,6 +18,10 @@ import "./placement_validator.js";
   let dx = 0, dy = 0, px = 0, py = 0;
   let rx = 0, ry = 0, renderInit = false;   // eased render position (ghost inertia)
   let rafId = 0, lastValidate = 0, lastSlot = null;
+  let suppressClickUntil = 0;               // swallowed click after a real drag (drop ≠ click)
+  let lastExtraSlots = [];                  // block-footprint cells painted with the hovered slot
+  let pickupSnap = null;                    // S.cards snapshot from pickup — drives cell-diff patching
+  let scrollEl = null, scrollRect = null, scrollRectAt = 0, scrollVX = 0, scrollVY = 0;  // edge auto-scroll
   const VALIDATE_MS = 16;
   const REDUCED_MOTION = typeof matchMedia === "function" &&
     matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -50,6 +54,11 @@ import "./placement_validator.js";
                blockLen: Math.max(1, parseInt(d.blockLen, 10) || 1),  // double-period block moves as one
                rowKey: d.rowKey,
                mode: mode };
+
+    // Baseline for the post-commit cell-diff patch: grid mutators send their
+    // pre-removal snapshot in the event; pending-strip pickups don't change
+    // S.cards at pickup, so a fresh snapshot is an equally valid baseline.
+    pickupSnap = d.cardsBefore || snapshotCardsLocal();
                
     window.APP.editor = window.APP.editor || {};
     window.APP.editor.cardInHand = inHand;
@@ -102,13 +111,17 @@ import "./placement_validator.js";
       py = (typeof d.sourceY === "number") ? d.sourceY : 0;
       rx = px; ry = py; renderInit = true;   // start the eased ghost at the pickup point
       apply();
-      paintAllSlots();
+      paintDropZones();
+      scrollEl = document.querySelector(".chrx-editor .chrx-grid-scroll");
+      scrollRect = null;
+      suppressClickUntil = 0;
       document.addEventListener("mousemove", onMove, true);
       document.addEventListener("mouseup", onUp, true);
       document.addEventListener("touchmove", onMove, { capture: true, passive: false });
       document.addEventListener("touchend", onUp, true);
       document.addEventListener("touchcancel", onUp, true);
       document.addEventListener("keydown", onKey, true);
+      document.addEventListener("click", swallowClick, true);
     } else {
       // Click mode!
       // Add selection style to the card element
@@ -133,16 +146,21 @@ import "./placement_validator.js";
     }
   }
 
-  // Heatmap-on-pickup (audit §5.3). For every slot in the grid, run
-  // Placement.classify and set data-validity so green/amber/red slots show
-  // at a glance — the user no longer has to drag-hover each slot to learn
-  // where their card would land cleanly. Occupied slots are marked red and
-  // open the collision menu. Out-of-bell slots already render
-  // hatched and are skipped here.
-  function paintAllSlots() {
+  // Heatmap-on-pickup (audit §5.3), row-scoped. A card can only ever land in
+  // its OWN row(s) — class view: its class row(s); teacher: its teacher
+  // row(s); subject: its subject row — so only those slots are classified and
+  // painted (previously all ~960 slots were, ~95% of them guaranteed-illegal
+  // rows). Every other row dims away via data-drop-dim so the legal landing
+  // strip reads at a glance. Room view is the deliberate exception: dropping
+  // on another room's row reassigns the room, so all rows stay live there.
+  function paintDropZones() {
     if (!inHand || !window.Placement || typeof window.Placement.classify !== "function") return;
     const S = window.APP && window.APP.school;
     if (!S) return;
+
+    const perspective = (window.APP.editor && window.APP.editor.perspective) || "class";
+    const lesson = S._idx.lessonById[inHand.lessonId];
+    const targetKeys = dropRowKeySet(lesson, perspective);
 
     // Pre-group school cards by slot to make check O(1) inside loop
     const cardsBySlot = Object.create(null);
@@ -152,18 +170,73 @@ import "./placement_validator.js";
       cardsBySlot[key].push(c);
     }
 
-    const slots = document.querySelectorAll(".chrx-editor .chrx-slot:not(.out-of-bell)");
+    const blockLen = inHand.blockLen || 1;
+    dimNonTargetRows(targetKeys);
+    const rows = document.querySelectorAll(".chrx-editor .chrx-row:not(.chrx-row-head)");
+    for (const rowEl of rows) {
+      if (targetKeys && !targetKeys.has(rowEl.dataset.row)) continue;
+      paintRowSlots(rowEl, cardsBySlot, blockLen);
+    }
+  }
+
+  // Rows the in-hand card can never land in recede visually. Shared by drag
+  // mode (paintDropZones) and click mode (paintHighlightsForClickMode);
+  // cleared in cleanup().
+  function dimNonTargetRows(targetKeys) {
+    if (!targetKeys) return;   // room perspective: every row stays live
+    const rows = document.querySelectorAll(".chrx-editor .chrx-row:not(.chrx-row-head)");
+    for (const rowEl of rows) {
+      rowEl.toggleAttribute("data-drop-dim", !targetKeys.has(rowEl.dataset.row));
+    }
+  }
+
+  // null → every row is a legal target (room perspective: drop = reassign room).
+  function dropRowKeySet(lesson, perspective) {
+    if (!lesson || perspective === "room") return null;
+    const keys = rowKeysForCard(lesson, perspective, { classroomId: inHand.originClassroomId }) || [];
+    return new Set(keys);
+  }
+
+  function paintRowSlots(rowEl, cardsBySlot, blockLen) {
+    const slots = rowEl.querySelectorAll(".chrx-slot:not(.out-of-bell)");
+    // (d,p) → slot map for the block-fit look-ahead.
+    let byCell = null;
+    if (blockLen > 1) {
+      byCell = new Map();
+      for (const s of slots) byCell.set(s.dataset.day + "_" + s.dataset.period, s);
+    }
     for (const slot of slots) {
       const d = parseInt(slot.dataset.day, 10);
       const p = parseInt(slot.dataset.period, 10);
       if (Number.isNaN(d) || Number.isNaN(p)) continue;
       try {
-        const slotKey = d + "_" + p;
-        const prefilteredCards = cardsBySlot[slotKey] || [];
-        const v = classifySlot(slot, prefilteredCards);
-        if (v && v.validity) slot.setAttribute("data-validity", v.validity);
+        const v = classifySlot(slot, cardsBySlot[d + "_" + p] || []);
+        let validity = v.validity;
+        // A multi-period block also needs the following cells free — mirror
+        // commit()'s own guard so the heatmap never promises a slot the drop
+        // would refuse.
+        if (validity !== "red" && blockLen > 1 && !blockFits(byCell, d, p, blockLen)) {
+          validity = "red";
+        }
+        if (validity) slot.setAttribute("data-validity", validity);
       } catch (_e) { /* ignore */ }
     }
+  }
+
+  function blockFits(byCell, d, p, blockLen) {
+    for (let k = 1; k < blockLen; k++) {
+      const ns = byCell.get(d + "_" + (p + k));
+      if (!ns || ns.querySelector(".chrx-vkarta")) return false;
+    }
+    return true;
+  }
+
+  function snapshotCardsLocal() {
+    if (window.Editor && typeof window.Editor.snapshotCards === "function") {
+      return window.Editor.snapshotCards();
+    }
+    const S = window.APP && window.APP.school;
+    return S && Array.isArray(S.cards) ? S.cards.map(c => ({ ...c })) : [];
   }
 
   let dragTooltipEl = null;
@@ -264,6 +337,16 @@ import "./placement_validator.js";
     if (!rafId) rafId = requestAnimationFrame(flush);
   }
 
+  // After a real drag, the mouseup synthesizes a click on the element under
+  // the cursor. Swallow it in capture so a drop doesn't double-fire click-mode
+  // pickup on the target cell. (The gesture was a drop, not a click.)
+  function swallowClick(e) {
+    if (performance.now() < suppressClickUntil) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+  }
+
   function flush() {
     rafId = 0;
     if (!ghost) return;
@@ -273,11 +356,73 @@ import "./placement_validator.js";
     rx += (px - rx) * EASE;
     ry += (py - ry) * EASE;
     apply();
-    if (Math.abs(px - rx) > 0.4 || Math.abs(py - ry) > 0.4) {
+    updateAutoScroll();
+    if (scrollVX !== 0 || scrollVY !== 0) {
+      scrollByDrag(scrollVX, scrollVY);
+    }
+    // Keep the loop alive while auto-scrolling too: the cursor stays put but
+    // the grid moves under it, so hover-validity must keep re-evaluating.
+    if (Math.abs(px - rx) > 0.4 || Math.abs(py - ry) > 0.4 || scrollVX !== 0 || scrollVY !== 0) {
       if (!rafId) rafId = requestAnimationFrame(flush);
     }
     const now = performance.now();
     if (now - lastValidate >= VALIDATE_MS) { lastValidate = now; paint(px, py); }
+  }
+
+  // Scroll the grid's nearest scrollable ancestor. The grid body scrolls via
+  // .chrx-grid-scroll; sticky rows/cells are positioned elements inside that
+  // scroller, so scrolling the scroller moves them as one.
+  function scrollByDrag(vx, vy) {
+    let el = scrollEl;
+    if (!el) return;
+    // If the captured scroller can't scroll vertically (edge case), fall back
+    // to the nearest scrollable ancestor so big grids still auto-scroll.
+    if (vy !== 0 && el.scrollHeight <= el.clientHeight + 2) {
+      el = nearestScrollable(el) || el;
+    }
+    el.scrollLeft += vx;
+    el.scrollTop += vy;
+  }
+
+  function nearestScrollable(el) {
+    while (el && el !== document.body) {
+      if (el.scrollHeight > el.clientHeight + 2) return el;
+      el = el.parentElement;
+    }
+    return null;
+  }
+
+  // Edge auto-scroll: while dragging near the grid scroller's edge, glide the
+  // grid so off-screen drop targets stay reachable without putting the card
+  // down. Speed ramps in quadratically toward the edge; works identically for
+  // touch drags (where native scroll is suppressed mid-drag).
+  function updateAutoScroll() {
+    scrollVX = 0; scrollVY = 0;
+    if (!scrollEl) return;
+    const now = performance.now();
+    if (!scrollRect || now - scrollRectAt > 250) {   // the rect is stable; re-read cheaply
+      scrollRect = scrollEl.getBoundingClientRect();
+      scrollRectAt = now;
+    }
+    // OUT: tiny forgiveness just past the scroller's edge. Keep it small —
+    // the pending strip sits directly below the scroller, and a drag that
+    // starts there (or aims for it) must never trigger downward scroll
+    // (it would scroll the intended drop slot out from under the cursor).
+    const ZONE = 28, MAX = 16, OUT = 8;
+    const r = scrollRect;
+    const inX = px >= r.left - OUT && px <= r.right + OUT;
+    const inY = py >= r.top - OUT && py <= r.bottom + OUT;
+    const ramp = depth => MAX * Math.pow(Math.max(0, Math.min(1, depth / ZONE)), 1.4);
+    if (inX) {
+      const dTop = py - r.top, dBot = r.bottom - py;
+      if (dTop < ZONE && py > r.top - OUT) scrollVY = -ramp(ZONE - dTop);
+      else if (dBot < ZONE && py < r.bottom + OUT) scrollVY = ramp(ZONE - dBot);
+    }
+    if (inY) {
+      const dLeft = px - r.left, dRight = r.right - px;
+      if (dLeft < ZONE && px > r.left - OUT) scrollVX = -ramp(ZONE - dLeft);
+      else if (dRight < ZONE && px < r.right + OUT) scrollVX = ramp(ZONE - dRight);
+    }
   }
 
   function apply() {
@@ -288,37 +433,49 @@ import "./placement_validator.js";
     ghost.style.transform = `translate(${rx - dx}px, ${ry - dy}px) rotate(${tilt}deg)`;
   }
 
+  // The drag ghost is pointer-events:none (drag_ux.css), so elementFromPoint
+  // can never hit it — no hide/show dance needed around hit-tests.
   function slotAt(x, y) {
-    ghost.style.visibility = "hidden";
     const el = document.elementFromPoint(x, y);
-    ghost.style.visibility = "";
     const slot = el && el.closest ? el.closest(".chrx-slot") : null;
     return slot && !slot.classList.contains("out-of-bell") ? slot : null;
   }
 
   // The specific card directly under the cursor (group-split aware), so a
   // drop onto a shared cell swaps the half-class card being pointed at — not
-  // an arbitrary occupant. Hides the drag ghost first so elementFromPoint
-  // reads the card underneath it.
+  // an arbitrary occupant.
   function vkartaAt(x, y) {
-    if (ghost) ghost.style.visibility = "hidden";
     const el = document.elementFromPoint(x, y);
-    if (ghost) ghost.style.visibility = "";
     return el && el.closest ? el.closest(".chrx-vkarta") : null;
   }
   
   function paint(x, y) {
     const slot = slotAt(x, y);
     if (slot === lastSlot) return;
-    if (lastSlot) { 
-      lastSlot.removeAttribute("data-validity"); 
-      lastSlot.removeAttribute("title"); 
+    if (lastSlot) {
+      lastSlot.removeAttribute("data-validity");
+      lastSlot.removeAttribute("title");
       hideDragTooltip();
     }
+    for (const s of lastExtraSlots) s.removeAttribute("data-validity");
+    lastExtraSlots = [];
     lastSlot = slot || null;
     if (!slot) return;
     const v = classifySlot(slot);
     slot.setAttribute("data-validity", v.validity);
+    // Block footprint: a multi-period block covers the following cells too —
+    // paint them as well so the landing area is unambiguous.
+    const blockLen = (inHand && inHand.blockLen) || 1;
+    if (blockLen > 1) {
+      const rowEl = slot.closest(".chrx-row");
+      const d = slot.dataset.day, p0 = parseInt(slot.dataset.period, 10);
+      for (let k = 1; k < blockLen && rowEl; k++) {
+        const ns = rowEl.querySelector(`.chrx-slot[data-day="${d}"][data-period="${p0 + k}"]`);
+        if (!ns || ns.classList.contains("out-of-bell")) break;
+        ns.setAttribute("data-validity", v.validity);
+        lastExtraSlots.push(ns);
+      }
+    }
     updateCarryPanel(slot, v);
     if (v.reasons && v.reasons.length) {
       slot.title = v.reasons.join(" · ");
@@ -329,11 +486,8 @@ import "./placement_validator.js";
   }
 
   // Is the point over the Pending Cards area (strip, its region, or header)?
-  // Ghost is position:fixed over the cursor, so hide it before hit-testing.
   function overPending(x, y) {
-    if (ghost) ghost.style.visibility = "hidden";
     const el = document.elementFromPoint(x, y);
-    if (ghost) ghost.style.visibility = "";
     return !!(el && el.closest && el.closest(".chrx-pending-strip, #pending-strip-root, .chrx-pending-region"));
   }
 
@@ -342,23 +496,29 @@ import "./placement_validator.js";
   // a no-op (just put the carry down).
   function unplaceToPending() {
     const S = window.APP && window.APP.school;
+    const before = pickupSnap; pickupSnap = null;
+    let detail = null;
     if (S && inHand && !inHand.fromPending &&
         Number.isFinite(inHand.originDay) && Number.isFinite(inHand.originPeriod)) {
       const i = S.cards.findIndex(c =>
         c.lessonId === inHand.lessonId && c.day === inHand.originDay && c.period === inHand.originPeriod);
       if (i !== -1) S.cards.splice(i, 1);
-      document.dispatchEvent(new CustomEvent("editor:place",
-        { detail: { cardId: inHand.cardId, lessonId: inHand.lessonId, unplaced: true } }));
+      detail = { cardId: inHand.cardId, lessonId: inHand.lessonId, unplaced: true };
     }
     if (window.APP.editor) window.APP.editor.cardInHand = null;
     cleanup();
-    rerender();
+    rerender(null, before);
+    // Dispatch after the DOM update so halo/focus listeners see fresh nodes.
+    if (detail) document.dispatchEvent(new CustomEvent("editor:place", { detail }));
   }
 
   function onUp(e) {
     if (!ghost) return;
     if (e.target && e.target.closest && e.target.closest(".chrx-collision-menu")) return;
     const up = evXY(e);   // touch end reports via changedTouches
+    // The mouseup synthesizes a click on the drop target — swallow it so the
+    // drop doesn't re-arm click mode on the cell the card just landed on.
+    suppressClickUntil = performance.now() + 350;
     if (overPending(up.x, up.y)) return unplaceToPending();
     const slot = slotAt(up.x, up.y);
     if (!slot) return cancel();
@@ -415,6 +575,7 @@ import "./placement_validator.js";
     const lesson = S && S._idx ? S._idx.lessonById[lessonId] : null;
     const cid = slot ? classroomForSlot(lessonId, slot) : (lesson ? lesson.preferredRoomId : undefined);
     const blockLen = (inHand && inHand.blockLen) || 1;
+    const before = pickupSnap; pickupSnap = null;   // diff baseline for the incremental patch
 
     // A double-period block must land on blockLen consecutive free, in-bell
     // periods. If the following period(s) aren't available, snap back. Scope the
@@ -521,8 +682,9 @@ import "./placement_validator.js";
         label,
         do() {
           applyPlacement();
+          rerender({ lessonId, day, period }, before);
+          // Dispatch after the DOM update so halo/focus listeners see fresh nodes.
           document.dispatchEvent(new CustomEvent("editor:place", { detail: { cardId, lessonId, day, period, forced } }));
-          rerender({ lessonId, day, period });
         },
         undo() {
           revertPlacement();
@@ -532,9 +694,9 @@ import "./placement_validator.js";
       });
     } else {
       applyPlacement();
+      rerender({ lessonId, day, period }, before);
       document.dispatchEvent(new CustomEvent("editor:place",
         { detail: { cardId, lessonId, day, period, forced } }));
-      rerender({ lessonId, day, period });
     }
     if (window.APP.editor) window.APP.editor.cardInHand = null;
     cleanup();
@@ -669,6 +831,7 @@ import "./placement_validator.js";
 
   function cancel() {
     if (!inHand) return;
+    const before = pickupSnap; pickupSnap = null;
     if (!inHand.fromPending && Number.isFinite(inHand.originDay) && Number.isFinite(inHand.originPeriod)) {
       const S = window.APP && window.APP.school;
       if (S) {
@@ -698,13 +861,21 @@ import "./placement_validator.js";
     }
     function finalise() {
       if (window.APP.editor) window.APP.editor.cardInHand = null;
-      cleanup(); rerender();
+      cleanup(); rerender(null, before);
     }
   }
 
-  function rerender(landed) {
+  function rerender(landed, before) {
     const host = document.querySelector(".chrx-editor");
-    if (host && window.Editor && window.Editor.render) window.Editor.render(host);
+    // Incremental path: with the pickup snapshot we know exactly which cells
+    // changed, so regenerate just those day-blocks (Editor.patchCells) instead
+    // of rebuilding the whole grid. Any anomaly → full render fallback.
+    let patched = false;
+    if (host && before && window.Editor && typeof window.Editor.patchCells === "function") {
+      const cells = diffCells(before);
+      if (cells && cells.length) patched = window.Editor.patchCells(host, cells);
+    }
+    if (!patched && host && window.Editor && window.Editor.render) window.Editor.render(host);
     const pend = document.querySelector(".chrx-pending-strip");
     if (pend && window.PendingStrip && window.PendingStrip.render) window.PendingStrip.render(pend);
     // Plan D: snap-flash the freshly placed card so the eye lands on it.
@@ -718,6 +889,33 @@ import "./placement_validator.js";
     }
   }
 
+  function cardKey(c) {
+    return c.lessonId + "|" + c.day + "|" + c.period + "|" + (c.classroomId || "");
+  }
+
+  // Cells whose card content differs between the pickup snapshot and now —
+  // each maps to the (row, day) day-blocks Editor.patchCells regenerates.
+  // Removed and added cards both contribute (a move = −origin +target); a
+  // card visible in several rows (group-split) patches each of its rows.
+  function diffCells(before) {
+    const S = window.APP && window.APP.school;
+    if (!S || !Array.isArray(before)) return null;
+    const perspective = (window.APP.editor && window.APP.editor.perspective) || "class";
+    const beforeSet = new Map(), nowSet = new Map();
+    for (const c of before) beforeSet.set(cardKey(c), c);
+    for (const c of (S.cards || [])) nowSet.set(cardKey(c), c);
+    const cells = new Map();
+    const addFor = (card) => {
+      const lesson = S._idx.lessonById[card.lessonId];
+      if (!lesson) return;
+      const keys = rowKeysForCard(lesson, perspective, card) || [];
+      for (const k of keys) cells.set(k + "|" + card.day, { rowKey: k, day: card.day });
+    };
+    for (const [k, c] of beforeSet) if (!nowSet.has(k)) addFor(c);
+    for (const [k, c] of nowSet) if (!beforeSet.has(k)) addFor(c);
+    return [...cells.values()];
+  }
+
   function cleanup() {
     document.removeEventListener("mousemove", onMove, true);
     document.removeEventListener("mouseup", onUp, true);
@@ -725,6 +923,8 @@ import "./placement_validator.js";
     document.removeEventListener("touchend", onUp, true);
     document.removeEventListener("touchcancel", onUp, true);
     document.removeEventListener("keydown", onKey, true);
+    document.removeEventListener("click", swallowClick, true);
+    suppressClickUntil = 0;
     if (lastSlot) { lastSlot.removeAttribute("data-validity"); lastSlot.removeAttribute("title"); }
     lastSlot = null;
     hideDragTooltip();
@@ -752,9 +952,15 @@ import "./placement_validator.js";
     document.querySelectorAll(".chrx-slot--highlight-swap").forEach(el => el.classList.remove("chrx-slot--highlight-swap"));
     document.querySelectorAll(".chrx-vkarta--highlight-swap-target").forEach(el => el.classList.remove("chrx-vkarta--highlight-swap-target"));
     
-    // Clear the at-pickup heatmap painted by paintAllSlots().
+    // Clear the at-pickup heatmap painted by paintDropZones() and the dimmed
+    // non-target rows.
     document.querySelectorAll(".chrx-editor .chrx-slot[data-validity]").forEach(
       s => s.removeAttribute("data-validity"));
+    document.querySelectorAll(".chrx-editor .chrx-row[data-drop-dim]").forEach(
+      r => r.removeAttribute("data-drop-dim"));
+    lastExtraSlots = [];
+    pickupSnap = null;
+    scrollEl = null; scrollRect = null; scrollVX = 0; scrollVY = 0;
     if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
     renderInit = false;   // next pickup re-seeds the eased ghost position
     if (ghost && ghost.parentNode) ghost.parentNode.removeChild(ghost);
@@ -1076,7 +1282,10 @@ import "./placement_validator.js";
     }
     
     if (!rowKey) return;
-    
+
+    // Same row-scoping as drag mode: rows this card can never land in recede.
+    dimNonTargetRows(dropRowKeySet(lesson, perspective));
+
     const S2 = window.APP && window.APP.school;
     const slots = document.querySelectorAll(`.chrx-editor .chrx-row[data-row="${rowKey}"] .chrx-slot:not(.out-of-bell)`);
     for (const slot of slots) {
@@ -1250,14 +1459,17 @@ import "./placement_validator.js";
       pickup(detail);
     }
 
+    // Diff baseline from the original pickup — pickUpDisplaced() → pickup()
+    // re-baselines pickupSnap for the displaced card's own journey.
+    const before = pickupSnap;
     const auditCommit = window.APP && window.APP.audit && typeof window.APP.audit.commit === "function";
     if (auditCommit) {
       window.APP.audit.commit({
         label: "Swap cards",
         do() {
           applyDisplacement();
+          rerender(null, before);
           document.dispatchEvent(new CustomEvent("editor:place", { detail: { lessonId: lessonIdA, day: dayB, period: periodB, forced } }));
-          rerender();
           pickUpDisplaced();
         },
         undo() {
@@ -1272,8 +1484,8 @@ import "./placement_validator.js";
       });
     } else {
       applyDisplacement();
+      rerender(null, before);
       document.dispatchEvent(new CustomEvent("editor:place", { detail: { lessonId: lessonIdA, day: dayB, period: periodB, forced } }));
-      rerender();
       pickUpDisplaced();
     }
   }

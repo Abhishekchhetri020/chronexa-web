@@ -169,3 +169,30 @@ body.chrx-card-in-hand{
     box-shadow: 0 0 14px rgba(255, 159, 10, 0.6);
   }
 }
+
+/* ── Row-scoped drop zones (set by paintDropZones / click-mode highlights) ── */
+/* A card can only land in its own row(s); every other row dims away so the
+ * legal landing strip reads at a glance instead of the whole grid lighting
+ * up. Room perspective keeps all rows live (drop = reassign that room). */
+body.chrx-card-in-hand .chrx-editor .chrx-row{
+  transition:opacity var(--chrx-duration-fast, 140ms) ease-out;
+}
+body.chrx-card-in-hand .chrx-editor .chrx-row[data-drop-dim]{
+  opacity:.35;
+}
+body.chrx-card-in-hand .chrx-editor .chrx-row[data-drop-dim] .chrx-slot{
+  cursor:not-allowed;
+}
+
+/* Swappable occupied slots: classifySlot() checks the dragged card as if the
+ * occupant were removed, so a non-red occupied slot means "drop here to swap".
+ * Show the affordance — previously drag users discovered swaps only by trying. */
+body.chrx-card-in-hand .chrx-slot:not(.empty)[data-validity="green"],
+body.chrx-card-in-hand .chrx-slot:not(.empty)[data-validity="amber"]{
+  outline:2px dashed #FF9500;
+  outline-offset:-3px;
+  cursor:copy;
+}
+body.chrx-card-in-hand .chrx-slot:not(.empty)[data-validity="red"]{
+  cursor:not-allowed;
+}
