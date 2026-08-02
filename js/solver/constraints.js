@@ -267,7 +267,12 @@ export function CKritCourseGroup(assignment, lessonsById, schoolData) {
     const subjectId = (l && l.subjectId) || a.subjectId;
     if (!subjectId) continue;
     if (!subjectSlots.has(subjectId)) subjectSlots.set(subjectId, []);
-    subjectSlots.get(subjectId).push(`${a.day | 0}|${a.period | 0}`);
+    // Span-aware (audit #14): a lab-double occupies the next period too, so
+    // a course-group sibling at the tail sees the lesson as occupying it.
+    const len = (l && (l.lessonLength || (l.isLabDouble ? 2 : 1))) || 1;
+    for (let s = 0; s < len; s++) {
+      subjectSlots.get(subjectId).push(`${a.day | 0}|${(a.period | 0) + s}`);
+    }
   }
   let violations = 0;
   for (const g of groups) {
@@ -399,9 +404,14 @@ export function CKritVhodneNaSpojenie(assignment, lessonsById, schoolData) {
     const l = lookup && lookup.get(a.lessonId);
     const subjectId = (l && l.subjectId) || a.subjectId;
     if (!subjectId) continue;
-    const key = `${a.day | 0}|${a.period | 0}|${subjectId}`;
-    if (!buckets.has(key)) buckets.set(key, []);
-    buckets.get(key).push({ classIds: a.classIds || [], roomId: a.classroomId });
+    // Span-aware (audit #14): a lab double at (day, period) occupies the
+    // next period as well; both must register in the same-subject bucket.
+    const len = (l && (l.lessonLength || (l.isLabDouble ? 2 : 1))) || 1;
+    for (let s = 0; s < len; s++) {
+      const key = `${a.day | 0}|${(a.period | 0) + s}|${subjectId}`;
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key).push({ classIds: a.classIds || [], roomId: a.classroomId });
+    }
   }
   let violations = 0;
   for (const [, rows] of buckets) {
@@ -815,6 +825,22 @@ export function studentScheduleConflicts(school) {
   const lessonById = (school._idx && school._idx.lessonById) ||
     Object.fromEntries((school.lessons || []).map(l => [l.id, l]));
   const subjectById = (school._idx && school._idx.subjectById) || {};
+  // Group membership: group.id → Set(studentIds). pre-built per school once.
+  const groupStudents = Object.create(null);
+  for (const g of (school.groups || [])) {
+    groupStudents[g.id] = new Set(g.studentIds || []);
+  }
+  // Audit #15: a student is in a card iff either the lesson is whole-class
+  // (no groupIds) or one of its groups contains this student.
+  function inCardStudentGroup(lesson, studentId) {
+    const gids = (lesson && lesson.groupIds) || [];
+    if (!gids.length) return true;  // whole class
+    for (const gid of gids) {
+      const set = groupStudents[gid];
+      if (set && set.has(studentId)) return true;
+    }
+    return false;
+  }
   const enrollByStudent = {};
   for (const e of (school.studentSubjects || [])) {
     if (!enrollByStudent[e.studentId]) enrollByStudent[e.studentId] = [];
@@ -824,6 +850,10 @@ export function studentScheduleConflicts(school) {
     const buckets = {}; // "d_p" → [card]
     const seen = new Set(); // dedupe the SAME card reached via >1 enrollment
     const note = (c) => {
+      // Filter cards whose lesson is group-scoped and this student isn't in it —
+      // silences the phantom double-booking case split classes caused (audit #15).
+      const lesson = lessonById[c.lessonId];
+      if (!inCardStudentGroup(lesson, st.id)) return;
       const id = c.lessonId + "|" + c.day + "|" + c.period;
       if (seen.has(id)) return;
       seen.add(id);
