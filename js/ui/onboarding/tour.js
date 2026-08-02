@@ -12,7 +12,7 @@
     {
       selector: "#cta-build-new, [data-step='1']",
       title: "Welcome to Chronexa 👋",
-      body:  "Build your school's timetable in your browser, on your computer. No upload, no tracking. Click <strong>Create new timetable</strong> or load an existing Timetable XML to start.",
+      body:  "Build your school's timetable in your browser, on your computer. No upload, no tracking. Click <strong>New blank school</strong> or drop an existing Timetable XML onto the Open card to start.",
     },
     {
       selector: "[data-step='6'], #step-6 [data-kind='subjects']",

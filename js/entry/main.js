@@ -26,9 +26,10 @@ import "../../css/teacher_colors.css";
 import "../../css/substitution.css";
 import "../../css/motion.css";
 import "../../css/design-v3.css";
-import "../../css/landing-pixels.css";
-import "../../css/landing-anim.css";
 import "../../css/first-five-minutes.css";
+// Landing redesign stylesheet — replaces landing-pixels.css + landing-anim.css
+// (both retired 2026-08-02; files kept on disk for the lessons page).
+import "../../css/landing-redesign.css";
 
 import "../ui/state.js";
 import "../ui/i18n.js";

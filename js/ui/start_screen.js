@@ -27,6 +27,51 @@ window.StartScreen = (function () {
     const mount = document.getElementById("landing-demo-mount");
     if (!mount || !window.LandingDemo || typeof window.LandingDemo.mount !== "function") return;
     window.LandingDemo.mount(mount);
+    wireDemoStages(mount);
+  }
+
+  // Stage-machine stepper (landing redesign 2026-08-02): tabs freeze the
+  // demo loop on a stage; the footer mode button resumes the auto loop.
+  function wireDemoStages(mount) {
+    const panel = mount.closest(".chrx-landing-demo");
+    if (!panel || panel.dataset.stagesWired === "1") return;
+    panel.dataset.stagesWired = "1";
+
+    const tabs = Array.from(panel.querySelectorAll(".chrx-appwindow__stage[data-stage]"));
+    const modeBtn = panel.querySelector("[data-demo-mode]");
+    const ORDER = (window.LandingDemo && window.LandingDemo.STAGES) ||
+      ["lessons", "solve", "conflict", "reassign", "ready"];
+    const reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    if (modeBtn && reduced) modeBtn.hidden = true;
+
+    tabs.forEach((tab) => {
+      tab.addEventListener("click", () => {
+        if (typeof window.LandingDemo.setStage === "function") {
+          window.LandingDemo.setStage(mount, tab.dataset.stage);
+        }
+      });
+    });
+
+    if (modeBtn) {
+      modeBtn.addEventListener("click", () => {
+        if (typeof window.LandingDemo.resume === "function") window.LandingDemo.resume(mount);
+      });
+    }
+
+    mount.addEventListener("landing-demo:stage", (e) => {
+      const stage = e.detail && e.detail.stage;
+      const idx = ORDER.indexOf(stage);
+      const frozen = typeof window.LandingDemo.isFrozen === "function" && window.LandingDemo.isFrozen(mount);
+      tabs.forEach((tab, i) => {
+        tab.setAttribute("aria-selected", String(i === idx));
+        tab.classList.toggle("is-done", idx > 0 && i < idx);
+      });
+      if (modeBtn && !reduced) {
+        modeBtn.setAttribute("aria-pressed", String(!frozen));
+        modeBtn.textContent = frozen ? "▶ resume auto" : "auto · 12s loop";
+      }
+    });
   }
 
   function wireOpenCard() {
@@ -74,22 +119,43 @@ window.StartScreen = (function () {
     const listEl = document.getElementById("start-recent-list");
     if (!section || !listEl) return;
 
+    const filterEl = document.getElementById("start-recent-filter");
     const entries = collectRecent().slice(0, 4);
     if (!entries.length) {
       section.classList.add("hidden");
       listEl.innerHTML = "";
+      if (filterEl) filterEl.hidden = true;
       return;
     }
 
     section.classList.remove("hidden");
+
+    // §3.5: filter input appears once the list is long enough to need one.
+    if (filterEl) {
+      filterEl.hidden = entries.length <= 3;
+      if (filterEl.dataset.wired !== "1") {
+        filterEl.dataset.wired = "1";
+        filterEl.addEventListener("input", renderRecent);
+      }
+    }
+    const query = filterEl && !filterEl.hidden ? filterEl.value.trim().toLowerCase() : "";
+    const visible = query
+      ? entries.filter((entry) => entry.schoolName.toLowerCase().includes(query))
+      : entries;
+
     listEl.innerHTML = "";
-    entries.forEach((entry, idx) => {
+    visible.forEach((entry, idx) => {
       const row = document.createElement("button");
       row.type = "button";
       row.className = "chrx-start-recent__row";
+      const classCount = Array.isArray(entry.payload && entry.payload.classes)
+        ? entry.payload.classes.length
+        : null;
       row.innerHTML = `
         <span class="chrx-start-recent__swatch" aria-hidden="true"></span>
         <span class="chrx-start-recent__name"></span>
+        <span class="chrx-start-recent__pill">${entry.source === "autosave" ? "auto" : "snap"}</span>
+        ${classCount != null ? `<span class="chrx-start-recent__pill chrx-start-recent__pill--count">${classCount} classes</span>` : ""}
         <span class="chrx-start-recent__time"></span>
       `;
       row.querySelector(".chrx-start-recent__swatch").style.setProperty("--start-swatch", SWATCHES[idx % SWATCHES.length]);

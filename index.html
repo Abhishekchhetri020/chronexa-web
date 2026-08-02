@@ -101,63 +101,59 @@
 
   <!-- STEP 1 — Start (build new OR upload existing) -->
   <section id="step-1" class="step-panel">
-    <!-- Pixel letterform wordmark: 120 mini timetable cells arranged in a
-         5-row pixel grid that spells "CHRONEXA". Decorative element that
-         sits IN-FLOW at the top of .chrx-start (just above the static
-         h2 wordmark). aria-hidden + pointer-events:none. -->
-    <div class="chrx-start">
-      <div class="chrx-pixels" aria-hidden="true"></div>
-      <header class="chrx-start__hero">
-        <h2 class="chrx-start__wordmark">Chronexa</h2>
-        <p class="chrx-start__tagline">Plan timetables in your browser.</p>
+    <!-- Landing redesign 2026-08-02 (docs/design/CHRONEXA_LANDING_REDESIGN_PLAN-2026-08-02.md).
+         Pixel wordmark retired; every JS-bound ID below is contract — do not rename:
+         cta-build-new, start-open-card, xml-file, cta-landing-demo, start-sample-info,
+         cta-load-demo, start-recent-section, start-recent-list, xml-status,
+         landing-demo-mount, data-landing-demo-status. -->
+    <div class="chrx-landing">
+      <div class="chrx-landing__glow" aria-hidden="true"></div>
+
+      <header class="chrx-landing__hero chrx-rise">
+        <p class="chrx-landing__kicker">Open timetabling studio</p>
+        <h2 class="chrx-landing__wordmark">Chronexa</h2>
+        <p class="chrx-landing__tagline">Real timetable work, in your browser.</p>
+        <p class="chrx-landing__support">Conflict detection and repair that holds up on dense,
+          real schools — hundreds of classes across a 5-day week. No install, no upload.</p>
+        <ul class="chrx-landing__signals" aria-label="Quick facts">
+          <li><strong>5+ days · 8+ periods/day</strong><span>real school scale</span></li>
+          <li><strong>Local solver + CP-SAT cloud</strong><span>your call, per solve</span></li>
+          <li><strong>No upload, no tracking</strong><span>files never leave this tab</span></li>
+        </ul>
       </header>
 
-      <div class="chrx-start__actions" aria-label="Start actions">
-        <button id="cta-build-new" type="button" class="chrx-start-card chrx-start-card--new">
-          <span class="chrx-start-card__icon" aria-hidden="true">+</span>
-          <span class="chrx-start-card__copy">
-            <span class="chrx-start-card__title">New</span>
-            <span class="chrx-start-card__subtitle">Build fresh</span>
+      <!-- Action hub: primary XML/HAR dropzone + quiet secondary + ghost demo link. -->
+      <div class="chrx-landing__actions chrx-rise" aria-label="Start actions">
+        <label id="start-open-card" class="chrx-cta chrx-cta--primary" tabindex="0">
+          <input type="file" id="xml-file" accept=".xml,.har" class="chrx-cta__input">
+          <span class="chrx-cta__icon" aria-hidden="true">↥</span>
+          <span class="chrx-cta__copy">
+            <span class="chrx-cta__title">Open school XML or HAR</span>
+            <span class="chrx-cta__subtitle">Drop the file on this card — it never leaves your browser</span>
           </span>
-        </button>
-
-        <label id="start-open-card" class="chrx-start-card chrx-start-card--open" tabindex="0">
-          <input type="file" id="xml-file" accept=".xml,.har" class="chrx-start-card__input">
-          <span class="chrx-start-card__icon" aria-hidden="true">↥</span>
-          <span class="chrx-start-card__copy">
-            <span class="chrx-start-card__title">Open file</span>
-            <span class="chrx-start-card__subtitle">XML or HAR</span>
-          </span>
+          <span class="chrx-cta__hint" aria-hidden="true">or click to browse</span>
         </label>
+
+        <div class="chrx-landing__actions-side">
+          <button id="cta-build-new" type="button" class="chrx-cta chrx-cta--secondary">
+            <span class="chrx-cta__icon" aria-hidden="true">+</span>
+            <span class="chrx-cta__copy">
+              <span class="chrx-cta__title">New blank school</span>
+              <span class="chrx-cta__subtitle">Build from scratch with the setup wizard</span>
+            </span>
+          </button>
+          <p class="chrx-landing__ghost">
+            No file handy?
+            <button id="cta-landing-demo" type="button" class="chrx-landing__ghost-link">Start with the demo school →</button>
+            <button id="start-sample-info" type="button" class="chrx-landing__ghost-info"
+                    aria-label="What is in the demo school" title="What's in the demo school?">?</button>
+          </p>
+        </div>
       </div>
 
-      <section id="start-recent-section" class="chrx-start-recent hidden" aria-label="Recent timetables">
-        <div class="chrx-start-recent__head">
-          <h3>Recent</h3>
-          <span aria-hidden="true"></span>
-        </div>
-        <div id="start-recent-list" class="chrx-start-recent__list"></div>
-      </section>
-
-      <section class="chrx-demo-school-card" aria-labelledby="demo-school-title">
-        <span class="chrx-demo-school-card__icon" aria-hidden="true">▦</span>
-        <div>
-          <span class="chrx-demo-school-card__kicker">No setup required</span>
-          <h3 id="demo-school-title">Try a complete demo school</h3>
-          <p>Explore real teachers, classes, rooms, lessons, and a solved timetable.</p>
-        </div>
-        <div class="chrx-demo-school-card__actions">
-          <button id="start-sample-info" type="button" class="chrx-btn">Learn more</button>
-          <button id="cta-landing-demo" type="button" class="chrx-btn chrx-btn--primary">Launch demo →</button>
-        </div>
-      </section>
-
-      <nav class="chrx-start-links" aria-label="Start links">
-        <button id="cta-load-demo" type="button" style="display:none;">Demo</button>
-        <a href="https://github.com/Abhishekchhetri020/chronexa-web/blob/main/README.md" target="_blank" rel="noopener">Docs</a>
-      </nav>
-
-      <section class="chrx-landing-demo" aria-labelledby="landing-demo-title">
+      <!-- Solver loop preview inside an app-window stage machine. The pre-existing
+           landing_demo.js owns the animation; tabs freeze individual stages. -->
+      <section class="chrx-landing-demo chrx-rise" aria-labelledby="landing-demo-title">
         <div class="chrx-landing-demo__head">
           <div>
             <span class="chrx-landing-demo__kicker">See it in action</span>
@@ -165,8 +161,61 @@
           </div>
           <span class="chrx-landing-demo__status" data-landing-demo-status aria-live="polite">Preparing preview…</span>
         </div>
-        <div id="landing-demo-mount" class="chrx-landing-demo__mount"></div>
+        <div class="chrx-appwindow">
+          <div class="chrx-appwindow__stages" role="tablist" aria-label="Solver stages">
+            <button type="button" role="tab" aria-selected="true"  class="chrx-appwindow__stage" data-stage="lessons">1 · Lessons</button>
+            <button type="button" role="tab" aria-selected="false" class="chrx-appwindow__stage" data-stage="solve">2 · Solve</button>
+            <button type="button" role="tab" aria-selected="false" class="chrx-appwindow__stage" data-stage="conflict">3 · Conflict</button>
+            <button type="button" role="tab" aria-selected="false" class="chrx-appwindow__stage" data-stage="reassign">4 · Reassign</button>
+            <button type="button" role="tab" aria-selected="false" class="chrx-appwindow__stage" data-stage="ready">5 · Ready</button>
+          </div>
+          <div class="chrx-appwindow__viewport">
+            <div id="landing-demo-mount" class="chrx-landing-demo__mount"></div>
+          </div>
+          <footer class="chrx-appwindow__footer">
+            <span class="chrx-appwindow__lights" aria-hidden="true"><i></i><i></i><i></i></span>
+            <span class="chrx-appwindow__title">chronexa solver — mini school · 5 days × 5 periods</span>
+            <button type="button" class="chrx-appwindow__mode" data-demo-mode aria-pressed="true">auto · 12s loop</button>
+          </footer>
+        </div>
       </section>
+
+      <!-- Capability matrix (proof points, between demo and recents). -->
+      <section class="chrx-matrix chrx-rise-stagger" aria-label="What Chronexa handles">
+        <article class="chrx-matrix-card">
+          <span class="chrx-matrix-card__icon" aria-hidden="true">⚡</span>
+          <h3>Constraint engine</h3>
+          <p>Teacher availability, room capacity, double-loads, class bells — solved on dense real schools in seconds.</p>
+          <p class="chrx-matrix-card__proof">951/951 cards placed · &lt;500 ms</p>
+        </article>
+        <article class="chrx-matrix-card">
+          <span class="chrx-matrix-card__icon" aria-hidden="true">🔒</span>
+          <h3>Local-first data</h3>
+          <p>Nothing leaves the browser. Optional cloud CP-SAT is opt-in per solve; this page ships zero trackers.</p>
+          <p class="chrx-matrix-card__proof">0 uploads · 0 trackers</p>
+        </article>
+        <article class="chrx-matrix-card">
+          <span class="chrx-matrix-card__icon" aria-hidden="true">📊</span>
+          <h3>Multi-format export</h3>
+          <p>XML round-trip keeps relations intact; PDF printables, Excel registers, ICS calendars, FET one-click.</p>
+          <p class="chrx-matrix-card__proof">XML · PDF · Excel · ICS · FET</p>
+        </article>
+      </section>
+
+      <section id="start-recent-section" class="chrx-start-recent hidden" aria-label="Recent timetables">
+        <div class="chrx-start-recent__head">
+          <h3>Recent</h3>
+          <input id="start-recent-filter" class="chrx-start-recent__filter" type="search"
+                 placeholder="Filter…" aria-label="Filter recent timetables" hidden>
+          <span aria-hidden="true"></span>
+        </div>
+        <div id="start-recent-list" class="chrx-start-recent__list chrx-rise-stagger"></div>
+      </section>
+
+      <nav class="chrx-start-links" aria-label="Start links">
+        <button id="cta-load-demo" type="button" style="display:none;">Demo</button>
+        <a href="https://github.com/Abhishekchhetri020/chronexa-web/blob/main/README.md" target="_blank" rel="noopener">Docs</a>
+      </nav>
 
       <div id="xml-status" class="chrx-start-status"></div>
     </div>
@@ -207,78 +256,8 @@
     </div>
   </section>
 
-  <!-- ──── Landing-page pixel letterform generator ────
-       Builds a 5-row × 31-col grid of mini "lesson cards" spelling
-       "CHRONEXA" in a 5×3 pixel font. ~81 cells are "on" (the
-       letter pixels), the rest are "off" (the negative space inside
-       letters: inside of O, the gap in A, etc.). Each on-cell gets
-       a brand-colour per letter and a random breathing delay so the
-       word ripples. Skipped entirely for users who prefer reduced
-       motion. -->
-  <script>
-  (function () {
-    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    var root = document.querySelector('.chrx-pixels');
-    if (!root || root.childElementCount) return;
-
-    // 5×3 pixel font for "CHRONEXA". 1 = cell on, 0 = cell off.
-    // Designed so each letter reads cleanly at 15px / 5px gap (20px stride).
-    var F = {
-      C: [[1,1,1],[1,0,0],[1,0,0],[1,0,0],[1,1,1]],
-      H: [[1,0,1],[1,0,1],[1,1,1],[1,0,1],[1,0,1]],
-      R: [[1,1,0],[1,0,1],[1,1,0],[1,0,1],[1,0,1]],
-      O: [[1,1,1],[1,0,1],[1,0,1],[1,0,1],[1,1,1]],
-      N: [[1,0,1],[1,1,1],[1,1,1],[1,0,1],[1,0,1]],
-      E: [[1,1,1],[1,0,0],[1,1,0],[1,0,0],[1,1,1]],
-      X: [[1,0,1],[1,0,1],[0,1,0],[1,0,1],[1,0,1]],
-      A: [[0,1,0],[1,0,1],[1,1,1],[1,0,1],[1,0,1]]
-    };
-
-    // Per-letter brand colour (deep teal, amber, rose, warm gray, slate)
-    // at ~0.55 alpha. Reads as a colour rhythm across the word.
-    var COLOR = {
-      C: 'rgba(15, 76, 92, 0.55)',     // deep teal
-      H: 'rgba(217, 119, 6, 0.55)',    // amber
-      R: 'rgba(190, 64, 75, 0.50)',    // rose
-      O: 'rgba(120, 113, 108, 0.50)',  // warm gray
-      N: 'rgba(15, 23, 42, 0.45)',     // slate
-      E: 'rgba(15, 76, 92, 0.45)',     // teal (lighter)
-      X: 'rgba(217, 119, 6, 0.45)',    // amber (lighter)
-      A: 'rgba(190, 64, 75, 0.50)'     // rose
-    };
-
-    var WORD = 'CHRONEXA';
-    var STRIDE = 10;   // 8px cell + 2px gap
-    var ROWS = 5;
-    var COLS_PER_LETTER = 3;
-    var GAP_COLS = 1;
-
-    for (var li = 0; li < WORD.length; li++) {
-      var letter = WORD[li];
-      var pat = F[letter];
-      if (!pat) continue;
-      for (var row = 0; row < ROWS; row++) {
-        for (var col = 0; col < COLS_PER_LETTER; col++) {
-          var on = pat[row][col] === 1;
-          var colAbs = li * (COLS_PER_LETTER + GAP_COLS) + col;
-          var x = colAbs * STRIDE;
-          var y = row * STRIDE;
-          var el = document.createElement('div');
-          el.className = 'cp ' + (on ? 'on' : 'off');
-          el.style.left = x + 'px';
-          el.style.top  = y + 'px';
-          if (on) {
-            el.style.setProperty('--c', COLOR[letter]);
-            el.style.setProperty('--d', (-Math.random() * 4).toFixed(2) + 's');
-            el.style.setProperty('--lo', (0.38 + Math.random() * 0.12).toFixed(2));
-            el.style.setProperty('--hi', (0.70 + Math.random() * 0.18).toFixed(2));
-          }
-          root.appendChild(el);
-        }
-      }
-    }
-  })();
-  </script>
+  <!-- Pixel letterform wordmark retired 2026-08-02 with the landing redesign
+       (generator + styles preserved in css/landing-pixels.css for the lessons page). -->
 
   <!-- STEP 2 — School Info -->
   <section id="step-2" class="step-panel hidden">

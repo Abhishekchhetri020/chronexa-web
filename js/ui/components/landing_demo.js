@@ -1,7 +1,14 @@
 /**
  * Landing demo — a small timetable that places, detects, and resolves cards.
  *
- * Exports window.LandingDemo = { mount, destroy }.
+ * Stage-machine edition (landing redesign 2026-08-02): the loop is a 12s,
+ * five-stage progression (lessons → solve → conflict → reassign → ready)
+ * with a pause between phases, and any stage can be frozen for manual
+ * inspection via the landing page stepper tabs.
+ *
+ * Exports window.LandingDemo = { mount, destroy, setStage, resume, isFrozen, STAGES }.
+ * Emits "landing-demo:stage" (bubbles; detail: {stage}) on the container
+ * whenever the visible stage changes.
  */
 (function (global) {
   "use strict";
@@ -21,6 +28,23 @@
     [3, 4, 0, 1, 2],
     [4, 0, 1, 2, 3],
   ];
+
+  const STAGES = ["lessons", "solve", "conflict", "reassign", "ready"];
+  const STAGE_STATUS = {
+    lessons:  ["Reading lessons…", "working"],
+    solve:    ["Solver placing cards…", "working"],
+    conflict: ["Conflict found — Tue P3 double-booked", "conflict"],
+    reassign: ["Reassigning the clashing card…", "working"],
+    ready:    ["Ready — same shape for your data", "done"],
+  };
+  const LOOP_MS = 12000;
+
+  // Which cards each phase adds to the 5×5 grid.
+  const LESSON_CARDS = [[0, 0], [6, 2], [12, 4], [18, 1], [24, 3]];
+  const SOLVE_CARDS  = [[4, 4], [8, 3], [16, 0], [20, 4]];
+  const ALL_CARDS    = LESSON_CARDS.concat(SOLVE_CARDS);
+  const CONFLICT_CELL = 7;
+
   const active = new Map();
 
   function mount(container) {
@@ -39,46 +63,99 @@
 
     const reduced = global.matchMedia && global.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (reduced) {
-      renderSolved(container);
-      setStatus(container, "Solved timetable", "done");
+      // Reduced motion: no loop, no registered state — render the final
+      // frame; the stepper still swaps static frames via setStage().
+      renderStage(container, "ready");
+      emit(container, "ready");
       return;
     }
 
-    const state = { timers: [], stopped: false };
+    const state = { timers: [], stopped: false, frozen: null };
     active.set(container, state);
     play(container, state);
   }
 
   function play(container, state) {
-    if (state.stopped || !container.isConnected) return;
+    if (state.stopped || state.frozen || !container.isConnected) return;
     reset(container);
-    setStatus(container, "Reading lessons…", "working");
+    gotoStage(container, "lessons");
 
-    const placements = [
-      [0, 0], [6, 2], [12, 4], [18, 1], [24, 3],
-      [4, 4], [8, 3], [16, 0], [20, 4],
-    ];
-
-    placements.forEach(([cell, subject], index) => {
-      later(state, 420 + index * 230, () => {
+    LESSON_CARDS.forEach(([cell, subject], index) => {
+      later(state, 380 + index * 300, () => {
         place(container, cell, subject);
-        setStatus(container, `${index + 1} of ${placements.length} cards placed`, "working");
+        setStatus(container, `Reading lessons… ${index + 1} of ${ALL_CARDS.length}`, "working");
       });
     });
 
-    later(state, 2700, () => {
-      place(container, 7, 0);
-      place(container, 7, 3, true);
-      container.querySelector('[data-cell="7"]')?.classList.add("is-conflict");
-      setStatus(container, "Conflict found", "conflict");
+    later(state, 2300, () => gotoStage(container, "solve"));
+    SOLVE_CARDS.forEach(([cell, subject], index) => {
+      later(state, 2500 + index * 300, () => {
+        place(container, cell, subject);
+        setStatus(container, `Placing card ${LESSON_CARDS.length + index + 1} of ${ALL_CARDS.length}…`, "working");
+      });
     });
 
-    later(state, 3900, () => {
+    // Pause so the placed grid reads, then surface the conflict.
+    later(state, 4600, () => {
+      gotoStage(container, "conflict");
+      place(container, CONFLICT_CELL, 0);
+      place(container, CONFLICT_CELL, 3, true);
+      container.querySelector(`[data-cell="${CONFLICT_CELL}"]`)?.classList.add("is-conflict");
+    });
+
+    // Hold the conflict on screen, then clear the clashing card.
+    later(state, 6800, () => {
+      gotoStage(container, "reassign");
+      container.querySelector(".is-conflict-card")?.remove();
+      container.querySelector(`[data-cell="${CONFLICT_CELL}"]`)?.classList.remove("is-conflict");
+    });
+
+    later(state, 8000, () => {
+      gotoStage(container, "ready");
       renderSolved(container);
-      setStatus(container, "Conflict resolved · timetable ready", "done");
     });
 
-    later(state, 7600, () => play(container, state));
+    // Hold the solved frame, then loop.
+    later(state, LOOP_MS, () => play(container, state));
+  }
+
+  function gotoStage(container, stage) {
+    const [text, tone] = STAGE_STATUS[stage] || ["", ""];
+    setStatus(container, text, tone);
+    emit(container, stage);
+  }
+
+  /**
+   * Render a static, deterministic frame for one stage. Used for frozen
+   * (stepper) inspection and for the reduced-motion path.
+   */
+  function renderStage(container, stage) {
+    reset(container);
+    if (stage === "lessons") {
+      LESSON_CARDS.slice(0, 3).forEach(([cell, subject]) => place(container, cell, subject));
+    } else if (stage === "solve") {
+      ALL_CARDS.forEach(([cell, subject]) => place(container, cell, subject));
+    } else if (stage === "conflict") {
+      ALL_CARDS.forEach(([cell, subject]) => place(container, cell, subject));
+      place(container, CONFLICT_CELL, 0);
+      place(container, CONFLICT_CELL, 3, true);
+      container.querySelector(`[data-cell="${CONFLICT_CELL}"]`)?.classList.add("is-conflict");
+    } else if (stage === "reassign") {
+      ALL_CARDS.forEach(([cell, subject]) => place(container, cell, subject));
+      place(container, CONFLICT_CELL, 0);
+      container.querySelector(`[data-cell="${CONFLICT_CELL}"]`)?.classList.add("is-solved");
+    } else {
+      renderSolved(container);
+    }
+    const [text, tone] = STAGE_STATUS[stage] || ["", ""];
+    setStatus(container, text, tone);
+  }
+
+  function emit(container, stage) {
+    container.dispatchEvent(new CustomEvent("landing-demo:stage", {
+      bubbles: true,
+      detail: { stage },
+    }));
   }
 
   function later(state, delay, fn) {
@@ -131,7 +208,35 @@
     if (container) container.innerHTML = "";
   }
 
-  global.LandingDemo = { mount, destroy };
+  /** Freeze the loop on a stage for manual inspection (stepper tabs). */
+  function setStage(container, stage) {
+    if (!container || !STAGES.includes(stage)) return;
+    const state = active.get(container);
+    if (state) {
+      state.frozen = stage;
+      state.timers.forEach((timer) => global.clearTimeout(timer));
+      state.timers = [];
+    }
+    renderStage(container, stage);
+    emit(container, stage);
+  }
+
+  /** Resume the automatic loop after a freeze. */
+  function resume(container) {
+    const state = active.get(container);
+    if (!state || state.stopped) return;
+    state.frozen = null;
+    state.timers.forEach((timer) => global.clearTimeout(timer));
+    state.timers = [];
+    play(container, state);
+  }
+
+  function isFrozen(container) {
+    const state = active.get(container);
+    return !!(state && state.frozen);
+  }
+
+  global.LandingDemo = { mount, destroy, setStage, resume, isFrozen, STAGES };
 })(window);
 
 // [vite-esm] exports auto-generated by the 2026-07 Vite migration.
