@@ -166,7 +166,9 @@ import "./state.js";
     } catch (_) {}
 
     navigator.serviceWorker
-      .register("./sw.js")
+      // Always revalidate the worker script and its imports. This avoids the
+      // browser HTTP cache extending the life of an obsolete Pages worker.
+      .register("./sw.js", { updateViaCache: "none" })
       .then((reg) => {
         // A new version may ALREADY be waiting from a prior session (the
         // common "stale tab" case) — surface the banner straight away so the

@@ -9,9 +9,9 @@
  *
  * Strategy (unchanged from the hand-written v2 sw.js):
  *   - Pre-cache the app shell on install for offline support
- *   - NETWORK-FIRST for HTML/JS: always try the network, fall back to cache
+ *   - NETWORK-FIRST for HTML/JS/CSS: always try the network, fall back to cache
  *     only when offline — code updates take effect immediately.
- *   - CACHE-FIRST for CSS/images/fonts/wasm.
+ *   - CACHE-FIRST for fingerprinted images/fonts/wasm.
  *   - Bypass CDN scripts and the backend /solve endpoint.
  *   - Inject COOP/COEP on every same-origin response so the page is
  *     cross-origin isolated (required for WASM CP-SAT threads +
@@ -47,8 +47,10 @@ self.addEventListener("install", (evt) => {
         })
       )
       .catch((err) => {
-        console.warn("[SW] pre-cache failed, activating anyway:", err);
-        return self.skipWaiting();
+        // Never replace a healthy worker with a partially populated cache.
+        // This can happen while GitHub Pages is switching deployment artifacts.
+        console.warn("[SW] pre-cache failed; keeping the previous worker:", err);
+        return caches.delete(CACHE_NAME).then(() => { throw err; });
       })
   );
 });
@@ -65,10 +67,12 @@ self.addEventListener("activate", (evt) => {
   );
 });
 
-// Returns true if the URL is for code (HTML/JS) that should use network-first.
-function isCodeFile(url) {
+// Returns true for shell resources that must self-heal after a deployment.
+function isNetworkFirst(request, url) {
   const path = url.pathname;
-  return path.endsWith(".html") ||
+  return request.destination === "style" ||
+         path.endsWith(".css") ||
+         path.endsWith(".html") ||
          path.endsWith(".js") ||
          path.endsWith(".mjs") ||
          path === "/" ||
@@ -91,8 +95,8 @@ self.addEventListener("fetch", (evt) => {
   if (evt.request.method !== "GET") return;
 
   let p;
-  if (isCodeFile(url)) {
-    // NETWORK-FIRST for code files: always try fresh, cache for offline.
+  if (isNetworkFirst(evt.request, url)) {
+    // NETWORK-FIRST for shell files: always try fresh, cache for offline.
     p = fetch(evt.request)
       .then((resp) => {
         if (resp && resp.status === 200) {

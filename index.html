@@ -295,24 +295,40 @@
 
 <!-- ─────────────────────── SCRIPTS ─────────────────────── -->
 <!-- Bump APP_VER on every deploy so the browser refetches the JS bundle -->
-<script>window.APP_VER = "20260703-p200-generate-wasm-two-stage";</script>
+<script>window.APP_VER = "20260803-p201-pages-shell-recovery";</script>
 <!-- Nuclear SW migration: if an old cache-first SW is still controlling,
      unregister it and reload to pick up the new network-first SW. -->
 <script>
 (function () {
   if (!("serviceWorker" in navigator) || !navigator.serviceWorker.controller) return;
+  // A previous GitHub Pages branch deployment could cache this unbuilt source
+  // shell. It has no compiled stylesheet: CSS is imported by the Vite entry
+  // module and therefore only works after `vite build`. If that shell is ever
+  // served on Pages, remove its controller before the module request so the
+  // next navigation reaches the Actions-built artifact.
+  var ON_GITHUB_PAGES = /\.github\.io$/i.test(location.hostname);
+  var HAS_BUILT_CSS = !!document.querySelector(
+    'link[rel="stylesheet"][href*="assets/index-"]'
+  );
+  var HAS_BUILT_JS = !!document.querySelector(
+    'script[type="module"][src*="assets/index-"]'
+  );
+  var IS_RAW_PAGES_SHELL = ON_GITHUB_PAGES && !(HAS_BUILT_CSS && HAS_BUILT_JS);
   // Guard: only attempt migration once per session to avoid reload loops.
-  var GUARD = "chronexa-sw-migrated-" + window.APP_VER;
+  var GUARD = "chronexa-sw-migrated-" + window.APP_VER
+    + (IS_RAW_PAGES_SHELL ? "-raw-shell" : "-cache");
   if (sessionStorage.getItem(GUARD)) return;
   // Vite build: sw.js cache names are "chronexa-<APP_VER>-<buildhash>", so
   // match on prefix rather than equality.
   var EXPECTED = "chronexa-" + window.APP_VER;
   caches.keys().then(function (keys) {
     var hasExpected = keys.some(function (k) { return k.indexOf(EXPECTED) === 0; });
-    if (hasExpected) return;
+    if (!IS_RAW_PAGES_SHELL && hasExpected) return;
     // No stale caches at all means the SW hasn't cached anything yet — skip.
-    if (keys.length === 0) return;
-    console.warn("[chronexa] Stale SW detected — clearing caches and reloading…");
+    if (!IS_RAW_PAGES_SHELL && keys.length === 0) return;
+    console.warn(IS_RAW_PAGES_SHELL
+      ? "[chronexa] Unbuilt Pages shell detected — resetting offline cache…"
+      : "[chronexa] Stale SW detected — clearing caches and reloading…");
     sessionStorage.setItem(GUARD, "1");
     Promise.all([
       navigator.serviceWorker.getRegistrations().then(function (regs) {
@@ -320,7 +336,11 @@
       }),
       Promise.all(keys.map(function (k) { return caches.delete(k); }))
     ]).then(function () {
-      window.location.reload();
+      // replace() avoids leaving the broken shell in browser history. The
+      // query also defeats legacy workers that cached the bare navigation URL.
+      var next = new URL(window.location.href);
+      next.searchParams.set("chronexa_recover", window.APP_VER);
+      window.location.replace(next.href);
     });
   });
 })();
