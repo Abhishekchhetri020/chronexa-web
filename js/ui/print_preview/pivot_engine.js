@@ -588,12 +588,16 @@ import "../state.js";
         cellNode._cards = cellCards;
         if (APP.PrintCellRenderer && typeof APP.PrintCellRenderer.renderCell === "function") {
           const kind = report.cells || "draw-lessons";
-          const renderer = kind === "summary-class-day-period" || kind === "draw-lessons"
-            ? APP.PrintCellRenderer.renderCell
+          const renderer = kind === "summary-class-day-period"
+            ? (APP.PrintCellRenderer.renderSummaryClassDayPeriodCell || APP.PrintCellRenderer.renderSummaryClassDayCell)
             : kind === "summary-class-day"
               ? APP.PrintCellRenderer.renderSummaryClassDayCell
-              : (APP.PrintCellRenderer.renderAggregateCell || APP.PrintCellRenderer.renderCell);
-          cellNode.appendChild(renderer(cellCards, report, school));
+              : (kind === "draw-lessons" ? APP.PrintCellRenderer.renderCell : (APP.PrintCellRenderer.renderAggregateCell || APP.PrintCellRenderer.renderCell));
+          const rendered = renderer(cellCards, report, school);
+          if (rendered && rendered._bgColor) {
+            cellNode.style.backgroundColor = rendered._bgColor;
+          }
+          cellNode.appendChild(rendered);
         } else if (cellCards.length > 0) {
           const subj = cellCards[0]?.subjectId;
           const text = (school.subjects || []).find(s => s.id === subj)?.abbreviation || subj || "?";

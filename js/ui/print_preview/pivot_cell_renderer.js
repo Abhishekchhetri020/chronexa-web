@@ -480,6 +480,127 @@ import "../state.js";
     return cell;
   }
 
+  function renderSummaryClassDayPeriodCell(cards, report, school) {
+    cards = cards || [];
+    const layout = report?._layout || {};
+    const minHeight = Math.max(18, layout.cellMinHeightPx || 22);
+    const cell = el("div", {
+      class: "chrx-pivot-cell chrx-pivot-cell--summary-day",
+      style: "width:100%;height:100%;min-height:" + minHeight + "px;padding:2px 3px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;overflow:hidden;position:relative",
+    });
+    if (cards.length === 0) return cell;
+
+    const bg = getCardBgColor(cards, report, school);
+    if (bg) {
+      cell.style.background = bg;
+      cell._bgColor = bg;
+    }
+
+    const rowDims = report.rows || [];
+    const isClassRow = rowDims.includes("class");
+    const isTeacherRow = rowDims.includes("teacher");
+    const isRoomRow = rowDims.includes("classroom");
+
+    // Gather distinct subjects
+    const subjects = [];
+    const seenSubj = new Set();
+    for (const c of cards) {
+      if (!c.subjectId || seenSubj.has(c.subjectId)) continue;
+      seenSubj.add(c.subjectId);
+      subjects.push(entityName(school, "subject", c.subjectId, "abbreviation"));
+    }
+
+    // Secondary line depending on row context:
+    const secondaryList = [];
+    if (isClassRow) {
+      // Row is Class -> show Teacher(s) + non-home Room (never redundant class name)
+      const teachers = [];
+      const seenT = new Set();
+      for (const c of cards) {
+        for (const tid of (c.teacherIds || [])) {
+          if (seenT.has(tid)) continue;
+          seenT.add(tid);
+          teachers.push(entityName(school, "teacher", tid, "abbreviation"));
+        }
+      }
+      if (teachers.length > 0) {
+        secondaryList.push(teachers.slice(0, 2).join("/"));
+      }
+      const rooms = [];
+      const seenR = new Set();
+      for (const c of cards) {
+        const rid = c.roomId || (c.roomIds && c.roomIds[0]);
+        if (rid && !seenR.has(rid)) {
+          seenR.add(rid);
+          rooms.push(entityName(school, "classroom", rid, "abbreviation"));
+        }
+      }
+      if (rooms.length > 0) {
+        secondaryList.push("(" + rooms[0] + ")");
+      }
+    } else if (isTeacherRow) {
+      // Row is Teacher -> show Class(es) + non-home Room
+      const classes = [];
+      const seenC = new Set();
+      for (const c of cards) {
+        for (const cid of (c.classIds || [])) {
+          if (seenC.has(cid)) continue;
+          seenC.add(cid);
+          classes.push(entityName(school, "class", cid, "abbreviation"));
+        }
+      }
+      if (classes.length > 0) {
+        secondaryList.push(classes.join("/"));
+      }
+      const rooms = [];
+      const seenR = new Set();
+      for (const c of cards) {
+        const rid = c.roomId || (c.roomIds && c.roomIds[0]);
+        if (rid && !seenR.has(rid)) {
+          seenR.add(rid);
+          rooms.push(entityName(school, "classroom", rid, "abbreviation"));
+        }
+      }
+      if (rooms.length > 0) {
+        secondaryList.push("(" + rooms[0] + ")");
+      }
+    } else if (isRoomRow) {
+      // Row is Room -> show Class(es)
+      const classes = [];
+      const seenC = new Set();
+      for (const c of cards) {
+        for (const cid of (c.classIds || [])) {
+          if (seenC.has(cid)) continue;
+          seenC.add(cid);
+          classes.push(entityName(school, "class", cid, "abbreviation"));
+        }
+      }
+      if (classes.length > 0) {
+        secondaryList.push(classes.join("/"));
+      }
+    }
+
+    // Line 1: Subject (bold, clean)
+    const subjText = subjects.join(" / ");
+    if (subjText) {
+      const subjDiv = el("div", {
+        style: "font-weight:700;font-size:clamp(6.5px, 12cqi, 9.5px);line-height:1.15;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--chrx-fg, #111)",
+      }, subjText);
+      cell.appendChild(subjDiv);
+    }
+
+    // Line 2: Secondary info
+    const secText = secondaryList.join(" ");
+    if (secText) {
+      const secDiv = el("div", {
+        style: "font-size:clamp(5.5px, 10cqi, 8px);line-height:1.1;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--chrx-fg-secondary, #444);margin-top:1px",
+      }, secText);
+      cell.appendChild(secDiv);
+    }
+
+    return cell;
+  }
+
   function renderCell(cards, report, school) {
     cards = cards || [];
     const layout = report?._layout || {};
@@ -491,7 +612,10 @@ import "../state.js";
     if (cards.length === 0) return cell;
 
     const bg = getCardBgColor(cards, report, school);
-    if (bg) cell.style.background = bg;
+    if (bg) {
+      cell.style.background = bg;
+      cell._bgColor = bg;
+    }
 
     // Collect enabled elements grouped by anchor key so that elements sharing
     // the same anchor (e.g. teacher + classroom) stack on separate lines in
@@ -529,7 +653,7 @@ import "../state.js";
   APP.PrintCellRenderer = {
     renderCell,
     renderSummaryClassDayCell,
-    renderSummaryClassDayPeriodCell: renderSummaryClassDayCell,
+    renderSummaryClassDayPeriodCell,
     joinElementLabels,
   };
   APP.PrintCellRenderer.renderAggregateCell = renderAggregateCell;

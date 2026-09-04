@@ -147,10 +147,9 @@ import "../state.js";
 
       // Colors (Phase 5)
       colors: {
-        // On by default (aSc parity): colour cards by subject. Harmless when
-        // subjects carry no colour — entityColor returns null and the card
-        // stays uncoloured. Teacherless cards print white (see getCardBgColor).
-        cardOn: true,
+        // Default to monochrome/clean printing. Users can enable colors
+        // via the quick toggle button or Colors dialog on demand.
+        cardOn: false,
         cardKey: "subject",         // subject | teacher | class | group | classroom | building
         cardColor1: null,
         cardColor2: null,

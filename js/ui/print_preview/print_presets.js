@@ -117,15 +117,15 @@ import "../state.js";
       id: "summary_of_teachers",
       name: "Summary timetable of teachers",
       context: "summary",
-      pages: [], rows: ["teacher"], cols: ["day","period"],
-      cells: "draw-lessons", fitWidth: true, fitHeight: true,
+      pages: ["day"], rows: ["teacher"], cols: ["period"],
+      cells: "summary-class-day-period", fitWidth: true, fitHeight: true,
     },
     {
       id: "summary_of_classrooms",
       name: "Summary timetable of classrooms",
       context: "summary",
-      pages: [], rows: ["classroom"], cols: ["day","period"],
-      cells: "draw-lessons", fitWidth: true, fitHeight: true,
+      pages: ["day"], rows: ["classroom"], cols: ["period"],
+      cells: "summary-class-day-period", fitWidth: true, fitHeight: true,
     },
     {
       id: "summary_of_subjects",
@@ -439,7 +439,7 @@ import "../state.js";
   function renderLessonGrid(school) {
     const classes = school?.classes || [];
     const subjects = school?.subjects || [];
-    const perPage = 10;
+    const perPage = 28;
     const pages = [];
     for (let start = 0; start < Math.max(classes.length, 1); start += perPage) {
       const chunk = classes.slice(start, start + perPage);
@@ -460,38 +460,79 @@ import "../state.js";
 
       const tbl = el("table", {
         class: "chrx-pivot-grid",
-        style: "width:100%;border-collapse:collapse;table-layout:fixed;font-size:12px;flex:1",
+        style: "width:100%;border-collapse:collapse;table-layout:fixed;font-size:10px;flex:1",
       });
       const head = el("tr");
       head.appendChild(el("th", {
-        style: "border:1px solid #999;background:#fafafa;width:78px;padding:4px;text-align:center",
-      }, ""));
+        style: "border:1px solid #999;background:#fafafa;width:70px;padding:4px;text-align:center;font-size:11px;font-weight:600",
+      }, "Class"));
       for (const subj of subjects) {
-        head.appendChild(el("th", {
-          style: "border:1px solid #999;background:#fafafa;padding:4px 2px;text-align:center;font-size:17px;font-weight:500;overflow-wrap:anywhere",
-        }, subj.abbreviation || subj.shortName || subj.name || subj.id || ""));
+        const text = subj.abbreviation || subj.shortName || subj.name || subj.id || "";
+        const th = el("th", {
+          style: "border:1px solid #999;background:#fafafa;padding:6px 2px;text-align:center;vertical-align:bottom;height:72px;max-height:72px",
+        });
+        const inner = el("div", {
+          style: "writing-mode:vertical-lr;transform:rotate(180deg);font-size:9.5px;font-weight:600;white-space:nowrap;letter-spacing:0.02em;margin:0 auto;max-height:68px;overflow:hidden;text-overflow:ellipsis",
+        }, text);
+        th.appendChild(inner);
+        head.appendChild(th);
       }
+      // Total column header
+      const thTotal = el("th", {
+        style: "border:1px solid #999;background:#f0f0f0;padding:6px 2px;text-align:center;vertical-align:bottom;height:72px;width:36px",
+      });
+      const innerTotal = el("div", {
+        style: "writing-mode:vertical-lr;transform:rotate(180deg);font-size:9.5px;font-weight:700;white-space:nowrap;margin:0 auto",
+      }, "Total");
+      thTotal.appendChild(innerTotal);
+      head.appendChild(thTotal);
       tbl.appendChild(el("thead", null, head));
 
       const body = el("tbody");
       if (!chunk.length) {
         const tr = el("tr");
-        tr.appendChild(el("td", { colspan: String(subjects.length + 1), style: "border:1px solid #ccc;padding:8px;color:#777;text-align:center" }, "No classes"));
+        tr.appendChild(el("td", { colspan: String(subjects.length + 2), style: "border:1px solid #ccc;padding:8px;color:#777;text-align:center" }, "No classes"));
         body.appendChild(tr);
       }
+      const subjectTotals = new Array(subjects.length).fill(0);
+      let grandTotal = 0;
+
       for (const cls of chunk) {
         const tr = el("tr");
         tr.appendChild(el("th", {
-          style: "border:1px solid #999;background:#fafafa;padding:4px 6px;text-align:center;font-size:16px;font-weight:500",
+          style: "border:1px solid #999;background:#fafafa;padding:3px 6px;text-align:center;font-size:11px;font-weight:600",
         }, cls.abbreviation || cls.shortName || cls.name || cls.id || ""));
-        for (const subj of subjects) {
+        let rowSum = 0;
+        subjects.forEach((subj, sIdx) => {
           const count = lessonCountForClassSubject(school, cls.id, subj.id);
+          rowSum += count;
+          subjectTotals[sIdx] += count;
           tr.appendChild(el("td", {
-            style: "border:1px solid #bbb;padding:4px;text-align:right;vertical-align:middle;font-size:20px;line-height:1.15;color:" + (count > 0 ? "#111" : "#bbb"),
-          }, count > 0 ? String(count) : ""));
-        }
+            style: "border:1px solid #bbb;padding:2px;text-align:center;vertical-align:middle;font-size:10px;font-weight:" + (count > 0 ? "600" : "400") + ";color:" + (count > 0 ? "#111" : "#bbb"),
+          }, count > 0 ? String(count) : "·"));
+        });
+        grandTotal += rowSum;
+        tr.appendChild(el("td", {
+          style: "border:1px solid #999;background:#f9f9f9;padding:2px;text-align:center;vertical-align:middle;font-size:10px;font-weight:700;color:#111",
+        }, String(rowSum)));
         body.appendChild(tr);
       }
+
+      // Summary Total Row
+      const trTotal = el("tr");
+      trTotal.appendChild(el("th", {
+        style: "border:1px solid #999;background:#f0f0f0;padding:3px 6px;text-align:center;font-size:11px;font-weight:700",
+      }, "Total"));
+      for (const count of subjectTotals) {
+        trTotal.appendChild(el("td", {
+          style: "border:1px solid #999;background:#f9f9f9;padding:2px;text-align:center;vertical-align:middle;font-size:10px;font-weight:700;color:#111",
+        }, count > 0 ? String(count) : "0"));
+      }
+      trTotal.appendChild(el("td", {
+        style: "border:1px solid #999;background:#e9e9e9;padding:2px;text-align:center;vertical-align:middle;font-size:10.5px;font-weight:800;color:#111",
+      }, String(grandTotal)));
+      body.appendChild(trTotal);
+
       tbl.appendChild(body);
       p.appendChild(tbl);
       p.appendChild(el("div", {
@@ -510,9 +551,14 @@ import "../state.js";
       const lesson = lessonForCard(school, card);
       const subj = (school.subjects || []).find(s => s.id === lesson?.subjectId);
       const teacher = teacherNameForLesson(school, lesson);
+      const classNames = (lesson?.classIds || []).map(cid => {
+        const c = (school.classes || []).find(x => x.id === cid);
+        return c?.abbreviation || c?.shortName || c?.name || cid;
+      }).filter(Boolean);
       return {
         subject: subj?.abbreviation || subj?.shortName || subj?.name || lesson?.subjectId || "",
         teacher,
+        className: classNames.join("/"),
       };
     }).filter(Boolean);
   }
@@ -531,28 +577,43 @@ import "../state.js";
 
   function renderPosterLessonCell(cards) {
     const cell = el("td", {
-      style: "border:1px solid #bbb;padding:3px 2px;height:13mm;vertical-align:top;text-align:center;overflow:hidden",
+      style: "border:1px solid #bbb;padding:3px 2px;height:14mm;vertical-align:middle;text-align:center;overflow:hidden",
     });
-    if (!cards.length) return cell;
-    const subjectText = cards.map(c => c.subject).filter(Boolean).join(", ");
-    const teacherText = cards.map(c => c.teacher).filter(Boolean).join(", ");
-    if (subjectText) cell.appendChild(el("div", {
-      style: "font-size:10px;font-weight:700;line-height:1.05;overflow-wrap:anywhere",
-    }, subjectText));
-    if (teacherText) cell.appendChild(el("div", {
-      style: "font-size:7px;line-height:1.05;margin-top:2px;overflow-wrap:anywhere",
-    }, teacherText));
+    if (!cards.length) {
+      cell.appendChild(el("span", { style: "color:#ccc;font-size:10px" }, "—"));
+      return cell;
+    }
+    const classText = Array.from(new Set(cards.map(c => c.className).filter(Boolean))).join(", ");
+    const subjectText = Array.from(new Set(cards.map(c => c.subject).filter(Boolean))).join(", ");
+    const teacherText = Array.from(new Set(cards.map(c => c.teacher).filter(Boolean))).join(", ");
+
+    if (classText) {
+      cell.appendChild(el("div", {
+        style: "font-size:10px;font-weight:700;line-height:1.15;color:var(--chrx-accent, #0d4f54);overflow-wrap:anywhere",
+      }, classText));
+    }
+    if (subjectText) {
+      cell.appendChild(el("div", {
+        style: "font-size:8.5px;font-weight:600;line-height:1.1;margin-top:1px;overflow-wrap:anywhere",
+      }, subjectText));
+    }
+    if (teacherText) {
+      cell.appendChild(el("div", {
+        style: "font-size:7.5px;color:#555;line-height:1.05;margin-top:1px;overflow-wrap:anywhere",
+      }, teacherText));
+    }
     return cell;
   }
 
   function renderWallPosterClassrooms(school, periodsArg) {
     const rooms = school?.classrooms || [];
     const periods = periodsArg || school?.bell?.periods || [];
-    const slots = dayPeriodSlots(school, periods);
-    const colsPerPage = 8;
+    const dayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const days = Math.max(1, Math.min(6, school?.daysPerWeek || 6));
     const pages = [];
-    for (let start = 0; start < Math.max(slots.length, 1); start += colsPerPage) {
-      const chunk = slots.slice(start, start + colsPerPage);
+
+    for (let day = 0; day < days; day++) {
+      const dayName = dayNames[day] || ("Day " + (day + 1));
       const p = el("div", {
         class: "chrx-preview-page chrx-print-page chrx-pivot-page",
         style: "background:#fff;color:#111;width:297mm;min-height:210mm;padding:12mm;box-sizing:border-box;font-family:system-ui;display:flex;flex-direction:column;gap:6px",
@@ -563,57 +624,47 @@ import "../state.js";
       }, schoolName));
       p.appendChild(el("div", {
         style: "text-align:center;font-weight:700;font-size:18px;font-family:'Fraunces',serif;font-style:italic",
-      }, "Wall poster of classrooms"));
+      }, "Wall poster of classrooms — " + dayName));
       p.appendChild(el("div", {
         style: "font-size:10px;color:#555;border-bottom:1px solid #bbb;padding-bottom:4px",
       }, schoolName));
 
       const tbl = el("table", {
         class: "chrx-pivot-grid",
-        style: "width:100%;border-collapse:collapse;table-layout:fixed;font-size:9px;flex:1",
+        style: "width:100%;border-collapse:collapse;table-layout:fixed;font-size:9.5px;flex:1",
       });
-      const dayRow = el("tr");
-      dayRow.appendChild(el("th", {
-        rowspan: "2",
-        style: "border:1px solid #999;background:#fafafa;width:78px;padding:4px;text-align:center",
-      }, ""));
-      for (let i = 0; i < chunk.length;) {
-        const dayName = chunk[i].dayName;
-        let span = 1;
-        while (i + span < chunk.length && chunk[i + span].dayName === dayName) span++;
-        dayRow.appendChild(el("th", {
-          colspan: String(span),
-          style: "border:1px solid #999;background:#fafafa;padding:3px;text-align:center;font-size:17px;font-weight:500",
-        }, dayName));
-        i += span;
-      }
-      const periodRow = el("tr");
-      for (const slot of chunk) {
-        const per = slot.period;
-        const h = el("th", {
-          style: "border:1px solid #999;background:#fafafa;padding:2px;text-align:center;font-size:13px;font-weight:500",
+      const thead = el("thead");
+      const headRow = el("tr");
+      headRow.appendChild(el("th", {
+        style: "border:1px solid #999;background:#fafafa;width:110px;padding:5px;text-align:center;font-size:12px;font-weight:700",
+      }, "Classroom"));
+
+      for (const per of periods) {
+        const th = el("th", {
+          style: "border:1px solid #999;background:#fafafa;padding:4px 2px;text-align:center;font-size:12px;font-weight:600",
         });
-        h.appendChild(el("div", null, String(per.label || per.index)));
+        th.appendChild(el("div", null, String(per.label || per.index)));
         if (per.startMin != null && per.endMin != null) {
-          h.appendChild(el("div", { style: "font-size:7px;font-weight:400;color:#555" }, fmtMin(per.startMin) + "-" + fmtMin(per.endMin)));
+          th.appendChild(el("div", { style: "font-size:7.5px;font-weight:400;color:#555" }, fmtMin(per.startMin) + "–" + fmtMin(per.endMin)));
         }
-        periodRow.appendChild(h);
+        headRow.appendChild(th);
       }
-      tbl.appendChild(el("thead", null, dayRow, periodRow));
+      thead.appendChild(headRow);
+      tbl.appendChild(thead);
 
       const body = el("tbody");
       if (!rooms.length) {
         const tr = el("tr");
-        tr.appendChild(el("td", { colspan: String(chunk.length + 1), style: "border:1px solid #ccc;padding:8px;color:#777;text-align:center" }, "No classrooms"));
+        tr.appendChild(el("td", { colspan: String(periods.length + 1), style: "border:1px solid #ccc;padding:8px;color:#777;text-align:center" }, "No classrooms"));
         body.appendChild(tr);
       }
       for (const room of rooms) {
         const tr = el("tr");
         tr.appendChild(el("th", {
-          style: "border:1px solid #999;background:#fafafa;padding:4px;text-align:center;font-size:13px;font-weight:500;overflow-wrap:anywhere",
-        }, room.abbreviation || room.shortName || room.name || room.id || ""));
-        for (const slot of chunk) {
-          const cards = lessonCardsForClassroomSlot(school, room.id, slot.day, slot.period.index);
+          style: "border:1px solid #999;background:#fafafa;padding:4px 6px;text-align:left;font-size:11px;font-weight:600;overflow-wrap:anywhere",
+        }, room.name || room.abbreviation || room.shortName || room.id || ""));
+        for (const per of periods) {
+          const cards = lessonCardsForClassroomSlot(school, room.id, day, per.index);
           tr.appendChild(renderPosterLessonCell(cards));
         }
         body.appendChild(tr);
@@ -623,7 +674,7 @@ import "../state.js";
       p.appendChild(el("div", {
         style: "display:flex;justify-content:space-between;font-size:10px;color:#666;font-family:'JetBrains Mono',ui-monospace,monospace;border-top:1px solid #eee;padding-top:6px",
       }, el("span", null, "Timetable generated: " + new Date().toLocaleDateString("en-GB")),
-         el("span", null, "Chronexa Web")));
+         el("span", null, "Chronexa Web  ·  Page " + (day + 1) + " of " + days)));
       pages.push(p);
     }
     return pages;

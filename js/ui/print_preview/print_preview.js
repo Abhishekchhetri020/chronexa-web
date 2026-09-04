@@ -64,9 +64,12 @@ import "./print_settings_dialog.js";
       onchange: (e) => {
         // Reset any per-report customisations when switching reports
         if (APP.activePrintReport && APP.activePrintReport._presetId !== e.target.value) {
+          const wasColor = APP.activePrintReport.colors?.cardOn;
+          if (wasColor != null) APP.printColorOn = wasColor;
           APP.activePrintReport = null;
         }
         render(e.target.value);
+        if (typeof bar._updateColorUI === "function") bar._updateColorUI();
       } });
     // Pull the full template list from the registry if it loaded; fall back
     // to the legacy 5-template hardcoded list otherwise.
@@ -80,6 +83,39 @@ import "./print_settings_dialog.js";
     ];
     templates.forEach(t => sel.appendChild(el("option", { value: t.id }, t.name)));
     sel.value = currentTemplate;
+
+    const colorToggleBtn = el("button", {
+      class: "chrx-tb-btn",
+      type: "button",
+      title: "Color toggle — switch between clean monochrome and colorful print",
+      onclick: () => {
+        ensureActiveReport();
+        const active = APP.activePrintReport;
+        const currentVal = active ? !!active.colors?.cardOn : !!APP.printColorOn;
+        const nextVal = !currentVal;
+        APP.printColorOn = nextVal;
+        if (active) {
+          active.colors = active.colors || {};
+          active.colors.cardOn = nextVal;
+        }
+        updateColorToggleUI();
+        render(currentTemplate);
+      }
+    });
+
+    function updateColorToggleUI() {
+      const active = APP.activePrintReport;
+      const isColor = active ? !!active.colors?.cardOn : !!APP.printColorOn;
+      colorToggleBtn.textContent = isColor ? "🎨 Color: On" : "🎨 Color: Off";
+      colorToggleBtn.style.fontWeight = isColor ? "700" : "500";
+      if (isColor) {
+        colorToggleBtn.classList.add("chrx-tb-btn--primary");
+      } else {
+        colorToggleBtn.classList.remove("chrx-tb-btn--primary");
+      }
+    }
+    updateColorToggleUI();
+    bar._updateColorUI = updateColorToggleUI;
 
     const filterBtn  = el("button", { class: "chrx-tb-btn", type: "button",
       title: "Filter — pick which classes / teachers / rooms / subjects / periods / days to print",
@@ -119,6 +155,10 @@ import "./print_settings_dialog.js";
           const r = Schema.create({ context: preset.context });
           Schema.applyPreset(r, preset);
           r._presetId = preset.id;
+          if (APP.printColorOn != null) {
+            r.colors = r.colors || {};
+            r.colors.cardOn = !!APP.printColorOn;
+          }
           APP.activePrintReport = r;
         }
       }
@@ -227,7 +267,7 @@ import "./print_settings_dialog.js";
     const close = el("button", { class: "chrx-tb-btn chrx-tb-btn--danger", type: "button",
       style: "margin-left:auto", onclick: closePreview }, "✕ Close preview");
 
-    [prev, next, print, indicator, sel, zoomOut, zoomReadout, zoomIn, fitBtn, filterBtn, tuningBtn, structBtn, extraBtn, styleBtn, sizeBtn, designBtn, colorBtn, globalBtn, close]
+    [prev, next, print, indicator, sel, colorToggleBtn, zoomOut, zoomReadout, zoomIn, fitBtn, filterBtn, tuningBtn, structBtn, extraBtn, styleBtn, sizeBtn, designBtn, colorBtn, globalBtn, close]
       .forEach(c => bar.appendChild(c));
     bar._indicator = indicator;
     return bar;
@@ -245,7 +285,7 @@ import "./print_settings_dialog.js";
       padding: 6,
       fontSize: 9.5,
       borderWidth: 1,
-      theme: "pastel",
+      theme: "mono",
       showSubject: true,
       showTeacher: true,
       showClass: true,
@@ -495,12 +535,16 @@ import "./print_settings_dialog.js";
     tds.forEach(td => {
       const cell = td.querySelector(".chrx-pivot-cell");
       if (!cell || cell.dataset.fit) return;
-      const h = parseFloat(td.style.height) || td.clientHeight;
+      const h = parseFloat(td.style.height) || 54;
       if (!h) return;
       // Lock the cell to its intended height; clip overflow so a long class
       // list can't push the whole row taller (the ballooning we saw).
-      cell.style.height = h + "px";
+      cell.style.height = "100%";
+      cell.style.minHeight = h + "px";
       cell.style.overflow = "hidden";
+      if (cell._bgColor || (cell.style.backgroundColor && cell.style.backgroundColor !== "transparent" && cell.style.backgroundColor !== "rgba(0, 0, 0, 0)")) {
+        td.style.backgroundColor = cell.style.backgroundColor || cell._bgColor;
+      }
       const texts = Array.from(cell.querySelectorAll("div"))
         .filter(d => d.firstChild && d.textContent.trim());
       if (!texts.length) { cell.dataset.fit = "1"; return; }
