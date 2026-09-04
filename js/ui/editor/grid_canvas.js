@@ -6,7 +6,7 @@ import "../components/bell_resolver.js";
  * Editor.render(rootEl) — writable timetable grid.
  * Rows = entities (class/teacher/room per APP.editor.perspective).
  * Cols = Monday-Saturday × the school's configured bell periods.
- * Pickup/place via mousedown (no HTML5 drag). See EDITOR.md (TBD).
+ * Pickup/place via Pointer Events (no HTML5 drag). See EDITOR.md (TBD).
  */
 window.Editor = (function () {
   "use strict";
@@ -33,17 +33,21 @@ window.Editor = (function () {
     const perspective = window.APP.editor.perspective;
     const periods = displayPeriods(S);
     const visiblePeriodSet = new Set(periods.map(p => p.index | 0));
-    const rows = rowsFor(S, perspective);
+    const allRows = rowsFor(S, perspective);
+    const focusRow = resolveFocusRow(allRows, perspective);
+    const rows = window.APP.editor.viewMode === "focus" && focusRow ? [focusRow] : allRows;
     const mobileDay = window.APP.day || 0;
 
     // Per-render index: { rowKey -> { "d_p" -> card } }. Cheaper than scanning S.cards per cell.
     const cardLookup = buildCardLookup(S, perspective, visiblePeriodSet);
 
     rootEl.classList.add("chrx-editor");
+    rootEl.classList.toggle("chrx-editor--focus", window.APP.editor.viewMode === "focus");
     // Compact density → shorter rows (subject-only cards), so the taller
     // readable default rows don't cost vertical density when the user wants
     // to see more classes at once.
-    rootEl.classList.toggle("chrx-editor--compact", (window.APP.editor.density || "compact") === "compact");
+    rootEl.classList.toggle("chrx-editor--compact",
+      window.APP.editor.viewMode !== "focus" && (window.APP.editor.density || "compact") === "compact");
 
     // Preserve scroll position across the innerHTML rebuild. Without this, a
     // pickup/place re-render reset the grid to the top — picking a card from a
@@ -52,7 +56,9 @@ window.Editor = (function () {
     const savedTop = prevScroll ? prevScroll.scrollTop : 0;
     const savedLeft = prevScroll ? prevScroll.scrollLeft : 0;
 
-    rootEl.innerHTML = html(S, rows, periods, mobileDay, cardLookup);
+    rootEl.innerHTML = window.APP.editor.viewMode === "focus" && focusRow
+      ? focusHtml(S, allRows, focusRow, periods, cardLookup)
+      : html(S, rows, periods, mobileDay, cardLookup);
 
     const newScroll = rootEl.querySelector(".chrx-grid-scroll");
     if (newScroll) { newScroll.scrollTop = savedTop; newScroll.scrollLeft = savedLeft; }
@@ -117,7 +123,17 @@ window.Editor = (function () {
     A.editor = A.editor || {};
     if (!A.editor.perspective) A.editor.perspective = "class";
     if (!A.editor.colorBy) A.editor.colorBy = "subject";
+    if (!A.editor.viewMode) A.editor.viewMode = "focus";
+    if (!A.editor.focusRowByPerspective) A.editor.focusRowByPerspective = {};
     if (A.editor.cardInHand === undefined) A.editor.cardInHand = null;
+  }
+
+  function resolveFocusRow(rows, perspective) {
+    if (!rows.length) return null;
+    const stored = window.APP.editor.focusRowByPerspective[perspective];
+    const row = rows.find(item => item.key === stored) || rows[0];
+    window.APP.editor.focusRowByPerspective[perspective] = row.key;
+    return row;
   }
 
   function displayPeriods(S) {
@@ -188,6 +204,10 @@ window.Editor = (function () {
     // grid a full row of height. The live unplaced count syncs into the
     // header's #editor-unplaced-count span instead (see render()).
     return `
+      <div class="chrx-overview-bar">
+        <div><strong>Overview</strong><span>${rows.length} ${esc(((window.APP.editor.perspective || "class") + "s"))}</span></div>
+        <button type="button" data-focus-nav="focus">Open Focus Board</button>
+      </div>
       ${dayTabsHtml}
       <div class="chrx-grid-scroll">
         <div class="chrx-grid" style="--chrx-periods:${periods.length || 8}">
@@ -196,6 +216,55 @@ window.Editor = (function () {
         </div>
       </div>
     `;
+  }
+
+  function focusHtml(S, allRows, focusRow, periods, cardLookup) {
+    const perspective = window.APP.editor.perspective || "class";
+    const options = allRows.map(row =>
+      `<option value="${esc(row.key)}"${row.key === focusRow.key ? " selected" : ""}>${esc(row.label)}</option>`
+    ).join("");
+    return `
+      <div class="chrx-focus-boardbar">
+        <button type="button" class="chrx-focus-boardbar__nav" data-focus-nav="prev" aria-label="Previous ${esc(perspective)}">←</button>
+        <label class="chrx-focus-boardbar__picker">
+          <span>${esc(PERSPECTIVE_LABEL[perspective].replace("By ", ""))}</span>
+          <select data-focus-entity aria-label="Choose ${esc(perspective)}">${options}</select>
+        </label>
+        <button type="button" class="chrx-focus-boardbar__nav" data-focus-nav="next" aria-label="Next ${esc(perspective)}">→</button>
+        <p>Drag a lesson to another period. Conflicts appear in the inspector.</p>
+        <button type="button" class="chrx-focus-boardbar__overview" data-focus-nav="overview">View all ${esc(PERSPECTIVE_PLURAL[perspective])}</button>
+      </div>
+      <div class="chrx-focus-board" role="grid" aria-label="${esc(focusRow.label)} weekly timetable"
+           style="--chrx-days:${dayCount(S)}">
+        ${focusBoardInnerHtml(S, focusRow, periods, cardLookup)}
+      </div>
+    `;
+  }
+
+  function focusBoardInnerHtml(S, focusRow, periods, cardLookup) {
+    const numDays = dayCount(S);
+    const perspective = window.APP.editor.perspective || "class";
+    const bellPeriodSet = bellSetFor(S, focusRow, perspective);
+    const bucket = cardLookup[focusRow.key] || null;
+    const cells = [`<div class="chrx-focus-corner" role="columnheader">Period</div>`];
+    for (let day = 0; day < numDays; day++) {
+      cells.push(`<div class="chrx-focus-day" role="columnheader">${esc(DAY_LABELS_EN[day])}</div>`);
+    }
+    for (const period of periods) {
+      cells.push(`<div class="chrx-focus-period" role="rowheader"><strong>${esc(period.label || ("P" + period.index))}</strong><span>${esc(period.start || period.startTime || "")}</span></div>`);
+      for (let day = 0; day < numDays; day++) {
+        const cards = bucket ? bucket[day + "_" + period.index] : null;
+        const outOfBell = period.synthetic || (bellPeriodSet && !bellPeriodSet.has(period.index | 0));
+        const classes = ["chrx-slot", "chrx-focus-slot"];
+        if (!cards || !cards.length) classes.push("empty");
+        if (outOfBell) classes.push("out-of-bell");
+        if (cards && cards.length > 1) classes.push(cards.length === 2 ? "chrx-slot--split2" : "chrx-slot--split");
+        const contents = cards ? cards.map(card => vkartaHtml(S, card, day, period.index, focusRow.key, 1)).join("") : "";
+        const label = outOfBell ? ' aria-hidden="true"' : ` aria-label="${cards && cards.length ? "Scheduled" : "Empty"}, ${esc(DAY_LABELS_EN[day])} ${esc(period.label || ("period " + period.index))}"`;
+        cells.push(`<div class="${classes.join(" ")}" role="gridcell" data-day="${day}" data-period="${period.index}" data-row="${esc(focusRow.key)}"${label}>${contents}</div>`);
+      }
+    }
+    return cells.join("");
   }
 
   let _prevUnplaced = null;
@@ -251,6 +320,7 @@ window.Editor = (function () {
 
   const PERSPECTIVES = ["class", "teacher", "room", "subject"];
   const PERSPECTIVE_LABEL = { class: "By Class", teacher: "By Teacher", room: "By Room", subject: "By Subject" };
+  const PERSPECTIVE_PLURAL = { class: "classes", teacher: "teachers", room: "rooms", subject: "subjects" };
   const COLOR_AXES = ["subject", "teacher", "class", "room"];
   const COLOR_LABEL = { subject: "Color: Subject", teacher: "Color: Teacher", class: "Color: Class", room: "Color: Room" };
 
@@ -419,12 +489,13 @@ window.Editor = (function () {
   // "Sports Meet Practice"), swap in the largest candidate code that fits on one
   // line. Measured with canvas (accurate, reflow-free). By-Class only — other
   // perspectives carry class lists that legitimately wrap.
-  function autoFitSubjectCodes(rootEl) {
+  function autoFitSubjectCodes(rootEl, scopeEl) {
     if (!rootEl || (window.APP.editor.perspective || "class") !== "class") return;
     const S = window.APP && window.APP.school;
     if (!S) return;
-    const slot = rootEl.querySelector(".chrx-slot:not(.empty)");
-    const lines = rootEl.querySelectorAll(".chrx-vk-line1");
+    const scope = scopeEl || rootEl;
+    const slot = scope.querySelector(".chrx-slot:not(.empty)");
+    const lines = scope.querySelectorAll(".chrx-vk-line1");
     if (!slot || !lines.length) return;
     const cs = getComputedStyle(lines[0]);
     const fam = cs.fontFamily || "sans-serif";
@@ -514,8 +585,13 @@ window.Editor = (function () {
     // exactly this reason — at ~30px-wide cells the full name can't fit
     // readably. subjectCode() uses the school's own abbr when it fits, else
     // derives a tidy code. Full name stays in the hover tooltip + card detail.
-    else { line1 = subjCode; line2 = ""; } // class
-    const compact = window.APP.editor.density === "compact";
+    else {
+      line1 = window.APP.editor.viewMode === "focus" ? subjFull : subjCode;
+      line2 = window.APP.editor.viewMode === "focus"
+        ? [teacherShort, roomShort].filter(Boolean).join(" · ")
+        : "";
+    } // class
+    const compact = window.APP.editor.viewMode !== "focus" && window.APP.editor.density === "compact";
     const densityClass = compact ? " chrx-vkarta--compact" : "";
 
     // No native title attribute — ConstraintExplainer renders the single
@@ -546,18 +622,18 @@ window.Editor = (function () {
   }
 
   function wire(rootEl) {
-    // mousedown delegation is wire-once: rootEl is the same node across
+    // Pointer delegation is wire-once: rootEl is the same node across
     // re-renders (only innerHTML is replaced — child listeners die, but
     // listeners on rootEl itself accumulate). Before this guard, every
-    // pick/place re-render attached another mousedown handler, so a
+    // pick/place re-render attached another handler, so a
     // normal edit session leaked hundreds of listeners until the tab froze.
     if (!rootEl._chrxWired) {
-      rootEl.addEventListener("mousedown", onMouseDown);
-      rootEl.addEventListener("touchstart", onTouchStart, { passive: true });
+      rootEl.addEventListener("pointerdown", onPointerDown);
       rootEl.addEventListener("touchstart", onSwipeStart, { passive: true });
       // Day-tab click delegation off rootEl too — survives innerHTML
       // replace without needing a re-bind every render.
       rootEl.addEventListener("click", onRootClick);
+      rootEl.addEventListener("change", onRootChange);
       rootEl.addEventListener("mouseover", onMouseOver);
       rootEl.addEventListener("focusin", onFocusIn);
       rootEl.addEventListener("mouseout", onMouseOut);
@@ -714,6 +790,25 @@ window.Editor = (function () {
   }
 
   function onRootClick(ev) {
+    const focusNav = ev.target.closest("[data-focus-nav]");
+    if (focusNav) {
+      ev.preventDefault();
+      const action = focusNav.dataset.focusNav;
+      if (action === "overview" || action === "focus") {
+        window.APP.editor.viewMode = action;
+      } else {
+        const S = window.APP.school;
+        const perspective = window.APP.editor.perspective || "class";
+        const rows = rowsFor(S, perspective);
+        const current = resolveFocusRow(rows, perspective);
+        const index = Math.max(0, rows.findIndex(row => row.key === current.key));
+        const direction = action === "prev" ? -1 : 1;
+        const next = rows[(index + direction + rows.length) % rows.length];
+        if (next) window.APP.editor.focusRowByPerspective[perspective] = next.key;
+      }
+      render(focusNav.closest(".chrx-editor"));
+      return;
+    }
     const tool = ev.target.closest("[data-editor-tool]");
     if (tool) {
       ev.preventDefault();
@@ -736,6 +831,14 @@ window.Editor = (function () {
     render(label.closest(".chrx-editor"));
     const pend = document.querySelector(".chrx-pending-strip");
     if (pend && window.PendingStrip && window.PendingStrip.render) window.PendingStrip.render(pend);
+  }
+
+  function onRootChange(ev) {
+    const select = ev.target.closest("[data-focus-entity]");
+    if (!select) return;
+    const perspective = window.APP.editor.perspective || "class";
+    window.APP.editor.focusRowByPerspective[perspective] = select.value;
+    render(select.closest(".chrx-editor"));
   }
 
   function handleEditorTool(kind, host) {
@@ -929,7 +1032,7 @@ window.Editor = (function () {
     if (host) render(host);
   }
 
-  function startDragPickup(vk, startX, startY) {
+  function startDragPickup(vk, startX, startY, pointerId, grabRatioX, grabRatioY) {
     const cardId = vk.dataset.cardId;
     const lessonId = vk.dataset.lessonId;
     const day = parseInt(vk.dataset.day, 10);
@@ -939,26 +1042,22 @@ window.Editor = (function () {
 
     const held = window.APP.editor.cardInHand;
     if (held) {
-      placeCardOnSchool(held.lessonId, held.originDay, held.originPeriod);
+      if (!held.sourceRetained) placeCardOnSchool(held.lessonId, held.originDay, held.originPeriod);
       window.APP.editor.cardInHand = null;
       dispatch("editor:restore", { cardId: held.cardId, lessonId: held.lessonId,
         day: held.originDay, period: held.originPeriod, reason: "second-pickup" });
     }
 
-    // Lift the whole block out together (each period is a separate card).
+    // Keep the source card in place as an origin placeholder. The model is
+    // mutated only when the drop commits, so cancel is instant and lossless.
     const cardsBefore = snapshotCards();
-    for (let k = 0; k < blockLen; k++) removeCardFromSchool(lessonId, day, period + k);
-    const slot = vk.closest(".chrx-slot");
-    if (slot) {
-      slot.classList.add("empty");
-      slot.removeAttribute("title");
-      slot.innerHTML = "";
-      slot.dataset.day = String(day);
-      slot.dataset.period = String(period);
-    }
-    window.APP.editor.cardInHand = { cardId, lessonId, originDay: day, originPeriod: period, originClassroomId, blockLen, mode: "drag" };
+    vk.classList.add("chrx-vk-source");
+    vk.setAttribute("aria-grabbed", "true");
+    window.APP.editor.cardInHand = { cardId, lessonId, originDay: day, originPeriod: period, originClassroomId, blockLen, sourceRetained: true, mode: "drag" };
     syncCardInHandClass();
-    dispatch("editor:pickup", { cardId, lessonId, day, period, originClassroomId, blockLen, sourceX: startX, sourceY: startY, mode: "drag", cardsBefore });
+    dispatch("editor:pickup", { cardId, lessonId, day, period, originClassroomId, blockLen,
+      sourceX: startX, sourceY: startY, pointerId, grabRatioX, grabRatioY,
+      sourceRetained: true, mode: "drag", cardsBefore });
     if (held) {
       const host = vk.closest(".chrx-editor");
       if (host) render(host);
@@ -1028,7 +1127,7 @@ window.Editor = (function () {
     if (host) render(host);
   }
 
-  function onMouseDown(ev) {
+  function onPointerDown(ev) {
     // Only the primary button drives pickup/place/swap. Right-click must fall
     // through to the context menu — without this guard a right-click on a
     // card PICKED IT UP first, and the menu's "Remove" then early-returned
@@ -1076,33 +1175,44 @@ window.Editor = (function () {
       
       const startX = ev.clientX;
       const startY = ev.clientY;
+      const pointerId = ev.pointerId;
+      const pointerOwner = ev.currentTarget;
+      const rect = vk.getBoundingClientRect();
+      const grabRatioX = rect.width ? (startX - rect.left) / rect.width : 0.5;
+      const grabRatioY = rect.height ? (startY - rect.top) / rect.height : 0.5;
       let dragTriggered = false;
+      pointerOwner.setPointerCapture?.(pointerId);
 
-      function onMouseMove(moveEv) {
+      function onPointerMove(moveEv) {
+        if (moveEv.pointerId !== pointerId) return;
         if (dragTriggered) return;
         const dx = moveEv.clientX - startX;
         const dy = moveEv.clientY - startY;
-        if (Math.sqrt(dx * dx + dy * dy) > 5) {
+        if (Math.hypot(dx, dy) > 5) {
           dragTriggered = true;
           cleanup();
-          startDragPickup(vk, startX, startY);
+          startDragPickup(vk, moveEv.clientX, moveEv.clientY, pointerId, grabRatioX, grabRatioY);
         }
       }
 
-      function onMouseUp(upEv) {
+      function onPointerUp(upEv) {
+        if (upEv.pointerId !== pointerId) return;
         cleanup();
-        if (!dragTriggered) {
+        if (!dragTriggered && upEv.type !== "pointercancel") {
           handleCardClick(vk);
         }
       }
 
       function cleanup() {
-        document.removeEventListener("mousemove", onMouseMove, true);
-        document.removeEventListener("mouseup", onMouseUp, true);
+        pointerOwner.releasePointerCapture?.(pointerId);
+        document.removeEventListener("pointermove", onPointerMove, true);
+        document.removeEventListener("pointerup", onPointerUp, true);
+        document.removeEventListener("pointercancel", onPointerUp, true);
       }
 
-      document.addEventListener("mousemove", onMouseMove, true);
-      document.addEventListener("mouseup", onMouseUp, true);
+      document.addEventListener("pointermove", onPointerMove, true);
+      document.addEventListener("pointerup", onPointerUp, true);
+      document.addEventListener("pointercancel", onPointerUp, true);
       return;
     }
 
@@ -1331,9 +1441,24 @@ window.Editor = (function () {
     const cardLookup = buildCardLookup(S, perspective, visiblePeriodSet);
     const numDays = dayCount(S);
     const rowsByKey = new Map();
-    for (const r of rowsFor(S, perspective)) rowsByKey.set(r.key, r);
+    const allRows = rowsFor(S, perspective);
+    for (const r of allRows) rowsByKey.set(r.key, r);
+
+    if (window.APP.editor.viewMode === "focus") {
+      const focusRow = resolveFocusRow(allRows, perspective);
+      if (!focusRow) return false;
+      if (!cells.some(cell => cell.rowKey === focusRow.key)) return true;
+      const board = rootEl.querySelector(".chrx-focus-board");
+      if (!board) return false;
+      board.innerHTML = focusBoardInnerHtml(S, focusRow, periods, cardLookup);
+      syncUnplacedCount(S);
+      updateClassPanel(S);
+      autoFitSubjectCodes(rootEl, board);
+      return true;
+    }
     const escSel = (window.CSS && typeof CSS.escape === "function")
       ? CSS.escape : (s => String(s).replace(/"/g, "\\\""));
+    const changedGroups = [];
     for (const cell of cells) {
       const row = rowsByKey.get(cell.rowKey);
       const day = cell.day | 0;
@@ -1343,10 +1468,11 @@ window.Editor = (function () {
       if (!groupEl) return false;
       const bellPeriodSet = bellSetFor(S, row, perspective);
       groupEl.innerHTML = dayBodyHtml(S, row, periods, day, cardLookup[cell.rowKey] || null, bellPeriodSet);
+      changedGroups.push(groupEl);
     }
     syncUnplacedCount(S);
     updateClassPanel(S);
-    autoFitSubjectCodes(rootEl);
+    for (const groupEl of changedGroups) autoFitSubjectCodes(rootEl, groupEl);
     return true;
   }
 

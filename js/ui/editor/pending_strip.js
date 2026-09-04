@@ -142,81 +142,66 @@ window.PendingStrip = (function () {
       if (!vk || !window.EditorCardInspector) return;
       window.EditorCardInspector.show(vk.dataset.lessonId, { source: "pending" });
     });
-    rootEl.addEventListener("mousedown", (ev) => {
+    rootEl.addEventListener("pointerdown", (ev) => {
       const vk = ev.target.closest(".chrx-vk-pending");
       if (!vk) return;
+      if (ev.button !== 0) return;
       ev.preventDefault();
       
       const startX = ev.clientX;
       const startY = ev.clientY;
+      const pointerId = ev.pointerId;
+      const rect = vk.getBoundingClientRect();
+      const grabRatioX = rect.width ? (startX - rect.left) / rect.width : 0.5;
+      const grabRatioY = rect.height ? (startY - rect.top) / rect.height : 0.5;
       let dragTriggered = false;
+      rootEl.setPointerCapture?.(pointerId);
 
-      function onMouseMove(moveEv) {
+      function onPointerMove(moveEv) {
+        if (moveEv.pointerId !== pointerId) return;
         if (dragTriggered) return;
         const dx = moveEv.clientX - startX;
         const dy = moveEv.clientY - startY;
-        if (Math.sqrt(dx * dx + dy * dy) > 5) {
+        if (Math.hypot(dx, dy) > 5) {
           dragTriggered = true;
           cleanup();
-          startPendingDrag(vk, startX, startY);
+          startPendingDrag(vk, moveEv.clientX, moveEv.clientY, pointerId, grabRatioX, grabRatioY);
         }
       }
 
-      function onMouseUp(upEv) {
+      function onPointerUp(upEv) {
+        if (upEv.pointerId !== pointerId) return;
         cleanup();
-        if (!dragTriggered) {
+        if (!dragTriggered && upEv.type !== "pointercancel") {
           handlePendingClick(vk);
         }
       }
 
       function cleanup() {
-        document.removeEventListener("mousemove", onMouseMove, true);
-        document.removeEventListener("mouseup", onMouseUp, true);
+        rootEl.releasePointerCapture?.(pointerId);
+        document.removeEventListener("pointermove", onPointerMove, true);
+        document.removeEventListener("pointerup", onPointerUp, true);
+        document.removeEventListener("pointercancel", onPointerUp, true);
       }
 
-      document.addEventListener("mousemove", onMouseMove, true);
-      document.addEventListener("mouseup", onMouseUp, true);
+      document.addEventListener("pointermove", onPointerMove, true);
+      document.addEventListener("pointerup", onPointerUp, true);
+      document.addEventListener("pointercancel", onPointerUp, true);
     });
-    // Plan C: touch support — long-press a pending card to drag it onto the
-    // grid (CardInHand's touch handlers take over once picked up); a quick tap
-    // selects it for click-to-place.
-    rootEl.addEventListener("touchstart", (ev) => {
-      const vk = ev.target.closest(".chrx-vk-pending");
-      if (!vk) return;
-      const t = ev.touches[0]; if (!t) return;
-      const sx = t.clientX, sy = t.clientY;
-      let moved = false, fired = false;
-      const lp = setTimeout(() => {
-        if (moved) return;
-        fired = true; cleanup();
-        if (navigator.vibrate) { try { navigator.vibrate(15); } catch (_) {} }
-        startPendingDrag(vk, sx, sy);
-      }, 320);
-      function tmove(e) {
-        const tt = e.touches[0]; if (!tt) return;
-        if (Math.hypot(tt.clientX - sx, tt.clientY - sy) > 10) { moved = true; clearTimeout(lp); cleanup(); }
-      }
-      function tend() { clearTimeout(lp); cleanup(); if (!fired && !moved) handlePendingClick(vk); }
-      function cleanup() {
-        document.removeEventListener("touchmove", tmove, true);
-        document.removeEventListener("touchend", tend, true);
-        document.removeEventListener("touchcancel", tend, true);
-      }
-      document.addEventListener("touchmove", tmove, true);
-      document.addEventListener("touchend", tend, true);
-      document.addEventListener("touchcancel", tend, true);
-    }, { passive: true });
     document.addEventListener("editor:place", () => render(rootEl));
     rootEl._chrxPendingWired = true;
   }
 
-  function startPendingDrag(vk, clientX, clientY) {
+  function startPendingDrag(vk, clientX, clientY, pointerId, grabRatioX, grabRatioY) {
     const cardId = vk.dataset.cardId, lessonId = vk.dataset.lessonId;
     window.APP.editor = window.APP.editor || {};
     window.APP.editor.cardInHand = { cardId, lessonId, fromPending: true, mode: "drag" };
     document.body.classList.add("chrx-card-in-hand");
     vk.classList.add("chrx-vk-taken");
-    document.dispatchEvent(new CustomEvent("editor:pickup", { detail: { cardId, lessonId, fromPending: true, sourceX: clientX, sourceY: clientY, mode: "drag" } }));
+    document.dispatchEvent(new CustomEvent("editor:pickup", { detail: {
+      cardId, lessonId, fromPending: true, sourceX: clientX, sourceY: clientY,
+      pointerId, grabRatioX, grabRatioY, mode: "drag"
+    } }));
   }
 
   function handlePendingClick(vk) {

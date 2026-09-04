@@ -1,0 +1,13 @@
+Use case: ui-mockup
+Asset type: high-fidelity desktop landing page north-star comp, 1440 by 1000 landscape
+Primary request: Design the first viewport of the Chronexa website as a spatial timetable instrument called Time Lattice. This is a real web landing page, not a poster. Make it feel more authored and technically impressive than a premium AI product launch page without copying any existing site.
+Scene/backdrop: full-bleed ink-black browser viewport with a deep but restrained spatial field
+Subject: hundreds of small timetable lesson tiles begin as a controlled three-dimensional swarm on the right two-thirds, then visibly align into a tilted six-day weekly timetable plane. One red conflict tile is mid-reroute and a thin luminous path shows where it will settle. The timetable mechanism must be unmistakable.
+Style/medium: museum-grade interactive product website, real-time WebGL visual language, precise editorial overlay, physically shaded tiles, spectral guide lines, no glass-card stack
+Composition/framing: minimal wordmark Chronexa at upper left; large concise headline and two actions lower left; the 3D lattice dominates from center to right and crops beyond the viewport; a narrow next-section glimpse at the bottom proves this is a scrollable website
+Lighting/mood: deep spatial lighting, mineral-white typography, cool cyan-white structural light, restrained ember-red conflict state
+Color palette: #050608 ground, #F2F0E9 type, #9EE7E5 structural light, #FF5A4F conflict, muted slate lesson tiles
+Materials/textures: matte ceramic timetable tiles, hairline luminous rails, faint particulate depth, solid readable controls
+Text (verbatim): "Chronexa" "Build a timetable that behaves." "Open timetable" "Launch demo" "Local-first · Constraint-aware" "MON" "TUE" "WED" "THU" "FRI" "SAT"
+Constraints: desktop website UI with clearly clickable actions and legible hierarchy; demonstrate the timetable product itself; leave UI text semantic-looking rather than painted into an illustration; no invented metrics, testimonials, customers, pricing, or benchmarks
+Avoid: generic SaaS hero, feature-card grid, glassmorphism, neon cyberpunk, purple gradients, starfield imitation, giant decorative number, text-only poster, phone mockup, dashboard screenshot inside a rounded rectangle, emoji, watermark

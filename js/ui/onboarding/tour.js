@@ -119,6 +119,9 @@
 
   function maybeStart() {
     try { if (localStorage.getItem(SEEN_KEY)) return; } catch {}
+    // The landing page now carries its own first-use story. Keep that first
+    // viewport clear; the guided app tour begins only after a school exists.
+    if (!global.APP || !global.APP.school) return;
     setTimeout(start, 1500);
   }
 
@@ -144,6 +147,7 @@
   }
 
   window.addEventListener("app:take-tour", start);
+  window.addEventListener("app:school-loaded", maybeStart);
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", maybeStart);

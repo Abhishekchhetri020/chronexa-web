@@ -247,12 +247,12 @@ html[data-skin="classic"] .chrx-vk-pending .chrx-vk-line3 {
 
 /* Held-card-in-hand outline: thinner dashed border so the canvas keeps
  * the Classic "free-form" feel rather than the bright Chronexa green wash. */
-html[data-skin="classic"] body.chrx-card-in-hand .chrx-slot:not(.out-of-bell) {
+html[data-skin="classic"] body.chrx-card-in-hand .chrx-row[data-drop-target] .chrx-slot[data-validity]:not(.out-of-bell) {
   outline: 1px dashed rgba(40, 160, 60, 0.55);
   outline-offset: -2px;
   background: rgba(40, 160, 60, 0.08);
 }
-html[data-skin="classic"] body.chrx-card-in-hand .chrx-slot:not(.empty):not(.out-of-bell),
+html[data-skin="classic"] body.chrx-card-in-hand .chrx-row[data-drop-target] .chrx-slot:not(.empty)[data-validity]:not(.out-of-bell),
 html[data-skin="classic"] body.chrx-card-in-hand .chrx-slot[data-validity="red"] {
   outline-color: rgba(210, 50, 45, 0.75);
   background: rgba(210, 50, 45, 0.10);

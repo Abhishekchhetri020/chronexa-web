@@ -8,6 +8,46 @@
    takes over with a horizontal scrollbar. --chrx-cell-min is the per-period
    floor below which we scroll instead of shrinking further. */
 .chrx-grid{display:flex;flex-direction:column;width:100%;min-width:100%;--chrx-cell-min:34px}
+.chrx-overview-bar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 12px;background:var(--chrx-bg-elev);border:1px solid var(--chrx-line);border-radius:var(--chrx-radius-md)}
+.chrx-overview-bar>div{display:flex;align-items:baseline;gap:8px}
+.chrx-overview-bar span{color:var(--chrx-fg-secondary);font-size:var(--chrx-font-eye)}
+.chrx-overview-bar button,.chrx-focus-boardbar button{border:1px solid var(--chrx-line);background:var(--chrx-bg-tile);color:var(--chrx-fg);border-radius:8px;padding:7px 10px;font:600 12px/1 var(--chrx-font-sans);cursor:pointer}
+.chrx-overview-bar button:hover,.chrx-focus-boardbar button:hover{border-color:var(--chrx-accent);color:var(--chrx-accent)}
+
+/* Focus Board: the default editing surface renders one human-scale schedule
+   (about 48 cells) rather than making all school entities compete at once. */
+.chrx-editor--focus{gap:10px;background:var(--chrx-bg-canvas);overflow:auto}
+.chrx-focus-boardbar{display:grid;grid-template-columns:auto minmax(220px,360px) auto minmax(180px,1fr) auto;align-items:center;gap:8px;padding:10px;background:var(--chrx-bg-elev);border:1px solid var(--chrx-line);border-radius:12px;position:sticky;left:0;z-index:4;box-shadow:0 8px 24px rgba(22,32,36,.07)}
+.chrx-focus-boardbar__nav{width:34px;height:34px;padding:0!important;font-size:17px!important}
+.chrx-focus-boardbar__picker{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:8px;color:var(--chrx-fg-secondary);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em}
+.chrx-focus-boardbar__picker select{width:100%;height:34px;border:1px solid var(--chrx-line);border-radius:8px;background:var(--chrx-bg-input);color:var(--chrx-fg);padding:0 32px 0 10px;font:650 13px/1 var(--chrx-font-sans);outline:none}
+.chrx-focus-boardbar__picker select:focus-visible{border-color:var(--chrx-accent);box-shadow:0 0 0 3px var(--chrx-accent-bg)}
+.chrx-focus-boardbar p{margin:0;color:var(--chrx-fg-secondary);font-size:12px;line-height:1.35}
+.chrx-focus-boardbar__overview{white-space:nowrap}
+.chrx-focus-board{display:grid;grid-template-columns:76px repeat(var(--chrx-days,6),minmax(138px,1fr));grid-auto-rows:minmax(72px,auto);width:max-content;min-width:100%;overflow:hidden;background:var(--chrx-line);border:1px solid var(--chrx-line);border-radius:14px;box-shadow:0 18px 44px rgba(22,32,36,.09)}
+.chrx-focus-corner,.chrx-focus-day,.chrx-focus-period,.chrx-focus-slot{background:var(--chrx-bg-tile)}
+.chrx-focus-corner,.chrx-focus-day{display:flex;align-items:center;justify-content:center;min-height:46px;color:var(--chrx-fg-secondary);font-size:11px;font-weight:750;text-transform:uppercase;letter-spacing:.09em}
+.chrx-focus-period{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:7px;color:var(--chrx-fg)}
+.chrx-focus-period strong{font-size:12px;font-variant-numeric:tabular-nums}
+.chrx-focus-period span{color:var(--chrx-fg-tertiary);font-size:10px;font-variant-numeric:tabular-nums}
+.chrx-focus-slot{min-height:72px;position:relative;background:color-mix(in srgb,var(--chrx-bg-tile) 94%,var(--chrx-accent) 6%)}
+.chrx-focus-slot.empty{background:var(--chrx-bg-tile)}
+.chrx-focus-slot .chrx-vkarta{inset:6px;border-radius:9px;padding:7px 9px;justify-content:center;box-shadow:0 7px 16px hsl(var(--hue) 35% 24%/.13),inset 0 0 0 1px hsl(var(--hue) 42% 45%/.3)}
+.chrx-focus-slot .chrx-vk-line1{font-size:13px;line-height:1.15;font-weight:750;white-space:normal}
+.chrx-focus-slot .chrx-vk-line2{font-size:10px;line-height:1.2;opacity:.76;white-space:normal}
+.chrx-focus-slot.chrx-slot--split2 .chrx-vkarta{inset:5px calc(50% + 3px) 5px 5px}
+.chrx-focus-slot.chrx-slot--split2 .chrx-vkarta:nth-child(2){inset:5px 5px 5px calc(50% + 3px)}
+
+@media (max-width:900px){
+  .chrx-focus-boardbar{grid-template-columns:auto minmax(180px,1fr) auto auto}
+  .chrx-focus-boardbar p{display:none}
+  .chrx-focus-board{grid-template-columns:64px repeat(var(--chrx-days,6),minmax(132px,1fr))}
+}
+@media (max-width:560px){
+  .chrx-focus-boardbar{grid-template-columns:auto minmax(150px,1fr) auto;left:auto}
+  .chrx-focus-boardbar__overview{grid-column:1/-1}
+  .chrx-focus-board{grid-template-columns:58px repeat(var(--chrx-days,6),minmax(124px,1fr));grid-auto-rows:minmax(68px,auto)}
+}
 /* Smart full-bleed editor: on the editor step the page container drops its
    max-width and most padding so the grid spreads edge-to-edge (no wasted space
    on the right), and the gap above the grid is minimised. Cells are 1fr so they
@@ -66,8 +106,7 @@ main:has(#step-6:not(.hidden)){max-width:none;padding:6px 10px 8px}
    rules drew a spurious heavy line mid-day on 9-period schools and were
    redundant for 7/8-period ones; removed. */
 .chrx-slot{transition:outline-color var(--chrx-duration-fast) var(--chrx-ease),background var(--chrx-duration-fast) var(--chrx-ease)}
-body.chrx-card-in-hand .chrx-slot:not(.out-of-bell){outline:2px dashed var(--chrx-green);outline-offset:-3px;background:var(--chrx-green-bg);cursor:copy}
-body.chrx-card-in-hand .chrx-slot:not(.empty):not(.out-of-bell){outline-color:#ef4444;background:rgba(239,68,68,.10);cursor:alias}
+body.chrx-card-in-hand .chrx-row[data-drop-target] .chrx-slot:not(.out-of-bell){cursor:copy}
 body.chrx-card-in-hand .chrx-slot[data-validity="green"]{outline-color:var(--chrx-green);background:var(--chrx-green-bg)}
 body.chrx-card-in-hand .chrx-slot[data-validity="amber"]{outline-color:#f59e0b;background:rgba(245,158,11,.12)}
 body.chrx-card-in-hand .chrx-slot[data-validity="red"]{outline-color:#ef4444;background:rgba(239,68,68,.12)}
@@ -76,7 +115,8 @@ body.chrx-card-in-hand .chrx-slot[data-validity="red"]{outline-color:#ef4444;bac
    period; the underlying classify() also rejects drops here. */
 .chrx-slot.empty.out-of-bell{background:repeating-linear-gradient(45deg,rgba(148,163,184,.18) 0 4px,transparent 4px 8px);cursor:not-allowed;pointer-events:none}
 body.chrx-card-in-hand .chrx-slot.empty.out-of-bell{outline:1px solid var(--chrx-line-soft);background:repeating-linear-gradient(45deg,rgba(148,163,184,.25) 0 4px,transparent 4px 8px);cursor:not-allowed}
-.chrx-vkarta{--hue:var(--chrx-card-hue,210);position:absolute;inset:1px;border-radius:1.5px;background:hsl(var(--hue) 58% 84%);color:hsl(var(--hue) 55% 16%);padding:1px 3px;display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;text-align:left;font-size:var(--chrx-font-cell-m);line-height:1.05;cursor:grab;user-select:none;overflow:hidden;box-shadow:0 1px 0 hsl(var(--hue) 40% 70%/.8),inset 0 0 0 1px hsl(var(--hue) 45% 55%/.4);transition:transform var(--chrx-duration-fast) var(--chrx-ease),box-shadow var(--chrx-duration-fast) var(--chrx-ease)}
+.chrx-vkarta{--hue:var(--chrx-card-hue,210);position:absolute;inset:1px;border-radius:1.5px;background:hsl(var(--hue) 58% 84%);color:hsl(var(--hue) 55% 16%);padding:1px 3px;display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;text-align:left;font-size:var(--chrx-font-cell-m);line-height:1.05;cursor:grab;touch-action:none;user-select:none;overflow:hidden;box-shadow:0 1px 0 hsl(var(--hue) 40% 70%/.8),inset 0 0 0 1px hsl(var(--hue) 45% 55%/.4);transition:transform var(--chrx-duration-fast) var(--chrx-ease),box-shadow var(--chrx-duration-fast) var(--chrx-ease)}
+.chrx-vkarta.chrx-vk-source{opacity:.2;pointer-events:none;box-shadow:inset 0 0 0 1px currentColor;filter:saturate(.25)}
 /* A card in conflict drops the muted look: strong red fill, white text, thick
    dashed outline + ⚠ badge. High-contrast against both muted cards and the
    dimmed non-target rows during drag (B2/B3 from the editor audit). */
@@ -679,7 +719,7 @@ body.chrx-body--resizing * {
    (compositor-friendly) so it layers over drag_ux.css's outline without
    fighting its background. Disabled under reduced-motion. */
 @media (prefers-reduced-motion: no-preference){
-  body.chrx-card-in-hand .chrx-slot.empty:not(.out-of-bell)::after{
+  body.chrx-card-in-hand .chrx-row[data-drop-target] .chrx-slot[data-validity]:not(.out-of-bell)::after{
     content:""; position:absolute; inset:0; pointer-events:none; z-index:0;
     background:hsl(150 55% 45% / .16);
     animation:chrx-slot-breathe 1.7s ease-in-out infinite;

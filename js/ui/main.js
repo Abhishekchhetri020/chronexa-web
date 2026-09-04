@@ -145,7 +145,7 @@ import "./start_screen.js";
     const s = document.createElement("style");
     s.id = "chrx-error-styles";
     s.textContent =
-      ".chrx-error-recover{background:#fff;border:1px solid #f1b5b0;border-left:4px solid #c0392b;" +
+      ".chrx-error-recover{background:#fff;border:1px solid #d58b83;" +
       "border-radius:10px;padding:12px 14px;margin:8px 0;box-shadow:0 6px 20px rgba(0,0,0,.10);" +
       "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#3a2a28}" +
       ".chrx-error-recover__head{display:flex;align-items:flex-start;gap:10px}" +
@@ -283,6 +283,7 @@ import "./start_screen.js";
   // ----- Step navigation ----------------------------------------------------
   function showStep(n) {
     window.APP.step = n;
+    document.body.classList.toggle("chrx-landing-active", n === 1);
     for (let i = 1; i <= 6; i++) {
       document.getElementById("step-" + i)?.classList.toggle("hidden", i !== n);
     }
@@ -320,6 +321,9 @@ import "./start_screen.js";
     switch (window.APP.step) {
       case 1:
         if (window.StartScreen && window.StartScreen.render) window.StartScreen.render();
+        import("./components/landing_lattice.js")
+          .then(({ LandingLattice }) => LandingLattice.mount())
+          .catch((error) => console.warn("[landing-lattice] unable to mount:", error));
         break;
       case 2:
         // Prefer the multi-pane School Hub (its file docstring calls it

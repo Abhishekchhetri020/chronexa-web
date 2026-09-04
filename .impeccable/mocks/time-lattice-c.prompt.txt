@@ -1,0 +1,13 @@
+Use case: ui-mockup
+Asset type: high-fidelity desktop landing page north-star comp, 1440 by 1000 landscape
+Primary request: Create a third composition for the Chronexa Time Lattice website. It must read as an executable desktop landing page, not a poster. Keep the same spatial timetable instrument world but explore a split-depth composition.
+Scene/backdrop: full-bleed ink-black browser viewport with a vertical seam of spatial depth
+Subject: on the left half, loose timetable lesson tiles stream forward from deep space and cross the seam; on the right half, they lock into a crisp frontal six-day timetable lattice large enough to read. One ember-red conflict card is physically extracted from the plane and a cyan destination slot opens. The exact mechanism of manual constraint-aware movement is the hero.
+Style/medium: authored real-time WebGL product website, precision editorial interface, tactile dark ceramic tiles, fine luminous rails, understated cinematic depth
+Composition/framing: a small Chronexa wordmark at upper left; the main headline occupies the lower-left over negative space; primary and secondary actions sit directly beneath it; the timetable fills the entire right half and is partially cropped by the viewport; a thin vertical progress index on the far right implies scroll chapters; no conventional navigation bar
+Lighting/mood: mineral-white text, cool cyan structural light, graphite surfaces, a single ember-red exception, subtle volumetric separation
+Color palette: #050608 ground, #F2F0E9 typography, #9EE7E5 rails, #FF5A4F conflict, blue-black ceramic
+Materials/textures: matte tiles with shallow bevels and real depth, etched guide lines, sparse particles that derive only from moving cards
+Text (verbatim): "Chronexa" "Every move, instantly understood." "Open timetable" "Launch demo" "Runs locally in your browser" "MON" "TUE" "WED" "THU" "FRI" "SAT"
+Constraints: legible website hierarchy and obvious controls; the timetable product must dominate; no invented statistics, customer proof, pricing, or testimonials; one strong signature interaction; preserve generous negative space
+Avoid: generic centered hero, feature cards, starfield imitation, purple or blue gradient wash, glass panels, glowing AI orb, enormous decorative numeral, app screenshot inside a frame, emoji, gradient text, poster-only art, watermark

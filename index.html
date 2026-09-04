@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Chronexa — Open Timetable Viewer</title>
-<meta name="description" content="Browser-based school timetable viewer. Upload an Classic Timetable XML and explore class / teacher / room grids. Everything runs locally — no upload, no tracking.">
+<meta name="description" content="A local-first school timetable editor with direct manipulation, conflict guidance, and private in-browser processing.">
 
 <!-- PWA: installable + offline-capable. Solver runs on the user's CPU via Web Workers. -->
 <link rel="manifest" href="manifest.json">
@@ -42,6 +42,14 @@
 </style>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
+<!--
+THESIS: Chronexa turns timetable complexity into a manipulable field; it refuses the generic SaaS hero followed by feature cards.
+OWN-WORLD: Ink-black space, mineral-white type, spectral schedule lines, and solid timetable tiles form one precise spatial instrument.
+STORY: Visitors watch disorder resolve into a valid week, understand local-first constraint editing, then open a file or launch the demo.
+FIRST VIEWPORT: Composition A's diagonal card assembly occupies the right side while Composition B's timetable horizon rises from the lower edge; Chronexa anchors upper-left and copy/actions sit lower-left.
+FORM: Approved hybrid — Diagonal Assembly with the Timetable Horizon; seed d1416894. Signature interaction: scattered cards resolve into one six-day field while a red conflict reroutes to cyan.
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
+-->
 
 <!-- ─────────────────────── RIBBON (Agent H) ─────────────────────── -->
 <div id="chrx-ribbon"></div>
@@ -71,7 +79,7 @@
         <button id="lang-hi" data-lang="hi" data-i18n="langToggleHI"
                 class="px-2.5 py-1 text-xs font-bold bg-white text-slate-700">हिं</button>
       </div>
-      <button id="cta-generate" type="button" class="needs-school px-3 py-1.5 rounded font-semibold bg-amber-400 text-slate-900 text-sm hover:bg-amber-300 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+      <button id="cta-generate" type="button" class="needs-school px-3 py-1.5 rounded font-semibold bg-amber-400 text-amber-950 text-sm hover:bg-amber-300 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
         Generate
       </button>
       <button id="cta-test" type="button" class="needs-school px-3 py-1.5 rounded font-semibold bg-white/90 text-slate-900 text-sm hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed" disabled>
@@ -107,99 +115,85 @@
          cta-load-demo, start-recent-section, start-recent-list, xml-status,
          landing-demo-mount, data-landing-demo-status. -->
     <div class="chrx-landing">
-      <div class="chrx-landing__glow" aria-hidden="true"></div>
-
-      <header class="chrx-landing__hero chrx-rise">
-        <p class="chrx-landing__kicker">Open timetabling studio</p>
-        <h2 class="chrx-landing__wordmark">Chronexa</h2>
-        <p class="chrx-landing__tagline">Real timetable work, in your browser.</p>
-        <p class="chrx-landing__support">Conflict detection and repair that holds up on dense,
-          real schools — hundreds of classes across a 5-day week. No install, no upload.</p>
-        <ul class="chrx-landing__signals" aria-label="Quick facts">
-          <li><strong>5+ days · 8+ periods/day</strong><span>real school scale</span></li>
-          <li><strong>Local solver + CP-SAT cloud</strong><span>your call, per solve</span></li>
-          <li><strong>No upload, no tracking</strong><span>files never leave this tab</span></li>
-        </ul>
-      </header>
-
-      <!-- Action hub: primary XML/HAR dropzone + quiet secondary + ghost demo link. -->
-      <div class="chrx-landing__actions chrx-rise" aria-label="Start actions">
-        <label id="start-open-card" class="chrx-cta chrx-cta--primary" tabindex="0">
-          <input type="file" id="xml-file" accept=".xml,.har" class="chrx-cta__input">
-          <span class="chrx-cta__icon" aria-hidden="true">↥</span>
-          <span class="chrx-cta__copy">
-            <span class="chrx-cta__title">Open school XML or HAR</span>
-            <span class="chrx-cta__subtitle">Drop the file on this card — it never leaves your browser</span>
-          </span>
-          <span class="chrx-cta__hint" aria-hidden="true">or click to browse</span>
-        </label>
-
-        <div class="chrx-landing__actions-side">
-          <button id="cta-build-new" type="button" class="chrx-cta chrx-cta--secondary">
-            <span class="chrx-cta__icon" aria-hidden="true">+</span>
-            <span class="chrx-cta__copy">
-              <span class="chrx-cta__title">New blank school</span>
-              <span class="chrx-cta__subtitle">Build from scratch with the setup wizard</span>
-            </span>
-          </button>
-          <p class="chrx-landing__ghost">
-            No file handy?
-            <button id="cta-landing-demo" type="button" class="chrx-landing__ghost-link">Start with the demo school →</button>
-            <button id="start-sample-info" type="button" class="chrx-landing__ghost-info"
-                    aria-label="What is in the demo school" title="What's in the demo school?">?</button>
-          </p>
+      <section class="chrx-lattice-hero" aria-labelledby="chrx-hero-title">
+        <div class="chrx-lattice-scene" data-lattice-scene aria-hidden="true">
+          <canvas class="chrx-lattice-scene__webgl" data-lattice-webgl></canvas>
+          <canvas class="chrx-lattice-scene__labels" data-lattice-labels></canvas>
+          <div class="chrx-lattice-scene__fallback"></div>
         </div>
-      </div>
 
-      <!-- Solver loop preview inside an app-window stage machine. The pre-existing
-           landing_demo.js owns the animation; tabs freeze individual stages. -->
-      <section class="chrx-landing-demo chrx-rise" aria-labelledby="landing-demo-title">
-        <div class="chrx-landing-demo__head">
-          <div>
-            <span class="chrx-landing-demo__kicker">See it in action</span>
-            <h3 id="landing-demo-title">Watch a timetable solve itself</h3>
+        <header class="chrx-lattice-nav">
+          <a class="chrx-lattice-brand" href="#step-1" aria-label="Chronexa home">
+            <svg viewBox="0 0 30 30" aria-hidden="true"><path d="M4 7.5h22M4 15h15M4 22.5h22"/><path d="m20 11 5 4-5 4"/></svg>
+            <span>Chronexa</span>
+          </a>
+          <p>Timetable studio</p>
+        </header>
+
+        <div class="chrx-lattice-copy">
+          <h2 id="chrx-hero-title">Build a timetable<br>that behaves.</h2>
+          <p class="chrx-lattice-copy__lead">Move lessons directly. See conflicts before they land. Keep the entire school in one coherent field.</p>
+          <p class="chrx-lattice-copy__signal"><span></span>Local-first <i></i> Constraint-aware</p>
+
+          <div class="chrx-lattice-actions" aria-label="Start with Chronexa">
+            <label id="start-open-card" class="chrx-lattice-action chrx-lattice-action--primary" tabindex="0">
+              <input type="file" id="xml-file" accept=".xml,.har" class="chrx-lattice-action__input">
+              <span>Open timetable</span>
+              <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h12M11 5l5 5-5 5"/></svg>
+            </label>
+            <button id="cta-landing-demo" type="button" class="chrx-lattice-action chrx-lattice-action--secondary">
+              Launch demo
+            </button>
+            <button id="start-sample-info" type="button" class="chrx-lattice-info" aria-label="What is in the demo school" title="What's in the demo school?">?</button>
           </div>
+          <button id="cta-build-new" type="button" class="chrx-lattice-new">Start with a blank school</button>
+        </div>
+
+        <p class="chrx-lattice-privacy">Your timetable stays in this browser unless you choose a cloud solve.</p>
+        <a class="chrx-lattice-scroll" href="#chrx-proof"><span></span>Explore the field</a>
+      </section>
+
+      <section id="chrx-proof" class="chrx-proof" aria-labelledby="chrx-proof-title">
+        <div class="chrx-proof__intro">
+          <h3 id="chrx-proof-title">A constraint is not an error message.<br>It is part of the canvas.</h3>
+          <p>Chronexa keeps the reason beside the move. Teacher availability, occupied rooms, class collisions, and fixed lessons remain visible while you work.</p>
+        </div>
+
+        <div class="chrx-proof__sequence" aria-label="Chronexa editing sequence">
+          <article><strong>Pick up</strong><p>The source stays visible, so you never lose your place.</p></article>
+          <svg viewBox="0 0 86 22" aria-hidden="true"><path d="M2 11h78m-8-7 8 7-8 7"/></svg>
+          <article><strong>Read the field</strong><p>Only relevant targets react; valid placements answer in cyan.</p></article>
+          <svg viewBox="0 0 86 22" aria-hidden="true"><path d="M2 11h78m-8-7 8 7-8 7"/></svg>
+          <article><strong>Land instantly</strong><p>The card follows your pointer directly and commits in one motion.</p></article>
+        </div>
+      </section>
+
+      <section class="chrx-landing-demo" aria-labelledby="landing-demo-title">
+        <div class="chrx-landing-demo__copy">
+          <h3 id="landing-demo-title">Watch one conflict become a valid week.</h3>
+          <p>No file required. The miniature school below runs the same placement story in a smaller frame.</p>
           <span class="chrx-landing-demo__status" data-landing-demo-status aria-live="polite">Preparing preview…</span>
         </div>
         <div class="chrx-appwindow">
           <div class="chrx-appwindow__stages" role="tablist" aria-label="Solver stages">
-            <button type="button" role="tab" aria-selected="true"  class="chrx-appwindow__stage" data-stage="lessons">1 · Lessons</button>
-            <button type="button" role="tab" aria-selected="false" class="chrx-appwindow__stage" data-stage="solve">2 · Solve</button>
-            <button type="button" role="tab" aria-selected="false" class="chrx-appwindow__stage" data-stage="conflict">3 · Conflict</button>
-            <button type="button" role="tab" aria-selected="false" class="chrx-appwindow__stage" data-stage="reassign">4 · Reassign</button>
-            <button type="button" role="tab" aria-selected="false" class="chrx-appwindow__stage" data-stage="ready">5 · Ready</button>
+            <button type="button" role="tab" aria-selected="true" class="chrx-appwindow__stage" data-stage="lessons">Lessons</button>
+            <button type="button" role="tab" aria-selected="false" class="chrx-appwindow__stage" data-stage="solve">Solve</button>
+            <button type="button" role="tab" aria-selected="false" class="chrx-appwindow__stage" data-stage="conflict">Conflict</button>
+            <button type="button" role="tab" aria-selected="false" class="chrx-appwindow__stage" data-stage="reassign">Reroute</button>
+            <button type="button" role="tab" aria-selected="false" class="chrx-appwindow__stage" data-stage="ready">Ready</button>
           </div>
-          <div class="chrx-appwindow__viewport">
-            <div id="landing-demo-mount" class="chrx-landing-demo__mount"></div>
-          </div>
+          <div class="chrx-appwindow__viewport"><div id="landing-demo-mount" class="chrx-landing-demo__mount"></div></div>
           <footer class="chrx-appwindow__footer">
-            <span class="chrx-appwindow__lights" aria-hidden="true"><i></i><i></i><i></i></span>
-            <span class="chrx-appwindow__title">chronexa solver — mini school · 5 days × 5 periods</span>
-            <button type="button" class="chrx-appwindow__mode" data-demo-mode aria-pressed="true">auto · 12s loop</button>
+            <span class="chrx-appwindow__title">mini school · five days · local preview</span>
+            <button type="button" class="chrx-appwindow__mode" data-demo-mode aria-pressed="true">Auto sequence</button>
           </footer>
         </div>
       </section>
 
-      <!-- Capability matrix (proof points, between demo and recents). -->
-      <section class="chrx-matrix chrx-rise-stagger" aria-label="What Chronexa handles">
-        <article class="chrx-matrix-card">
-          <span class="chrx-matrix-card__icon" aria-hidden="true">⚡</span>
-          <h3>Constraint engine</h3>
-          <p>Teacher availability, room capacity, double-loads, class bells — solved on dense real schools in seconds.</p>
-          <p class="chrx-matrix-card__proof">951/951 cards placed · &lt;500 ms</p>
-        </article>
-        <article class="chrx-matrix-card">
-          <span class="chrx-matrix-card__icon" aria-hidden="true">🔒</span>
-          <h3>Local-first data</h3>
-          <p>Nothing leaves the browser. Optional cloud CP-SAT is opt-in per solve; this page ships zero trackers.</p>
-          <p class="chrx-matrix-card__proof">0 uploads · 0 trackers</p>
-        </article>
-        <article class="chrx-matrix-card">
-          <span class="chrx-matrix-card__icon" aria-hidden="true">📊</span>
-          <h3>Multi-format export</h3>
-          <p>XML round-trip keeps relations intact; PDF printables, Excel registers, ICS calendars, FET one-click.</p>
-          <p class="chrx-matrix-card__proof">XML · PDF · Excel · ICS · FET</p>
-        </article>
+      <section class="chrx-capabilities" aria-label="Chronexa capabilities">
+        <p><strong>Direct manipulation</strong><span>Cards stay attached to your pointer and preserve their source until the move commits.</span></p>
+        <p><strong>Private by default</strong><span>Open and edit locally. Cloud solving is an explicit choice, not a hidden upload.</span></p>
+        <p><strong>Interoperable</strong><span>Work with XML, Excel, calendar, FET, and printable timetable outputs.</span></p>
       </section>
 
       <section id="start-recent-section" class="chrx-start-recent hidden" aria-label="Recent timetables">
@@ -215,6 +209,7 @@
       <nav class="chrx-start-links" aria-label="Start links">
         <button id="cta-load-demo" type="button" style="display:none;">Demo</button>
         <a href="https://github.com/Abhishekchhetri020/chronexa-web/blob/main/README.md" target="_blank" rel="noopener">Docs</a>
+        <a href="#step-1">Back to top</a>
       </nav>
 
       <div id="xml-status" class="chrx-start-status"></div>
@@ -240,7 +235,7 @@
       <button id="editor-perspective" class="px-2 py-1 text-xs rounded bg-slate-100 hover:bg-slate-200">By Class</button>
     </div>
 
-    <div id="editor-banner" class="mb-3 px-3 py-2 rounded bg-amber-50 border-l-4 border-amber-400 text-xs text-amber-900 hidden">
+    <div id="editor-banner" class="mb-3 px-3 py-2 rounded bg-amber-50 border border-amber-300 text-xs text-amber-900 hidden">
       <strong>Tip:</strong> <span id="editor-banner-text"></span>
     </div>
 

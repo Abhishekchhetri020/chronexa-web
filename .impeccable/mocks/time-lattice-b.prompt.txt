@@ -1,0 +1,13 @@
+Use case: ui-mockup
+Asset type: high-fidelity desktop landing page north-star comp, 1440 by 1000 landscape
+Primary request: Create a second composition for the Chronexa Time Lattice website. This is a shipped desktop web landing page, not concept art. The same spatial timetable world is fixed; vary topology and hierarchy.
+Scene/backdrop: full-bleed near-black browser viewport seen like an architectural light table in a dark planning studio
+Subject: a six-day timetable plane sweeps upward from the bottom edge in extreme perspective, with rows of lesson tiles assembling from scattered pieces above it. A single ember-red conflict creates a visible ripple and reroutes across the plane. The schedule itself is the dominant first-viewport experience.
+Style/medium: premium real-time 3D product website, precision instrument, cinematic but operational, tactile matte tiles and luminous constraint rails
+Composition/framing: Chronexa wordmark at top left; large headline across the upper-left to center; open timetable and launch demo actions immediately below; the timetable horizon begins under the copy and expands across the entire lower two-thirds; small local-first statement at top right; reveal a quiet second section at the bottom edge
+Lighting/mood: black glass depth without glass panels, mineral-white type, spectral cyan rails, one warm red conflict signal
+Color palette: #050608, #F2F0E9, #9EE7E5, #FF5A4F, deep graphite and slate
+Materials/textures: matte ceramic lesson tiles, etched-light grid, subtle atmospheric particles only where tiles are assembling
+Text (verbatim): "Chronexa" "See the whole week. Move any lesson." "Open timetable" "Launch demo" "Your files stay in this browser." "MON" "TUE" "WED" "THU" "FRI" "SAT"
+Constraints: unmistakably a responsive website UI with legible semantic-looking text and real buttons; communicate timetable editing at a glance; no invented claims or metrics; one dominant spatial move with quiet supporting UI
+Avoid: generic SaaS layout, cards explaining features, glowing orb, starfield, AI chatbot imagery, dashboard in a rounded window, glassmorphism, purple, gradient text, oversized decorative number, poster-only composition, watermark

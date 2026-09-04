@@ -1,0 +1,166 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-04T11:46:30Z",
+  "title": "Design System: Chronexa",
+  "extensions": {
+    "colorMeta": {
+      "primary-teal": { "role": "primary", "displayName": "Workbench Teal", "canonical": "#0d4f54", "tonalRamp": ["oklch(15% 0.062 202.8)", "oklch(26% 0.062 202.8)", "oklch(38% 0.062 202.8)", "oklch(50% 0.062 202.8)", "oklch(62% 0.062 202.8)", "oklch(74% 0.062 202.8)", "oklch(86% 0.062 202.8)", "oklch(95% 0.062 202.8)"] },
+      "primary-teal-hover": { "role": "primary", "displayName": "Deep Workbench Teal", "canonical": "#084146", "tonalRamp": ["oklch(15% 0.055 204.1)", "oklch(26% 0.055 204.1)", "oklch(38% 0.055 204.1)", "oklch(50% 0.055 204.1)", "oklch(62% 0.055 204.1)", "oklch(74% 0.055 204.1)", "oklch(86% 0.055 204.1)", "oklch(95% 0.055 204.1)"] },
+      "signal-cyan": { "role": "secondary", "displayName": "Signal Cyan", "canonical": "#9fe7e7", "tonalRamp": ["oklch(15% 0.071 195.9)", "oklch(26% 0.071 195.9)", "oklch(38% 0.071 195.9)", "oklch(50% 0.071 195.9)", "oklch(62% 0.071 195.9)", "oklch(74% 0.071 195.9)", "oklch(86% 0.071 195.9)", "oklch(95% 0.071 195.9)"] },
+      "conflict-rust": { "role": "tertiary", "displayName": "Workbench Rust", "canonical": "#9c4322", "tonalRamp": ["oklch(15% 0.128 39.8)", "oklch(26% 0.128 39.8)", "oklch(38% 0.128 39.8)", "oklch(50% 0.128 39.8)", "oklch(62% 0.128 39.8)", "oklch(74% 0.128 39.8)", "oklch(86% 0.128 39.8)", "oklch(95% 0.128 39.8)"] },
+      "conflict-coral": { "role": "tertiary", "displayName": "Conflict Coral", "canonical": "#ec6753", "tonalRamp": ["oklch(15% 0.169 30.6)", "oklch(26% 0.169 30.6)", "oklch(38% 0.169 30.6)", "oklch(50% 0.169 30.6)", "oklch(62% 0.169 30.6)", "oklch(74% 0.169 30.6)", "oklch(86% 0.169 30.6)", "oklch(95% 0.169 30.6)"] },
+      "paper": { "role": "neutral", "displayName": "Studio Paper", "canonical": "#f6f1e6", "tonalRamp": ["oklch(15% 0.016 86.4)", "oklch(26% 0.016 86.4)", "oklch(38% 0.016 86.4)", "oklch(50% 0.016 86.4)", "oklch(62% 0.016 86.4)", "oklch(74% 0.016 86.4)", "oklch(86% 0.016 86.4)", "oklch(95% 0.016 86.4)"] },
+      "paper-canvas": { "role": "neutral", "displayName": "Canvas Paper", "canonical": "#fbf7eb", "tonalRamp": ["oklch(15% 0.016 91.5)", "oklch(26% 0.016 91.5)", "oklch(38% 0.016 91.5)", "oklch(50% 0.016 91.5)", "oklch(62% 0.016 91.5)", "oklch(74% 0.016 91.5)", "oklch(86% 0.016 91.5)", "oklch(95% 0.016 91.5)"] },
+      "paper-tile": { "role": "neutral", "displayName": "Paper Tile", "canonical": "#efe9da", "tonalRamp": ["oklch(15% 0.021 88.7)", "oklch(26% 0.021 88.7)", "oklch(38% 0.021 88.7)", "oklch(50% 0.021 88.7)", "oklch(62% 0.021 88.7)", "oklch(74% 0.021 88.7)", "oklch(86% 0.021 88.7)", "oklch(95% 0.021 88.7)"] },
+      "paper-line": { "role": "neutral", "displayName": "Paper Line", "canonical": "#d8cfbb", "tonalRamp": ["oklch(15% 0.029 86.7)", "oklch(26% 0.029 86.7)", "oklch(38% 0.029 86.7)", "oklch(50% 0.029 86.7)", "oklch(62% 0.029 86.7)", "oklch(74% 0.029 86.7)", "oklch(86% 0.029 86.7)", "oklch(95% 0.029 86.7)"] },
+      "ink": { "role": "neutral", "displayName": "Editorial Ink", "canonical": "#1a1714", "tonalRamp": ["oklch(15% 0.008 67.4)", "oklch(26% 0.008 67.4)", "oklch(38% 0.008 67.4)", "oklch(50% 0.008 67.4)", "oklch(62% 0.008 67.4)", "oklch(74% 0.008 67.4)", "oklch(86% 0.008 67.4)", "oklch(95% 0.008 67.4)"] },
+      "ink-secondary": { "role": "neutral", "displayName": "Secondary Ink", "canonical": "#4a4339", "tonalRamp": ["oklch(15% 0.019 76.8)", "oklch(26% 0.019 76.8)", "oklch(38% 0.019 76.8)", "oklch(50% 0.019 76.8)", "oklch(62% 0.019 76.8)", "oklch(74% 0.019 76.8)", "oklch(86% 0.019 76.8)", "oklch(95% 0.019 76.8)"] },
+      "ink-tertiary": { "role": "neutral", "displayName": "Tertiary Ink", "canonical": "#837a6d", "tonalRamp": ["oklch(15% 0.022 77.2)", "oklch(26% 0.022 77.2)", "oklch(38% 0.022 77.2)", "oklch(50% 0.022 77.2)", "oklch(62% 0.022 77.2)", "oklch(74% 0.022 77.2)", "oklch(86% 0.022 77.2)", "oklch(95% 0.022 77.2)"] },
+      "lattice-black": { "role": "neutral", "displayName": "Lattice Black", "canonical": "#000102", "tonalRamp": ["oklch(15% 0.013 233.5)", "oklch(26% 0.013 233.5)", "oklch(38% 0.013 233.5)", "oklch(50% 0.013 233.5)", "oklch(62% 0.013 233.5)", "oklch(74% 0.013 233.5)", "oklch(86% 0.013 233.5)", "oklch(95% 0.013 233.5)"] },
+      "lattice-field": { "role": "neutral", "displayName": "Lattice Field", "canonical": "#121417", "tonalRamp": ["oklch(15% 0.007 258.4)", "oklch(26% 0.007 258.4)", "oklch(38% 0.007 258.4)", "oklch(50% 0.007 258.4)", "oklch(62% 0.007 258.4)", "oklch(74% 0.007 258.4)", "oklch(86% 0.007 258.4)", "oklch(95% 0.007 258.4)"] },
+      "lattice-card": { "role": "neutral", "displayName": "Lattice Card", "canonical": "#292a30", "tonalRamp": ["oklch(15% 0.011 278.2)", "oklch(26% 0.011 278.2)", "oklch(38% 0.011 278.2)", "oklch(50% 0.011 278.2)", "oklch(62% 0.011 278.2)", "oklch(74% 0.011 278.2)", "oklch(86% 0.011 278.2)", "oklch(95% 0.011 278.2)"] },
+      "lattice-card-raised": { "role": "neutral", "displayName": "Raised Lattice Card", "canonical": "#35383f", "tonalRamp": ["oklch(15% 0.013 267.2)", "oklch(26% 0.013 267.2)", "oklch(38% 0.013 267.2)", "oklch(50% 0.013 267.2)", "oklch(62% 0.013 267.2)", "oklch(74% 0.013 267.2)", "oklch(86% 0.013 267.2)", "oklch(95% 0.013 267.2)"] },
+      "mineral-white": { "role": "neutral", "displayName": "Mineral White", "canonical": "#f2f0e9", "tonalRamp": ["oklch(15% 0.010 93.6)", "oklch(26% 0.010 93.6)", "oklch(38% 0.010 93.6)", "oklch(50% 0.010 93.6)", "oklch(62% 0.010 93.6)", "oklch(74% 0.010 93.6)", "oklch(86% 0.010 93.6)", "oklch(95% 0.010 93.6)"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Landing Display", "purpose": "Short first-viewport statements in the cinematic landing." },
+      "headline": { "displayName": "Workbench Headline", "purpose": "Editor headings and primary panel titles in Fraunces." },
+      "title": { "displayName": "Workbench Title", "purpose": "Breadcrumbs, sheet titles, and card emphasis in Fraunces." },
+      "body": { "displayName": "Interface Body", "purpose": "Controls, explanations, and dense operational copy." },
+      "label": { "displayName": "Interface Label", "purpose": "Uppercase headers, eyebrows, and compact metadata." },
+      "data": { "displayName": "Schedule Data", "purpose": "Timetable coordinates, states, shortcuts, and technical metadata." }
+    },
+    "shadows": [
+      { "name": "workbench-low", "value": "0 1px 0 rgba(26, 23, 20, 0.04), 0 1px 2px rgba(26, 23, 20, 0.06)", "purpose": "Tiles, compact cards, and quiet bounded paper surfaces." },
+      { "name": "workbench-medium", "value": "0 1px 0 rgba(26, 23, 20, 0.04), 0 2px 4px rgba(26, 23, 20, 0.06), 0 8px 16px rgba(26, 23, 20, 0.05)", "purpose": "Intermediate lifted controls and panels." },
+      { "name": "workbench-sheet", "value": "0 1px 0 rgba(26, 23, 20, 0.04), 0 4px 8px rgba(26, 23, 20, 0.06), 0 12px 24px rgba(26, 23, 20, 0.08), 0 24px 48px rgba(26, 23, 20, 0.06)", "purpose": "Dialogs, sheets, and the strongest paper elevation." },
+      { "name": "workbench-drawer", "value": "0 -1px 0 rgba(26, 23, 20, 0.04), 0 -8px 24px rgba(26, 23, 20, 0.06)", "purpose": "The pending-card drawer rising above the timetable." },
+      { "name": "landing-action", "value": "0 12px 36px rgba(0, 0, 0, 0.34)", "purpose": "The mineral-white file action against ink-black space." },
+      { "name": "landing-instrument", "value": "0 28px 80px rgba(0, 0, 0, 0.48)", "purpose": "The embedded timetable demonstration window." }
+    ],
+    "motion": [
+      { "name": "ease-standard", "value": "cubic-bezier(0.2, 0.7, 0.2, 1)", "purpose": "Default workbench transforms and state changes." },
+      { "name": "ease-in-out", "value": "cubic-bezier(0.4, 0, 0.2, 1)", "purpose": "Measured row and layout interpolation." },
+      { "name": "ease-out", "value": "cubic-bezier(0.2, 0.8, 0.2, 1)", "purpose": "Placement, sheet, and arrival motion." },
+      { "name": "duration-micro", "value": "60ms", "purpose": "Color and background response." },
+      { "name": "duration-fast", "value": "140ms", "purpose": "Hover lift, focus, and compact transitions." },
+      { "name": "duration-base", "value": "240ms", "purpose": "Sheets and larger workbench state changes." },
+      { "name": "duration-slow", "value": "280ms", "purpose": "Deliberate panel transitions." },
+      { "name": "lattice-assembly", "value": "2700ms", "purpose": "The single authored landing sequence from disorder to a settled timetable." }
+    ],
+    "breakpoints": [
+      { "name": "landing-stack", "value": "980px" },
+      { "name": "landing-mobile", "value": "640px" },
+      { "name": "focus-board-compact", "value": "900px" },
+      { "name": "focus-board-mobile", "value": "560px" },
+      { "name": "workbench-mobile", "value": "767px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Landing Primary Action",
+      "kind": "button",
+      "refersTo": "landing-action-primary",
+      "description": "The dominant first-viewport action for opening a timetable file.",
+      "html": "<button class=\"ds-landing-primary\">Open timetable <svg viewBox=\"0 0 20 20\" aria-hidden=\"true\"><path d=\"M4 10h12M11 5l5 5-5 5\"/></svg></button>",
+      "css": ".ds-landing-primary { min-width:184px; height:48px; display:inline-flex; align-items:center; justify-content:space-between; gap:28px; padding:0 20px; border:1px solid #f2f0e9; border-radius:3px; background:#f2f0e9; color:#000102; font:650 13px/1.2 \"Inter Tight\",sans-serif; letter-spacing:-.01em; cursor:pointer; box-shadow:0 12px 36px rgba(0,0,0,.34); transition:transform 180ms cubic-bezier(.16,1,.3,1),background 180ms ease,box-shadow 180ms ease; } .ds-landing-primary svg { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:1.5; stroke-linecap:round; stroke-linejoin:round; } .ds-landing-primary:hover,.ds-landing-primary:focus-visible { transform:translateY(-2px); background:#9fe7e7; border-color:#9fe7e7; outline:none; box-shadow:0 14px 34px rgba(0,0,0,.42),0 0 0 2px rgba(159,231,231,.2); } .ds-landing-primary:active { transform:translateY(0); }"
+    },
+    {
+      "name": "Landing Secondary Action",
+      "kind": "button",
+      "refersTo": "landing-action-secondary",
+      "description": "A lower-emphasis landing action for launching the bundled demo.",
+      "html": "<button class=\"ds-landing-secondary\">Launch demo</button>",
+      "css": ".ds-landing-secondary { height:48px; padding:0 20px; border:1px solid rgba(242,240,233,.28); border-radius:3px; background:rgba(18,20,23,.72); color:#f2f0e9; font:650 13px/1.2 \"Inter Tight\",sans-serif; letter-spacing:-.01em; cursor:pointer; transition:transform 180ms cubic-bezier(.16,1,.3,1),border-color 180ms ease,box-shadow 180ms ease; } .ds-landing-secondary:hover,.ds-landing-secondary:focus-visible { transform:translateY(-2px); border-color:#9fe7e7; outline:none; box-shadow:0 14px 34px rgba(0,0,0,.42),0 0 0 2px rgba(159,231,231,.2); } .ds-landing-secondary:active { transform:translateY(0); }"
+    },
+    {
+      "name": "Workbench Primary Button",
+      "kind": "button",
+      "refersTo": "workbench-button-primary",
+      "description": "The compact committed action inside sheets, dialogs, and editor workflows.",
+      "html": "<button class=\"ds-workbench-primary\">Save changes</button>",
+      "css": ".ds-workbench-primary { padding:7px 14px; border:1px solid var(--chrx-accent,#0d4f54); border-radius:var(--chrx-radius-md,10px); background:var(--chrx-accent,#0d4f54); color:var(--chrx-accent-on,#f6f1e6); font:600 12.5px/1.2 var(--chrx-font-sans,\"Inter Tight\",sans-serif); letter-spacing:-.005em; cursor:pointer; box-shadow:0 1px 0 rgba(13,79,84,.35),0 2px 8px rgba(13,79,84,.18); transition:background var(--chrx-duration-fast,140ms),transform var(--chrx-duration-micro,60ms); } .ds-workbench-primary:hover { background:var(--chrx-accent-hover,#084146); border-color:var(--chrx-accent-hover,#084146); } .ds-workbench-primary:focus-visible { outline:2px solid var(--chrx-accent,#0d4f54); outline-offset:2px; } .ds-workbench-primary:active { transform:translateY(1px); }"
+    },
+    {
+      "name": "Workbench Text Field",
+      "kind": "input",
+      "refersTo": "workbench-input",
+      "description": "The standard compact field for search, filtering, and editor forms.",
+      "html": "<label class=\"ds-field-label\" for=\"ds-field\">Class</label><input id=\"ds-field\" class=\"ds-workbench-field\" type=\"text\" value=\"I A\">",
+      "css": ".ds-field-label { display:block; margin-bottom:4px; color:var(--chrx-fg-secondary,#4a4339); font:600 10.5px/1.2 var(--chrx-font-sans,\"Inter Tight\",sans-serif); letter-spacing:.08em; text-transform:uppercase; } .ds-workbench-field { width:220px; padding:5px 8px; border:1px solid var(--chrx-line,#d8cfbb); border-radius:var(--chrx-radius-sm,6px); background:var(--chrx-bg,#f6f1e6); color:var(--chrx-fg,#1a1714); font:400 12.5px/1.4 var(--chrx-font-sans,\"Inter Tight\",sans-serif); transition:border-color var(--chrx-duration-fast,140ms),box-shadow var(--chrx-duration-fast,140ms); } .ds-workbench-field:hover { border-color:var(--chrx-fg-tertiary,#837a6d); } .ds-workbench-field:focus-visible { outline:0; border-color:var(--chrx-accent,#0d4f54); box-shadow:0 0 0 3px var(--chrx-accent-soft,rgba(13,79,84,.08)); }"
+    },
+    {
+      "name": "Sidebar Navigation Link",
+      "kind": "nav",
+      "refersTo": "navigation-active",
+      "description": "A restrained workbench navigation row with a tonal active state.",
+      "html": "<nav class=\"ds-side-nav\" aria-label=\"Workbench\"><a class=\"ds-side-link\" href=\"#\"><svg viewBox=\"0 0 20 20\" aria-hidden=\"true\"><path d=\"M3 4h14M3 10h14M3 16h14\"/></svg>Lessons</a><a class=\"ds-side-link is-active\" href=\"#\" aria-current=\"page\"><svg viewBox=\"0 0 20 20\" aria-hidden=\"true\"><rect x=\"3\" y=\"3\" width=\"14\" height=\"14\" rx=\"1\"/><path d=\"M3 8h14M8 3v14\"/></svg>Editor <span>48</span></a></nav>",
+      "css": ".ds-side-nav { width:216px; padding:8px; background:linear-gradient(180deg,var(--chrx-bg,#f6f1e6),var(--chrx-bg-tile,#efe9da)); } .ds-side-link { display:flex; align-items:center; gap:10px; padding:7px 10px; border-radius:var(--chrx-radius-md,10px); color:var(--chrx-fg-secondary,#4a4339); font:500 13px/1.3 var(--chrx-font-sans,\"Inter Tight\",sans-serif); text-decoration:none; transition:background var(--chrx-duration-micro,60ms); } .ds-side-link svg { width:16px; height:16px; fill:none; stroke:var(--chrx-fg-tertiary,#837a6d); stroke-width:1.5; } .ds-side-link span { margin-left:auto; color:var(--chrx-fg-tertiary,#837a6d); font:500 11px/1 var(--chrx-font-mono,\"JetBrains Mono\",monospace); } .ds-side-link:hover,.ds-side-link:focus-visible { background:var(--chrx-accent-bg,rgba(13,79,84,.1)); color:var(--chrx-fg,#1a1714); outline:none; } .ds-side-link.is-active { background:var(--chrx-accent-soft,rgba(13,79,84,.08)); color:var(--chrx-accent,#0d4f54); font-weight:600; } .ds-side-link.is-active svg { stroke:var(--chrx-accent,#0d4f54); }"
+    },
+    {
+      "name": "Conflict Status Chip",
+      "kind": "chip",
+      "description": "The landing demonstration status for a conflict that requires rerouting.",
+      "html": "<span class=\"ds-conflict-chip\"><span aria-hidden=\"true\">▲</span> Conflict found</span>",
+      "css": ".ds-conflict-chip { display:inline-flex; align-items:center; gap:7px; padding:7px 10px; border:1px solid rgba(236,103,83,.5); border-radius:2px; background:rgba(236,103,83,.08); color:#ff8b7d; font:500 10px/1.2 \"JetBrains Mono\",monospace; letter-spacing:.05em; text-transform:uppercase; } .ds-conflict-chip:hover { background:rgba(236,103,83,.13); } .ds-conflict-chip:focus-visible { outline:2px solid #ec6753; outline-offset:2px; }"
+    },
+    {
+      "name": "Lesson Card",
+      "kind": "card",
+      "refersTo": "lesson-card",
+      "description": "The dense edge-to-edge timetable block used in overview grids.",
+      "html": "<button class=\"ds-lesson-card\" style=\"--ds-hue:220\"><strong>MATHS</strong><span>Ms. Sushmita</span><small>10A · P3</small></button>",
+      "css": ".ds-lesson-card { --ds-hue:210; width:126px; height:58px; display:flex; flex-direction:column; align-items:flex-start; justify-content:space-between; padding:2px 3px 2px 2px; border:0; border-left:2px solid hsl(var(--ds-hue) 85% 26%); border-radius:0; background:hsl(var(--ds-hue) 76% 47%); color:#fff; text-align:left; cursor:grab; box-shadow:inset 0 0 0 1px hsl(var(--ds-hue) 60% 40%/.35); transition:transform var(--chrx-duration-fast,140ms) var(--chrx-ease,cubic-bezier(.2,.7,.2,1)),box-shadow var(--chrx-duration-fast,140ms) var(--chrx-ease,cubic-bezier(.2,.7,.2,1)); } .ds-lesson-card strong { font:700 11.5px/1.04 var(--chrx-font-display,\"Fraunces\",serif); } .ds-lesson-card span { font:500 10.5px/1.1 var(--chrx-font-sans,\"Inter Tight\",sans-serif); color:rgba(255,255,255,.88); } .ds-lesson-card small { font:500 9.5px/1.1 var(--chrx-font-mono,\"JetBrains Mono\",monospace); color:rgba(255,255,255,.74); letter-spacing:.04em; text-transform:uppercase; } .ds-lesson-card:hover { transform:scale(1.03) translateY(-2px); box-shadow:0 1px 2px hsl(var(--ds-hue) 60% 25%/.32),0 6px 14px rgba(26,23,20,.22),0 12px 28px rgba(26,23,20,.16); } .ds-lesson-card:focus-visible { outline:3px solid #2563eb; outline-offset:1px; } .ds-lesson-card:active { cursor:grabbing; transform:none; }"
+    },
+    {
+      "name": "Focus Board Selector",
+      "kind": "custom",
+      "description": "The human-scale schedule switcher that keeps one timetable in focus.",
+      "html": "<div class=\"ds-focus-selector\"><button aria-label=\"Previous class\">←</button><label>Class <select><option>I A</option><option>I B</option></select></label><button aria-label=\"Next class\">→</button></div>",
+      "css": ".ds-focus-selector { display:grid; grid-template-columns:34px minmax(220px,360px) 34px; align-items:center; gap:8px; padding:10px; border:1px solid var(--chrx-line,#d8cfbb); border-radius:12px; background:var(--chrx-bg-elev,#fff); box-shadow:0 8px 24px rgba(22,32,36,.07); } .ds-focus-selector label { display:grid; grid-template-columns:auto 1fr; align-items:center; gap:8px; color:var(--chrx-fg-secondary,#4a4339); font:700 11px/1.2 var(--chrx-font-sans,\"Inter Tight\",sans-serif); letter-spacing:.08em; text-transform:uppercase; } .ds-focus-selector select { width:100%; height:34px; padding:0 32px 0 10px; border:1px solid var(--chrx-line,#d8cfbb); border-radius:8px; background:var(--chrx-bg-input,#f6f1e6); color:var(--chrx-fg,#1a1714); font:650 13px/1 var(--chrx-font-sans,\"Inter Tight\",sans-serif); } .ds-focus-selector button { width:34px; height:34px; padding:0; border:1px solid var(--chrx-line,#d8cfbb); border-radius:8px; background:var(--chrx-bg-tile,#efe9da); color:var(--chrx-fg,#1a1714); font:600 17px/1 var(--chrx-font-sans,\"Inter Tight\",sans-serif); cursor:pointer; } .ds-focus-selector button:hover,.ds-focus-selector button:focus-visible { border-color:var(--chrx-accent,#0d4f54); color:var(--chrx-accent,#0d4f54); outline:none; } .ds-focus-selector select:focus-visible { outline:none; border-color:var(--chrx-accent,#0d4f54); box-shadow:0 0 0 3px var(--chrx-accent-bg,rgba(13,79,84,.1)); }"
+    },
+    {
+      "name": "Solver Status Card",
+      "kind": "card",
+      "description": "A quiet paper container for solver and timetable summary values.",
+      "html": "<section class=\"ds-solver-card\" aria-label=\"Solver status\"><h3>Solver status</h3><div><span>Placed</span><strong>48</strong></div><div><span>Conflicts</span><strong class=\"is-bad\">1</strong></div></section>",
+      "css": ".ds-solver-card { width:220px; padding:16px; border:1px solid var(--chrx-line,#d8cfbb); border-radius:var(--chrx-radius-lg,14px); background:var(--chrx-bg,#f6f1e6); color:var(--chrx-fg,#1a1714); box-shadow:var(--chrx-shadow-sm,0 1px 0 rgba(26,23,20,.04),0 1px 2px rgba(26,23,20,.06)); font-family:var(--chrx-font-sans,\"Inter Tight\",sans-serif); } .ds-solver-card h3 { margin:0 0 8px; color:var(--chrx-fg,#1a1714); font:600 18px/1.2 var(--chrx-font-display,\"Fraunces\",serif); } .ds-solver-card div { display:flex; align-items:baseline; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--chrx-line-soft,rgba(26,23,20,.06)); } .ds-solver-card div:last-child { border-bottom:0; } .ds-solver-card span { color:var(--chrx-fg-tertiary,#837a6d); font-size:11.5px; } .ds-solver-card strong { font:600 15px/1 var(--chrx-font-mono,\"JetBrains Mono\",monospace); } .ds-solver-card strong.is-bad { color:var(--chrx-red,#9c4322); } .ds-solver-card:focus-within { outline:2px solid var(--chrx-accent,#0d4f54); outline-offset:2px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Time Lattice Studio",
+    "overview": "Chronexa is one instrument expressed in two deliberate modes. The landing is a cinematic ink-black field where timetable geometry rises into view, controlled disorder resolves into a six-day lattice, and one conflict visibly reroutes to a valid slot. The workbench is a serious paper studio: warm, typographic, information-dense, and built for long sessions of exact schedule repair.\n\nThe visual bridge is functional rather than cosmetic. Cyan/teal indicates valid movement, selection, and confident action; rust/coral marks conflict and recovery. Both surfaces expose the timetable as something directly manipulable, keep constraint feedback beside the object being changed, and preserve local-first trust in semantic copy rather than decorative claims.\n\nThe landing earns drama through perspective, geometry, overlap, and one authored assembly sequence. The editor earns calm through paper tones, Fraunces headings, Inter Tight interface text, compact data labels, strict grid alignment, and layered but restrained depth.",
+    "keyCharacteristics": [
+      "Two complementary surfaces: cinematic ink-black spatial landing and warm-paper editorial workbench.",
+      "Timetable geometry is the signature visual material, never generic dashboard decoration.",
+      "Cyan/teal means valid action; rust/coral means conflict, always reinforced with text, shape, or pattern.",
+      "Direct manipulation keeps the moved lesson visually attached to the pointer and its source visible until commit.",
+      "Motion explains assembly, placement, or state change and resolves to a static equivalent for reduced motion."
+    ],
+    "rules": [
+      { "name": "The Surface Exchange Rule", "body": "Keep the landing ink-black and spatial; keep the workbench warm-paper and editorial. Their contrast is intentional, not a theme mismatch to smooth away.", "section": "colors" },
+      { "name": "The Signal Continuity Rule", "body": "Cyan/teal means valid action and rust/coral means conflict across both surfaces; never reverse those meanings.", "section": "colors" },
+      { "name": "The Never-Color-Alone Rule", "body": "Pair conflict and validity color with labels, warning marks, dashed targets, directional paths, outlines, or changed shape.", "section": "colors" },
+      { "name": "The Dual-Voice Rule", "body": "Use Inter Tight for spatial persuasion and operational interface text; use Fraunces to give the paper workbench editorial hierarchy, not to decorate the landing.", "section": "typography" },
+      { "name": "The Mono-Is-Data Rule", "body": "JetBrains Mono is for schedule data, coordinates, state, and shortcuts only; never use it for long prose or primary marketing headlines.", "section": "typography" },
+      { "name": "The Geometry-First Rule", "body": "On the landing, create depth with perspective, card thickness, overlap, rails, and light before adding any shadow.", "section": "elevation" },
+      { "name": "The Structural-Elevation Rule", "body": "In the workbench, shadows indicate hierarchy, lift, or interaction; grid organization comes from alignment, tonal fields, and lines.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do make timetable geometry the visual and interactive protagonist on both surfaces.",
+      "Do keep landing copy and every product action semantic and usable when canvas or WebGL is unavailable.",
+      "Do keep direct-manipulation objects attached to the pointer and preserve the source until a move commits.",
+      "Do pair cyan/teal validity and rust/coral conflict with labels, marks, outlines, patterns, or paths.",
+      "Do preserve visible keyboard focus, `44px` touch targets on coarse pointers, and settled reduced-motion states.",
+      "Do use Fraunces for the workbench's editorial hierarchy, Inter Tight for interface clarity, and JetBrains Mono only for data."
+    ],
+    "donts": [
+      "Don't turn the landing into a generic SaaS hero, feature-card grid, or stock-image campaign.",
+      "Don't add starfields, decorative blur, glass cards, gradient text, purple accents, fabricated metrics, testimonials, or performance claims.",
+      "Don't flatten the approved diagonal assembly and rising timetable horizon into a background screenshot or video.",
+      "Don't apply landing drama to the editor; the workbench must remain calm, dense, and precise for sustained use.",
+      "Don't round dense overview timetable cards into floating stickers or compress them below their readable floor.",
+      "Don't hide constraint reasons in color alone or in canvas-only content."
+    ]
+  }
+}

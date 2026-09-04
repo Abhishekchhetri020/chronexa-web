@@ -1,0 +1,12 @@
+{
+  "label": "Diagonal Assembly",
+  "promptFile": "time-lattice-a.prompt.txt",
+  "approved": true,
+  "approvedAt": "2026-09-04",
+  "carryForward": [
+    {
+      "from": "time-lattice-b.png",
+      "element": "The timetable horizon rising from the lower edge and filling the lower two-thirds of the scene"
+    }
+  ]
+}

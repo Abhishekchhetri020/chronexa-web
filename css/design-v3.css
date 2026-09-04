@@ -405,7 +405,7 @@ body::before{
 .chrx-slot.empty{
   background:repeating-linear-gradient(45deg, transparent 0 6px, rgba(26,23,20,.025) 6px 7px);
 }
-body.chrx-card-in-hand .chrx-slot.empty{
+body.chrx-card-in-hand .chrx-row[data-drop-target] .chrx-slot.empty[data-validity]{
   background:var(--teal-soft);
   outline:1px dashed var(--teal); outline-offset:-3px;
 }
@@ -1242,7 +1242,7 @@ body.chrx-editor-dark .chrx-slot:focus-visible{ outline-color:#7dd3fc; }
 
 @media (prefers-reduced-motion: reduce){
   .chrx-vkarta, .chrx-row, .chrx-slot, .chrx-card-ghost,
-  body.chrx-card-in-hand .chrx-slot.empty:not(.out-of-bell)::after{
+  body.chrx-card-in-hand .chrx-row[data-drop-target] .chrx-slot.empty[data-validity]:not(.out-of-bell)::after{
     transition:none; animation:none;
   }
 }

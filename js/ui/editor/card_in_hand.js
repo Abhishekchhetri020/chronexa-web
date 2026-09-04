@@ -16,7 +16,8 @@ import "./placement_validator.js";
 
   let ghost = null, inHand = null, carryPanel = null, collisionMenu = null;
   let dx = 0, dy = 0, px = 0, py = 0;
-  let rx = 0, ry = 0, renderInit = false;   // eased render position (ghost inertia)
+  let lastPaintX = 0;
+  let activePointerId = null;
   let rafId = 0, lastValidate = 0, lastSlot = null;
   let suppressClickUntil = 0;               // swallowed click after a real drag (drop ≠ click)
   let lastExtraSlots = [];                  // block-footprint cells painted with the hovered slot
@@ -25,7 +26,6 @@ import "./placement_validator.js";
   const VALIDATE_MS = 16;
   const REDUCED_MOTION = typeof matchMedia === "function" &&
     matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const EASE = REDUCED_MOTION ? 1 : 0.28;   // 1 = snap (no inertia)
 
   const HUE = { MA:220,MAT:220,MATH:220,MATHS:220,EN:12,ENG:12,ENGL:12,HI:32,HIN:32,HINDI:32,
     SC:150,SCI:150,SCIE:150,SS:50,SST:50,SOC:50,MU:285,MUS:285,AR:330,ART:330,
@@ -53,6 +53,7 @@ import "./placement_validator.js";
                fromPending: !!d.fromPending,
                blockLen: Math.max(1, parseInt(d.blockLen, 10) || 1),  // double-period block moves as one
                rowKey: d.rowKey,
+               sourceRetained: !!d.sourceRetained,
                mode: mode };
 
     // Baseline for the post-commit cell-diff patch: grid mutators send their
@@ -83,16 +84,6 @@ import "./placement_validator.js";
       document.body.classList.add("chrx-card-in-hand");
       showCarryPanel(S, lesson, subjShort, classShort, teacherShort);
 
-      // Sticky banner so users see they're carrying a card.
-      let banner = document.getElementById("chrx-carry-banner");
-      if (!banner) {
-        banner = document.createElement("div");
-        banner.id = "chrx-carry-banner";
-        banner.style.cssText = "position:fixed;top:8px;left:50%;transform:translateX(-50%);background:rgba(15,23,42,.92);color:#fff;padding:8px 18px;border-radius:999px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;font-weight:500;box-shadow:0 8px 24px rgba(15,23,42,.35);z-index:10001;pointer-events:none;display:flex;align-items:center;gap:8px;";
-        document.body.appendChild(banner);
-      }
-      banner.innerHTML = `<span style="font-size:16px;line-height:1">✋</span><span><strong>${esc(subjShort)}</strong>${teacherShort ? ' · ' + esc(teacherShort) : ''}${classShort ? ' · ' + esc(classShort) : ''}</span><span style="opacity:.7;font-size:11px;margin-left:6px">click empty slot to place · Esc to cancel</span>`;
-
       // Pulse the origin card briefly so the user sees "I picked it up".
       if (!d.fromPending && d.day != null && d.period != null) {
         const origin = document.querySelector(`.chrx-editor .chrx-slot[data-day="${d.day}"][data-period="${d.period}"]`);
@@ -102,24 +93,25 @@ import "./placement_validator.js";
         }
       }
 
-      const w = ghost.offsetWidth || 60, h = ghost.offsetHeight || 24;
-      dx = (w / 2) | 0; dy = (h / 2) | 0;
+      // The compositor ghost has a fixed size in drag_ux.css. Preserve the
+      // pointer's relative grab position without forcing a layout read.
+      dx = Math.max(0, Math.min(96, Number.isFinite(d.grabRatioX) ? d.grabRatioX * 96 : 48));
+      dy = Math.max(0, Math.min(48, Number.isFinite(d.grabRatioY) ? d.grabRatioY * 48 : 24));
       // All callers pass sourceX/sourceY; the old `window.event` fallback was
       // non-standard (undefined in modern browsers) — drop to a plain 0 origin
       // (the first mousemove corrects it). BUG_REPORT_2026-06-13 S1.1.
       px = (typeof d.sourceX === "number") ? d.sourceX : 0;
       py = (typeof d.sourceY === "number") ? d.sourceY : 0;
-      rx = px; ry = py; renderInit = true;   // start the eased ghost at the pickup point
+      lastPaintX = px;
+      activePointerId = Number.isFinite(d.pointerId) ? d.pointerId : null;
       apply();
-      paintDropZones();
+      prepareDropRows();
       scrollEl = document.querySelector(".chrx-editor .chrx-grid-scroll");
       scrollRect = null;
       suppressClickUntil = 0;
-      document.addEventListener("mousemove", onMove, true);
-      document.addEventListener("mouseup", onUp, true);
-      document.addEventListener("touchmove", onMove, { capture: true, passive: false });
-      document.addEventListener("touchend", onUp, true);
-      document.addEventListener("touchcancel", onUp, true);
+      document.addEventListener("pointermove", onMove, true);
+      document.addEventListener("pointerup", onUp, true);
+      document.addEventListener("pointercancel", onUp, true);
       document.addEventListener("keydown", onKey, true);
       document.addEventListener("click", swallowClick, true);
     } else {
@@ -144,6 +136,16 @@ import "./placement_validator.js";
       
       document.addEventListener("keydown", onKey, true);
     }
+  }
+
+  // Pickup only marks the rows that can receive the card. Validity is
+  // calculated lazily for the cell under the pointer, so pickup never blocks
+  // on a whole-row heatmap.
+  function prepareDropRows() {
+    const S = window.APP && window.APP.school;
+    const lesson = S && S._idx && inHand ? S._idx.lessonById[inHand.lessonId] : null;
+    const perspective = (window.APP.editor && window.APP.editor.perspective) || "class";
+    dimNonTargetRows(dropRowKeySet(lesson, perspective));
   }
 
   // Heatmap-on-pickup (audit §5.3), row-scoped. A card can only ever land in
@@ -183,10 +185,11 @@ import "./placement_validator.js";
   // mode (paintDropZones) and click mode (paintHighlightsForClickMode);
   // cleared in cleanup().
   function dimNonTargetRows(targetKeys) {
-    if (!targetKeys) return;   // room perspective: every row stays live
     const rows = document.querySelectorAll(".chrx-editor .chrx-row:not(.chrx-row-head)");
     for (const rowEl of rows) {
-      rowEl.toggleAttribute("data-drop-dim", !targetKeys.has(rowEl.dataset.row));
+      const isTarget = !targetKeys || targetKeys.has(rowEl.dataset.row);
+      rowEl.toggleAttribute("data-drop-target", isTarget);
+      rowEl.toggleAttribute("data-drop-dim", !isTarget);
     }
   }
 
@@ -327,13 +330,10 @@ import "./placement_validator.js";
 
   function onMove(e) {
     if (!ghost) return;
-    if (e.type === "touchmove" && e.cancelable) e.preventDefault();  // stop page scroll while dragging
+    if (activePointerId != null && e.pointerId !== activePointerId) return;
+    if (e.cancelable) e.preventDefault();
     const xy = evXY(e);
     px = xy.x; py = xy.y;
-    if (!renderInit) { rx = px; ry = py; renderInit = true; }
-    if (dragTooltipEl && dragTooltipEl.style.display !== "none") {
-      positionDragTooltip(px, py);
-    }
     if (!rafId) rafId = requestAnimationFrame(flush);
   }
 
@@ -350,11 +350,6 @@ import "./placement_validator.js";
   function flush() {
     rafId = 0;
     if (!ghost) return;
-    // Ease the rendered position toward the cursor so the ghost trails with a
-    // little weight (inertia), and keep animating until it settles — so it
-    // glides to a stop after the pointer halts rather than snapping.
-    rx += (px - rx) * EASE;
-    ry += (py - ry) * EASE;
     apply();
     updateAutoScroll();
     if (scrollVX !== 0 || scrollVY !== 0) {
@@ -362,7 +357,7 @@ import "./placement_validator.js";
     }
     // Keep the loop alive while auto-scrolling too: the cursor stays put but
     // the grid moves under it, so hover-validity must keep re-evaluating.
-    if (Math.abs(px - rx) > 0.4 || Math.abs(py - ry) > 0.4 || scrollVX !== 0 || scrollVY !== 0) {
+    if (scrollVX !== 0 || scrollVY !== 0) {
       if (!rafId) rafId = requestAnimationFrame(flush);
     }
     const now = performance.now();
@@ -426,11 +421,11 @@ import "./placement_validator.js";
   }
 
   function apply() {
-    // Velocity-based tilt (how far the cursor is ahead of the ghost) gives the
-    // card a sense of mass as it swings to follow. Capped + disabled under
-    // reduced-motion.
-    const tilt = REDUCED_MOTION ? 0 : Math.max(-7, Math.min(7, (px - rx) * 0.5));
-    ghost.style.transform = `translate(${rx - dx}px, ${ry - dy}px) rotate(${tilt}deg)`;
+    // Track the pointer 1:1. A small velocity tilt provides physical feedback
+    // without making the card trail behind the user's hand.
+    const tilt = REDUCED_MOTION ? 0 : Math.max(-5, Math.min(5, (px - lastPaintX) * 0.16));
+    ghost.style.transform = `translate3d(${px - dx}px, ${py - dy}px, 0) rotate(${tilt}deg)`;
+    lastPaintX = px;
   }
 
   // The drag ghost is pointer-events:none (drag_ux.css), so elementFromPoint
@@ -477,12 +472,7 @@ import "./placement_validator.js";
       }
     }
     updateCarryPanel(slot, v);
-    if (v.reasons && v.reasons.length) {
-      slot.title = v.reasons.join(" · ");
-      showDragTooltip(v.reasons, v.validity, x, y);
-    } else {
-      hideDragTooltip();
-    }
+    if (v.reasons && v.reasons.length) slot.title = v.reasons.join(" · ");
   }
 
   // Is the point over the Pending Cards area (strip, its region, or header)?
@@ -514,6 +504,7 @@ import "./placement_validator.js";
 
   function onUp(e) {
     if (!ghost) return;
+    if (activePointerId != null && e.pointerId !== activePointerId) return;
     if (e.target && e.target.closest && e.target.closest(".chrx-collision-menu")) return;
     const up = evXY(e);   // touch end reports via changedTouches
     // The mouseup synthesizes a click on the drop target — swallow it so the
@@ -831,6 +822,7 @@ import "./placement_validator.js";
 
   function cancel() {
     if (!inHand) return;
+    const sourceWasRetained = !!inHand.sourceRetained;
     const before = pickupSnap; pickupSnap = null;
     if (!inHand.fromPending && Number.isFinite(inHand.originDay) && Number.isFinite(inHand.originPeriod)) {
       const S = window.APP && window.APP.school;
@@ -861,7 +853,8 @@ import "./placement_validator.js";
     }
     function finalise() {
       if (window.APP.editor) window.APP.editor.cardInHand = null;
-      cleanup(); rerender(null, before);
+      cleanup();
+      if (!sourceWasRetained) rerender(null, before);
     }
   }
 
@@ -917,11 +910,9 @@ import "./placement_validator.js";
   }
 
   function cleanup() {
-    document.removeEventListener("mousemove", onMove, true);
-    document.removeEventListener("mouseup", onUp, true);
-    document.removeEventListener("touchmove", onMove, { capture: true });
-    document.removeEventListener("touchend", onUp, true);
-    document.removeEventListener("touchcancel", onUp, true);
+    document.removeEventListener("pointermove", onMove, true);
+    document.removeEventListener("pointerup", onUp, true);
+    document.removeEventListener("pointercancel", onUp, true);
     document.removeEventListener("keydown", onKey, true);
     document.removeEventListener("click", swallowClick, true);
     suppressClickUntil = 0;
@@ -958,11 +949,17 @@ import "./placement_validator.js";
       s => s.removeAttribute("data-validity"));
     document.querySelectorAll(".chrx-editor .chrx-row[data-drop-dim]").forEach(
       r => r.removeAttribute("data-drop-dim"));
+    document.querySelectorAll(".chrx-editor .chrx-row[data-drop-target]").forEach(
+      r => r.removeAttribute("data-drop-target"));
+    document.querySelectorAll(".chrx-vkarta.chrx-vk-source").forEach(card => {
+      card.classList.remove("chrx-vk-source");
+      card.removeAttribute("aria-grabbed");
+    });
     lastExtraSlots = [];
     pickupSnap = null;
     scrollEl = null; scrollRect = null; scrollVX = 0; scrollVY = 0;
     if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
-    renderInit = false;   // next pickup re-seeds the eased ghost position
+    activePointerId = null;
     if (ghost && ghost.parentNode) ghost.parentNode.removeChild(ghost);
     const banner = document.getElementById("chrx-carry-banner");
     if (banner && banner.parentNode) banner.parentNode.removeChild(banner);
@@ -1160,7 +1157,10 @@ import "./placement_validator.js";
     const rowKey = slot.dataset.row;
     const perspective = (window.APP && window.APP.editor && window.APP.editor.perspective) || "class";
 
-    const candidates = prefilteredCards || (S.cards || []).filter(c => c.day === d && c.period === p);
+    const candidates = (prefilteredCards || (S.cards || []).filter(c => c.day === d && c.period === p))
+      .filter(c => !(inHand && inHand.sourceRetained &&
+        c.lessonId === inHand.lessonId && c.day === inHand.originDay &&
+        c.period >= inHand.originPeriod && c.period < inHand.originPeriod + (inHand.blockLen || 1)));
 
     return candidates.filter(c => {
       if (!rowKey || rowKey === "head") return true;
