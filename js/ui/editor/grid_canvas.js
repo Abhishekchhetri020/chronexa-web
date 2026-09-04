@@ -63,6 +63,10 @@ window.Editor = (function () {
     const newScroll = rootEl.querySelector(".chrx-grid-scroll");
     if (newScroll) { newScroll.scrollTop = savedTop; newScroll.scrollLeft = savedLeft; }
 
+    fillOverviewStats(rootEl, S, rows, perspective);
+    highlightToday(rootEl, S);
+    enableLiftOnHover(rootEl);
+
     // Re-apply any pinch-zoom level to the freshly built grid (Plan C).
     if (window.APP.editor.gridZoom && window.APP.editor.gridZoom !== 1) {
       const g = rootEl.querySelector(".chrx-grid");
@@ -205,7 +209,11 @@ window.Editor = (function () {
     // header's #editor-unplaced-count span instead (see render()).
     return `
       <div class="chrx-overview-bar">
-        <div><strong>Overview</strong><span>${rows.length} ${esc(((window.APP.editor.perspective || "class") + "s"))}</span></div>
+        <div class="chrx-ob-lockup">
+          <span class="chrx-ob-title">${esc(overviewTitle())}</span>
+          <span class="chrx-ob-sub">${rows.length} ${esc(((window.APP.editor.perspective || "class") + "s"))} · ${periods.length || 8} periods</span>
+        </div>
+        <div class="chrx-ob-stats" id="chrx-ob-stats" aria-live="polite"></div>
         <button type="button" data-focus-nav="focus">Open Focus Board</button>
       </div>
       ${dayTabsHtml}
@@ -216,6 +224,12 @@ window.Editor = (function () {
         </div>
       </div>
     `;
+  }
+
+  function overviewTitle() {
+    const school = window.APP.school;
+    const name = school && school.schoolName;
+    return name ? name : "Untitled timetable";
   }
 
   function focusHtml(S, allRows, focusRow, periods, cardLookup) {
@@ -265,6 +279,62 @@ window.Editor = (function () {
       }
     }
     return cells.join("");
+  }
+
+  /* ── Overview-header stats — computed once per render, cheap. ── */
+  function fillOverviewStats(rootEl, S, rows, perspective) {
+    const host = rootEl.querySelector("#chrx-ob-stats");
+    if (!host) return;
+    const unplaced = pendingCount(S);
+    const placed   = (S.cards || []).length;
+    const days     = dayCount(S);
+    const periodCount = (displayPeriods(S) || []).length;
+    const els = [
+        stat(rows.length, perspective === "class" ? "classes" : perspective + "s"),
+        stat(days, "days"),
+        stat(periodCount, "periods"),
+        stat(placed, "placed"),
+        stat(unplaced, "unplaced", unplaced > 0)
+      ];
+    host.innerHTML = els.map((e, i) => (i > 0 ? '<div class="chrx-ob-divider"></div>' : "") + e).join("");
+    function stat(v, label, warn) {
+      return `<div class="chrx-ob-stat${warn ? " chrx-ob-stat--warn" : ""}"><b>${esc(String(v))}</b><span>${esc(label)}</span></div>`;
+    }
+  }
+
+  /* Highlight the current weekday so today's column is instantly scannable.
+     Synthetic days (synthetic periods) are never treated as "today". */
+  function highlightToday(rootEl, S) {
+    const numDays = dayCount(S);
+    // Map JS weekday (1=Mon..6=Sat) onto the timetable's own day index — if
+    // the school teaches on that weekday, mark it. Noop off-school days.
+    const jsDay = new Date().getDay(); // 0 = Sunday, 1 = Monday
+    const todayIdx = jsDay === 0 ? -1 : jsDay - 1; // Monday=0
+    if (todayIdx < 0 || todayIdx >= numDays) return;
+    // Synthetic periods (lunch / break, outside bell) are never "today" —
+    // skip any period marked synthetic for this day.
+    const syntheticPs = (displayPeriods(S) || []).filter(p => p.synthetic).map(p => p.index | 0);
+    const synSet = new Set(syntheticPs);
+    rootEl.querySelectorAll(`[data-day="${todayIdx}"]`).forEach(el => {
+      const p = el.dataset.period;
+      if (p != null && synSet.has(p | 0)) return;
+      el.classList.add("is-today");
+    });
+  }
+
+  /* The rail-lift hover: cards get a class (not inline style) so the CSS
+     transition controls it uniformly — no JS-driven layout thrash. */
+  function enableLiftOnHover(rootEl) {
+    if (rootEl.dataset.liftWired) return;
+    rootEl.dataset.liftWired = "1";
+    rootEl.addEventListener("pointerover", e => {
+      const vk = e.target.closest(".chrx-vkarta");
+      if (vk) vk.classList.add("chrx-vkarta--lift");
+    });
+    rootEl.addEventListener("pointerout", e => {
+      const vk = e.target.closest(".chrx-vkarta");
+      if (vk) vk.classList.remove("chrx-vkarta--lift");
+    });
   }
 
   let _prevUnplaced = null;
