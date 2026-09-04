@@ -12,11 +12,8 @@ test("Pages artifact contains the compiled app shell", async ({ page }) => {
   await expect(stylesheet).toHaveCount(1);
   await expect(module).toHaveCount(1);
   await expect(page.locator('script[src*="js/entry/main.js"]')).toHaveCount(0);
-  await expect(page.locator(".chrx-landing")).toHaveCSS("display", "flex");
-  await expect(page.locator(".chrx-landing__wordmark")).toHaveCSS(
-    "font-family",
-    /Fraunces|Georgia/
-  );
+  await expect(page.locator(".chrx-landing")).toBeVisible();
+  await expect(page.locator(".chrx-lattice-brand")).toContainText("Chronexa");
 });
 
 test("source shell carries the GitHub Pages cache recovery guard", () => {

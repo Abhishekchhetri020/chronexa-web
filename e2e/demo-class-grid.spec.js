@@ -7,7 +7,15 @@ import { loadDemoSchool } from "./helpers.js";
 test("load demo school → the by-class timetable grid renders", async ({ page }) => {
   await loadDemoSchool(page);
 
-  // Fully placed demo school: 946 cards on the grid.
+  // In Focus Board (default view), the active class schedule renders (~42 cards).
+  const focusCards = page.locator("#editor-root .chrx-vkarta");
+  expect(await focusCards.count()).toBeGreaterThanOrEqual(30);
+
+  // Switch to Overview to verify the full school (>900 cards).
+  const overviewBtn = page.locator('[data-focus-nav="overview"]');
+  if (await overviewBtn.isVisible()) {
+    await overviewBtn.click();
+  }
   const cards = page.locator("#editor-root .chrx-vkarta");
   expect(await cards.count()).toBeGreaterThan(900);
 
