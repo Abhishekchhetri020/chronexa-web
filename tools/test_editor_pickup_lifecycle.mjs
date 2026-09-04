@@ -30,11 +30,18 @@ const __dirname  = path.dirname(__filename);
 const repoRoot   = path.resolve(__dirname, "..");
 const require_   = createRequire(import.meta.url);
 
-const { JSDOM } = require_("/private/tmp/chronexa_smoke/node_modules/jsdom");
+const { JSDOM } = require_("jsdom");
 const dom = new JSDOM("<!doctype html><html><body><div id='host'></div></body></html>");
 globalThis.window    = dom.window;
 globalThis.document  = dom.window.document;
 globalThis.CustomEvent = dom.window.CustomEvent;
+globalThis.getComputedStyle = dom.window.getComputedStyle.bind(dom.window);
+dom.window.HTMLCanvasElement.prototype.getContext = function () {
+  return {
+    font: "",
+    measureText: (text) => ({ width: String(text).length * 8 }),
+  };
+};
 
 // Count pointerdown handlers attached to a given Element by patching its
 // add/removeEventListener so we can assert wire-once semantics.
