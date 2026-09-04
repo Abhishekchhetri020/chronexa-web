@@ -402,9 +402,12 @@ body.chrx-card-in-hand .chrx-slot[data-validity="red"] {
    ──────────────────────────────────────────────────────────────────────── */
 .chrx-slot--split2 .chrx-vkarta:nth-child(2),
 .chrx-slot--split .chrx-vkarta { border-radius: 7px; }
-/* Split cells keep a consistent 4px inset rhythm. */
-.chrx-slot--split2 .chrx-vkarta { inset: 2px calc(50% + 2px) 2px 2px; }
-.chrx-slot--split2 .chrx-vkarta:nth-child(2) { inset: 2px 2px 2px calc(50% + 2px); }
+/* Split cells keep the v2 radius/inset rhythm but PRESERVE design-v3's
+   VERTICAL stack (top/bottom halves) — an earlier v2 draft used a horizontal
+   side-by-side split here, which crushed co-taught subjects (Hindi/Urdu/
+   Sanskrit) into unreadable vertical slivers. */
+.chrx-slot--split2 .chrx-vkarta { inset: 2px 4px calc(50% + 1px) 6px; }
+.chrx-slot--split2 .chrx-vkarta:nth-child(2) { inset: calc(50% + 1px) 4px 2px 6px; }
 
 /* Focus board: same rail language carried through. */
 .chrx-focus-slot .chrx-vkarta {
