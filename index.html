@@ -93,7 +93,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 <nav class="bg-white shadow-sm sticky top-0 z-30 border-b border-slate-200">
   <div class="max-w-7xl mx-auto px-2 sm:px-6 py-2 flex flex-wrap gap-1.5 text-xs sm:text-sm">
     <button data-step="1" class="step-btn px-3 py-1.5 rounded font-semibold bg-blue-700 text-white">1. Start</button>
-    <button data-step="6" class="step-btn needs-school px-3 py-1.5 rounded font-semibold bg-emerald-600 text-white" disabled>🪄 Editor (drag-drop)</button>
+    <button data-step="6" class="step-btn needs-school px-3 py-1.5 rounded font-semibold bg-emerald-600 text-white" disabled>Editor</button>
     <button data-step="2" class="step-btn needs-school px-3 py-1.5 rounded font-semibold bg-slate-200 text-slate-700" disabled>School Info</button>
     <button data-step="3" class="step-btn needs-school px-3 py-1.5 rounded font-semibold bg-slate-200 text-slate-700" disabled>Class Grid</button>
     <button data-step="4" class="step-btn needs-school px-3 py-1.5 rounded font-semibold bg-slate-200 text-slate-700" disabled>Teacher Grid</button>
@@ -226,13 +226,13 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
          doesn't cost the grid vertical space — see relocateEditorTools().
          It stays here as the fallback home if the topbar slot isn't present. -->
     <div id="editor-quick-tools" class="flex items-center gap-1.5 flex-wrap mb-1" style="gap:6px;">
-      <span id="editor-unplaced-count" class="text-xs text-slate-500 font-medium" style="white-space:nowrap;">— unplaced</span>
-      <button id="editor-lesson-grid" class="px-2 py-1 text-xs rounded border border-blue-300 bg-blue-50 text-blue-900 hover:bg-blue-100" title="Open the class × subject lesson matrix">📋 Lessons</button>
-      <button id="editor-density" class="px-2 py-1 text-xs rounded border border-slate-300 hover:bg-slate-100" title="Toggle card density">Compact</button>
-      <button id="editor-toggle-skin" class="px-2 py-1 text-xs rounded border border-slate-300 hover:bg-slate-100">Classic skin</button>
-      <button id="editor-toggle-dark" class="px-2 py-1 text-xs rounded border border-slate-300 hover:bg-slate-100" title="Toggle editor dark mode">🌙 Dark</button>
-      <button id="editor-color-by" class="px-2 py-1 text-xs rounded border border-slate-300 hover:bg-slate-100" title="Change card color grouping">Color: Subject</button>
-      <button id="editor-perspective" class="px-2 py-1 text-xs rounded bg-slate-100 hover:bg-slate-200">By Class</button>
+      <span id="editor-unplaced-count" style="white-space:nowrap;">— unplaced</span>
+      <button id="editor-lesson-grid" type="button" data-icon="table" title="Open the class × subject lesson matrix"><span class="chrx-tool__label">Lessons</span></button>
+      <button id="editor-perspective" type="button" data-icon="rows" title="Rows: class / teacher / room / subject"><span class="chrx-tool__label">By Class</span></button>
+      <button id="editor-color-by" type="button" data-icon="palette" title="Card colour: subject / teacher / class / room"><span class="chrx-tool__label">Colour: Subject</span></button>
+      <button id="editor-density" type="button" data-icon="layers" title="Row density"><span class="chrx-tool__label">Compact</span></button>
+      <button id="editor-toggle-skin" type="button" data-icon="grid" title="Classic aSc-style skin"><span class="chrx-tool__label">Classic</span></button>
+      <button id="editor-toggle-dark" type="button" data-icon="moon" title="Appearance: light / dark"><span class="chrx-tool__label">Dark</span></button>
     </div>
 
     <div id="editor-banner" class="mb-3 px-3 py-2 rounded bg-amber-50 border border-amber-300 text-xs text-amber-900 hidden">
@@ -245,7 +245,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     <div id="editor-lower" class="chrx-editor-lower mt-3">
       <div id="editor-inspector-root" class="chrx-editor-inspector" aria-label="Editor inspector"></div>
       <div class="chrx-pending-region">
-        <h3 class="text-sm font-semibold text-slate-700 mb-1">📥 Pending cards <span class="text-xs text-slate-500" id="pending-count">(— unplaced)</span></h3>
+        <h3><svg class="chrx-ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 13v4a3 3 0 0 0 3 3h12a3 3 0 0 0 3-3v-4"/><path d="M3 13h5l1.5 2.5h5L16 13h5"/><path d="M12 3v8m0 0-3-3m3 3 3-3"/></svg>Unplaced lessons <span id="pending-count">(— unplaced)</span></h3>
         <div id="pending-strip-root" class="bg-slate-50 border border-slate-200 rounded p-2" style="min-height:80px"></div>
       </div>
     </div>
@@ -290,7 +290,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
 <!-- ─────────────────────── SCRIPTS ─────────────────────── -->
 <!-- Bump APP_VER on every deploy so the browser refetches the JS bundle -->
-<script>window.APP_VER = "20260904-p202-editor-v2";</script>
+<script>window.APP_VER = "20260904-p203-editor-v3";</script>
 <!-- Nuclear SW migration: if an old cache-first SW is still controlling,
      unregister it and reload to pick up the new network-first SW. -->
 <script>
@@ -468,28 +468,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
 <!-- Solver main-thread shims now live in js/entry/solver_shims.js -->
 
-<!-- Plan B: editor dark-mode toggle. Self-contained (no main.js dependency) so
-     it can't collide with concurrent editor wiring. Adds body.chrx-editor-dark;
-     the styling lives in css/design-v3.css. Persists the choice. -->
-<script>
-(function () {
-  "use strict";
-  var KEY = "chronexa.editor.dark";
-  function apply(on) {
-    document.body.classList.toggle("chrx-editor-dark", on);
-    var btn = document.getElementById("editor-toggle-dark");
-    if (btn) btn.textContent = on ? "☀️ Light" : "🌙 Dark";
-  }
-  try { if (localStorage.getItem(KEY) === "1") apply(true); } catch (e) {}
-  document.addEventListener("click", function (e) {
-    var btn = e.target.closest && e.target.closest("#editor-toggle-dark");
-    if (!btn) return;
-    var on = !document.body.classList.contains("chrx-editor-dark");
-    apply(on);
-    try { localStorage.setItem(KEY, on ? "1" : "0"); } catch (e2) {}
-  });
-})();
-</script>
+<!-- Appearance (light / dark) is wired in js/ui/main.js (v3 studio). -->
 
 </body>
 </html>

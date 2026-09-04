@@ -30,11 +30,12 @@ import "../../css/first-five-minutes.css";
 // Landing redesign stylesheet — replaces landing-pixels.css + landing-anim.css
 // (both retired 2026-08-02; files kept on disk for the lessons page).
 import "../../css/landing-redesign.css";
-// Editor v2 redesign — modern command-centre surface; loaded LAST so its
-// additive layer overrides editor.css / drag_ux.css on cascade order alone.
-import "../../css/editor-v2.css";
+// Editor v3 "Studio" — system-native surface for the whole editor page.
+// Loaded LAST so it resolves over editor.css / drag_ux.css / design-v3.css.
+import "../../css/editor-v3.css";
 
 import "../ui/state.js";
+import "../ui/components/icons.js";
 import "../ui/i18n.js";
 import "../xml/parse_timetable_xml.js";
 import "../ui/grid_view.js";

@@ -211,10 +211,10 @@ window.Editor = (function () {
       <div class="chrx-overview-bar">
         <div class="chrx-ob-lockup">
           <span class="chrx-ob-title">${esc(overviewTitle())}</span>
-          <span class="chrx-ob-sub">${rows.length} ${esc(((window.APP.editor.perspective || "class") + "s"))} · ${periods.length || 8} periods</span>
+          <span class="chrx-ob-sub">${rows.length} ${esc(PERSPECTIVE_PLURAL[window.APP.editor.perspective || "class"] || "rows")} · ${periods.length || 8} periods</span>
         </div>
         <div class="chrx-ob-stats" id="chrx-ob-stats" aria-live="polite"></div>
-        <button type="button" data-focus-nav="focus">Open Focus Board</button>
+        <button type="button" data-focus-nav="focus">Focus board</button>
       </div>
       ${dayTabsHtml}
       <div class="chrx-grid-scroll">
@@ -239,14 +239,14 @@ window.Editor = (function () {
     ).join("");
     return `
       <div class="chrx-focus-boardbar">
-        <button type="button" class="chrx-focus-boardbar__nav" data-focus-nav="prev" aria-label="Previous ${esc(perspective)}">←</button>
+        <button type="button" class="chrx-focus-boardbar__nav" data-focus-nav="prev" aria-label="Previous ${esc(perspective)}">${icon("chevL", 18)}</button>
         <label class="chrx-focus-boardbar__picker">
           <span>${esc(PERSPECTIVE_LABEL[perspective].replace("By ", ""))}</span>
           <select data-focus-entity aria-label="Choose ${esc(perspective)}">${options}</select>
         </label>
-        <button type="button" class="chrx-focus-boardbar__nav" data-focus-nav="next" aria-label="Next ${esc(perspective)}">→</button>
-        <p>Drag a lesson to another period. Conflicts appear in the inspector.</p>
-        <button type="button" class="chrx-focus-boardbar__overview" data-focus-nav="overview">View all ${esc(PERSPECTIVE_PLURAL[perspective])}</button>
+        <button type="button" class="chrx-focus-boardbar__nav" data-focus-nav="next" aria-label="Next ${esc(perspective)}">${icon("chevR", 18)}</button>
+        <p>Drag a lesson to another period. Conflicts show in the inspector.</p>
+        <button type="button" class="chrx-focus-boardbar__overview" data-focus-nav="overview">All ${esc(PERSPECTIVE_PLURAL[perspective])}</button>
       </div>
       <div class="chrx-focus-board" role="grid" aria-label="${esc(focusRow.label)} weekly timetable"
            style="--chrx-days:${dayCount(S)}">
@@ -290,7 +290,7 @@ window.Editor = (function () {
     const days     = dayCount(S);
     const periodCount = (displayPeriods(S) || []).length;
     const els = [
-        stat(rows.length, perspective === "class" ? "classes" : perspective + "s"),
+        stat(rows.length, PERSPECTIVE_PLURAL[perspective] || "rows"),
         stat(days, "days"),
         stat(periodCount, "periods"),
         stat(placed, "placed"),
@@ -342,8 +342,8 @@ window.Editor = (function () {
     const elc = document.getElementById("editor-unplaced-count");
     const n = pendingCount(S);
     if (elc) {
-      elc.textContent = n === 0 ? "All placed ✓" : n + " unplaced";
-      elc.style.color = n === 0 ? "var(--chrx-green, #16a34a)" : "";
+      elc.textContent = n === 0 ? "All placed" : n + " unplaced";
+      elc.classList.toggle("is-pending", n > 0);
     }
     // Plan D: celebrate the moment everything first lands (a real >0 → 0
     // transition, not an already-complete load).
@@ -394,6 +394,10 @@ window.Editor = (function () {
   const COLOR_AXES = ["subject", "teacher", "class", "room"];
   const COLOR_LABEL = { subject: "Color: Subject", teacher: "Color: Teacher", class: "Color: Class", room: "Color: Room" };
 
+  function icon(name, size) {
+    return window.ChrxIcons ? window.ChrxIcons.svg(name, size || 16) : "";
+  }
+
   function pendingCount(S) {
     const placed = Object.create(null);
     for (const c of (S.cards || [])) placed[c.lessonId] = (placed[c.lessonId] || 0) + 1;
@@ -424,7 +428,7 @@ window.Editor = (function () {
     }
     return `
       <div class="chrx-row chrx-row-head" data-row="head">
-        <div class="chrx-rowlabel chrx-h">Row</div>
+        <div class="chrx-rowlabel chrx-h">${esc(PERSPECTIVE_LABEL[(window.APP.editor && window.APP.editor.perspective) || "class"].replace("By ", ""))}</div>
         ${dayBlocks.join("")}
       </div>
     `;
@@ -571,7 +575,7 @@ window.Editor = (function () {
     const fam = cs.fontFamily || "sans-serif";
     const weight = cs.fontWeight || "700";
     const fontPx = parseFloat(cs.fontSize) || 11.5;
-    const avail = Math.max(10, slot.clientWidth - 7);   // minus border-left + padding
+    const avail = Math.max(10, lines[0].clientWidth || (slot.clientWidth - 12));   // the line box already excludes rail + padding
     const ctx = (autoFitSubjectCodes._c || (autoFitSubjectCodes._c = document.createElement("canvas").getContext("2d")));
     const wOf = t => { ctx.font = `${weight} ${fontPx}px ${fam}`; return ctx.measureText(t).width; };
     const cache = new Map();
@@ -751,6 +755,7 @@ window.Editor = (function () {
         period: parseInt(vk.dataset.period, 10),
         classroomId: vk.dataset.classroomId || undefined,
         source: "placed",
+        halo: vk.dataset.halo || "",
       });
       return;
     }
@@ -834,6 +839,7 @@ window.Editor = (function () {
         period: parseInt(vk.dataset.period, 10),
         classroomId: vk.dataset.classroomId || undefined,
         source: "placed",
+        halo: vk.dataset.halo || "",
       });
     }
   }
@@ -1003,21 +1009,30 @@ window.Editor = (function () {
     const position = opts && Number.isFinite(opts.day) && Number.isFinite(opts.period)
       ? `${DAY_LABELS_EN[opts.day] || ("D" + opts.day)} P${opts.period}`
       : "Unplaced";
-    const status = placementStatus(L.id, opts);
+    // A placed card is judged by the validator halo it already carries —
+    // re-classifying its own slot would flag it as colliding with itself.
+    const status = opts && opts.source === "placed"
+      ? (opts.halo === "red"   ? { state: "red",   text: "Hard conflict" }
+       : opts.halo === "amber" ? { state: "amber", text: "Soft warning" }
+       :                         { state: "green", text: "On the timetable" })
+      : placementStatus(L.id, opts);
     const panel = document.getElementById("chrx-card-panel") || document.createElement("aside");
     panel.id = "chrx-card-panel";
     panel.className = "chrx-card-panel";
+    panel.style.setProperty("--chrx-panel-hue", subjectHueForId(L.subjectId, subject));
+    const row = (ic, label, value) =>
+      `<div class="chrx-card-panel__row">${icon(ic, 15)}<dt>${label}</dt><dd title="${esc(value || "")}">${esc(value || "—")}</dd></div>`;
     panel.innerHTML = `
-      <div class="chrx-card-panel__eyebrow">${opts && opts.source === "pending" ? "Pending card" : "Card detail"}</div>
-      <div class="chrx-card-panel__title">${esc(subjectName)}</div>
-      <div class="chrx-card-panel__chips">
-        <span class="chrx-card-panel__chip" title="Class">🏫 ${esc(classNames || "—")}</span>
-        <span class="chrx-card-panel__chip" title="Teacher">👤 ${esc(teacherNames || "—")}</span>
-        <span class="chrx-card-panel__chip" title="Room">📍 ${esc(room ? room.name : "—")}</span>
-        <span class="chrx-card-panel__chip" title="Slot">📅 ${esc(position)}</span>
-      </div>
+      <div class="chrx-card-panel__eyebrow">${opts && opts.source === "pending" ? "Unplaced lesson" : "Lesson"}</div>
+      <div class="chrx-card-panel__title"><span class="chrx-card-panel__dot"></span><span>${esc(subjectName)}</span></div>
+      <dl class="chrx-card-panel__rows">
+        ${row("class", "Class", classNames)}
+        ${row("teacher", "Teacher", teacherNames)}
+        ${row("room", "Room", room ? room.name : "")}
+        ${row("calendar", "Slot", position)}
+      </dl>
       <div class="chrx-card-panel__progress"><span style="width:${Math.min(100, need ? placed / need * 100 : 0)}%"></span></div>
-      <div class="chrx-card-panel__foot">${placed}/${need || 0} placed · ${esc(status.text)}</div>
+      <div class="chrx-card-panel__foot"><span>${placed} of ${need || 0} placed</span><span class="chrx-card-panel__pill">${esc(status.text)}</span></div>
     `;
     panel.dataset.state = status.state;
     attachInspectorPanel(panel);

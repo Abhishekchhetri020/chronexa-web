@@ -115,7 +115,9 @@ import "./state.js";
 
     const search = el("div", { class: "chrx-kbd-search",
       onclick: () => openPalette() });
-    search.appendChild(el("span", { class: "chrx-kbd-search__icon" }, "Q"));
+    const searchIc = el("span", { class: "chrx-kbd-search__icon" });
+    searchIc.innerHTML = global.ChrxIcons ? global.ChrxIcons.svg("search", 14) : "";
+    search.appendChild(searchIc);
     search.appendChild(el("span", null, "Search anything…"));
     search.appendChild(el("span", { class: "chrx-kbd-search__kbd" }, "⌘K"));
 
@@ -133,7 +135,8 @@ import "./state.js";
 
     const fsBtn = el("button", { class: "chrx-shell-toggle", "data-toggle": "fs",
       title: "Fullscreen editor  F (Esc to exit)", "aria-label": "Toggle fullscreen editor",
-      onclick: () => togglePanel("fs") }, "⛶");
+      onclick: () => togglePanel("fs") });
+    fsBtn.innerHTML = global.ChrxIcons ? global.ChrxIcons.svg("expand", 16) : "⛶";
 
     return el("header", { class: "chrx-topbar" },
       sideBtn,
@@ -177,15 +180,17 @@ import "./state.js";
     qaSec.appendChild(el("div", { class: "chrx-rail-section__head" }, "Quick actions"));
     const qa = el("div", { class: "chrx-quick-actions" });
     [
-      { icon: "⁂", label: "Improve schedule", hint: "⌘I", fire: "app:improve" },
-      { icon: "↻", label: "Verify all",      hint: "⌘V", fire: "app:verify" },
-      { icon: "⊕", label: "Snapshot",         hint: "⌘S", fire: "app:save-as" },
-      { icon: "↘", label: "Export XML",       hint: "⌘E", fire: "app:export-timetable-xml" },
-      { icon: "℞", label: "Print preview",    hint: "⌘P", fire: "app:print-preview" },
+      { icon: "sparkle", label: "Improve schedule", hint: "⌘I", fire: "app:improve" },
+      { icon: "shield",  label: "Verify all",       hint: "⌘V", fire: "app:verify" },
+      { icon: "camera",  label: "Snapshot",         hint: "⌘S", fire: "app:save-as" },
+      { icon: "export",  label: "Export XML",       hint: "⌘E", fire: "app:export-timetable-xml" },
+      { icon: "print",   label: "Print preview",    hint: "⌘P", fire: "app:print-preview" },
     ].forEach(a => {
       const b = el("button", { class: "chrx-quick-action",
         onclick: () => fire(a.fire) });
-      b.appendChild(el("span", { class: "chrx-quick-action__icon" }, a.icon));
+      const qi = el("span", { class: "chrx-quick-action__icon" });
+      if (global.ChrxIcons && global.ChrxIcons.has(a.icon)) qi.innerHTML = global.ChrxIcons.svg(a.icon, 15); else qi.textContent = a.icon;
+      b.appendChild(qi);
       b.appendChild(document.createTextNode(a.label));
       b.appendChild(el("span", { class: "chrx-quick-action__hint" }, a.hint));
       qa.appendChild(b);

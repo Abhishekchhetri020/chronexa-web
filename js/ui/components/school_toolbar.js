@@ -11,22 +11,22 @@ import "../state.js";
   "use strict";
 
   const ENTITY_BUTTONS = [
-    { icon: "🏛", label: "School",      kind: "school" },
-    { icon: "📚", label: "Subjects",    kind: "subjects" },
-    { icon: "👥", label: "Classes",     kind: "classes" },
-    { icon: "🚪", label: "Classrooms",  kind: "classrooms" },
-    { icon: "👨‍🏫", label: "Teachers",   kind: "teachers" },
-    { icon: "📝", label: "Lessons",     kind: "lessons" },
-    { icon: "👤", label: "Students /\nSeminars", kind: "students" },
-    { icon: "🔗", label: "Relations",   kind: "relations" },
+    { icon: "school",  label: "School",      kind: "school" },
+    { icon: "subject", label: "Subjects",    kind: "subjects" },
+    { icon: "class",   label: "Classes",     kind: "classes" },
+    { icon: "room",    label: "Classrooms",  kind: "classrooms" },
+    { icon: "teacher", label: "Teachers",    kind: "teachers" },
+    { icon: "lesson",  label: "Lessons",     kind: "lessons" },
+    { icon: "users",   label: "Students /\nSeminars", kind: "students" },
+    { icon: "link",    label: "Relations",   kind: "relations" },
   ];
 
   const UTILITY_BUTTONS = [
-    { icon: "🧪", label: "Test",           event: "app:solver-test" },
-    { icon: "⚙",  label: "Generate",       event: "app:solver-generate" },
-    { icon: "☁",  label: "Generate in\ncloud", event: "app:solver-cloud" },
-    { icon: "✓",  label: "Verification",   event: "app:open-verification" },
-    { icon: "🖨", label: "Print\npreview", event: "app:print-preview" },
+    { icon: "flask",  label: "Test",           event: "app:solver-test" },
+    { icon: "play",   label: "Generate",       event: "app:solver-generate" },
+    { icon: "cloud",  label: "Generate in\ncloud", event: "app:solver-cloud" },
+    { icon: "shield", label: "Verification",   event: "app:open-verification" },
+    { icon: "print",  label: "Print\npreview", event: "app:print-preview" },
   ];
 
   function fire(name, detail) {
@@ -55,7 +55,9 @@ import "../state.js";
       title: label.replace(/\n/g, " "),
       onclick: onClick,
     },
-      el("span", { class: "chrx-entity-toolbar__icon" }, icon),
+      (() => { const s = el("span", { class: "chrx-entity-toolbar__icon" });
+               if (window.ChrxIcons && window.ChrxIcons.has(icon)) s.innerHTML = window.ChrxIcons.svg(icon, 20); else s.textContent = icon;
+               return s; })(),
       el("span", { class: "chrx-entity-toolbar__label" }, label.replace(/\n/g, " ")),
     );
     return btn;
@@ -87,7 +89,7 @@ import "../state.js";
 
     // Close button (far right)
     bar.appendChild(el("div", { class: "chrx-entity-toolbar__spacer" }));
-    bar.appendChild(makeBtn("✕", "Close", () => {
+    bar.appendChild(makeBtn("x", "Close", () => {
       document.dispatchEvent(new CustomEvent("nav:goto-step", { detail: { step: 1 } }));
     }));
 

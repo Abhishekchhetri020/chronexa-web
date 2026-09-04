@@ -542,6 +542,18 @@ import "./start_screen.js";
       if (n) showStep(n);
     });
 
+    // ─── Editor view tools: icon + label, so the label can change without
+    //     wiping the icon (v3 studio toolbar). ─────────────────────────
+    function setToolLabel(btn, text) {
+      if (!btn) return;
+      const lbl = btn.querySelector(".chrx-tool__label");
+      if (lbl) lbl.textContent = text; else btn.textContent = text;
+    }
+    document.querySelectorAll("#editor-quick-tools button[data-icon]").forEach(btn => {
+      if (btn.querySelector("svg") || !window.ChrxIcons) return;
+      btn.insertAdjacentHTML("afterbegin", window.ChrxIcons.svg(btn.dataset.icon, 15));
+    });
+
     // ─── Classic skin toggle in editor header ──────────────────
     const skinBtn = document.getElementById("editor-toggle-skin");
     if (skinBtn) {
@@ -549,13 +561,45 @@ import "./start_screen.js";
         const html = document.documentElement;
         if (html.getAttribute("data-skin") === "classic") {
           html.removeAttribute("data-skin");
-          skinBtn.classList.remove("bg-amber-100", "border-amber-500");
+          skinBtn.classList.remove("is-on");
         } else {
           html.setAttribute("data-skin", "classic");
-          skinBtn.classList.add("bg-amber-100", "border-amber-500");
+          skinBtn.classList.add("is-on");
         }
       };
     }
+
+    // ─── Appearance (light / dark) — global data-theme, remembered. The
+    //     system preference is mirrored onto <html> so the v3 tokens can
+    //     follow it without duplicating every colour in a media query. ──
+    const darkBtn = document.getElementById("editor-toggle-dark");
+    (function wireAppearance() {
+      const html = document.documentElement;
+      const mq = typeof matchMedia === "function" ? matchMedia("(prefers-color-scheme: dark)") : null;
+      const syncSystem = () => html.classList.toggle("e3-system-dark", !!(mq && mq.matches));
+      syncSystem();
+      if (mq && mq.addEventListener) mq.addEventListener("change", syncSystem);
+      let saved = null;
+      try { saved = localStorage.getItem("chronexa.theme"); } catch {}
+      if (saved === "dark" || saved === "light") html.setAttribute("data-theme", saved);
+      const isDark = () => html.getAttribute("data-theme") === "dark"
+        || (!html.getAttribute("data-theme") && html.classList.contains("e3-system-dark"));
+      const paint = () => {
+        if (!darkBtn) return;
+        const dark = isDark();
+        darkBtn.classList.toggle("is-on", dark);
+        setToolLabel(darkBtn, dark ? "Light" : "Dark");
+        const ic = darkBtn.querySelector("svg");
+        if (ic && window.ChrxIcons) ic.outerHTML = window.ChrxIcons.svg(dark ? "sun" : "moon", 15);
+      };
+      paint();
+      if (darkBtn) darkBtn.onclick = () => {
+        const next = isDark() ? "light" : "dark";
+        html.setAttribute("data-theme", next);
+        try { localStorage.setItem("chronexa.theme", next); } catch {}
+        paint();
+      };
+    })();
 
     // ─── Perspective rotator in editor header ──────────────────
     const persBtn = document.getElementById("editor-perspective");
@@ -567,7 +611,7 @@ import "./start_screen.js";
         const next = PERS[(PERS.indexOf(cur) + 1) % PERS.length];
         window.APP.editor = window.APP.editor || {};
         window.APP.editor.perspective = next;
-        persBtn.textContent = LABEL[next];
+        setToolLabel(persBtn, LABEL[next]);
         // Re-render
         if (window.EditorActivator) window.EditorActivator.activate();
       };
@@ -577,18 +621,18 @@ import "./start_screen.js";
     const colorBtn = document.getElementById("editor-color-by");
     if (colorBtn) {
       const AXIS = ["subject", "teacher", "class", "room"];
-      const LABEL = { subject: "Color: Subject", teacher: "Color: Teacher", class: "Color: Class", room: "Color: Room" };
+      const LABEL = { subject: "Colour: Subject", teacher: "Colour: Teacher", class: "Colour: Class", room: "Colour: Room" };
       let savedAxis = "subject";
       try { savedAxis = localStorage.getItem("chronexa.editor.colorBy") || "subject"; } catch {}
       if (!AXIS.includes(savedAxis)) savedAxis = "subject";
       window.APP.editor = window.APP.editor || {};
       window.APP.editor.colorBy = savedAxis;
-      colorBtn.textContent = LABEL[savedAxis];
+      setToolLabel(colorBtn, LABEL[savedAxis]);
       colorBtn.onclick = () => {
         const cur = window.APP.editor.colorBy || "subject";
         const next = AXIS[(AXIS.indexOf(cur) + 1) % AXIS.length];
         window.APP.editor.colorBy = next;
-        colorBtn.textContent = LABEL[next];
+        setToolLabel(colorBtn, LABEL[next]);
         try { localStorage.setItem("chronexa.editor.colorBy", next); } catch {}
         if (window.EditorActivator) window.EditorActivator.activate();
       };
@@ -614,12 +658,12 @@ import "./start_screen.js";
       try { savedDens = localStorage.getItem("chronexa.editor.density") || "compact"; } catch {}
       window.APP.editor = window.APP.editor || {};
       window.APP.editor.density = savedDens;
-      densBtn.textContent = savedDens === "compact" ? "Compact" : "Comfortable";
+      setToolLabel(densBtn, savedDens === "compact" ? "Compact" : "Comfortable");
       densBtn.onclick = () => {
         const cur = window.APP.editor.density || "compact";
         const next = cur === "compact" ? "comfortable" : "compact";
         window.APP.editor.density = next;
-        densBtn.textContent = next === "compact" ? "Compact" : "Comfortable";
+        setToolLabel(densBtn, next === "compact" ? "Compact" : "Comfortable");
         try { localStorage.setItem("chronexa.editor.density", next); } catch {}
         if (window.EditorActivator) window.EditorActivator.activate();
       };

@@ -156,12 +156,7 @@ window.ConstraintExplainer = (function () {
       "pointer-events:none",
       "max-width:280px",
       "min-width:180px",
-      "background:#1e293b",
-      "color:#f8fafc",
-      "border-radius:6px",
-      "box-shadow:0 6px 20px rgba(0,0,0,.25)",
-      "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
-      "font-size:11.5px",
+      "font-size:12px",
       "line-height:1.35",
       "padding:0",
       "opacity:0",
@@ -304,42 +299,38 @@ window.ConstraintExplainer = (function () {
     // Card-info header — always present (this is the only hover tooltip).
     const info = data.info;
     const infoHtml = info ? [
-      `<div style="padding:8px 10px 7px;${sev !== "ok" ? "border-bottom:1px solid rgba(255,255,255,.1);" : ""}">`,
-        `<div style="font-weight:700;font-size:12.5px;margin-bottom:3px;">${escHtml(info.subject)}</div>`,
-        `<div style="display:flex;flex-wrap:wrap;gap:4px 10px;color:#cbd5e1;font-size:10.5px;">`,
-          info.classes  ? `<span>🏫 ${escHtml(info.classes)}</span>`  : ``,
-          info.teachers ? `<span>👤 ${escHtml(info.teachers)}</span>` : ``,
-          info.room     ? `<span>📍 ${escHtml(info.room)}</span>`     : ``,
+      `<div class="chrx-explainer-tooltip__info${sev !== "ok" ? " has-more" : ""}">`,
+        `<div class="chrx-explainer-tooltip__subject">${escHtml(info.subject)}</div>`,
+        `<div class="chrx-explainer-tooltip__meta">`,
+          info.classes  ? `<span>${ic("class")}${escHtml(info.classes)}</span>`  : ``,
+          info.teachers ? `<span>${ic("teacher")}${escHtml(info.teachers)}</span>` : ``,
+          info.room     ? `<span>${ic("room")}${escHtml(info.room)}</span>`     : ``,
         `</div>`,
       `</div>`,
     ].join("") : "";
 
-    if (sev === "ok") return infoHtml || `<div style="padding:8px 10px;">—</div>`;
+    if (sev === "ok") return infoHtml || `<div class="chrx-explainer-tooltip__info">—</div>`;
 
     const reasons = (data.reasons && data.reasons.length)
       ? data.reasons
       : ["No violations detected at this cell."];
     const bullets = reasons.map(r =>
-      `<li style="margin:0;padding:3px 0 3px 14px;position:relative;">
-         <span style="position:absolute;left:0;top:7px;width:5px;height:5px;border-radius:50%;background:${badge.bg};"></span>
-         ${escHtml(r)}
-       </li>`
+      `<li class="chrx-explainer-tooltip__reason" style="--chrx-sev:${badge.bg}">${escHtml(r)}</li>`
     ).join("");
     return [
       infoHtml,
-      `<div style="display:flex;align-items:center;gap:6px;padding:7px 10px 6px;">`,
-        `<span style="display:inline-block;padding:2px 6px;border-radius:3px;background:${badge.bg};color:#fff;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.3px;">${escHtml(badge.label)}</span>`,
-        `<span style="color:#cbd5e1;font-size:10.5px;">${escHtml(reasons.length + " reason" + (reasons.length === 1 ? "" : "s"))}</span>`,
+      `<div class="chrx-explainer-tooltip__head">`,
+        `<span class="chrx-explainer-tooltip__badge" style="--chrx-sev:${badge.bg}">${escHtml(badge.label)}</span>`,
+        `<span class="chrx-explainer-tooltip__count">${escHtml(reasons.length + " reason" + (reasons.length === 1 ? "" : "s"))}</span>`,
       `</div>`,
-      `<ul style="list-style:none;margin:0;padding:0 10px 4px;">${bullets}</ul>`,
-      `<div style="padding:4px 10px 8px;border-top:1px solid rgba(255,255,255,.08);">
-         <button type="button" class="chrx-explainer-fix-btn"
-                 style="background:rgba(59,130,246,.15);color:#93c5fd;border:1px solid rgba(59,130,246,.3);border-radius:4px;padding:3px 8px;font-size:10.5px;font-weight:600;cursor:pointer;">
-           🛠 Fix automatically (beta)
-         </button>
+      `<ul class="chrx-explainer-tooltip__reasons">${bullets}</ul>`,
+      `<div class="chrx-explainer-tooltip__foot">
+         <button type="button" class="chrx-explainer-fix-btn">${ic("sparkle")}Fix automatically <em>beta</em></button>
        </div>`,
     ].join("");
   }
+
+  function ic(name) { return window.ChrxIcons ? window.ChrxIcons.svg(name, 13) : ""; }
 
   function escHtml(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g,

@@ -73,14 +73,24 @@ import "./placement_validator.js";
       
     if (mode === "drag") {
       const hue = subjectHue(subj);
+      // The ghost is the card itself, lifted: size it from the element the
+      // user grabbed (min. a readable 84×44) so the lift reads as physical.
+      const srcEl = d.fromPending
+        ? document.querySelector(`.chrx-pending-strip .chrx-vkarta[data-card-id="${d.cardId}"]`)
+        : document.querySelector(`.chrx-editor .chrx-vkarta[data-card-id="${d.cardId}"]`);
+      const srcRect = srcEl ? srcEl.getBoundingClientRect() : null;
+      const gw = Math.round(Math.max(84, Math.min(220, srcRect ? srcRect.width : 96)));
+      const gh = Math.round(Math.max(44, Math.min(96, srcRect ? srcRect.height : 48)));
       ghost = document.createElement("div");
       ghost.className = "chrx-card-ghost";
       ghost.setAttribute("aria-hidden", "true");
+      ghost.style.setProperty("--e3-ghost-w", gw + "px");
+      ghost.style.setProperty("--e3-ghost-h", gh + "px");
       ghost.innerHTML = `<div class="chrx-vkarta" style="--chrx-card-hue:${hue}">
-        <div class="chrx-vk-line1">${esc(subjShort)}</div>
-        <div class="chrx-vk-line2">${esc(classShort)}</div>
-        <div class="chrx-vk-line3">${esc(teacherShort)}</div></div>`;
+        <div class="chrx-vk-line1">${esc(subj ? (subj.name || subjShort) : subjShort)}</div>
+        <div class="chrx-vk-line2">${esc([classShort, teacherShort].filter(Boolean).join(" · "))}</div></div>`;
       document.body.appendChild(ghost);
+      document.body.style.setProperty("--chrx-hand-hue", String(hue));
       document.body.classList.add("chrx-card-in-hand");
       showCarryPanel(S, lesson, subjShort, classShort, teacherShort);
 
@@ -93,10 +103,9 @@ import "./placement_validator.js";
         }
       }
 
-      // The compositor ghost has a fixed size in drag_ux.css. Preserve the
-      // pointer's relative grab position without forcing a layout read.
-      dx = Math.max(0, Math.min(96, Number.isFinite(d.grabRatioX) ? d.grabRatioX * 96 : 48));
-      dy = Math.max(0, Math.min(48, Number.isFinite(d.grabRatioY) ? d.grabRatioY * 48 : 24));
+      // Preserve the pointer's relative grab position on the (resized) ghost.
+      dx = Math.max(0, Math.min(gw, Number.isFinite(d.grabRatioX) ? d.grabRatioX * gw : gw / 2));
+      dy = Math.max(0, Math.min(gh, Number.isFinite(d.grabRatioY) ? d.grabRatioY * gh : gh / 2));
       // All callers pass sourceX/sourceY; the old `window.event` fallback was
       // non-standard (undefined in modern browsers) — drop to a plain 0 origin
       // (the first mousemove corrects it). BUG_REPORT_2026-06-13 S1.1.
@@ -718,41 +727,43 @@ import "./placement_validator.js";
       }
     }
 
-    // Format labels
-    const allCollidingLabels = [];
-    // 1. The card being placed (inHand)
-    allCollidingLabels.push(formatCardCollisionLabel(inHand, d, p));
-    // 2. The other colliding cards
-    for (const c of allColliding) {
-      allCollidingLabels.push(formatCardCollisionLabel(c, c.day, c.period));
-    }
-    
-    // Create Backdrop (transparent)
+    // One row per clashing lesson: subject-hue dot, "Subject (Class)", slot.
+    const S = window.APP && window.APP.school;
+    const hueOf = (card) => {
+      const L = S && S._idx ? S._idx.lessonById[card.lessonId] : null;
+      return subjectHue(L && S._idx.subjectById[L.subjectId]);
+    };
+    const itemHtml = (card, day, period, extraClass) => {
+      const label = formatCardCollisionLabel(card, day, period);
+      const cut = label.lastIndexOf(" - ");
+      const name = cut >= 0 ? label.slice(0, cut) : label;
+      const when = cut >= 0 ? label.slice(cut + 3) : "";
+      return `<div class="chrx-collision-popup__item${extraClass || ""}" style="--chrx-item-hue:${hueOf(card)}">${esc(name)}${when ? `<span>${esc(when)}</span>` : ""}</div>`;
+    };
+    const handLabel = formatCardCollisionLabel(inHand, d, p);
+    const handName = handLabel.includes(" - ") ? handLabel.slice(0, handLabel.lastIndexOf(" - ")) : handLabel;
+    const whenLabel = `${getFullDayName(d)} ${(() => {
+      const po = (S && S.bell && S.bell.periods || []).find(x => x.index === p);
+      return po ? (po.label || getOrdinal(p)) : getOrdinal(p);
+    })()}`;
+    const n = allColliding.length;
+
     const backdrop = document.createElement("div");
     backdrop.className = "chrx-modal-backdrop";
     backdrop.id = "chrx-collision-modal-backdrop";
-    backdrop.style.background = "rgba(0, 0, 0, 0)"; // completely transparent
-    backdrop.style.backdropFilter = "none";
-    backdrop.style.webkitBackdropFilter = "none";
-    
+
     backdrop.innerHTML = `
-      <div class="chrx-collision-popup chrx-collision-menu">
-        <div class="chrx-collision-popup__title">Collisions found</div>
+      <div class="chrx-collision-popup chrx-collision-menu" role="alertdialog" aria-labelledby="chrx-collision-title">
+        <div class="chrx-collision-popup__icon">${window.ChrxIcons ? window.ChrxIcons.svg("warn", 34) : ""}</div>
+        <div class="chrx-collision-popup__title" id="chrx-collision-title">This slot is already taken</div>
+        <p class="chrx-collision-popup__msg">Placing <b>${esc(handName)}</b> on ${esc(whenLabel)} clashes with ${n === 1 ? "one lesson" : n + " lessons"}.</p>
         <div class="chrx-collision-popup__list">
-          ${allCollidingLabels.map(label => `<div class="chrx-collision-popup__item">${esc(label)}</div>`).join("")}
+          ${allColliding.map(c => itemHtml(c, c.day, c.period)).join("")}
         </div>
-        <div class="chrx-collision-popup__divider"></div>
         <div class="chrx-collision-popup__options">
-          <div class="chrx-collision-popup__option chrx-collision-popup__option--replace" data-act="replace">
-            <span class="chrx-collision-popup__checkmark">✓</span>
-            Remove collisions and place the card
-          </div>
-          <div class="chrx-collision-popup__option" data-act="cancel">
-            Cancel
-          </div>
-          <div class="chrx-collision-popup__option" data-act="force">
-            Ignore conflicts and place the card
-          </div>
+          <button type="button" class="chrx-collision-popup__option chrx-collision-popup__option--replace" data-act="replace">Move ${n === 1 ? "it" : "them"} to Unplaced and place here</button>
+          <button type="button" class="chrx-collision-popup__option chrx-collision-popup__option--force" data-act="force">Place anyway</button>
+          <button type="button" class="chrx-collision-popup__option chrx-collision-popup__option--cancel" data-act="cancel">Cancel</button>
         </div>
       </div>
     `;
@@ -842,8 +853,10 @@ import "./placement_validator.js";
       if (target) {
         const r = target.getBoundingClientRect();
         ghost.classList.add("chrx-card-ghost-snap");
+        ghost.style.setProperty("--e3-ghost-w", Math.round(r.width) + "px");
+        ghost.style.setProperty("--e3-ghost-h", Math.round(r.height) + "px");
         ghost.style.transform = `translate(${r.left}px, ${r.top}px)`;
-        setTimeout(finalise, 180);
+        setTimeout(finalise, 240);
       } else {
         ghost.classList.add("chrx-card-ghost-fade");
         setTimeout(finalise, 160);
@@ -860,6 +873,11 @@ import "./placement_validator.js";
 
   function rerender(landed, before) {
     const host = document.querySelector(".chrx-editor");
+    // Where the lifted card visually is right now — the freshly rendered
+    // card animates from here into its slot (FLIP), so the drop reads as
+    // the same object settling rather than a swap of two elements.
+    const ghostVisual = landed && ghost && ghost.firstElementChild ? ghost.firstElementChild.getBoundingClientRect() : null;
+    if (ghostVisual && ghost) ghost.classList.add("chrx-card-ghost-land");
     // Incremental path: with the pickup snapshot we know exactly which cells
     // changed, so regenerate just those day-blocks (Editor.patchCells) instead
     // of rebuilding the whole grid. Any anomaly → full render fallback.
@@ -875,7 +893,20 @@ import "./placement_validator.js";
     if (landed) {
       const card = document.querySelector(
         `.chrx-editor .chrx-vkarta[data-card-id="placed_${landed.lessonId}_${landed.day}_${landed.period}"]`);
-      if (card) {
+      if (card && ghostVisual && !REDUCED_MOTION && typeof card.animate === "function") {
+        const r = card.getBoundingClientRect();
+        if (r.width && r.height) {
+          const sx = ghostVisual.width / r.width, sy = ghostVisual.height / r.height;
+          const tx = ghostVisual.left - r.left, ty = ghostVisual.top - r.top;
+          card.style.zIndex = "8";
+          card.style.transformOrigin = "0 0";
+          const anim = card.animate([
+            { transform: `translate(${tx}px, ${ty}px) scale(${sx}, ${sy})`, boxShadow: "0 18px 40px rgba(0,0,0,.22)" },
+            { transform: "translate(0, 0) scale(1, 1)", boxShadow: "0 0 0 rgba(0,0,0,0)" },
+          ], { duration: 260, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)", fill: "both" });
+          anim.onfinish = anim.oncancel = () => { anim.cancel(); card.style.zIndex = ""; card.style.transformOrigin = ""; };
+        }
+      } else if (card) {
         card.classList.add("chrx-vkarta--landed");
         setTimeout(() => card.classList.remove("chrx-vkarta--landed"), 360);
       }
@@ -910,6 +941,7 @@ import "./placement_validator.js";
   }
 
   function cleanup() {
+    document.body.style.removeProperty("--chrx-hand-hue");
     document.removeEventListener("pointermove", onMove, true);
     document.removeEventListener("pointerup", onUp, true);
     document.removeEventListener("pointercancel", onUp, true);

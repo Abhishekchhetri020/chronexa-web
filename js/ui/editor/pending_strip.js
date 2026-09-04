@@ -32,7 +32,7 @@ window.PendingStrip = (function () {
       <div class="chrx-pending-resize" title="Drag to resize pending cards"></div>
       ${toolbarHtml()}
       <div class="chrx-pending-scroll">
-        ${groups.map(groupHtml).join("") || `<div class="chrx-pending-empty">All cards placed.</div>`}
+        ${groups.map(groupHtml).join("") || `<div class="chrx-pending-empty">${window.ChrxIcons ? window.ChrxIcons.svg("check", 15) : ""}Every lesson is on the timetable.</div>`}
       </div>
     `;
     wire(rootEl);
