@@ -1,252 +1,35 @@
-/* ───── Landing-page ambient background animation ─────
- * Subtle "schedules in motion" effect for the start screen.
- * Similar in feel to Antigravity's radial dot pattern (ambient motion,
- * soft color, depth without distraction), but uses Chronexa's product
- * language: mini timetable cards in the brand palette drifting gently
- * behind the hero / actions / features content.
+/* ───── Landing entrance choreography ─────
+ * Revived 2026-09-05 (surgical-sharp pass). The previous contents targeted
+ * pre-redesign selectors (.chrx-start__*, .chrx-pixels) that no longer exist
+ * and never fired — this file now owns the hero's first-paint story:
  *
- * Design notes:
- *   - Particles avoid the center 28-72% width (where the .chrx-start
- *     content column lives), so they frame the content rather than
- *     fight it for attention.
- *   - Two keyframe variants (drift-a, drift-b) so motion is varied
- *     across particles; an opacity pulse adds a "live" rhythm.
- *   - Colors are Chronexa brand: deep teal, amber/gold, slate,
- *     warm gray, off-white — all at low alpha so they sit BEHIND
- *     the cream background, not on top of it.
- *   - Some particles have a thin inner bar (~40%) that suggests a
- *     lesson card with a single line of text inside.
- *   - All particles are pointer-events:none, will-change is set for
- *     compositor promotion, and contain:strict keeps layout/paint
- *     scoped to the animation root.
- *   - prefers-reduced-motion: hides the entire layer — content is
- *     fully usable with motion disabled.
+ *   - a staggered 700ms rise across nav → headline → lead → signal →
+ *     actions → privacy/scroll cue, so the copy assembles with intent;
+ *   - a quiet pulse on the "Local-first / Constraint-aware" signal dot,
+ *     echoing the live solve running behind it.
+ *
+ * Loaded AFTER landing-redesign.css (see js/entry/main.js). No layout, no
+ * palette, no motion beyond entrance — the WebGL lattice owns the field.
  */
 
-#step-1 { position: relative; }
-
-#step-1 .chrx-landing-anim {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  overflow: hidden;
-  contain: strict;
+#step-1 .chrx-lattice-nav,
+#step-1 .chrx-lattice-copy > *,
+#step-1 .chrx-lattice-privacy,
+#step-1 .chrx-lattice-scroll {
+  animation: chrx-rise 700ms cubic-bezier(.22, 1, .36, 1) both;
 }
 
-#step-1 .chrx-landing-anim .cla {
-  position: absolute;
-  border-radius: 4px;
-  pointer-events: none;
-  will-change: transform, opacity;
-  transform: translate3d(0, 0, 0);
-}
+#step-1 .chrx-lattice-nav { animation-delay: 0ms; }
+#step-1 .chrx-lattice-copy > *:nth-child(1) { animation-delay: 60ms; }
+#step-1 .chrx-lattice-copy > *:nth-child(2) { animation-delay: 150ms; }
+#step-1 .chrx-lattice-copy > *:nth-child(3) { animation-delay: 240ms; }
+#step-1 .chrx-lattice-copy > *:nth-child(4) { animation-delay: 330ms; }
+#step-1 .chrx-lattice-copy > *:nth-child(5) { animation-delay: 420ms; }
+#step-1 .chrx-lattice-copy > *:nth-child(n+6) { animation-delay: 510ms; }
+#step-1 .chrx-lattice-privacy,
+#step-1 .chrx-lattice-scroll { animation-delay: 560ms; }
 
-/* Foreground content sits above the animation layer */
-#step-1 .chrx-start,
-#step-1 .chrx-start * {
-  /* nothing — inherit position normally */
-}
-#step-1 .chrx-start {
-  position: relative;
-  z-index: 1;
-}
-
-/* ── Motion ──────────────────────────────────────────── */
-
-@keyframes cla-drift-a {
-  0%   { transform: translate3d(0, 0, 0) rotate(var(--r0, 0deg)); }
-  50%  { transform: translate3d(var(--dx, 8px), var(--dy, -18px), 0)
-                     rotate(calc(var(--r0, 0deg) + var(--rs, 2deg))); }
-  100% { transform: translate3d(0, 0, 0) rotate(var(--r0, 0deg)); }
-}
-
-@keyframes cla-drift-b {
-  0%   { transform: translate3d(0, 0, 0) rotate(var(--r0, 0deg)); }
-  33%  { transform: translate3d(calc(var(--dx, -6px) * 0.4),
-                               var(--dy, -22px), 0)
-                     rotate(calc(var(--r0, 0deg) + var(--rs, -2deg))); }
-  66%  { transform: translate3d(var(--dx, -6px), 0, 0)
-                     rotate(var(--r0, 0deg)); }
-  100% { transform: translate3d(0, 0, 0) rotate(var(--r0, 0deg)); }
-}
-
-@keyframes cla-pulse {
-  0%, 100% { opacity: var(--lo, 0.30); }
-  50%      { opacity: var(--hi, 0.62); }
-}
-
-.cla {
-  animation:
-    cla-drift-a var(--dur, 30s) ease-in-out infinite,
-    cla-pulse    var(--pdur, 18s) ease-in-out infinite;
-  animation-delay: var(--adelay, 0s), var(--pdelay, 0s);
-}
-
-.cla--b {
-  animation:
-    cla-drift-b var(--dur, 30s) ease-in-out infinite,
-    cla-pulse    var(--pdur, 18s) ease-in-out infinite;
-  animation-delay: var(--adelay, 0s), var(--pdelay, 0s);
-}
-
-/* ── Inner "text line" decoration on some cards ──────── */
-
-.cla--line::after {
-  content: "";
-  position: absolute;
-  left: 5px;
-  right: 5px;
-  top: 50%;
-  transform: translateY(-50%);
-  height: 2px;
-  border-radius: 1px;
-  background: currentColor;
-  opacity: 0.55;
-}
-
-/* ── Live hero treatment ─────────────────────────────── */
-
-#step-1 .chrx-start__hero {
-  position: relative;
-  isolation: isolate;
-  overflow: hidden;
-}
-
-#step-1 .chrx-start__hero::before,
-#step-1 .chrx-start__hero::after {
-  content: "";
-  position: absolute;
-  z-index: -1;
-  pointer-events: none;
-  will-change: transform, opacity;
-}
-
-/* Soft brand-colour aurora behind the title and tagline. */
-#step-1 .chrx-start__hero::before {
-  inset: -74px -112px -58px;
-  border-radius: 50%;
-  background:
-    radial-gradient(ellipse at 18% 48%, rgba(13, 79, 84, 0.17), transparent 44%),
-    radial-gradient(ellipse at 68% 18%, rgba(217, 119, 6, 0.13), transparent 42%),
-    radial-gradient(ellipse at 82% 72%, rgba(190, 64, 75, 0.11), transparent 40%);
-  opacity: 0.72;
-  transform: translate3d(-1.5%, 0, 0) scale(0.98);
-  animation: chrx-aurora-drift 14s ease-in-out infinite alternate;
-}
-
-#step-1 .chrx-start__hero::after {
-  top: -38px;
-  left: 8%;
-  width: 74%;
-  height: 112px;
-  border-radius: 50%;
-  background: radial-gradient(ellipse, rgba(255, 255, 255, 0.64), transparent 68%);
-  opacity: 0.36;
-  transform: translate3d(0, 0, 0) scale(0.92);
-  animation: chrx-aurora-glow 9s ease-in-out infinite;
-}
-
-@keyframes chrx-aurora-drift {
-  0% {
-    opacity: 0.58;
-    transform: translate3d(-1.5%, 0, 0) scale(0.98) rotate(-1deg);
-  }
-  50% {
-    opacity: 0.78;
-    transform: translate3d(2%, -3%, 0) scale(1.04) rotate(1deg);
-  }
-  100% {
-    opacity: 0.64;
-    transform: translate3d(-0.5%, 2%, 0) scale(1.01) rotate(0deg);
-  }
-}
-
-@keyframes chrx-aurora-glow {
-  0%, 100% {
-    opacity: 0.24;
-    transform: translate3d(-4%, 0, 0) scale(0.92);
-  }
-  50% {
-    opacity: 0.46;
-    transform: translate3d(8%, 4%, 0) scale(1.08);
-  }
-}
-
-/* The pixel timetable fills in slot-by-slot, then settles before repeating. */
-.chrx-pixels .cp.on {
-  animation: chrx-cell-live-fill 8s cubic-bezier(0.22, 1, 0.36, 1) infinite both;
-}
-
-.chrx-pixels .cp.on:nth-child(10n + 1) { animation-delay: 0.52s; }
-.chrx-pixels .cp.on:nth-child(10n + 2) { animation-delay: 0.64s; }
-.chrx-pixels .cp.on:nth-child(10n + 3) { animation-delay: 0.76s; }
-.chrx-pixels .cp.on:nth-child(10n + 4) { animation-delay: 0.88s; }
-.chrx-pixels .cp.on:nth-child(10n + 5) { animation-delay: 1s; }
-.chrx-pixels .cp.on:nth-child(10n + 6) { animation-delay: 1.12s; }
-.chrx-pixels .cp.on:nth-child(10n + 7) { animation-delay: 1.24s; }
-.chrx-pixels .cp.on:nth-child(10n + 8) { animation-delay: 1.36s; }
-.chrx-pixels .cp.on:nth-child(10n + 9) { animation-delay: 1.48s; }
-.chrx-pixels .cp.on:nth-child(10n) { animation-delay: 1.6s; }
-
-@keyframes chrx-cell-live-fill {
-  0%, 9% {
-    opacity: 0.08;
-    transform: translate3d(0, 4px, 0) scale(0.72);
-  }
-  18%, 56% {
-    opacity: var(--hi, 0.82);
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-  61% {
-    opacity: 1;
-    transform: translate3d(0, 0, 0) scale(1.12);
-  }
-  70%, 100% {
-    opacity: var(--lo, 0.45);
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-}
-
-/* Replace the original left-position shimmer with a compositor-friendly scan. */
-.chrx-pixels::after {
-  left: -45%;
-  width: 45%;
-  animation: chrx-pixel-scan 8s ease-in-out infinite;
-  will-change: transform, opacity;
-}
-
-@keyframes chrx-pixel-scan {
-  0%, 22% {
-    opacity: 0;
-    transform: translate3d(0, 0, 0);
-  }
-  30% { opacity: 0.66; }
-  50% {
-    opacity: 0.88;
-    transform: translate3d(220%, 0, 0);
-  }
-  68% {
-    opacity: 0;
-    transform: translate3d(430%, 0, 0);
-  }
-  100% {
-    opacity: 0;
-    transform: translate3d(430%, 0, 0);
-  }
-}
-
-/* A restrained first-paint reveal keeps the hero feeling responsive. */
-#step-1 .chrx-start__wordmark,
-#step-1 .chrx-start__tagline {
-  animation: chrx-hero-enter 760ms cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-#step-1 .chrx-start__tagline {
-  animation-delay: 120ms;
-}
-
-@keyframes chrx-hero-enter {
+@keyframes chrx-rise {
   from {
     opacity: 0;
     transform: translate3d(0, 12px, 0);
@@ -257,93 +40,24 @@
   }
 }
 
-/* Keep the demo CTA quietly active without affecting other primary buttons. */
-#cta-landing-demo.chrx-btn--primary {
-  position: relative;
-  isolation: isolate;
-  will-change: transform;
-  transition: transform 220ms ease;
-  animation: chrx-cta-breathe 3.8s ease-in-out infinite;
+/* The signal dot breathes while the lattice solves behind it. */
+#step-1 .chrx-lattice-copy__signal span {
+  animation: chrx-signal-blink 2.6s ease-in-out infinite;
 }
 
-#cta-landing-demo.chrx-btn--primary::after {
-  content: "";
-  position: absolute;
-  inset: -5px;
-  z-index: -1;
-  border: 1px solid rgba(13, 79, 84, 0.36);
-  border-radius: inherit;
-  pointer-events: none;
-  opacity: 0;
-  will-change: transform, opacity;
-  transition: transform 220ms ease, opacity 220ms ease;
-  animation: chrx-cta-ring 3.8s ease-out infinite;
+@keyframes chrx-signal-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .35; }
 }
-
-@keyframes chrx-cta-breathe {
-  0%, 64%, 100% { transform: translate3d(0, 0, 0) scale(1); }
-  76% { transform: translate3d(0, -1px, 0) scale(1.018); }
-}
-
-@keyframes chrx-cta-ring {
-  0%, 62% {
-    opacity: 0;
-    transform: scale(0.96);
-  }
-  74% { opacity: 0.32; }
-  92%, 100% {
-    opacity: 0;
-    transform: scale(1.16);
-  }
-}
-
-@media (hover: hover) {
-  #cta-landing-demo.chrx-btn--primary:hover {
-    transform: translate3d(0, -2px, 0) scale(1.025);
-    animation: none;
-  }
-
-  #cta-landing-demo.chrx-btn--primary:hover::after {
-    animation: none;
-    opacity: 0.42;
-    transform: scale(1.06);
-  }
-}
-
-/* ── Reduced motion: hide the whole layer ────────────── */
 
 @media (prefers-reduced-motion: reduce) {
-  #step-1 .chrx-landing-anim { display: none; }
-
-  #step-1 .chrx-start__hero::before,
-  #step-1 .chrx-start__hero::after,
-  #step-1 .chrx-start__wordmark,
-  #step-1 .chrx-start__tagline,
-  .chrx-pixels .cp.on,
-  .chrx-pixels::after,
-  #cta-landing-demo.chrx-btn--primary,
-  #cta-landing-demo.chrx-btn--primary::after {
+  #step-1 .chrx-lattice-nav,
+  #step-1 .chrx-lattice-copy > *,
+  #step-1 .chrx-lattice-privacy,
+  #step-1 .chrx-lattice-scroll,
+  #step-1 .chrx-lattice-copy__signal span {
     animation: none;
-    transform: none;
-    will-change: auto;
-  }
-
-  #step-1 .chrx-start__wordmark,
-  #step-1 .chrx-start__tagline {
     opacity: 1;
-  }
-
-  .chrx-pixels .cp.on {
-    opacity: 0.55;
-  }
-
-  .chrx-pixels::after,
-  #cta-landing-demo.chrx-btn--primary::after {
-    display: none;
-  }
-
-  #cta-landing-demo.chrx-btn--primary,
-  #cta-landing-demo.chrx-btn--primary::after {
-    transition: none;
+    transform: none;
   }
 }

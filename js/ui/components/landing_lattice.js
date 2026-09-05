@@ -7,10 +7,10 @@
 
 const COLORS = {
   field: [0.065, 0.072, 0.082, 0.95],
-  cyan: [0.624, 0.906, 0.906, 1],
+  cyan: [0.490, 0.941, 0.941, 1],
   red: [0.925, 0.38, 0.32, 1],
-  grid: [0.28, 0.36, 0.38, 0.38],
-  rail: [0.38, 0.68, 0.70, 0.32],
+  grid: [0.30, 0.42, 0.44, 0.46],
+  rail: [0.42, 0.72, 0.74, 0.50],
   shadow: [0, 0, 0, 0.36],
 };
 
@@ -34,9 +34,22 @@ function seeded(index, salt = 0) {
 }
 
 function clamp(value, min, max) { return Math.max(min, Math.min(max, value)); }
-function easeOutExpo(value) { return value >= 1 ? 1 : 1 - Math.pow(2, -10 * value); }
+// Spring overshoot for the assembly's final stretch — the snap that makes
+// cards land instead of ooze. Peaks ≈1.1; callers clamp into the field.
+function easeOutBack(value) {
+  const c = 1.70158;
+  const u = value - 1;
+  return 1 + (c + 1) * u * u * u + c * u * u;
+}
 function easeInOutQuad(t) { return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t; }
 function mix(a, b, amount) { return a + (b - a) * amount; }
+// Lighten (f > 0) or darken (f < 0) an [r,g,b,a] color; alpha untouched.
+function shade(color, f) {
+  const t = (v) => (f >= 0 ? v + (1 - v) * f : v * (1 + f));
+  return [t(color[0]), t(color[1]), t(color[2]), color[3]];
+}
+function alpha(color, a) { return [color[0], color[1], color[2], a]; }
+function lerpPoint(p, q, t) { return { x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t }; }
 
 function compile(gl, type, source) {
   const shader = gl.createShader(type);
@@ -155,8 +168,8 @@ function makeGeometry(width, height, progress, pointer, time = 0, reducedMotion 
   const skewX = -tileWidth * (mobile ? .22 : .30) + pointer.x * 9;
   const skewY = tileHeight * .12 + pointer.y * 5;
   const origin = {
-    x: mobile ? width * .45 : width * .61,
-    y: mobile ? height * .12 : height * .17,
+    x: (mobile ? width * .45 : width * .585) + pointer.x * 14,
+    y: (mobile ? height * .12 : height * .16) + pointer.y * 10,
   };
   const vertices = [];
   const cards = [];
@@ -214,12 +227,18 @@ function makeGeometry(width, height, progress, pointer, time = 0, reducedMotion 
       const index = row * columns + column;
       const target = targetAt(column, row);
 
-      // Continuous harmonic breathing wave
-      const floatY = (!reducedMotion && progress >= 0.95)
-        ? Math.sin(time * 0.0018 + column * 0.55 + row * 0.35) * 2.5
+      // Continuous harmonic breathing wave: a slow board breath plus a
+      // faster, quieter shimmer so the field feels alive but precise.
+      const settled = !reducedMotion && progress >= 0.95;
+      const floatY = settled
+        ? Math.sin(time * 0.0018 + column * 0.55 + row * 0.35) * 2.4
+          + Math.sin(time * 0.0043 + index * 0.9) * 0.7
+          + pointer.y * 7
         : 0;
-      const floatX = (!reducedMotion && progress >= 0.95)
-        ? Math.cos(time * 0.0014 + column * 0.45 + row * 0.40) * 1.2
+      const floatX = settled
+        ? Math.cos(time * 0.0014 + column * 0.45 + row * 0.40) * 1.3
+          + Math.cos(time * 0.0032 + index * 0.7) * 0.6
+          + pointer.x * 10
         : 0;
 
       const spread = width * .72;
@@ -227,11 +246,14 @@ function makeGeometry(width, height, progress, pointer, time = 0, reducedMotion 
         x: width * .58 + (seeded(index, 2) - .5) * spread + (seeded(index, 6) > .76 ? width * .45 : 0),
         y: height * .08 + seeded(index, 4) * height * .76 - row * 8,
       };
-      const stagger = clamp((progress - index * .006) / .68, 0, 1);
-      const resolved = easeOutExpo(stagger);
-      let x = mix(scatter.x, target.x, resolved) + floatX;
-      let y = mix(scatter.y, target.y, resolved) + floatY;
-      let angle = mix((seeded(index, 8) - .5) * 1.5, 0, resolved);
+      const stagger = clamp((progress - index * .006) / .6, 0, 1);
+      // Spring overshoot on the final stretch so the assembly snaps instead
+      // of oozing; clamped so tiles never leave the field.
+      const resolved = stagger >= 1 ? 1 : (stagger <= 0 ? 0 : easeOutBack(stagger));
+      const placed = clamp(resolved, 0, 1.06);
+      let x = mix(scatter.x, target.x, placed) + floatX;
+      let y = mix(scatter.y, target.y, placed) + floatY;
+      let angle = mix((seeded(index, 8) - .5) * 1.5, 0, clamp(resolved, 0, 1));
 
       const isConflictTile = (index === clashIdx);
       const isValidTile = (index === destIdx);
@@ -255,6 +277,23 @@ function makeGeometry(width, height, progress, pointer, time = 0, reducedMotion 
           x = u * u * p0x + 2 * u * flightProgress * p1x + flightProgress * flightProgress * p2x;
           y = u * u * p0y + 2 * u * flightProgress * p1y + flightProgress * flightProgress * p2y;
           angle = (flightProgress - 0.5) * 0.18;
+        }
+      }
+
+      // Cursor-proximity lift: the few tiles nearest the pointer rise slightly,
+      // so the field feels touchable. Gated on real pointer input and paused
+      // for in-flight cards so it never fights the solve arc.
+      if (settled && pointer.seen && !inFlight) {
+        const cursorX = (pointer.x + .5) * width;
+        const cursorY = (pointer.y + .5) * height;
+        const ddx = x - cursorX;
+        const ddy = y - cursorY;
+        const dist = Math.hypot(ddx, ddy);
+        const RADIUS = 190;
+        if (dist < RADIUS) {
+          const lift = 1 - dist / RADIUS;
+          y -= lift * 10;
+          x += (ddx / (dist || 1)) * lift * 6;
         }
       }
 
@@ -315,6 +354,17 @@ function makeGeometry(width, height, progress, pointer, time = 0, reducedMotion 
       pushQuad(vertices, [quad[3], quad[2], { x: quad[2].x + 4, y: quad[2].y + cardDepth }, { x: quad[3].x + 4, y: quad[3].y + cardDepth }], sideColor);
       pushQuad(vertices, [quad[1], quad[2], { x: quad[2].x + 4, y: quad[2].y + cardDepth }, { x: quad[1].x + 4, y: quad[1].y + cardDepth }], sideColor);
       pushQuad(vertices, quad, cardColor);
+      // Machined finish: a bright hairline rides the top edge and a darkened
+      // glaze covers the lower third, so tiles read as lit instruments rather
+      // than flat fills. Both follow the tile's rotation for free because they
+      // are built from its corners.
+      pushBeam(vertices, quad[0], quad[1], inFlight ? 2.2 : 1.4, [1, 1, 1, inFlight ? 0.8 : 0.5]);
+      pushQuad(vertices, [
+        lerpPoint(quad[3], quad[0], 0.62),
+        lerpPoint(quad[2], quad[1], 0.62),
+        quad[2],
+        quad[3],
+      ], alpha(shade(cardColor, -0.45), 0.30));
       pushBeam(vertices, quad[0], quad[1], (isConflictTile || isValidTile) ? 2.2 : 1.2, edgeColor);
 
       cards.push({
@@ -395,7 +445,7 @@ function drawLabels(context, width, height, geometry, progress, time = 0, reduce
       context.lineWidth = 2.2;
 
       // Glow spline
-      context.strokeStyle = "rgba(159, 231, 231, 0.85)";
+      context.strokeStyle = "rgba(125, 240, 240, 0.85)";
       context.setLineDash([7, 8]);
       context.beginPath();
       context.moveTo(startX, startY);
@@ -414,7 +464,7 @@ function drawLabels(context, width, height, geometry, progress, time = 0, reduce
       context.arc(px, py, 4, 0, Math.PI * 2);
       context.fill();
 
-      context.fillStyle = "#9fe7e7";
+      context.fillStyle = "#7df0f0";
       context.beginPath();
       context.arc(px, py, 8, 0, Math.PI * 2);
       context.globalAlpha = 0.4;
@@ -422,17 +472,18 @@ function drawLabels(context, width, height, geometry, progress, time = 0, reduce
       context.globalAlpha = 0.95;
 
       // Destination target pin
-      context.fillStyle = "#9fe7e7";
+      context.fillStyle = "#7df0f0";
       context.beginPath();
       context.arc(endX, endY, 3.5, 0, Math.PI * 2);
       context.fill();
 
-      // Dynamic status readout
+      // Dynamic status readout — docked above the arc's apex so it never
+      // collides with tile labels.
       context.font = "700 8.5px \"JetBrains Mono\", monospace";
-      context.textAlign = "right";
+      context.textAlign = "center";
       const statusText = cyclePhase < 0.22 ? "CLASH DETECTED" : (cyclePhase < 0.72 ? "AUTO-REROUTING..." : "CONSTRAINT SATISFIED");
-      context.fillStyle = cyclePhase < 0.22 ? "#ff8b7d" : "#9fe7e7";
-      context.fillText(statusText, validCard.x + validCard.width, validCard.y - 12);
+      context.fillStyle = cyclePhase < 0.22 ? "#ff8b7d" : "#7df0f0";
+      context.fillText(statusText, midX, midY - 14);
       context.textAlign = "left";
     }
   }
@@ -463,7 +514,7 @@ function mount(root = document.querySelector("[data-lattice-scene]")) {
   let renderer = null;
   try { renderer = createRenderer(webglCanvas); } catch (error) { console.warn("[landing-lattice] WebGL fallback:", error); }
   const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-  const pointer = { x: 0, y: 0, targetX: 0, targetY: 0 };
+  const pointer = { x: 0, y: 0, targetX: 0, targetY: 0, seen: false };
   let lastWidth = 0;
   let lastHeight = 0;
   let lastDpr = 0;
@@ -492,7 +543,7 @@ function mount(root = document.querySelector("[data-lattice-scene]")) {
     if (!state.active || !state.inViewport || document.hidden || !root.isConnected) return;
     const { width, height, dpr } = resize();
     const time = timestamp - state.startedAt;
-    const elapsed = reducedMotion ? 1 : clamp(time / 2200, 0, 1);
+    const elapsed = reducedMotion ? 1 : clamp(time / 1700, 0, 1);
     const scrollOrder = clamp(window.scrollY / Math.max(height * .72, 1), 0, 1);
     const progress = reducedMotion ? 1 : Math.max(.17 + elapsed * .83, .17 + scrollOrder * .83);
     pointer.x += (pointer.targetX - pointer.x) * .07;
@@ -516,6 +567,7 @@ function mount(root = document.querySelector("[data-lattice-scene]")) {
 
   root.addEventListener("pointermove", (event) => {
     if (reducedMotion || event.pointerType === "touch") return;
+    pointer.seen = true;
     const rect = root.getBoundingClientRect();
     pointer.targetX = clamp((event.clientX - rect.left) / rect.width - .5, -.5, .5);
     pointer.targetY = clamp((event.clientY - rect.top) / rect.height - .5, -.5, .5);

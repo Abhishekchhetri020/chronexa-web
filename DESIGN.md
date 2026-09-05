@@ -5,6 +5,7 @@ colors:
   primary-teal: "#0d4f54"
   primary-teal-hover: "#084146"
   signal-cyan: "#9fe7e7"
+  signal-cyan-sharp: "#7df0f0"
   conflict-rust: "#9c4322"
   conflict-coral: "#ec6753"
   paper: "#f6f1e6"
@@ -14,7 +15,7 @@ colors:
   ink: "#1a1714"
   ink-secondary: "#4a4339"
   ink-tertiary: "#837a6d"
-  lattice-black: "#000102"
+  lattice-black: "#05070a"
   lattice-field: "#121417"
   lattice-card: "#292a30"
   lattice-card-raised: "#35383f"
@@ -157,6 +158,7 @@ The palette exchanges ground and figure between surfaces while preserving one si
 ### Secondary
 
 - **Signal Cyan** (`signal-cyan`): the landing's guide rails, valid destination, active demonstration states, and high-contrast interaction feedback.
+- **Signal Cyan Sharp** (`signal-cyan-sharp`): the saturated core (`#7df0f0`) for hairlines, text accents, focus rings, and the in-flight solve card. Large fills (capability band, resting rails) keep the softer `signal-cyan` so big surfaces don't vibrate.
 
 ### Tertiary
 
@@ -254,8 +256,8 @@ Keep overview lesson cards edge-to-edge and square; use spacing and larger radii
 
 ### Buttons
 
-- **Landing Primary:** a mineral-white `48px`-high file action with tight `3px` corners and `20px` horizontal padding; hover and keyboard focus shift it to Signal Cyan, lift it `2px`, and add a visible cyan ring.
-- **Landing Secondary:** a dark translucent field with the same height and corner geometry, mineral-white text, and a fine light border; its hover/focus border and ring turn cyan.
+- **Landing Primary:** a mineral-white `48px`-high file action with tight `3px` corners and `20px` horizontal padding; hover and keyboard focus shift it to Sharp Signal Cyan, lift it `2px`, and add a visible cyan ring. Motion answers in `160ms` with a slight overshoot curve.
+- **Landing Secondary:** a dark translucent field with the same height and corner geometry, mineral-white text, and a fine light border; its hover/focus border and ring turn sharp cyan.
 - **Workbench Primary:** a compact teal button with `10px` corners and `7px 14px` padding; hover deepens the teal, focus remains visible, and active state moves down `1px`.
 - **Workbench Secondary / Ghost:** Studio Paper or transparent against a warm line, with ink text and a quiet Paper Tile hover.
 
@@ -284,7 +286,7 @@ Keep overview lesson cards edge-to-edge and square; use spacing and larger radii
 
 ### Time Lattice
 
-The signature landing component is a procedural six-day timetable plane with dark lesson tiles, cyan guide rails, one labeled coral conflict, a dashed cyan destination, and a directional reroute path. Cards begin in controlled disorder and settle over approximately `2700ms`; pointer movement alters perspective subtly, scroll advances order, and reduced motion renders the final board once.
+The signature landing component is a procedural six-day timetable plane with machined lesson tiles (top-light gradient, bright top hairline, shaded lower third), crisp cyan guide rails, one labeled coral conflict, a dashed cyan destination, and a directional reroute path. Cards begin in controlled disorder and snap into place over approximately `1700ms` with a spring overshoot; hero copy enters in a staggered `700ms` rise (`landing-anim.css`); pointer movement parallaxes board, cards, and labels in layers and lifts tiles near the cursor, scroll advances order, the destination pin lights before the card flies (anticipation), the status readout docks above the arc apex, and reduced motion renders the final board once.
 
 ### Focus Board
 
