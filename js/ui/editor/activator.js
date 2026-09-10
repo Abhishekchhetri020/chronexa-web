@@ -58,6 +58,11 @@ import "../wizard/create_new.js";
     activated = true;
     updatePendingCount();
     setBannerOnce();
+    // Wire the subject-code legend once the grid exists. build() is idempotent,
+    // so re-activating the editor is safe.
+    if (global.SubjectLegend && typeof global.SubjectLegend.build === "function") {
+      global.SubjectLegend.build();
+    }
     if (global.FirstCardCoachmark && typeof global.FirstCardCoachmark.schedule === "function") {
       global.FirstCardCoachmark.schedule();
     }

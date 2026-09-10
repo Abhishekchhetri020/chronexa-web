@@ -532,6 +532,41 @@ window.Editor = (function () {
   // (Maths → Mat). The full name stays in the hover tooltip + card detail, so
   // nothing is lost — this only governs the at-a-glance text in the cell.
   function subjectCode(subject) {
+    const S = window.APP && window.APP.school;
+    const uniq = S ? uniqueCodes(S) : null;
+    if (uniq && subject && uniq.has(subject.id)) return uniq.get(subject.id);
+    const forms = shortForms(subject);
+    return forms[0] || baseSubjectCode(subject);
+  }
+
+  const CODE_STOPWORDS = /^(of|the|and|&|period|pd|a)$/i;
+  // A code has to FIT. Uniqueness as a string is not enough: "Fn. English",
+  // "Fn. EVS", "Fn. SST" and "Fn. Science" are four distinct strings that all
+  // clip to the same visible text ("Fn. ") in a narrow cell — measured on the
+  // demo school, 174 of 971 labels were clipped and those four subjects were
+  // indistinguishable on screen. Capping every candidate at four characters
+  // keeps a code inside the cell instead of relying on the clip.
+  const MAX_CODE_LEN = 4;
+
+  // Every short form a subject could render, most→least informative.
+  function shortForms(subject) {
+    const name = (subject.name || subject.abbr || "?").trim();
+    const abbr = (subject.abbr || "").trim();
+    const bareName = name.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+    const out = [];
+    // The school's own abbreviation wins while it is short enough to fit AND
+    // still says something the full name doesn't.
+    if (abbr && abbr.toUpperCase() !== bareName && abbr.length <= MAX_CODE_LEN) out.push(abbr);
+    const words = name.split(/\s+/).filter(w => w && !CODE_STOPWORDS.test(w));
+    if (words.length >= 2) out.push(words.map(w => w[0].toUpperCase()).join("").slice(0, MAX_CODE_LEN));
+    const w0 = (words[0] || name).replace(/[^A-Za-z0-9]/g, "");
+    for (let len = Math.min(MAX_CODE_LEN, w0.length); len >= 2; len--) out.push(w0.slice(0, len));
+    return [...new Set(out.filter(Boolean))];
+  }
+
+  // The code a subject would get in isolation. Correct on its own, but two
+  // subjects can land on the same one — see uniqueCodes().
+  function baseSubjectCode(subject) {
     const name = (subject.name || subject.abbr || "?").trim();
     const abbr = (subject.abbr || "").trim();
     // Respect the school's own abbreviation whenever it's a real, distinct code
@@ -546,16 +581,128 @@ window.Editor = (function () {
     return name[0].toUpperCase() + name.slice(1, 3).toLowerCase();   // Maths → Mat
   }
 
-  // Candidate shorter forms of a subject label, most→least informative, used
-  // when even the preferred code overflows the actual cell width.
+  // Codes must identify ONE subject. Initials collide easily: the demo school
+  // has "Foundation English" and "Foundation EVS" (both → FE) and "Foundation
+  // SST" / "Foundation Science" (both → FS), so four rows of the grid were
+  // genuinely ambiguous — the same code meant two different subjects, and no
+  // amount of hovering fixes a code you cannot trust at a glance.
+  // Colliding subjects are extended by letters taken from their own last word
+  // until each is distinct (FE → FEN / FEE), capped so a code stays glanceable;
+  // a numeric tiebreak is the last resort so uniqueness is guaranteed.
+  // Memoized per school so this costs nothing per card.
+  let _codeMap = null, _codeMapKey = "";
+  let _ambiguous = null;
+  function uniqueCodes(S) {
+    const subjects = (S && S.subjects) || [];
+    // Signature covers names, not just the count: renaming or re-abbreviating a
+    // subject must invalidate the map without changing how many there are.
+    let sig = (S && S.id ? S.id : "") + "|" + subjects.length;
+    for (let i = 0; i < subjects.length; i++) {
+      sig += "|" + (subjects[i].name || "") + "~" + (subjects[i].abbr || "");
+    }
+    if (_codeMap && _codeMapKey === sig) return _codeMap;
+
+    // Count how many subjects can produce each short form. A form claimed by
+    // more than one subject is ambiguous and must never be shown.
+    const formsById = new Map();
+    const owners = new Map();
+    subjects.forEach(s => {
+      const forms = shortForms(s);
+      formsById.set(s.id, forms);
+      forms.forEach(f => {
+        if (!owners.has(f)) owners.set(f, new Set());
+        owners.get(f).add(s.id);
+      });
+    });
+    const ambiguous = new Set();
+    owners.forEach((ids, form) => { if (ids.size > 1) ambiguous.add(form); });
+
+    // Prefer each subject's most informative form that no other subject can
+    // produce. When every form collides, the subjects sharing that base are
+    // resolved AS A GROUP — see below.
+    const map = new Map();
+    const contested = new Map();   // base form -> [subjects that fell back to it]
+    subjects.forEach(s => {
+      const forms = formsById.get(s.id) || [];
+      const pick = forms.find(f => owners.get(f).size === 1) || null;
+      if (pick) { map.set(s.id, pick); return; }
+      const base = forms[0] || baseSubjectCode(s);
+      if (!contested.has(base)) contested.set(base, []);
+      contested.get(base).push(s);
+    });
+
+    // A group sharing a base (six "Foundation …" subjects all reduce to FE/FS/FM/FH)
+    // is resolved together, and the base SHRINKS TO ONE LETTER so the result still
+    // fits a narrow cell.
+    //
+    // The arithmetic is what forces this: "Foundation English" and "Foundation EVS"
+    // both begin with E, so one suffix letter cannot separate them — two are needed.
+    // Keeping the two-letter base then yields four-character codes (FEEn/FEEV) that
+    // clip to the same visible "FEE". Dropping the base to its first letter gives
+    // FEn / FEV / FSc / FSS: three characters, distinct, and inside the cell.
+    // Deciding per-subject in isolation is what produced the four-char codes in the
+    // first place (the first subject took the short code, forcing the second to
+    // grow), so this must stay group-aware.
+    contested.forEach((members, base) => {
+      const suffixOf = (s) => {
+        const words = (s.name || s.abbr || "").split(/\s+/)
+          .filter(w => w && !CODE_STOPWORDS.test(w));
+        const raw = String(words.length > 1 ? words[words.length - 1] : words[0] || "");
+        return raw.replace(/[^A-Za-z0-9]/g, "");
+      };
+      const suffixes = members.map(suffixOf);
+      // Only shrink when the group actually needs more than one suffix letter.
+      const needsGrowth = suffixes.some((o, i) =>
+        suffixes.some((p, j) => j !== i && o[0] === p[0]));
+      const stem = needsGrowth && base.length > 1 ? base[0] : base;
+      members.forEach((s, i) => {
+        const mine = suffixes[i];
+        let pick = null;
+        for (let k = 1; k <= mine.length && !pick; k++) {
+          // Unique within the group AND not claimed by any subject outside it.
+          const cand = stem + mine.slice(0, k);
+          const shared = suffixes.some((o, j) => j !== i && o.slice(0, k) === mine.slice(0, k));
+          if (!shared && !owners.has(cand)) pick = cand;
+        }
+        // Degenerate cases: identical names, or more members than the alphabet
+        // can separate at this length.
+        if (!pick) {
+          for (let k = 1; k <= mine.length && !pick; k++) {
+            const cand = stem + mine.slice(0, k);
+            if (!owners.has(cand)) pick = cand;
+          }
+        }
+        if (!pick) {
+          for (let n = 2; n < 100 && !pick; n++) {
+            const cand = base + n;
+            if (!owners.has(cand)) pick = cand;
+          }
+        }
+        if (!pick) pick = base;
+        owners.set(pick, new Set([s.id]));
+        map.set(s.id, pick);
+      });
+    });
+
+    _ambiguous = ambiguous;
+    _codeMap = map; _codeMapKey = sig;
+    return map;
+  }
+
+  // Candidate forms of a subject label, most→least informative, used when the
+  // preferred code overflows the actual cell width. The unique code leads, and
+  // every form some OTHER subject could also produce is dropped, so the ladder
+  // can only ever shorten within codes that stay unambiguous.
   function codeCandidates(subject) {
-    const name = (subject.name || subject.abbr || "?").trim();
-    const words = name.split(/\s+/).filter(Boolean);
-    const out = [];
-    if (words.length >= 2) out.push(words.map(w => w[0].toUpperCase()).join("").slice(0, 4)); // SMP
-    const w0 = (words[0] || name).replace(/[^A-Za-z0-9]/g, "");
-    for (let len = 4; len >= 2; len--) out.push(w0.slice(0, len));      // Math, Mat, Ma
-    return [...new Set(out.filter(Boolean))];
+    const S = window.APP && window.APP.school;
+    if (S) uniqueCodes(S);
+    const preferred = subjectCode(subject);
+    const ambiguous = _ambiguous || new Set();
+    const out = [preferred];
+    shortForms(subject).forEach(c => {
+      if (!ambiguous.has(c) && !out.includes(c)) out.push(c);
+    });
+    return out.filter(Boolean);
   }
 
   // Post-render pass: the school's abbreviation is preferred, but if it still

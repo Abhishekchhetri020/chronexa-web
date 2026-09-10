@@ -265,6 +265,9 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       <button id="editor-perspective" type="button" data-icon="rows" title="Rows: class / teacher / room / subject"><span class="chrx-tool__label">By Class</span></button>
       <button id="editor-color-by" type="button" data-icon="palette" title="Card colour: subject / teacher / class / room"><span class="chrx-tool__label">Colour: Subject</span></button>
       <button id="editor-density" type="button" data-icon="layers" title="Row density"><span class="chrx-tool__label">Compact</span></button>
+      <!-- Decoder for the 2-4 char subject codes the dense grid is forced to
+           show. Without it the codes appear nowhere else in the product. -->
+      <button id="editor-legend" type="button" data-icon="info" title="What do the subject codes mean?" aria-haspopup="dialog"><span class="chrx-tool__label">Codes</span></button>
       <button id="editor-toggle-skin" type="button" data-icon="grid" title="Classic aSc-style skin"><span class="chrx-tool__label">Classic</span></button>
       <button id="editor-toggle-dark" type="button" data-icon="moon" title="Appearance: light / dark"><span class="chrx-tool__label">Dark</span></button>
     </div>
@@ -324,7 +327,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
 <!-- ─────────────────────── SCRIPTS ─────────────────────── -->
 <!-- Bump APP_VER on every deploy so the browser refetches the JS bundle -->
-<script>window.APP_VER = "20260911-p204-landing-audit";</script>
+<script>window.APP_VER = "20260911-p205-editor-grid";</script>
 <!-- Nuclear SW migration: if an old cache-first SW is still controlling,
      unregister it and reload to pick up the new network-first SW. -->
 <script>

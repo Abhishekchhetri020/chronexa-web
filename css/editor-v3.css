@@ -371,6 +371,18 @@
 }
 .chrx-shell .chrx-grid { background: var(--chrx-bg-canvas); }
 
+/* The compact density rule further down also matches the header (it carries
+   .chrx-row), and at (0,3,0) it out-specifies .chrx-row-head at (0,2,0). That
+   squeezed the header into 36px while the day name (12.5px + 9/3px padding) and
+   the period numbers (10.5px + 3/6px padding) need 44px — so 8px of every
+   period number was sliced off, in the DEFAULT density. The header is chrome,
+   not a data row: it never compacts. (0,4,0) beats the compact rule's (0,3,0),
+   so this wins regardless of source order. */
+.chrx-shell .chrx-editor--compact .chrx-row.chrx-row-head {
+  height: 46px;
+  min-height: 46px;
+}
+
 /* Header row */
 .chrx-shell .chrx-row-head {
   height: 46px; min-height: 46px;
@@ -495,7 +507,11 @@
 .chrx-shell .chrx-vkarta[data-halo="red"]::after,
 .chrx-shell .chrx-vkarta[data-halo="amber"]::after {
   content: ""; position: absolute; top: 3px; right: 3px; width: 6px; height: 6px; border-radius: 50%;
-  background: currentColor; -webkit-mask: none; mask: none; opacity: 1; font-size: 0; left: auto; bottom: auto; border: 0; transform: none;
+  /* Was `currentColor`, which resolves to the card's OWN ink hue — so every
+     red-halo card drew a dot in its subject colour (green dots on red-ringed
+     English cards) while only amber was overridden below. Both states now name
+     their colour explicitly. */
+  background: var(--chrx-red); -webkit-mask: none; mask: none; opacity: 1; font-size: 0; left: auto; bottom: auto; border: 0; transform: none;
 }
 .chrx-shell .chrx-vkarta[data-halo="amber"]::after { background: var(--chrx-amber); }
 
@@ -601,7 +617,6 @@
   box-shadow: inset 0 0 0 1.5px var(--chrx-fg-faint);
   pointer-events: none;
 }
-.chrx-shell .chrx-slot.chrx-slot-pickup-pulse { animation: none; }
 
 /* Rows that cannot receive the card recede; legal rows stay crisp */
 body.chrx-card-in-hand .chrx-shell .chrx-row { transition: opacity 180ms var(--e3-ease); }
@@ -1002,8 +1017,110 @@ body.chrx-card-in-hand .chrx-shell .chrx-card-panel { display: none; }
   .chrx-shell #editor-quick-tools button { padding: 0 8px; }
   .chrx-shell .chrx-rowlabel { --chrx-rowlabel-w: 56px; width: 56px; min-width: 56px; padding: 0 6px; }
 }
+/* ── Subject-code legend ─────────────────────────────────────────────────
+   The dense grid can only print a 2-4 char code per cell (~24px of text at
+   the default density), and autoFitSubjectCodes shrinks that code further to
+   whatever fits. This is the only place those codes are decoded. Rows are
+   ordered by code so the list scans like the grid reads. */
+.chrx-legend {
+  position: fixed;
+  z-index: 90;
+  top: 96px;
+  right: 16px;
+  width: min(300px, calc(100vw - 32px));
+  max-height: min(60vh, 520px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--chrx-line);
+  border-radius: 12px;
+  background: var(--chrx-bg-panel, var(--chrx-bg-tile));
+  box-shadow: 0 18px 44px rgba(22, 32, 36, .18), 0 2px 6px rgba(22, 32, 36, .08);
+}
+.chrx-legend[hidden] { display: none; }
+.chrx-legend__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 10px 10px 14px;
+  border-bottom: 1px solid var(--chrx-line);
+}
+.chrx-legend__title {
+  flex: 1;
+  font: 650 12px/1 var(--chrx-font-sans);
+  letter-spacing: -0.01em;
+  color: var(--chrx-fg);
+}
+.chrx-legend__x {
+  flex: none;
+  width: 24px; height: 24px;
+  display: grid; place-items: center;
+  border: 0; border-radius: 7px;
+  background: transparent;
+  color: var(--chrx-fg-tertiary);
+  font-size: 16px; line-height: 1;
+  cursor: pointer;
+}
+.chrx-legend__x:hover { background: var(--chrx-bg-tile-thin); color: var(--chrx-fg); }
+.chrx-legend__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+}
+.chrx-legend__row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 8px;
+  border-radius: 7px;
+}
+.chrx-legend__row:hover { background: var(--chrx-bg-tile-thin); }
+.chrx-legend__swatch {
+  flex: none;
+  width: 11px; height: 11px;
+  border-radius: 3.5px;
+  background: hsl(var(--hue, 210) 78% 72%);
+  box-shadow: inset 0 0 0 1px hsl(var(--hue, 210) 45% 45% / .45);
+}
+.chrx-legend__swatch--none { background: var(--chrx-line); box-shadow: none; }
+.chrx-legend__code {
+  flex: none;
+  min-width: 42px;
+  font: 600 11.5px/1.2 var(--chrx-font-sans);
+  color: var(--chrx-fg);
+  font-variant-numeric: tabular-nums;
+}
+.chrx-legend__name {
+  flex: 1;
+  min-width: 0;
+  font: 500 11.5px/1.25 var(--chrx-font-sans);
+  color: var(--chrx-fg-secondary);
+  overflow-wrap: anywhere;
+}
+.chrx-legend__name--same { color: var(--chrx-fg-faint); font-style: italic; }
+.chrx-legend__empty {
+  margin: 10px 12px;
+  font: 500 12px/1.4 var(--chrx-font-sans);
+  color: var(--chrx-fg-tertiary);
+}
+.chrx-legend__foot {
+  margin: 0;
+  padding: 9px 14px 11px;
+  border-top: 1px solid var(--chrx-line);
+  font: 500 10.5px/1.4 var(--chrx-font-sans);
+  color: var(--chrx-fg-tertiary);
+}
+@media (max-width: 700px) {
+  .chrx-legend { top: auto; bottom: 12px; right: 12px; left: 12px; width: auto; max-height: 52vh; }
+}
+
 @media print {
   .chrx-shell .chrx-grid-scroll, .chrx-shell #editor-root, .chrx-shell .chrx-overview-bar, .chrx-shell .chrx-pending-strip,
   .chrx-shell .chrx-editor-inspector { box-shadow: none !important; backdrop-filter: none !important; }
   .chrx-shell .chrx-vkarta:hover { transform: none !important; box-shadow: none !important; }
+  .chrx-legend { display: none !important; }
 }

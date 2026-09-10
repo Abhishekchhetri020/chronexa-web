@@ -94,14 +94,10 @@ import "./placement_validator.js";
       document.body.classList.add("chrx-card-in-hand");
       showCarryPanel(S, lesson, subjShort, classShort, teacherShort);
 
-      // Pulse the origin card briefly so the user sees "I picked it up".
-      if (!d.fromPending && d.day != null && d.period != null) {
-        const origin = document.querySelector(`.chrx-editor .chrx-slot[data-day="${d.day}"][data-period="${d.period}"]`);
-        if (origin) {
-          origin.classList.add("chrx-slot-pickup-pulse");
-          setTimeout(() => origin.classList.remove("chrx-slot-pickup-pulse"), 600);
-        }
-      }
+      // (The v2 "pickup pulse" on the origin slot was removed here: the v3 skin
+      // disabled it via `.chrx-slot-pickup-pulse { animation: none }`, and the
+      // origin is already unmistakable — .chrx-vk-source drops it to 35% opacity
+      // with a faint inset ring while the ghost lifts off it.)
 
       // Preserve the pointer's relative grab position on the (resized) ghost.
       dx = Math.max(0, Math.min(gw, Number.isFinite(d.grabRatioX) ? d.grabRatioX * gw : gw / 2));
@@ -350,6 +346,12 @@ import "./placement_validator.js";
   // the cursor. Swallow it in capture so a drop doesn't double-fire click-mode
   // pickup on the target cell. (The gesture was a drop, not a click.)
   function swallowClick(e) {
+    // ...but never swallow a click aimed at the collision chooser. That menu
+    // opens AS the drop is handled, so the 350ms guard set for the drop would
+    // eat the user's first click on it and the buttons read as dead.
+    // Capture phase runs before the menu's own bubble-phase handler, so this
+    // exemption is the only place the click can be saved.
+    if (e.target && e.target.closest && e.target.closest("#chrx-collision-modal-backdrop")) return;
     if (performance.now() < suppressClickUntil) {
       e.stopPropagation();
       e.preventDefault();
@@ -481,7 +483,13 @@ import "./placement_validator.js";
       }
     }
     updateCarryPanel(slot, v);
-    if (v.reasons && v.reasons.length) slot.title = v.reasons.join(" · ");
+    // Cap the reason list the way the hover explainer already does, and clear
+    // the tooltip when the slot is clean — the old code only ever SET a title,
+    // so a slot that had once been red kept a stale explanation for the rest of
+    // the drag. Uncapped, a slot with six violations wrote a paragraph into the
+    // OS tooltip, which then covered the very cell being judged.
+    const why = summariseReasons(v.reasons);
+    if (why) slot.title = why; else slot.removeAttribute("title");
   }
 
   // Is the point over the Pending Cards area (strip, its region, or header)?
@@ -538,8 +546,13 @@ import "./placement_validator.js";
     commit(d, p, slot);
   }
   function onKey(e) {
-    if (!ghost) return;
+    // Escape is the universal way out of a held card, so it keys off inHand
+    // rather than ghost. Click mode has no ghost (it is a two-click gesture),
+    // and gating on ghost left Escape silently dead there — same gesture, no
+    // exit, even though cancel() already knows how to restore the card.
+    if (!inHand) return;
     if (e.key === "Escape") { e.preventDefault(); return cancel(); }
+    if (!ghost) return;
     if (e.key === "Tab") { e.preventDefault(); return moveFocus(e.shiftKey ? -1 : 1); }
     if (e.key === "Enter") {
       const f = document.activeElement;
@@ -1283,9 +1296,21 @@ import "./placement_validator.js";
       ? `${dayLabel(d)} P${p}`
       : "Choose a slot";
     status.dataset.state = validity.validity || "idle";
-    status.textContent = validity.reasons && validity.reasons.length
-      ? `${label}: ${validity.reasons.join(" · ")}`
-      : `${label}: clean placement`;
+    const why = summariseReasons(validity.reasons);
+    status.textContent = why ? `${label}: ${why}` : `${label}: clean placement`;
+  }
+
+  // Drag feedback is a single fixed-position line, so the reason list is capped
+  // the same way the hover explainer caps its own (3, then a count). This is the
+  // surface the user actually reads mid-drag: it never occludes the cell being
+  // judged, unlike the OS tooltip.
+  const MAX_SHOWN_REASONS = 3;
+  function summariseReasons(reasons) {
+    const list = (reasons || []).filter(Boolean);
+    if (!list.length) return "";
+    const shown = list.slice(0, MAX_SHOWN_REASONS).join(" · ");
+    const extra = list.length - MAX_SHOWN_REASONS;
+    return extra > 0 ? `${shown} · +${extra} more` : shown;
   }
 
   function dayLabel(d) {

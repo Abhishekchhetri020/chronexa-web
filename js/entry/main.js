@@ -113,6 +113,7 @@ import "../ui/editor/header_context.js";
 import "../ui/editor/card_double_click.js";
 import "../ui/editor/card_context_menu.js";
 import "../ui/editor/constraint_explainer.js";
+import "../ui/editor/subject_legend.js";
 import "../ui/start_screen.js";
 import "../ui/main.js";
 import "../ui/onboarding/data_library.js";
