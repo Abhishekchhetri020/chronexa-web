@@ -13,7 +13,14 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..', '..', '..');
 
 function loadBench(name) {
-  return JSON.parse(fs.readFileSync(path.join(root, 'benchmarks', name), 'utf8'));
+  const school = JSON.parse(fs.readFileSync(path.join(root, 'benchmarks', name), 'utf8'));
+  // Early benchmark fixtures use a bell ID and omit period indexes. Supply
+  // canonical SchoolData so the test exercises real teaching slots.
+  if (typeof school.bell === 'string') {
+    school.bell = school.bells.find(b => b.id === school.bell);
+    school.bell.periods = school.bell.periods.map((p, i) => ({ index: i + 1, ...p }));
+  }
+  return school;
 }
 
 describe('Phase 3: verification agrees with solver', () => {
@@ -22,6 +29,7 @@ describe('Phase 3: verification agrees with solver', () => {
     const r = solve(school, { timeLimitSec: 2, seed: 9881 });
     expect(r.status).toBe('FEASIBLE');
     expect(r.stats.placed).toBeGreaterThan(0);
+    school.cards = r.assignment;
     const bad = [];
     for (const a of r.assignment) {
       const srcId = String(a.lessonId).replace(/#\d+$/, '');
@@ -35,6 +43,7 @@ describe('Phase 3: verification agrees with solver', () => {
     const school = loadBench('small_school.json');
     const r = solve(school, { timeLimitSec: 5, seed: 9881 });
     expect(r.status).toBe('FEASIBLE');
+    school.cards = r.assignment;
     const bad = [];
     for (const a of r.assignment) {
       const srcId = String(a.lessonId).replace(/#\d+$/, '');

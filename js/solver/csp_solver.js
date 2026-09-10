@@ -24,7 +24,7 @@ import { popcount32 } from "./bitmask.js";
 import { createLearningForSchool, SolverLearning } from "./solver_learning.js";
 // TYPS is the canonical relation-type registry (n_0..n_17).
 // Used by buildRelationPartnerSets -> all partner arrays derive from these definitions.
-import { TYPS } from "./relation_enforcer.js";
+import { TYPS, orderedSubjects, positionStartMask } from "./relation_enforcer.js";
 
 
 export const VERSION = "js-csp-1.0.0";
@@ -995,6 +995,8 @@ function buildModel(school) {
   const lessonN1Partners  = new Array(lessonCount);
   const lessonN0Partners  = new Array(lessonCount);
   const lessonSamedayPart = new Array(lessonCount); // n_8 / n_10
+  const lessonOrderedBefore = new Array(lessonCount); // n_9: leader -> followers
+  const lessonOrderedAfter = new Array(lessonCount); // n_9: follower -> leaders
   const lessonMustFollowAny = new Array(lessonCount); // n_5: arbitrary order
   const lessonMustFollowBefore = new Array(lessonCount); // n_6: must be at p AND a partner at p+1
   const lessonMustFollowAfter  = new Array(lessonCount); // n_6: must be at p AND a partner at p-1
@@ -1004,6 +1006,7 @@ function buildModel(school) {
   const lessonN2Partners = new Array(lessonCount);
   for (let i = 0; i < lessonCount; i++) lessonN2Partners[i] = null;
   const lessonMustFirstLast = new Uint8Array(lessonCount);
+  const lessonPositionMask = new Uint32Array(lessonCount).fill(((1 << periodsPerDay) - 1) >>> 0);
   // Pre-compute break period indices — for n_7 check. Audit #12: store
   // the 1-based period.index - 1 (0-based grid coordinate), NOT the array
   // position. Legacy fixtures where bell.periods is dense (index = position
@@ -1108,6 +1111,18 @@ function buildModel(school) {
         }
         break;
       }
+      case "n_9": {
+        const [leaders, followers] = orderedSubjects(rel);
+        for (const i of matched) {
+          if (!leaders.includes(expanded[i].subjectId)) continue;
+          for (const j of matched) {
+            if (i === j || !followers.includes(expanded[j].subjectId)) continue;
+            (lessonOrderedBefore[i] ||= new Set()).add(j);
+            (lessonOrderedAfter[j] ||= new Set()).add(i);
+          }
+        }
+        break;
+      }
       case "n_12":
       case "n_13":
         // Same-period requirement across same-subject lessons in different classes
@@ -1119,7 +1134,18 @@ function buildModel(school) {
         }
         break;
       case "n_16":
-        for (const i of matched) lessonMustFirstLast[i] = 1;
+        for (const i of matched) {
+          lessonMustFirstLast[i] = 1;
+          const span = lessonLabDouble[i] ? 2 : 1;
+          const start = lessonClassStart[i], count = lessonClassCount[i];
+          if (!count) {
+            const teaching = _defaultBellPeriods.length ? _defaultMask : ((1 << periodsPerDay) - 1) >>> 0;
+            lessonPositionMask[i] &= positionStartMask(teaching, span, rel.positions);
+          }
+          for (let k = 0; k < count; k++) {
+            lessonPositionMask[i] &= positionStartMask(classValidPeriodMask[lessonClassFlat[start + k]], span, rel.positions);
+          }
+        }
         break;
       case "n_7":
         // Break-cannot-be-between: matched lessons cannot have a break period
@@ -1186,6 +1212,7 @@ function buildModel(school) {
       lessonN1Partners, lessonN0Partners, lessonSamedayPart,
       lessonMustFollowAny, lessonMustFollowBefore, lessonMustFollowAfter,
       lessonSimultaneous, lessonN7Partners, lessonN2Partners,
+      lessonOrderedBefore, lessonOrderedAfter,
     ];
     for (let i = 0; i < lessonCount; i++) {
       _lessonNeighborStart[i] = _neighborList.length;
@@ -1332,11 +1359,14 @@ function buildModel(school) {
     lessonMustFollowAny,
     lessonMustFollowBefore,
     lessonMustFollowAfter,
+    lessonOrderedBefore,
+    lessonOrderedAfter,
     lessonSimultaneous,
     lessonN7Partners,
     lessonN2Partners,
     breakPeriods,
     lessonMustFirstLast,
+    lessonPositionMask,
     lessonSoftRelIdx,
     softRels,
   };
@@ -1723,6 +1753,11 @@ function canPlace(model, state, lessonIdx, slot, roomIdx) {
   // Validation mode (`options.validateWasm`): calls BOTH wasm + JS and
   // logs divergences. Off by default (slow).
   if (model._wasmEnabled) {
+    // The optional AssemblyScript accelerator predates n_9 and class-specific
+    // edge masks. Keep these lessons on the complete JS constraint path.
+    if (model.lessonMustFirstLast[lessonIdx] || model.lessonOrderedBefore[lessonIdx] || model.lessonOrderedAfter[lessonIdx]) {
+      return _canPlaceJS(model, state, lessonIdx, slot, roomIdx);
+    }
     try {
       wasmSyncState(model, state);
       const w = globalThis.__chronexaWasmExports;
@@ -1891,34 +1926,23 @@ function _canPlaceJS(model, state, lessonIdx, slot, roomIdx) {
     }
   }
   if (model.lessonMustFirstLast && model.lessonMustFirstLast[lessonIdx]) {
-    // n_16: must be at first or last teaching period. Audit plan semantics for
-    // lab doubles: a span [P, P+span-1] satisfies iff it STARTS at the first
-    // teaching period OR ENDS at the last teaching period.
-    // Translate to 0-based span [p, p+span-1] day-local, comparing against
-    // 0 = first teaching slot and periodsPerDay-1 = last slot (note: the
-    // grid is aligned with bell indexes; the school bell's first/last
-    // teaching period INDEX may differ from these if the bell is sparse).
-    // To stay consistent across fixture shapes we use the bell-driven
-    // first/last teaching position when available, else the geometric edges.
-    const span = model.lessonLabDouble[lessonIdx] === 1 ? 2 : 1;
-    let firstTeaching = 0, lastTeaching = model.periodsPerDay - 1;
-    if (Array.isArray(model.breakPeriods) && model.breakPeriods.length >= 0) {
-      // Compute teaching grid coords = all positions except break coords.
-      const breaks = new Set(model.breakPeriods);
-      const teachingPositions = [];
-      for (let pp = 0; pp < model.periodsPerDay; pp++) {
-        if (!breaks.has(pp)) teachingPositions.push(pp);
-      }
-      if (teachingPositions.length) {
-        firstTeaching = teachingPositions[0];
-        lastTeaching  = teachingPositions[teachingPositions.length - 1];
-      }
-    }
-    const spanStart = p;
-    const spanEnd   = p + span - 1;
-    if (!(spanStart === firstTeaching || spanEnd === lastTeaching)) {
+    if (!(model.lessonPositionMask[lessonIdx] & bit)) {
       return FAIL.RELATION_FIRST_OR_LAST;
     }
+  }
+  const orderedBefore = model.lessonOrderedBefore[lessonIdx];
+  if (orderedBefore) for (const partner of orderedBefore) {
+    if (!state.lessonAssigned[partner]) continue;
+    const ps = state.lessonAssignedSlot[partner];
+    if (model.slotDay[ps] !== d) return FAIL.RELATION_MUST_SAME_DAY;
+    if (p + (model.lessonLabDouble[lessonIdx] ? 2 : 1) > model.slotPeriod[ps]) return FAIL.RELATION_ORDER;
+  }
+  const orderedAfter = model.lessonOrderedAfter[lessonIdx];
+  if (orderedAfter) for (const partner of orderedAfter) {
+    if (!state.lessonAssigned[partner]) continue;
+    const ps = state.lessonAssignedSlot[partner];
+    if (model.slotDay[ps] !== d) return FAIL.RELATION_MUST_SAME_DAY;
+    if (model.slotPeriod[ps] + (model.lessonLabDouble[partner] ? 2 : 1) > p) return FAIL.RELATION_ORDER;
   }
   const partnersFollow = model.lessonMustFollowAny && model.lessonMustFollowAny[lessonIdx];
   if (partnersFollow) {
@@ -3752,6 +3776,24 @@ function listBlockers(model, state, lessonIdx, slot, room) {
     }
     if (room >= 0) {
       if (!addBlocker(state.roomSlotOccupant[room * model.totalSlots + slot2])) return null;
+    }
+  }
+  // Subject-order conflicts can be repaired by moving the partner even when
+  // the two lessons share no teacher, class or room. Locked partners stay put.
+  const before = model.lessonOrderedBefore[lessonIdx];
+  if (before) for (const partner of before) {
+    if (!state.lessonAssigned[partner]) continue;
+    const ps = state.lessonAssignedSlot[partner];
+    if (model.slotDay[ps] !== d || p + (model.lessonLabDouble[lessonIdx] ? 2 : 1) > model.slotPeriod[ps]) {
+      if (!addBlocker(partner)) return null;
+    }
+  }
+  const after = model.lessonOrderedAfter[lessonIdx];
+  if (after) for (const partner of after) {
+    if (!state.lessonAssigned[partner]) continue;
+    const ps = state.lessonAssignedSlot[partner];
+    if (model.slotDay[ps] !== d || model.slotPeriod[ps] + (model.lessonLabDouble[partner] ? 2 : 1) > p) {
+      if (!addBlocker(partner)) return null;
     }
   }
   return blockers;

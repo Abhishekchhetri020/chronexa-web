@@ -8,6 +8,8 @@
 // optimization. What we export here is the catalog: names, IDs, weights,
 // and human-readable descriptions.
 
+import { lessonBells } from './relation_enforcer.js';
+
 /** Penalty weights (matches Kotlin ConstraintWeight). */
 export const Weight = Object.freeze({
   HARD: Number.MAX_SAFE_INTEGER,
@@ -52,6 +54,7 @@ export const FAIL = Object.freeze({
   CLASS_BELL_PERIOD_INVALID: 29,
   SUBJECT_DAILY_MIN_VIOLATION: 30,
   RELATION_SAME_PERIOD_FORBIDDEN: 31,
+  RELATION_ORDER: 32,
 });
 
 /** Numeric ID → name string. */
@@ -88,6 +91,7 @@ export const FAIL_NAME = Object.freeze({
   29: "class_bell_period_invalid",
   30: "subject_daily_min_violation",
   31: "relation_same_period_forbidden",
+  32: "relation_order",
 });
 
 /** Catalog rows (UI uses these for the violations list). */
@@ -506,8 +510,15 @@ function _classGroupConflict(a, b) {
 // ---------------------------------------------------------------------------
 export function checkPlacement(school, lessonId, day, period, roomId) {
   const result = { hard: [], soft: [] };
-  if (!school || !school._idx) return result;
-  const idx = school._idx;
+  if (!school) return result;
+  // Imported SchoolData and solver results do not necessarily carry the UI's
+  // cached indexes. Build read-only fallbacks instead of reporting them clean.
+  const index = rows => Object.fromEntries((rows || []).map(row => [row.id, row]));
+  const idx = school._idx || {
+    lessonById: index(school.lessons), teacherById: index(school.teachers),
+    classById: index(school.classes), classroomById: index(school.classrooms),
+    subjectById: index(school.subjects),
+  };
   const lesson = idx.lessonById[lessonId];
   if (!lesson) {
     result.hard.push("Unknown lesson");
@@ -519,19 +530,12 @@ export function checkPlacement(school, lessonId, day, period, roomId) {
   // Lookups for labels.
   const subj = idx.subjectById[lesson.subjectId];
   const subjName = subj ? (subj.name || subj.abbr || lesson.subjectId) : lesson.subjectId;
-  const teacherNames = (lesson.teacherIds || [])
-    .map(tid => idx.teacherById[tid])
-    .map((t, i) => t ? (t.name || t.abbr) : (lesson.teacherIds || [])[i])
-    .filter(Boolean);
-  const teacherDisplay = teacherNames.length ? teacherNames.join(", ") : "Teacher";
-  const classNames = (lesson.classIds || [])
-    .map(cid => idx.classById[cid])
-    .map((c, i) => c ? c.name : (lesson.classIds || [])[i])
-    .filter(Boolean);
   const myClasses = new Set(lesson.classIds || []);
   const myTeachers = new Set(lesson.teacherIds || []);
   const rid = roomId || lesson.preferredRoomId;
   const room = rid ? idx.classroomById[rid] : null;
+  const span = lesson.lessonLength || (lesson.isLabDouble ? 2 : 1);
+  const _periodsToCheck = Array.from({ length: span }, (_, offset) => period + offset);
 
   // 1. Fixed-day / fixed-period mismatch (hard).
   if (lesson.fixedDay != null && lesson.fixedDay !== day) {
@@ -541,28 +545,16 @@ export function checkPlacement(school, lessonId, day, period, roomId) {
     result.hard.push(`${subjName} is fixed to period ${lesson.fixedPeriod} (not P${period})`);
   }
 
-  // 2. Period non-teaching? (soft — placement legal but unusual).
+  // 2. Every occupied period must exist and be teaching in each class bell.
   const periods = (school.bell && school.bell.periods) || [];
-  const periodObj = periods.find(p => p.index === period);
-  if (periodObj && periodObj.isTeaching === false) {
-    result.soft.push(`P${period} is a non-teaching slot (${periodObj.label || "break"})`);
-  }
-
-  // 2b. Per-class bell schedule (Top-30 #3). If any class on this lesson has
-  // a bellId whose periods don't include this period, flag as hard — mirrors
-  // csp_solver.canPlace's FAIL.CLASS_BELL_PERIOD_INVALID so the verification
-  // halo + auto-fix pass both surface the violation.
-  const bells = Array.isArray(school.bells) ? school.bells : [];
-  if (bells.length) {
-    for (const cid of (lesson.classIds || [])) {
-      const cls = idx.classById[cid];
-      if (!cls || !cls.bellId) continue;
-      const bell = bells.find(b => b.id === cls.bellId);
-      if (!bell || !Array.isArray(bell.periods)) continue;
-      const inBell = bell.periods.some(p => (p.index | 0) === (period | 0));
-      if (!inBell) {
-        const clsName = cls.name || cid;
-        result.hard.push(`${clsName} bell schedule (${bell.name || "bell"}) has no period ${period}`);
+  for (const { classId, periods: bellPeriods } of lessonBells(school, lesson)) {
+    const label = idx.classById[classId]?.name || classId || 'School';
+    for (const p of _periodsToCheck) {
+      const definition = bellPeriods.find(bp => bp.index === p);
+      if (definition?.isTeaching === false) {
+        result.hard.push(`${label} P${p} is a non-teaching slot (${definition.label || 'break'})`);
+      } else if ((bellPeriods.length && !definition) || p < 1 || (!bellPeriods.length && p > 8)) {
+        result.hard.push(`${label} bell schedule has no period ${p}`);
       }
     }
   }
@@ -578,11 +570,10 @@ export function checkPlacement(school, lessonId, day, period, roomId) {
 function _cardOccupies(idx, card, period) {
   if (card.period === period) return true;
   const other = idx && idx.lessonById && idx.lessonById[card.lessonId];
-  if (other && other.isLabDouble && card.period === period - 1) return true;
+  const span = other?.lessonLength || (other?.isLabDouble ? 2 : 1);
+  if (period >= card.period && period < card.period + span) return true;
   return false;
 }
-const _isCandidateLab = !!lesson.isLabDouble;
-const _periodsToCheck = _isCandidateLab ? [period, period + 1] : [period];
 const overlapping = (school.cards || []).filter(c => {
   if (c.day !== day || c.lessonId === lessonId) return false;
   // A single card occupies [c.period, c.period + (lab?1:0)).
@@ -611,12 +602,13 @@ const overlapping = (school.cards || []).filter(c => {
       }
     }
     if (teacher && teacher.timeOff) {
-      const key = day + "_" + period;
-      const mark = teacher.timeOff[key];
-      if (mark === "unavailable") {
-        result.hard.push(`${tName} is marked unavailable ${dayLabel(day)} P${period}`);
-      } else if (mark === "preferred") {
-        result.soft.push(`${tName} prefers not to teach ${dayLabel(day)} P${period}`);
+      for (const p of _periodsToCheck) {
+        const mark = teacher.timeOff[day + "_" + p];
+        if (mark === "unavailable") {
+          result.hard.push(`${tName} is marked unavailable ${dayLabel(day)} P${p}`);
+        } else if (mark === "preferred") {
+          result.soft.push(`${tName} prefers not to teach ${dayLabel(day)} P${p}`);
+        }
       }
     }
   }
@@ -688,46 +680,6 @@ const overlapping = (school.cards || []).filter(c => {
         result.soft.push(
           `Class teacher of ${cls.name} (${ctName}) prefers last period`
         );
-      }
-    }
-  }
-
-  // 7. Multi-period lesson: needs period+1..period+N also free (hard).
-  const extraSlots = (lesson.lessonLength || (lesson.isLabDouble ? 2 : 1)) - 1;
-  if (extraSlots > 0) {
-    for (let ep = 1; ep <= extraSlots; ep++) {
-      const nextPeriod = period + ep;
-      const next = periods.find(p => p.index === nextPeriod);
-      if (!next || next.isTeaching === false) {
-        result.hard.push(`${extraSlots + 1}-period lesson needs ${extraSlots + 1} consecutive teaching periods`);
-        break;
-      } else {
-        const nextSlot = (school.cards || []).filter(c =>
-          c.day === day && c.period === nextPeriod &&
-          !(c.lessonId === lessonId)
-        );
-        const labClassBusy = nextSlot.some(c => {
-          const other = idx.lessonById[c.lessonId];
-          if (!other) return false;
-          for (const cid of (other.classIds || [])) {
-            if (!myClasses.has(cid)) continue;
-            const myGM    = _classGroupMask(school, lesson, cid);
-            const otherGM = _classGroupMask(school, other,  cid);
-            if (_classGroupConflict(myGM, otherGM)) {
-              return true;
-            }
-          }
-          return false;
-        });
-        if (labClassBusy) result.hard.push(`P+${nextPeriod}: class already busy`);
-        const labTeacherBusy = nextSlot.some(c =>
-          ((idx.lessonById[c.lessonId] || {}).teacherIds || []).some(tid => myTeachers.has(tid)));
-        if (labTeacherBusy) result.hard.push(`P+${nextPeriod}: ${teacherDisplay} already busy`);
-        if (rid) {
-          const labRoomBusy = nextSlot.some(c =>
-            (c.classroomId || (idx.lessonById[c.lessonId] || {}).preferredRoomId) === rid);
-          if (labRoomBusy) result.hard.push(`P+${nextPeriod}: room ${room ? room.name : rid} already busy`);
-        }
       }
     }
   }

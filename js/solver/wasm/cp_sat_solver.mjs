@@ -18,6 +18,7 @@ import { CpModel, CpSolver, CpSolverSolutionCallback, LinearExpr } from './dist/
 // The extended soft-constraint section reuses it so the two backends can
 // never drift on data interpretation.
 import { __test_internals as __jsInternals } from '../csp_solver.js';
+import { orderedSubjects } from '../relation_enforcer.js';
 const jsBuildModel = __jsInternals.buildModel;
 
 function teachingPeriods(school) {
@@ -62,8 +63,11 @@ export async function buildAndSolve(school, options = {}) {
   const improve = options.improve === true || options.mode === "improve";
   const progressFn = options.progressFn ?? null;
   const cancelCheck = options.cancelCheck ?? null;
+  const jm = jsBuildModel(school);
+  const jsLessonIndex = new Map();
+  jm.lessons.forEach((lesson, i) => { if (!jsLessonIndex.has(lesson.srcId)) jsLessonIndex.set(lesson.srcId, i); });
 
-  const days = [...Array(school.daysPerWeek).keys()];
+  const days = [...Array(jm.days).keys()];
   const ndays = days.length;
   const periods = teachingPeriods(school);
   const pidx = new Map(periods.map((p, i) => [p, i]));
@@ -114,7 +118,8 @@ export async function buildAndSolve(school, options = {}) {
     for (const [d, p] of slots) {
       if (card.fixed_day != null && d !== card.fixed_day) continue;
       if (card.fixed_period != null && p !== card.fixed_period) continue;
-      if (card.length === 2 && pidx.get(p) + 1 >= periods.length) continue;
+      // A lab cannot jump over a break or a missing bell index.
+      if (card.length === 2 && !pidx.has(p + 1)) continue;
       out.push([d, p]);
     }
     return out;
@@ -122,7 +127,7 @@ export async function buildAndSolve(school, options = {}) {
   const cover = (card, start) => {
     const [d, p] = start;
     if (card.length === 1) return [[d, p]];
-    return [[d, p], [d, periods[pidx.get(p) + 1]]];
+    return [[d, p], [d, p + 1]];
   };
 
   const assign = [];
@@ -355,7 +360,7 @@ export async function buildAndSolve(school, options = {}) {
     dayBoolCache.set(k, b);
     return b;
   };
-  const firstP = periods[0], lastP = periods[periods.length - 1];
+  const lastP = periods[periods.length - 1];
   const nextP = new Map(periods.map((p, i) => [p, periods[i + 1] ?? null]));
   const prevP = new Map(periods.map((p, i) => [p, periods[i - 1] ?? null]));
   const breakVals = (school.bell.periods || []).filter((p) => p.isTeaching === false).map((p) => p.index);
@@ -367,6 +372,22 @@ export async function buildAndSolve(school, options = {}) {
   let relCons = 0;
   const relationLockedLessons = new Set();
   const lockMatched = (matched) => { if (improve) for (const L of matched) relationLockedLessons.add(L.id); };
+  // Optional cards have zero timing when unplaced. Reify comparisons on BOTH
+  // placed flags so a partial timetable may still keep either lesson alone.
+  const cardTiming = new Map();
+  const timing = ci => {
+    if (!cardTiming.has(ci)) {
+      const day = [], period = [], negativePeriod = [];
+      for (const [skey, variable] of assign[ci]) {
+        const [d, p] = skey.split(',').map(Number);
+        day.push(term(variable, d));
+        period.push(term(variable, p));
+        negativePeriod.push(term(variable, -p));
+      }
+      cardTiming.set(ci, { day, period, negativePeriod });
+    }
+    return cardTiming.get(ci);
+  };
 
   for (const rel of school.relations || []) {
     if (!rel || rel.disabled) continue;
@@ -378,7 +399,7 @@ export async function buildAndSolve(school, options = {}) {
     const est = (typ === 'n_16') ? matched.length * periods.length
       : pairs * days.length * periods.length * periods.length;
     if (!ENCODE_TYPS.has(typ)) continue;                                  // soft/unknown: not hard-enforced (no lock)
-    if (relCons + est > REL_BUDGET) { lockMatched(matched); continue; }   // hard but too big: preserve via lock
+    if (typ !== 'n_9' && relCons + est > REL_BUDGET) { lockMatched(matched); continue; }   // n_9 uses two constraints per card pair
     const A = matched, n = matched.length;
     if (typ === 'n_2') {                         // no two matched at same (d,p)
       for (let a = 0; a < n; a++) for (let b = a + 1; b < n; b++)
@@ -399,7 +420,21 @@ export async function buildAndSolve(school, options = {}) {
         for (const d of days) { const bA = dayBool(A[a].id, d), bB = dayBool(A[b].id, d);
           if (bA && bB) { atMost(m, LinearExpr.sum([bA, bB]), 1); relCons++; } }
       }
-    } else if (typ === 'n_8' || typ === 'n_10' || typ === 'n_9') { // cross-subject, must same day (n_9: + in order, enforced same-day here)
+    } else if (typ === 'n_9') {                  // same day, leader finishes before follower starts
+      const [leaders, followers] = orderedSubjects(rel);
+      for (const leader of matched.filter(l => leaders.includes(l.subjectId))) {
+        for (const follower of matched.filter(l => followers.includes(l.subjectId))) {
+          if (leader.id === follower.id) continue;
+          for (const a of lessonCards.get(leader.id) || []) for (const b of lessonCards.get(follower.id) || []) {
+            const ta = timing(a), tb = timing(b);
+            m.addEquality(sum(ta.day), sum(tb.day)).onlyEnforceIf([placed[a], placed[b]]);
+            m.addLinearConstraint(sum([...tb.period, ...ta.negativePeriod]), cards[a].length, 1e18)
+              .onlyEnforceIf([placed[a], placed[b]]);
+            relCons += 2;
+          }
+        }
+      }
+    } else if (typ === 'n_8' || typ === 'n_10') { // cross-subject, must same day
       for (let a = 0; a < n; a++) for (let b = a + 1; b < n; b++) {
         if (A[a].subjectId === A[b].subjectId) continue;
         for (const d1 of days) for (const d2 of days) { if (d1 === d2) continue;
@@ -458,8 +493,9 @@ export async function buildAndSolve(school, options = {}) {
     } else if (typ === 'n_16') {                 // first or last period only
       const mset = new Set(matched.map((L) => L.id));
       for (let ci = 0; ci < cards.length; ci++) { if (!mset.has(cards[ci].lesson_id)) continue;
+        const allowed = jm.lessonPositionMask[jsLessonIndex.get(cards[ci].lesson_id)];
         for (const [skey, avar] of assign[ci]) { const p = Number(skey.split(',')[1]);
-          if (p !== firstP && p !== lastP) { m.addEquality(avar, 0); relCons++; } } }
+          if (!(allowed & (1 << (p - 1)))) { m.addEquality(avar, 0); relCons++; } } }
     }
   }
   console.error('RELATIONS: encoded constraints=', relCons, 'locked lessons=', relationLockedLessons.size);
@@ -633,7 +669,6 @@ export async function buildAndSolve(school, options = {}) {
     //  - koncitNaraz ("classes end together"): cross-class variance of last
     //    periods — quadratic shape, poor linear fit; revisit if user demand.
     if (options.extSoft !== false) {
-      const jm = jsBuildModel(school);
       const S = 20; // JS-weight → CP-SAT-weight scale
       const jw = jm.weights; // Int32Array, indexes match csp_solver softScore
       const W = {
@@ -1285,9 +1320,10 @@ export async function buildAndSolve(school, options = {}) {
         if (val(yroom.get(`${ci}|${chosen}|${r}`)) === 1) { room = r; break; }
       }
     }
-    for (const [dd, pp] of cover(card, [d, p])) {
-      assignment.push({ lessonId: card.lesson_id, day: dd, period: pp, classroomId: room });
-    }
+    // SchoolData stores one card per session; isLabDouble supplies the span.
+    // Emitting the tail as a second card makes the editor render two doubles
+    // and warm-starts the next solve with an extra, overlapping session.
+    assignment.push({ lessonId: card.lesson_id, day: d, period: p, classroomId: room });
     nPlaced++;
   }
 
@@ -1328,24 +1364,17 @@ if (isMain) {
   console.log('total wall (incl. JIT+import):', totalMs, 'ms');
   console.log('assignment rows:', r.assignment.length);
 
-  const byLessonDay = new Map();
-  for (const a of r.assignment) {
-    const k = `${a.lessonId}|${a.day}`;
-    if (!byLessonDay.has(k)) byLessonDay.set(k, []);
-    byLessonDay.get(k).push(a.period);
-  }
   const allCards = school.lessons.reduce((acc, L) => {
     const length = L.isLabDouble ? 2 : 1;
     const ppw = Number(L.periodsPerWeek) || 0;
     return acc + (ppw > 0 ? Math.max(1, Math.round(ppw / length)) : 0);
   }, 0);
   let doublesOk = 0, doublesBad = 0;
-  for (const ps of byLessonDay.values()) {
-    if (ps.length === 2) {
-      ps.sort((a, b) => a - b);
-      if (ps[1] === ps[0] + 1) doublesOk++;
-      else doublesBad++;
-    }
+  const teaching = new Set(teachingPeriods(school));
+  for (const a of r.assignment) {
+    if (!school.lessons.find(l => l.id === a.lessonId)?.isLabDouble) continue;
+    if (teaching.has(a.period) && teaching.has(a.period + 1)) doublesOk++;
+    else doublesBad++;
   }
   console.log('total cards (expanded):', allCards);
   console.log('doubles placed contiguously:', doublesOk, '/ non-contig:', doublesBad);

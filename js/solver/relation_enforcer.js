@@ -44,6 +44,38 @@ const TYPS = Object.freeze({
     n_17: { label: "The selected subjects can be in the afternoon",  binary: false, hard: false, scope: "afternoon" },
   });
 
+// Both modern A/B subject lists and older [A, B] relations are supported.
+export function orderedSubjects(rel) {
+  const primary = rel.subjectids || [];
+  const secondary = rel.subject2ids || [];
+  return secondary.length ? [primary, secondary] : [primary.slice(0, 1), primary.slice(1, 2)];
+}
+
+// Valid START positions for an edge-anchored lesson. Operates on the same
+// 0-based teaching mask as the CSP; a double ending at the last period fits.
+export function positionStartMask(teachingMask, span, positions) {
+  if (!teachingMask) return 0;
+  const first = 31 - Math.clz32(teachingMask & -teachingMask);
+  const last = 31 - Math.clz32(teachingMask);
+  let allowed = 0;
+  if (positions !== 'last') allowed |= 1 << first;
+  if (positions !== 'first' && last + 1 >= span) allowed |= 1 << (last - span + 1);
+  // Every occupied period must be teaching, including the tail of a lab.
+  for (let offset = 0; offset < span; offset++) allowed &= teachingMask >>> offset;
+  return allowed >>> 0;
+}
+
+export function lessonBells(school, lesson) {
+  const bells = school.bells || [];
+  const fallback = school.bell?.periods || bells[0]?.periods || [];
+  const classes = lesson.classIds || [];
+  return (classes.length ? classes : [null]).map(classId => {
+    const cls = (school.classes || []).find(c => c.id === classId);
+    const specific = bells.find(b => b.id === cls?.bellId)?.periods;
+    return { classId, periods: specific?.length ? specific : fallback };
+  });
+}
+
   function namesOf(school, kind, ids) {
     if (!school || !ids) return [];
     const list = (kind === "subjects") ? school.subjects
@@ -225,25 +257,27 @@ const TYPS = Object.freeze({
           break;
         }
         case "sameDayOrdered": {
-          // n_9: A then B both on same day, A first.
-          // Check BOTH directions: placing A (B already at same day) requires
-          // A.period < B.period; placing B (A already at same day) requires
-          // A.period < B.period. The pre-fix code only caught the first case,
-          // so a reversed B-before-A placement passed silently (audit: n_9 order
-          // fires only when placing the leader).
-          const others = placedMatching(school, rel,
-            primaryMatch ? (l => lessonMatchesSecond(l, rel)) : lessonMatches);
-          const sameDay = others.find(o => o.card.day === day);
-          if (!sameDay) break;
-          const otherPeriod = sameDay.card.period;
-          if (primaryMatch) {
-            // We are A; other is B. Violation if A is NOT strictly before B.
-            if (period >= otherPeriod)
-              sink.push(`${meta.label} — order would be reversed (A not strictly before B)`);
-          } else if (secondaryMatch) {
-            // We are B; other is A. Violation if A is NOT strictly before B.
-            if (otherPeriod >= period)
-              sink.push(`${meta.label} — order would be reversed (A not strictly before B)`);
+          const [leaders, followers] = orderedSubjects(rel);
+          const inScope = l => !(rel.classids || []).length ||
+            (l.classIds || []).some(c => rel.classids.includes(c));
+          if (!inScope(lesson)) break;
+          const isLeader = leaders.includes(lesson.subjectId);
+          const isFollower = followers.includes(lesson.subjectId);
+          const others = placedMatching(school, rel, l => inScope(l) &&
+            ((isLeader && followers.includes(l.subjectId)) || (isFollower && leaders.includes(l.subjectId))))
+            .filter(o => o.card.lessonId !== lessonId);
+          for (const o of others) {
+            if (o.card.day !== day) {
+              sink.push(`${meta.label} — sibling lesson is on a different day`);
+              break;
+            }
+            const end = period + (lesson.isLabDouble ? 2 : 1);
+            const otherEnd = o.card.period + (o.lesson.isLabDouble ? 2 : 1);
+            if ((isLeader && followers.includes(o.lesson.subjectId) && end > o.card.period) ||
+                (isFollower && leaders.includes(o.lesson.subjectId) && otherEnd > period)) {
+              sink.push(`${meta.label} — leader must finish before the follower starts`);
+              break;
+            }
           }
           break;
         }
@@ -299,20 +333,18 @@ const TYPS = Object.freeze({
           break;
         }
         case "position": {
-          // n_16: subject must be first or last period of the day.
-          // Bell periods carry 1-based (possibly sparse) `index` values —
-          // comparing against 0 / length-1 flagged every legitimate first
-          // period and accepted the second-to-last as "last".
-          const periods = (school.bell && school.bell.periods) || [];
-          const teaching = periods.filter(p => p.isTeaching !== false);
-          const firstIdx = teaching.length ? teaching[0].index : 1;
-          const lastIdx  = teaching.length ? teaching[teaching.length - 1].index : 8;
-          const wantFirst = rel.positions === "first";
-          const wantLast  = rel.positions === "last";
-          if (wantFirst && period !== firstIdx)
-            sink.push(`${meta.label} — should be at period ${firstIdx}, this is ${period}`);
-          if (wantLast && period !== lastIdx)
-            sink.push(`${meta.label} — should be at last period (${lastIdx}), this is ${period}`);
+          const span = lesson.isLabDouble ? 2 : 1;
+          for (const { periods } of lessonBells(school, lesson)) {
+            let teachingMask = periods.length ? 0 : 255;
+            for (const p of periods) {
+              if (p.isTeaching !== false && p.index >= 1 && p.index <= 30) teachingMask |= 1 << (p.index - 1);
+            }
+            if (!(positionStartMask(teachingMask, span, rel.positions) & (1 << (period - 1)))) {
+              const edge = rel.positions === 'first' ? 'first' : rel.positions === 'last' ? 'last' : 'first or last';
+              sink.push(`${meta.label} — lesson must touch the ${edge} teaching period of its class bell`);
+              break;
+            }
+          }
           break;
         }
         case "afternoon": {
