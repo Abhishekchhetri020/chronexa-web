@@ -26,12 +26,16 @@ window.StartScreen = (function () {
   function mountLandingDemo() {
     const mount = document.getElementById("landing-demo-mount");
     if (!mount || !window.LandingDemo || typeof window.LandingDemo.mount !== "function") return;
-    window.LandingDemo.mount(mount);
+    // Wire the stepper BEFORE mounting: the reduced-motion path renders its
+    // final frame and emits "ready" during mount(), and the stepper has to
+    // hear that to press the right stage button for that frame.
     wireDemoStages(mount);
+    window.LandingDemo.mount(mount);
   }
 
-  // Stage-machine stepper (landing redesign 2026-08-02): tabs freeze the
+  // Stage-machine stepper (landing redesign 2026-08-02): the buttons freeze the
   // demo loop on a stage; the footer mode button resumes the auto loop.
+  // They swap no panel, so the button state is aria-pressed, not aria-selected.
   function wireDemoStages(mount) {
     const panel = mount.closest(".chrx-landing-demo");
     if (!panel || panel.dataset.stagesWired === "1") return;
@@ -64,7 +68,7 @@ window.StartScreen = (function () {
       const idx = ORDER.indexOf(stage);
       const frozen = typeof window.LandingDemo.isFrozen === "function" && window.LandingDemo.isFrozen(mount);
       tabs.forEach((tab, i) => {
-        tab.setAttribute("aria-selected", String(i === idx));
+        tab.setAttribute("aria-pressed", String(i === idx));
         tab.classList.toggle("is-done", idx > 0 && i < idx);
       });
       if (modeBtn && !reduced) {
@@ -80,7 +84,9 @@ window.StartScreen = (function () {
     if (!card || !input || card.dataset.startWired === "1") return;
     card.dataset.startWired = "1";
     card.setAttribute("role", "button");
-    card.setAttribute("aria-label", "Open XML or HAR file");
+    // Name the accepted formats here too: this control is the landing page's
+    // only route to a file picker that greys out .dif / .xlsx.
+    card.setAttribute("aria-label", "Open timetable — " + INPUT_FORMATS);
 
     card.addEventListener("click", (e) => {
       if (e.target === input) return;
@@ -101,10 +107,148 @@ window.StartScreen = (function () {
     card.addEventListener("drop", (e) => {
       e.preventDefault();
       card.classList.remove("is-dragging");
-      if (!e.dataTransfer || !e.dataTransfer.files || !e.dataTransfer.files.length) return;
-      input.files = e.dataTransfer.files;
-      input.dispatchEvent(new Event("change", { bubbles: true }));
+      takeFiles(e.dataTransfer, input);
     });
+
+    wireHeroDropZone(input);
+  }
+
+  // A drop is a file drag only. Dragging selected text, a link or an image
+  // around the page must never arm the drop state.
+  function isFileDrag(dt) {
+    if (!dt) return false;
+    const types = dt.types;
+    if (!types) return false;
+    return typeof types.includes === "function"
+      ? types.includes("Files")
+      : Array.prototype.indexOf.call(types, "Files") !== -1;
+  }
+
+  function takeFiles(dt, input) {
+    if (!dt || !dt.files || !dt.files.length) return;
+    input.files = dt.files;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  /* The hero is the product's own argument, so it is also the drop target: a
+     visitor can drop their real timetable onto the board instead of hunting for
+     the button. The frame and prompt are the only added surface; the copy
+     recedes while a drag is armed so the state reads as a mode.
+     Both hero and the rest of the landing swallow the drop so a misdrop below
+     the fold cannot navigate the browser to the file and lose the session. */
+  function wireHeroDropZone(input) {
+    const hero = document.querySelector(".chrx-lattice-hero");
+    const landing = document.querySelector(".chrx-landing");
+    if (!hero || !landing || hero.dataset.dropWired === "1") return;
+    hero.dataset.dropWired = "1";
+
+    // dragenter/dragleave fire for every descendant, so depth is counted rather
+    // than toggled — otherwise moving across one tile drops the armed state.
+    let depth = 0;
+    const clear = () => { depth = 0; hero.classList.remove("is-file-over"); };
+
+    hero.addEventListener("dragenter", (e) => {
+      if (!isFileDrag(e.dataTransfer)) return;
+      depth += 1;
+      hero.classList.add("is-file-over");
+    });
+    hero.addEventListener("dragover", (e) => {
+      if (!isFileDrag(e.dataTransfer)) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+    });
+    hero.addEventListener("dragleave", (e) => {
+      if (!isFileDrag(e.dataTransfer)) return;
+      depth -= 1;
+      // relatedTarget === null means the pointer left the window entirely.
+      if (depth <= 0 || e.relatedTarget === null) clear();
+    });
+    hero.addEventListener("drop", (e) => {
+      e.preventDefault();
+      clear();
+      takeFiles(e.dataTransfer, input);
+    });
+
+    landing.addEventListener("dragover", (e) => {
+      if (isFileDrag(e.dataTransfer)) e.preventDefault();
+    });
+    landing.addEventListener("drop", (e) => {
+      if (!isFileDrag(e.dataTransfer)) return;
+      e.preventDefault();
+      clear();
+      takeFiles(e.dataTransfer, input);
+    });
+    // Dragging out of the window, or releasing outside any handler, must not
+    // leave the hero stuck in its armed state.
+    window.addEventListener("dragend", clear);
+    window.addEventListener("blur", clear);
+  }
+
+  // The accepted input formats, stated in exactly one place. main.js reuses
+  // this string for the #xml-status rejection message (start_screen.js is
+  // imported by main.js before boot(), so window.StartScreen is always set).
+  const INPUT_FORMATS = "Opens .xml (Classic/ASC, GP-Untis) and .har files.";
+  const EXPORT_FORMATS = "GP-Untis DIF, Excel, HTML, ICS, PowerSchool, and Atlantis ROZ are export formats.";
+
+  let sampleInfoDialog = null;
+  let pickerDialog = null;
+
+  // ── Dialog focus contract ────────────────────────────────────────────────
+  // EntityDialog.openSheet() (js/ui/entities/dialog_shell.js) mounts a modal
+  // scrim but registers its Escape handler only while a full EntityDialog is
+  // open, and it never moves focus or contains Tab. Both landing dialogs
+  // therefore hung: focus stayed on the trigger, Escape did nothing, and Tab
+  // walked the page behind the scrim. This gives them the aria-modal
+  // contract they already claim: focus enters, Tab is trapped, Escape closes
+  // through one shared close path, focus returns to the trigger.
+  function dialogFocusables(root) {
+    return Array.from(root.querySelectorAll(
+      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )).filter((el) => el.getClientRects().length > 0);
+  }
+
+  function bindDialogFocus(root, opts) {
+    opts = opts || {};
+    let closed = false;
+
+    function finish() {
+      if (closed) return;
+      closed = true;
+      document.removeEventListener("keydown", onKey, true);
+      if (typeof opts.onClose === "function") opts.onClose();
+      const back = opts.restoreTo;
+      // Only refocus something still on screen: picking a template navigates
+      // away from the landing, and focus must not be dragged backwards.
+      if (back && back.isConnected && back.getClientRects().length && typeof back.focus === "function") {
+        try { back.focus(); } catch (e) { /* non-fatal */ }
+      }
+    }
+
+    function onKey(e) {
+      // Closed by another route (e.g. a template was chosen) — just settle.
+      if (!root.isConnected) { finish(); return; }
+      if (e.key === "Tab") {
+        const items = dialogFocusables(root);
+        if (!items.length) { e.preventDefault(); return; }
+        const idx = items.indexOf(document.activeElement);
+        if (idx === -1) { e.preventDefault(); (e.shiftKey ? items[items.length - 1] : items[0]).focus(); return; }
+        if (e.shiftKey && idx === 0) { e.preventDefault(); items[items.length - 1].focus(); }
+        else if (!e.shiftKey && idx === items.length - 1) { e.preventDefault(); items[0].focus(); }
+        return;
+      }
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      // Own Escape while this dialog is the topmost surface, so the
+      // EntityDialog handler in dialog_shell.js cannot race this close.
+      e.stopPropagation();
+      if (typeof opts.onEscape === "function") opts.onEscape();
+      else finish();
+    }
+
+    document.addEventListener("keydown", onKey, true);
+    const initial = opts.initial || dialogFocusables(root)[0] || root;
+    try { initial.focus(); } catch (e) { /* non-fatal */ }
+    return { finish, isClosed: () => closed };
   }
 
   function wireSampleInfo() {
@@ -232,19 +376,28 @@ window.StartScreen = (function () {
   }
 
   function openSampleInfo() {
+    if (sampleInfoDialog) return;
     const title = "Sample school";
     const paragraphs = [
       "The bundled demo contains a realistic school setup with teachers, classes, rooms, subjects, lessons, bell periods, and placed timetable cards.",
       "It loads locally from this app, can be edited like any timetable, and is useful for trying the editor before opening your own file.",
+      INPUT_FORMATS + " " + EXPORT_FORMATS,
     ];
 
     const D = window.EntityDialog;
     if (D && D.openSheet && D.el) {
       try {
+        const before = new Set(document.querySelectorAll(".chrx-ent-sheet-scrim"));
         D.openSheet(D.el("div", { class: "chrx-start-info" },
           ...paragraphs.map((text) => D.el("p", null, text))
         ), { title });
-        return;
+        const scrim = Array.from(document.querySelectorAll(".chrx-ent-sheet-scrim"))
+          .find((node) => !before.has(node));
+        const sheet = scrim && scrim.querySelector(".chrx-ent-sheet");
+        if (sheet) {
+          adoptSampleInfoSheet(D, scrim, sheet);
+          return;
+        }
       } catch (e) {
         // Fall through to the standalone modal.
       }
@@ -253,16 +406,100 @@ window.StartScreen = (function () {
     const modal = document.createElement("div");
     modal.className = "chrx-start-modal";
     modal.innerHTML = `
-      <div class="chrx-start-modal__panel" role="dialog" aria-modal="true" aria-label="Sample school">
-        <h3>Sample school</h3>
-        <p>${escapeHtml(paragraphs[0])}</p>
-        <p>${escapeHtml(paragraphs[1])}</p>
+      <div class="chrx-start-modal__panel" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}">
+        <h3>${escapeHtml(title)}</h3>
+        ${paragraphs.map((text) => `<p>${escapeHtml(text)}</p>`).join("")}
         <button type="button" class="chrx-btn chrx-btn--primary">Done</button>
       </div>
     `;
-    modal.addEventListener("click", (e) => { if (e.target === modal) modal.remove(); });
-    modal.querySelector("button").addEventListener("click", () => modal.remove());
     document.body.appendChild(modal);
+
+    const panel = modal.querySelector(".chrx-start-modal__panel");
+    const close = () => {
+      if (modal.isConnected) modal.remove();
+      if (sampleInfoDialog) sampleInfoDialog.finish();
+    };
+    modal.addEventListener("click", (e) => { if (e.target === modal) close(); });
+    panel.querySelector("button").addEventListener("click", close);
+    sampleInfoDialog = bindDialogFocus(panel, {
+      restoreTo: document.getElementById("start-sample-info"),
+      onEscape: close,
+      onClose: () => { sampleInfoDialog = null; },
+    });
+  }
+
+  // Take over the EntityDialog sheet so × , scrim click and Escape all run one
+  // close path, and focus enters/returns the way aria-modal="true" promises.
+  function adoptSampleInfoSheet(D, scrim, sheet) {
+    const heading = sheet.querySelector("h3");
+    if (heading) {
+      if (!heading.id) heading.id = "start-sample-info-title";
+      sheet.setAttribute("aria-labelledby", heading.id);
+    }
+
+    function closeInfo() {
+      if (scrim.isConnected) {
+        if (typeof D.closeSheet === "function") D.closeSheet();
+        else scrim.remove();
+      }
+      if (sampleInfoDialog) sampleInfoDialog.finish();
+    }
+
+    const x = sheet.querySelector(".chrx-ent-sheet__x");
+    if (x) x.onclick = (e) => { e.preventDefault(); closeInfo(); };
+    scrim.onclick = (e) => { if (e.target === scrim) closeInfo(); };
+
+    sampleInfoDialog = bindDialogFocus(sheet, {
+      restoreTo: document.getElementById("start-sample-info"),
+      initial: x,
+      onEscape: closeInfo,
+      onClose: () => { sampleInfoDialog = null; },
+    });
+  }
+
+  // The school-template picker (js/ui/onboarding/school_templates.js) is built
+  // from bare divs — no dialog role, no close control, and Escape did nothing.
+  // Its trigger lives in wiring.js, so the panel is upgraded here, from JS.
+  function upgradeTemplatePicker(root) {
+    if (!root || root.dataset.chrxPickerReady === "1") return;
+    const panel = root.querySelector(".chrx-tpl-modal__panel");
+    if (!panel) return;
+    root.dataset.chrxPickerReady = "1";
+
+    const heading = panel.querySelector("h3");
+    if (heading) {
+      if (!heading.id) heading.id = "chrx-tpl-picker-title";
+      panel.setAttribute("aria-labelledby", heading.id);
+    }
+    panel.setAttribute("role", "dialog");
+    panel.setAttribute("aria-modal", "true");
+    // Focus the container, not the first tile: this dialog is usually opened
+    // with Enter/Space, and auto-focusing an option would make that keystroke
+    // select a school type by accident.
+    panel.tabIndex = -1;
+
+    function closePicker() {
+      if (root.isConnected) root.remove();
+      if (pickerDialog) pickerDialog.finish();
+    }
+
+    // Visible dismiss. Reuses the picker's own card class (no new CSS) and
+    // names the consequence, so "cancel" is never a mystery.
+    const dismiss = document.createElement("button");
+    dismiss.type = "button";
+    dismiss.className = "chrx-tpl-card";
+    dismiss.textContent = "✕ Cancel — keep my current school";
+    dismiss.addEventListener("click", closePicker);
+    panel.appendChild(dismiss);
+
+    root.onclick = (e) => { if (e.target === root) closePicker(); };
+
+    pickerDialog = bindDialogFocus(panel, {
+      restoreTo: document.getElementById("cta-build-new") || document.activeElement,
+      initial: panel,
+      onEscape: closePicker,
+      onClose: () => { pickerDialog = null; },
+    });
   }
 
   function setStatus(message, tone) {
@@ -309,7 +546,13 @@ window.StartScreen = (function () {
       ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   }
 
-  return { render, collectRecent, openSampleInfo };
+  return {
+    render,
+    collectRecent,
+    openSampleInfo,
+    upgradeTemplatePicker,
+    INPUT_FORMATS,
+  };
 })();
 
 // [vite-esm] exports auto-generated by the 2026-07 Vite migration.

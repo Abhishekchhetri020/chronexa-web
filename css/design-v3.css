@@ -6,7 +6,14 @@
  *       Notion translucency, Raycast pill controls.
  */
 
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,400;9..144,500;9..144,600;9..144,700;9..144,800&family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+/* One @import per family on purpose. These were a single URL until 2026-09-10,
+ * and Google Fonts returns HTTP 400 for the whole request when any one family is
+ * malformed — which silently took all three faces down to system fallbacks.
+ * Fraunces must NOT request the SOFT/WONK custom axes here: they 400 the URL.
+ * Verify after any edit: curl -o /dev/null -w '%{http_code}' '<url>' must be 200. */
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700;9..144,800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 html,body{
   margin:0; padding:0;

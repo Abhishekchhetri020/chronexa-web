@@ -21,8 +21,11 @@
      as one hashed stylesheet. The old CDN <script> and per-file <link>
      tags are gone. -->
 <style>
-  /* Tiny FOUC guard until the bundled stylesheet loads. */
-  body { background: #f8fafc; }
+  /* Tiny FOUC guard until the bundled stylesheet loads. Must match the FIRST
+     painted surface, which is the ink-black landing — not the light workbench.
+     A light value here paints the whole app shell for ~1.5s before JS calls
+     showStep(1) and snaps it black. */
+  body { background: #05070a; }
 </style>
 
 <!-- Excel + gzip libs for ribbon Export/Snapshot (loaded once) -->
@@ -41,7 +44,11 @@
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif; }
 </style>
 </head>
-<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
+<!-- chrx-landing-active is on <body> from the first byte: the landing is the
+     first painted surface, and the brief requires app chrome to be absent while
+     Start is active. showStep() in js/ui/main.js toggles this off on any other
+     step, so the workbench still gets its light theme. -->
+<body class="chrx-landing-active bg-slate-50 text-slate-800 min-h-screen flex flex-col">
 <!--
 THESIS: Chronexa turns timetable complexity into a manipulable field; it refuses the generic SaaS hero followed by feature cards.
 OWN-WORLD: Ink-black space, mineral-white type, spectral schedule lines, and solid timetable tiles form one precise spatial instrument.
@@ -61,7 +68,9 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 <header class="bg-gradient-to-r from-slate-900 to-blue-900 text-white shadow-lg">
   <div class="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between gap-3 flex-wrap">
     <div class="min-w-0">
-      <h1 class="text-xl sm:text-2xl font-bold tracking-tight" data-i18n="appTitle">Chronexa</h1>
+      <!-- App-chrome wordmark, not the page heading: the landing's own <h1> is
+           the hero title. This element is display:none while Start is active. -->
+      <div class="text-xl sm:text-2xl font-bold tracking-tight" data-i18n="appTitle">Chronexa</div>
       <p class="text-xs sm:text-sm text-amber-200 italic" data-i18n="tagline">Open timetable. Yours to keep.</p>
     </div>
     <div class="flex items-center gap-2">
@@ -131,13 +140,15 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         </header>
 
         <div class="chrx-lattice-copy">
-          <h2 id="chrx-hero-title">Build a timetable<br>that behaves.</h2>
+          <h1 id="chrx-hero-title">Build a timetable<br>that behaves.</h1>
           <p class="chrx-lattice-copy__lead">Move lessons directly. See conflicts before they land. Keep the entire school in one coherent field.</p>
           <p class="chrx-lattice-copy__signal"><span></span>Local-first <i></i> Constraint-aware</p>
 
           <div class="chrx-lattice-actions" aria-label="Start with Chronexa">
             <label id="start-open-card" class="chrx-lattice-action chrx-lattice-action--primary" tabindex="0">
-              <input type="file" id="xml-file" accept=".xml,.har" class="chrx-lattice-action__input">
+              <!-- tabindex="-1": the label already forwards Enter/Space via input.click()
+                   (js/ui/start_screen.js), so the input must not be a second, invisible tab stop. -->
+              <input type="file" id="xml-file" accept=".xml,.har" tabindex="-1" class="chrx-lattice-action__input">
               <span>Open timetable</span>
               <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h12M11 5l5 5-5 5"/></svg>
             </label>
@@ -146,16 +157,21 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
             </button>
             <button id="start-sample-info" type="button" class="chrx-lattice-info" aria-label="What is in the demo school" title="What's in the demo school?">?</button>
           </div>
-          <button id="cta-build-new" type="button" class="chrx-lattice-new">Start with a blank school</button>
+          <button id="cta-build-new" type="button" class="chrx-lattice-new">Start from a school template</button>
         </div>
 
         <p class="chrx-lattice-privacy">Your timetable stays in this browser unless you choose a cloud solve.</p>
+        <!-- Drop affordance for the whole hero, revealed only during a real file
+             drag (see wireOpenCard in js/ui/start_screen.js). aria-hidden: it
+             duplicates the "Open timetable" control, which stays the keyboard
+             and screen-reader route. -->
+        <p class="chrx-lattice-drop" aria-hidden="true"><b>Drop to open</b><span>.xml or .har</span></p>
         <a class="chrx-lattice-scroll" href="#chrx-proof"><span></span>Explore the field</a>
       </section>
 
       <section id="chrx-proof" class="chrx-proof" aria-labelledby="chrx-proof-title">
         <div class="chrx-proof__intro">
-          <h3 id="chrx-proof-title">A constraint is not an error message.<br>It is part of the canvas.</h3>
+          <h2 id="chrx-proof-title">A constraint is not an error message.<br>It is part of the canvas.</h2>
           <p>Chronexa keeps the reason beside the move. Teacher availability, occupied rooms, class collisions, and fixed lessons remain visible while you work.</p>
         </div>
 
@@ -170,17 +186,21 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
       <section class="chrx-landing-demo" aria-labelledby="landing-demo-title">
         <div class="chrx-landing-demo__copy">
-          <h3 id="landing-demo-title">Watch one conflict become a valid week.</h3>
+          <h2 id="landing-demo-title">Watch one conflict become a valid week.</h2>
           <p>No file required. The miniature school below runs the same placement story in a smaller frame.</p>
           <span class="chrx-landing-demo__status" data-landing-demo-status aria-live="polite">Preparing preview…</span>
         </div>
         <div class="chrx-appwindow">
-          <div class="chrx-appwindow__stages" role="tablist" aria-label="Solver stages">
-            <button type="button" role="tab" aria-selected="true" class="chrx-appwindow__stage" data-stage="lessons">Lessons</button>
-            <button type="button" role="tab" aria-selected="false" class="chrx-appwindow__stage" data-stage="solve">Solve</button>
-            <button type="button" role="tab" aria-selected="false" class="chrx-appwindow__stage" data-stage="conflict">Conflict</button>
-            <button type="button" role="tab" aria-selected="false" class="chrx-appwindow__stage" data-stage="reassign">Reroute</button>
-            <button type="button" role="tab" aria-selected="false" class="chrx-appwindow__stage" data-stage="ready">Ready</button>
+          <!-- These are a sequential scrubber over one animation, not a tab
+               interface: they swap no panels, so role="tab" was a lie and had no
+               aria-controls/tabpanels. role="group" + aria-pressed is honest and
+               matches how the JS drives them. -->
+          <div class="chrx-appwindow__stages" role="group" aria-label="Solver stages">
+            <button type="button" aria-pressed="true" class="chrx-appwindow__stage" data-stage="lessons">Lessons</button>
+            <button type="button" aria-pressed="false" class="chrx-appwindow__stage" data-stage="solve">Solve</button>
+            <button type="button" aria-pressed="false" class="chrx-appwindow__stage" data-stage="conflict">Conflict</button>
+            <button type="button" aria-pressed="false" class="chrx-appwindow__stage" data-stage="reassign">Reroute</button>
+            <button type="button" aria-pressed="false" class="chrx-appwindow__stage" data-stage="ready">Ready</button>
           </div>
           <div class="chrx-appwindow__viewport"><div id="landing-demo-mount" class="chrx-landing-demo__mount"></div></div>
           <footer class="chrx-appwindow__footer">
@@ -193,7 +213,21 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       <section class="chrx-capabilities" aria-label="Chronexa capabilities">
         <p><strong>Direct manipulation</strong><span>Cards stay attached to your pointer and preserve their source until the move commits.</span></p>
         <p><strong>Private by default</strong><span>Open and edit locally. Cloud solving is an explicit choice, not a hidden upload.</span></p>
-        <p><strong>Interoperable</strong><span>Work with XML, Excel, calendar, FET, and printable timetable outputs.</span></p>
+        <p><strong>Interoperable</strong><span>Open Classic/ASC XML and GP&#8209;Untis files. Export XML, Excel, HTML, ICS, PowerSchool, Atlantis ROZ, and GP&#8209;Untis DIF. FET&#8209;style constraint semantics are built in.</span></p>
+      </section>
+
+      <!-- Closing move. The page previously ended on two 11px utility links
+           ~3,200px below the primary CTA, so a visitor persuaded by the demo had
+           nothing to act on. Repeats the primary action, full size. -->
+      <section class="chrx-closing" aria-label="Get started">
+        <p class="chrx-closing__line">Open your timetable. Nothing leaves this browser.</p>
+        <div class="chrx-closing__actions">
+          <label for="xml-file" id="start-open-card-2" class="chrx-lattice-action chrx-lattice-action--primary" tabindex="0">
+            <span>Open your timetable</span>
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h12M11 5l5 5-5 5"/></svg>
+          </label>
+          <button type="button" class="chrx-lattice-action chrx-lattice-action--secondary" data-closing-demo>Run the demo again</button>
+        </div>
       </section>
 
       <section id="start-recent-section" class="chrx-start-recent hidden" aria-label="Recent timetables">
@@ -290,7 +324,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
 <!-- ─────────────────────── SCRIPTS ─────────────────────── -->
 <!-- Bump APP_VER on every deploy so the browser refetches the JS bundle -->
-<script>window.APP_VER = "20260904-p203-editor-v3";</script>
+<script>window.APP_VER = "20260911-p204-landing-audit";</script>
 <!-- Nuclear SW migration: if an old cache-first SW is still controlling,
      unregister it and reload to pick up the new network-first SW. -->
 <script>

@@ -5,8 +5,9 @@
  *
  *   - a staggered 700ms rise across nav → headline → lead → signal →
  *     actions → privacy/scroll cue, so the copy assembles with intent;
- *   - a quiet pulse on the "Local-first / Constraint-aware" signal dot,
- *     echoing the live solve running behind it.
+ *   - one fade-in on the "Local-first / Constraint-aware" signal dot as the
+ *     solve lands. It is deliberately not a loop: the conflict→reroute→resolve
+ *     cycle is the page's single authored moment.
  *
  * Loaded AFTER landing-redesign.css (see js/entry/main.js). No layout, no
  * palette, no motion beyond entrance — the WebGL lattice owns the field.
@@ -40,14 +41,18 @@
   }
 }
 
-/* The signal dot breathes while the lattice solves behind it. */
+/* The signal dot lights once, in step with the assembly. It used to breathe on
+ * a 2.6s infinite loop, which made a fourth thing move at the same time as the
+ * hero's conflict cycle, the tile breathing and the wake drift — an ambient
+ * page rather than one authored moment. A single fade-in still reads as a
+ * signal coming up. */
 #step-1 .chrx-lattice-copy__signal span {
-  animation: chrx-signal-blink 2.6s ease-in-out infinite;
+  animation: chrx-signal-in 700ms cubic-bezier(.22, 1, .36, 1) 620ms both;
 }
 
-@keyframes chrx-signal-blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: .35; }
+@keyframes chrx-signal-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -51,6 +51,47 @@ function shade(color, f) {
 function alpha(color, a) { return [color[0], color[1], color[2], a]; }
 function lerpPoint(p, q, t) { return { x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t }; }
 
+// ── Label ink ────────────────────────────────────────────────────────────────
+// Tile labels are 8–10px mono, so they need WCAG AA (4.5:1) against the exact
+// pixels they sit on. Every labelled tile publishes `labelBackdrop` — its fill
+// as composited, glaze included — and the ink is chosen from that. A palette
+// therefore never has to be repainted just to carry text, so the approved
+// jewel tones survive intact while the type stays legible: the six lighter
+// subject fills take near-black ink (4.60:1–7.06:1) and the two darkest
+// (amethyst, magenta) plus the destination glow keep white (5.24:1–12.5:1).
+const INK_LIGHT = "#ffffff";
+const INK_DARK = "#0a0c0e";
+const INK_DARK_RGB = [10 / 255, 12 / 255, 14 / 255];
+const inkCache = new Map();
+
+function relativeLuminance(color) {
+  const lin = (v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+  return 0.2126 * lin(color[0]) + 0.7152 * lin(color[1]) + 0.0722 * lin(color[2]);
+}
+function contrastRatio(a, b) {
+  const la = relativeLuminance(a);
+  const lb = relativeLuminance(b);
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+function inkFor(backdrop) {
+  const key = `${Math.round(backdrop[0] * 255)},${Math.round(backdrop[1] * 255)},${Math.round(backdrop[2] * 255)}`;
+  let ink = inkCache.get(key);
+  if (!ink) {
+    ink = contrastRatio([1, 1, 1], backdrop) >= contrastRatio(INK_DARK_RGB, backdrop) ? INK_LIGHT : INK_DARK;
+    inkCache.set(key, ink);
+  }
+  return ink;
+}
+// The machined finish glazes the lower 62% of every tile (see the glaze quad in
+// makeGeometry); both label lines sit inside that band, so the glaze — not the
+// raw palette fill — is what the glyphs actually meet.
+const GLAZE_DEPTH = -0.45;
+const GLAZE_ALPHA = 0.30;
+function glazedBackdrop(color) {
+  const glazed = shade(color, GLAZE_DEPTH);
+  return [0, 1, 2].map((i) => glazed[i] * GLAZE_ALPHA + color[i] * (1 - GLAZE_ALPHA));
+}
+
 function compile(gl, type, source) {
   const shader = gl.createShader(type);
   gl.shaderSource(shader, source);
@@ -159,6 +200,14 @@ const SOLVE_CYCLES = [
 ];
 
 function makeGeometry(width, height, progress, pointer, time = 0, reducedMotion = false) {
+  // Ambient motion belongs to the assembly, not to the page's whole life. The
+  // per-tile breathing wave and the wake drift decay to nothing once the field
+  // has settled, so the 6.5s conflict→reroute→resolve cycle stays the single
+  // authored moment instead of competing with three other loops. Pointer
+  // parallax and cursor lift are user-driven and keep working at full strength.
+  const ASSEMBLY_MS = 1600;
+  const AMBIENT_DECAY_MS = 1400;
+  const ambient = reducedMotion ? 0 : clamp(1 - Math.max(0, (Number(time) || 0) - ASSEMBLY_MS) / AMBIENT_DECAY_MS, 0, 1);
   const mobile = width < 680;
   const columns = mobile ? 5 : 6;
   const rows = 9;
@@ -195,13 +244,13 @@ function makeGeometry(width, height, progress, pointer, time = 0, reducedMotion 
     for (let index = 0; index < 13; index++) {
       const wakeProgress = clamp((progress - index * .022) * 1.4, 0, 1);
       const pal = SUBJECT_PALETTES[index % SUBJECT_PALETTES.length];
-      const driftX = reducedMotion ? 0 : Math.cos(time * 0.0012 + index * 0.75) * 4.5;
-      const driftY = reducedMotion ? 0 : Math.sin(time * 0.0016 + index * 0.85) * 3.5;
+      const driftX = reducedMotion ? 0 : Math.cos(time * 0.0012 + index * 0.75) * 4.5 * ambient;
+      const driftY = reducedMotion ? 0 : Math.sin(time * 0.0016 + index * 0.85) * 3.5 * ambient;
       const x = width * .34 + index * width * .028 + driftX;
       const y = height * .11 + index * height * .027 + driftY;
       const w = mix(32, 58, wakeProgress);
       const h = mix(18, 31, wakeProgress);
-      const angle = -.54 + index * .035 + (reducedMotion ? 0 : Math.sin(time * 0.001 + index) * 0.04);
+      const angle = -.54 + index * .035 + (reducedMotion ? 0 : Math.sin(time * 0.001 + index) * 0.04 * ambient);
       const cos = Math.cos(angle);
       const sin = Math.sin(angle);
       const point = (dx, dy) => ({ x: x + dx * cos - dy * sin, y: y + dx * sin + dy * cos });
@@ -228,16 +277,17 @@ function makeGeometry(width, height, progress, pointer, time = 0, reducedMotion 
       const target = targetAt(column, row);
 
       // Continuous harmonic breathing wave: a slow board breath plus a
-      // faster, quieter shimmer so the field feels alive but precise.
+      // faster, quieter shimmer so the field feels alive but precise. It fades
+      // out with the assembly (see `ambient` above) rather than looping.
       const settled = !reducedMotion && progress >= 0.95;
       const floatY = settled
-        ? Math.sin(time * 0.0018 + column * 0.55 + row * 0.35) * 2.4
-          + Math.sin(time * 0.0043 + index * 0.9) * 0.7
+        ? (Math.sin(time * 0.0018 + column * 0.55 + row * 0.35) * 2.4
+          + Math.sin(time * 0.0043 + index * 0.9) * 0.7) * ambient
           + pointer.y * 7
         : 0;
       const floatX = settled
-        ? Math.cos(time * 0.0014 + column * 0.45 + row * 0.40) * 1.3
-          + Math.cos(time * 0.0032 + index * 0.7) * 0.6
+        ? (Math.cos(time * 0.0014 + column * 0.45 + row * 0.40) * 1.3
+          + Math.cos(time * 0.0032 + index * 0.7) * 0.6) * ambient
           + pointer.x * 10
         : 0;
 
@@ -364,13 +414,14 @@ function makeGeometry(width, height, progress, pointer, time = 0, reducedMotion 
         lerpPoint(quad[2], quad[1], 0.62),
         quad[2],
         quad[3],
-      ], alpha(shade(cardColor, -0.45), 0.30));
+      ], alpha(shade(cardColor, GLAZE_DEPTH), GLAZE_ALPHA));
       pushBeam(vertices, quad[0], quad[1], (isConflictTile || isValidTile) ? 2.2 : 1.2, edgeColor);
 
       cards.push({
         index, row, column, x, y, width: widthNow, height: heightNow,
         pal, conflict: isConflictTile, valid: isValidTile, inFlight, flightProgress,
-        alpha: resolved
+        alpha: resolved,
+        labelBackdrop: glazedBackdrop(cardColor),
       });
     }
   }
@@ -391,26 +442,29 @@ function drawLabels(context, width, height, geometry, progress, time = 0, reduce
     if (card.alpha < .62 || card.width < 54) return;
     context.globalAlpha = clamp((card.alpha - .55) * 2.2, 0, 1);
 
-    // High-contrast clean white typography with subtle drop shadow
-    context.shadowColor = "rgba(0, 0, 0, 0.65)";
+    // Ink is chosen per tile from the fill the glyphs actually sit on, so a pale
+    // subject fill gets near-black type and a dark one keeps white. The halo
+    // that lifts the type off the tile follows the ink too: a dark halo under
+    // dark type would eat the very contrast it is measured against.
+    const ink = inkFor(card.labelBackdrop || card.pal.color);
+    context.shadowColor = ink === INK_DARK ? "rgba(255, 255, 255, 0.34)" : "rgba(0, 0, 0, 0.65)";
     context.shadowBlur = 4;
     context.shadowOffsetX = 1;
     context.shadowOffsetY = 1;
 
     let title = card.pal.name;
-    let isClash = false;
     if (card.conflict) {
-      if (cyclePhase < 0.22) { title = "! CLASH"; isClash = true; }
-      else if (card.inFlight) { title = "SOLVING"; }
-      else if (cyclePhase < 0.90) { title = "RESOLVED"; }
+      if (cyclePhase < 0.22) title = "! CLASH";
+      else if (card.inFlight) title = "SOLVING";
+      else if (cyclePhase < 0.90) title = "RESOLVED";
     }
 
-    context.fillStyle = isClash ? "#ffffff" : (card.valid && cyclePhase >= 0.72 && cyclePhase < 0.92 ? "#082024" : "#ffffff");
+    context.fillStyle = ink;
     context.font = `700 ${card.width > 90 ? 10 : 8}px "JetBrains Mono", monospace`;
     context.fillText(title, card.x + 9, card.y + card.height * .40);
 
     context.shadowBlur = 2;
-    context.fillStyle = isClash ? "#ffded9" : (card.valid && cyclePhase >= 0.72 && cyclePhase < 0.92 ? "#15353a" : "rgba(255, 255, 255, 0.82)");
+    context.fillStyle = ink;
     context.font = `600 ${card.width > 90 ? 8 : 6.5}px "JetBrains Mono", monospace`;
     context.fillText(`${8 + card.row}${card.column % 2 ? "B" : "A"} · P${card.row + 1}`, card.x + 9, card.y + card.height * .68);
   });
@@ -494,6 +548,9 @@ function drawFallback2D(context, width, height, geometry) {
   context.clearRect(0, 0, width, height);
   geometry.cards.forEach((card) => {
     const c = card.conflict ? [0.925, 0.38, 0.32] : (card.valid ? [0.624, 0.906, 0.906] : card.pal.color);
+    // This path paints flat faces with no glaze, so that flat colour is exactly
+    // what the labels meet — publish it so the ink chooser sees the truth.
+    card.labelBackdrop = c;
     context.fillStyle = `rgb(${Math.round(c[0]*255)}, ${Math.round(c[1]*255)}, ${Math.round(c[2]*255)})`;
     context.fillRect(card.x, card.y, card.width, card.height);
   });

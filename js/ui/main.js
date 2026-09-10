@@ -25,38 +25,13 @@ import "./start_screen.js";
 
   // ─── Event Delegation for CTA Buttons (P129 Load-Order / DOM Re-render fixes) ───
   document.addEventListener("click", async (e) => {
-    const demoBtn = e.target.closest("#cta-load-demo, #cta-landing-demo");
+    const demoBtn = e.target.closest("#cta-load-demo, #cta-landing-demo, [data-closing-demo]");
     const buildBtn = e.target.closest("#cta-build-new");
     const infoBtn = e.target.closest("#start-sample-info");
 
     if (demoBtn) {
       e.preventDefault();
-      if (window.Tour && window.Tour.end) window.Tour.end();
-      const status = document.getElementById("xml-status");
-      if (status) status.innerHTML = `<span class="text-slate-500">Loading bundled sample…</span>`;
-      try {
-        const r = await fetch("./sample-school.xml");
-        if (!r.ok) throw new Error("HTTP " + r.status);
-        const xmlText = await r.text();
-        const blob = new Blob([xmlText], { type: "application/xml" });
-        const file = new File([blob], "sample-school.xml", { type: "application/xml" });
-        const school = await parseTimetableXml.parseFile(file);
-        window.APP.school = school;
-        if (window.CreateNew && window.CreateNew.ensureColors) window.CreateNew.ensureColors();
-        const c = school._meta.counts;
-        if (status) status.innerHTML = `<span class="text-emerald-700 font-semibold">Loaded.</span> <span class="text-slate-600">${c.teachers} teachers · ${c.classes} classes · ${c.subjects} subjects · ${c.classrooms} rooms · ${c.lessons} lessons · ${c.cards} cards</span>`;
-        document.querySelectorAll(".needs-school").forEach(b => b.disabled = false);
-        document.dispatchEvent(new CustomEvent("app:school-loaded", { detail: { source: "demo-xml" } }));
-        setTimeout(() => showStep(6), 250);
-      } catch (err) {
-        console.warn("[demo] bundled XML fetch failed, falling back to 22-card seed:", err);
-        if (status) status.innerHTML = `<span class="text-amber-700">Bundled file unavailable, using 22-card demo instead.</span>`;
-        if (window.CreateNew && window.CreateNew.createDemoSeed) {
-          window.CreateNew.createDemoSeed();
-          document.querySelectorAll(".needs-school").forEach(b => b.disabled = false);
-          showStep(6);
-        }
-      }
+      await loadBundledDemo();
     } else if (buildBtn) {
       e.preventDefault();
       if (window.SchoolTemplates && window.SchoolTemplates.showPicker) {
@@ -77,6 +52,12 @@ import "./start_screen.js";
             }
           }
         });
+        // school_templates.js renders a bare panel: no dialog role, no close
+        // control, and Escape did nothing. Upgrade whatever picker is on
+        // screen now (it de-dupes, so this is the live one).
+        if (window.StartScreen && window.StartScreen.upgradeTemplatePicker) {
+          window.StartScreen.upgradeTemplatePicker(document.querySelector(".chrx-tpl-modal"));
+        }
         return;
       }
       
@@ -103,6 +84,38 @@ import "./start_screen.js";
       }
     }
   });
+
+  // One demo loader, shared by #cta-load-demo, #cta-landing-demo and the
+  // closing "Run the demo again" CTA ([data-closing-demo]) — the three
+  // controls must never drift apart.
+  async function loadBundledDemo() {
+    if (window.Tour && window.Tour.end) window.Tour.end();
+    const status = document.getElementById("xml-status");
+    if (status) status.innerHTML = `<span class="text-slate-500">Loading bundled sample…</span>`;
+    try {
+      const r = await fetch("./sample-school.xml");
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const xmlText = await r.text();
+      const blob = new Blob([xmlText], { type: "application/xml" });
+      const file = new File([blob], "sample-school.xml", { type: "application/xml" });
+      const school = await parseTimetableXml.parseFile(file);
+      window.APP.school = school;
+      if (window.CreateNew && window.CreateNew.ensureColors) window.CreateNew.ensureColors();
+      const c = school._meta.counts;
+      if (status) status.innerHTML = `<span class="text-emerald-700 font-semibold">Loaded.</span> <span class="text-slate-600">${c.teachers} teachers · ${c.classes} classes · ${c.subjects} subjects · ${c.classrooms} rooms · ${c.lessons} lessons · ${c.cards} cards</span>`;
+      document.querySelectorAll(".needs-school").forEach(b => b.disabled = false);
+      document.dispatchEvent(new CustomEvent("app:school-loaded", { detail: { source: "demo-xml" } }));
+      setTimeout(() => showStep(6), 250);
+    } catch (err) {
+      console.warn("[demo] bundled XML fetch failed, falling back to 22-card seed:", err);
+      if (status) status.innerHTML = `<span class="text-amber-700">Bundled file unavailable, using 22-card demo instead.</span>`;
+      if (window.CreateNew && window.CreateNew.createDemoSeed) {
+        window.CreateNew.createDemoSeed();
+        document.querySelectorAll(".needs-school").forEach(b => b.disabled = false);
+        showStep(6);
+      }
+    }
+  }
 
   function openSampleInfoFallback() {
     const title = "Sample school";
@@ -407,6 +420,18 @@ import "./start_screen.js";
       const f = e.target.files && e.target.files[0];
       if (!f) return;
       const status = document.getElementById("xml-status");
+      const name = f.name || "";
+      // accept=".xml,.har" greys other files out in the picker, but drag and
+      // drop straight onto the card bypasses it. Name the accepted formats
+      // instead of failing later with a generic parse error.
+      if (!/\.(xml|har)$/i.test(name)) {
+        const ext = (name.match(/\.[a-z0-9]+$/i) || [""])[0];
+        // window.StartScreen is imported above, so it is always defined here.
+        const formats = window.StartScreen.INPUT_FORMATS;
+        status.innerHTML = `<span class="text-rose-700 font-semibold">${escapeHtml("Can't open " + (ext || "that file"))}.</span> <span class="text-slate-600">${escapeHtml(formats)} DIF and XLSX are export-only.</span>`;
+        input.value = "";
+        return;
+      }
       status.innerHTML = `<span class="text-slate-500">${escapeHtml(t("parsing"))}</span>`;
       try {
         if (/\.har$/i.test(f.name || "")) {
@@ -440,7 +465,7 @@ import "./start_screen.js";
         setTimeout(() => showStep(6), 250);
       } catch (err) {
         console.error(err);
-        status.innerHTML = `<span class="text-rose-700 font-semibold">${escapeHtml(t("parseFail"))} ${escapeHtml(err.message || "")}</span>`;
+        status.innerHTML = `<span class="text-rose-700 font-semibold">${escapeHtml(t("parseFail"))} ${escapeHtml(err.message || "")}</span> <span class="text-slate-600">${escapeHtml(window.StartScreen.INPUT_FORMATS)}</span>`;
       }
     });
   }
@@ -471,6 +496,11 @@ import "./start_screen.js";
     // 5-step wizard walkthrough on top as a modal overlay.
     const buildBtn = document.getElementById("cta-build-new");
     if (buildBtn) {
+      // The markup says "Start with a blank school" but the picker that opens
+      // offers seven school types, so the label promised something the button
+      // does not do. The trigger says what actually happens; "Blank — I'll set
+      // up everything" is still the last option inside.
+      buildBtn.textContent = "Start from a school template";
       buildBtn.onclick = () => {
         if (window.Tour && window.Tour.end) window.Tour.end();
         if (window.APP.school && (window.APP.school.teachers.length || window.APP.school.cards.length)) {
@@ -489,6 +519,9 @@ import "./start_screen.js";
               showStep(6);
             }
           });
+          if (window.StartScreen && window.StartScreen.upgradeTemplatePicker) {
+            window.StartScreen.upgradeTemplatePicker(document.querySelector(".chrx-tpl-modal"));
+          }
         } else if (window.CreateNew && window.CreateNew.createBlank) {
           // Fallback: no template picker loaded (shouldn't happen on live)
           window.CreateNew.createBlank();
@@ -503,38 +536,9 @@ import "./start_screen.js";
     }
 
     // ─── CTA: Load Demo Seed (bundled GD Goenka sample-school.xml) ──
-    const demoBtn = document.getElementById("cta-load-demo");
-    if (demoBtn) {
-      demoBtn.onclick = async () => {
-        if (window.Tour && window.Tour.end) window.Tour.end();
-        const status = document.getElementById("xml-status");
-        if (status) status.innerHTML = `<span class="text-slate-500">Loading bundled sample…</span>`;
-        try {
-          const r = await fetch("./sample-school.xml");
-          if (!r.ok) throw new Error("HTTP " + r.status);
-          const xmlText = await r.text();
-          // Use the same parse pipeline as <input type="file">
-          const blob = new Blob([xmlText], { type: "application/xml" });
-          const file = new File([blob], "sample-school.xml", { type: "application/xml" });
-          const school = await parseTimetableXml.parseFile(file);
-          window.APP.school = school;
-          if (window.CreateNew && window.CreateNew.ensureColors) window.CreateNew.ensureColors();
-          const c = school._meta.counts;
-          if (status) status.innerHTML = `<span class="text-emerald-700 font-semibold">Loaded.</span> <span class="text-slate-600">${c.teachers} teachers · ${c.classes} classes · ${c.subjects} subjects · ${c.classrooms} rooms · ${c.lessons} lessons · ${c.cards} cards</span>`;
-          document.querySelectorAll(".needs-school").forEach(b => b.disabled = false);
-          document.dispatchEvent(new CustomEvent("app:school-loaded", { detail: { source: "demo-xml" } }));
-          setTimeout(() => showStep(6), 250);
-        } catch (e) {
-          console.warn("[demo] bundled XML fetch failed, falling back to 22-card seed:", e);
-          if (status) status.innerHTML = `<span class="text-amber-700">Bundled file unavailable, using 22-card demo instead.</span>`;
-          if (window.CreateNew && window.CreateNew.createDemoSeed) {
-            window.CreateNew.createDemoSeed();
-            document.querySelectorAll(".needs-school").forEach(b => b.disabled = false);
-            showStep(6);
-          }
-        }
-      };
-    }
+    // No per-button handler: the delegated listener above already routes
+    // #cta-load-demo, #cta-landing-demo and [data-closing-demo] through
+    // loadBundledDemo(). A second handler here would load the sample twice.
 
     // ─── Listen for nav:goto-step events (fired by activators / wizards) ──
     document.addEventListener("nav:goto-step", e => {

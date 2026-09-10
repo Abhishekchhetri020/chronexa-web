@@ -83,7 +83,7 @@
     LESSON_CARDS.forEach(([cell, subject], index) => {
       later(state, 380 + index * 300, () => {
         place(container, cell, subject);
-        setStatus(container, `Reading lessons… ${index + 1} of ${ALL_CARDS.length}`, "working");
+        setProgress(container, placedLabel(index + 1));
       });
     });
 
@@ -91,7 +91,7 @@
     SOLVE_CARDS.forEach(([cell, subject], index) => {
       later(state, 2500 + index * 300, () => {
         place(container, cell, subject);
-        setStatus(container, `Placing card ${LESSON_CARDS.length + index + 1} of ${ALL_CARDS.length}…`, "working");
+        setProgress(container, placedLabel(LESSON_CARDS.length + index + 1));
       });
     });
 
@@ -122,6 +122,7 @@
   function gotoStage(container, stage) {
     const [text, tone] = STAGE_STATUS[stage] || ["", ""];
     setStatus(container, text, tone);
+    if (stage === "conflict") setProgress(container, placedLabel(ALL_CARDS.length));
     emit(container, stage);
   }
 
@@ -149,6 +150,7 @@
     }
     const [text, tone] = STAGE_STATUS[stage] || ["", ""];
     setStatus(container, text, tone);
+    setProgress(container, placedLabel(stage === "lessons" ? 3 : ALL_CARDS.length));
   }
 
   function emit(container, stage) {
@@ -190,12 +192,47 @@
     });
   }
 
+  function placedLabel(count) {
+    return `${count} of ${ALL_CARDS.length} cards placed`;
+  }
+
+  function panelOf(container) {
+    return container.closest(".chrx-landing-demo");
+  }
+
+  /**
+   * Stage-level status: the ONLY writer of the aria-live region. It is called
+   * once per stage transition (≤5 per 12s cycle) so a screen reader is told
+   * the story, not every counter tick.
+   */
   function setStatus(container, text, tone) {
-    const panel = container.closest(".chrx-landing-demo");
+    const panel = panelOf(container);
     const status = panel && panel.querySelector("[data-landing-demo-status]");
-    if (!status) return;
+    if (!status || status.textContent === text) return;
     status.textContent = text;
-    status.dataset.tone = tone || "";
+    const nextTone = tone || "";
+    if (status.dataset.tone !== nextTone) status.dataset.tone = nextTone;
+  }
+
+  /**
+   * Per-item placement counter. Deliberately a sibling of the live region so
+   * these writes are never announced — the copy keeps its detail, the
+   * announcement stays stage-level. Reuses the status class (no new CSS).
+   */
+  function setProgress(container, text) {
+    const panel = panelOf(container);
+    const status = panel && panel.querySelector("[data-landing-demo-status]");
+    if (!status || !status.parentNode) return;
+    let progress = panel.querySelector("[data-landing-demo-progress]");
+    if (!progress) {
+      progress = document.createElement("span");
+      progress.className = status.className;
+      progress.dataset.landingDemoProgress = "";
+      status.parentNode.insertBefore(progress, status.nextSibling);
+      // Keep a word space between the two chips now that they are siblings.
+      status.parentNode.insertBefore(document.createTextNode(" "), progress);
+    }
+    if (progress.textContent !== text) progress.textContent = text;
   }
 
   function destroy(container) {
