@@ -15,6 +15,7 @@ import "./placement_validator.js";
   "use strict";
 
   let ghost = null, inHand = null, carryPanel = null, collisionMenu = null;
+  let consequenceEl = null;
   let dx = 0, dy = 0, px = 0, py = 0;
   let lastPaintX = 0;
   let activePointerId = null;
@@ -447,6 +448,46 @@ import "./placement_validator.js";
     return slot && !slot.classList.contains("out-of-bell") ? slot : null;
   }
 
+  // Magnetic drop. Hit-testing is a bare elementFromPoint with no fallback, so
+  // releasing a pixel off the grid — in a day gutter, on a sticky row label, on
+  // the period header, or one pixel outside the last column — silently cancelled
+  // the whole move. At a 28px cell that demands more precision than a drag
+  // deserves. When the pointer misses, look for the nearest slot within
+  // SNAP_RADIUS and drop there instead, so the gesture lands where the user
+  // obviously meant.
+  //
+  // Only slots that would actually ACCEPT the card are considered: snapping onto
+  // a red cell just to then open the collision chooser would be worse than doing
+  // nothing, since the user aimed at empty space, not at that cell.
+  const SNAP_RADIUS = 26;
+  function nearestSlot(x, y) {
+    const slots = document.querySelectorAll(".chrx-editor .chrx-slot:not(.out-of-bell)");
+    let best = null, bestD2 = SNAP_RADIUS * SNAP_RADIUS;
+    for (const slot of slots) {
+      const r = slot.getBoundingClientRect();
+      // Distance to the rect (0 when the point is inside it).
+      const dx = Math.max(r.left - x, 0, x - r.right);
+      const dy = Math.max(r.top - y, 0, y - r.bottom);
+      const d2 = dx * dx + dy * dy;
+      if (d2 > bestD2) continue;
+      // Prefer a slot the card can legally take; an occupied one is a swap, which
+      // counts as acceptable only when the card is a single block.
+      const occupied = targetCardsForSlot(slot).length > 0;
+      if (occupied && inHand && (inHand.blockLen || 1) !== 1) continue;
+      if (!occupied && classifySlot(slot).validity === "red") continue;
+      best = slot; bestD2 = d2;
+    }
+    return best;
+  }
+
+  // The slot a release should resolve to: exact hit first, then the magnet.
+  function resolveDropSlot(x, y) {
+    const exact = slotAt(x, y);
+    if (exact) return { slot: exact, snapped: false };
+    const near = nearestSlot(x, y);
+    return near ? { slot: near, snapped: true } : { slot: null, snapped: false };
+  }
+
   // The specific card directly under the cursor (group-split aware), so a
   // drop onto a shared cell swaps the half-class card being pointed at — not
   // an arbitrary occupant.
@@ -528,8 +569,20 @@ import "./placement_validator.js";
     // drop doesn't re-arm click mode on the cell the card just landed on.
     suppressClickUntil = performance.now() + 350;
     if (overPending(up.x, up.y)) return unplaceToPending();
-    const slot = slotAt(up.x, up.y);
+    const { slot, snapped } = resolveDropSlot(up.x, up.y);
     if (!slot) return cancel();
+    // A magnetic landing commits to the cell the magnet chose, so say which one
+    // it was — otherwise the card appears to move somewhere the user never
+    // pointed at, which reads as a misfire rather than as forgiveness.
+    if (snapped) {
+      const sd = parseInt(slot.dataset.day, 10), sp = parseInt(slot.dataset.period, 10);
+      // Say which cell the magnet chose. A card that lands somewhere the user
+      // never pointed at reads as a misfire unless the app admits it snapped.
+      (window._chrxNotify || function () {})("Snapped to " + dayLabel(sd) + " P" + sp);
+      document.dispatchEvent(new CustomEvent("editor:snap", {
+        detail: { day: sd, period: sp, label: `${dayLabel(sd)} P${sp}` },
+      }));
+    }
     const d = parseInt(slot.dataset.day, 10), p = parseInt(slot.dataset.period, 10);
     // Drop onto an occupied slot → swap: the dragged card takes the slot and
     // the displaced card attaches to the cursor so you can keep dragging it.
@@ -972,6 +1025,7 @@ import "./placement_validator.js";
     if (carryPanel && carryPanel.parentNode) {
       carryPanel.parentNode.removeChild(carryPanel);
       carryPanel = null;
+      consequenceEl = null;
     }
     // Remove Classic-style hand chip and hover tip
     const handChip = document.getElementById("chrx-hand-chip");
@@ -1259,7 +1313,9 @@ import "./placement_validator.js";
         <div><dt>Room</dt><dd>${esc(roomShort)}</dd></div>
       </dl>
       <div class="chrx-carry-panel__status" data-state="idle">Choose a slot in the matching row.</div>
+      <div class="chrx-carry-panel__consequence" hidden></div>
     `;
+    consequenceEl = carryPanel.querySelector(".chrx-carry-panel__consequence");
     const host = document.getElementById("editor-inspector-root");
     if (host) host.appendChild(carryPanel);
     else document.body.appendChild(carryPanel);
@@ -1298,6 +1354,53 @@ import "./placement_validator.js";
     status.dataset.state = validity.validity || "idle";
     const why = summariseReasons(validity.reasons);
     status.textContent = why ? `${label}: ${why}` : `${label}: clean placement`;
+    // Validity answers "may I drop here?". The next question is "and then what
+    // happens?" — which is what a coordinator actually weighs. Say it before
+    // they commit: what this move frees, and what it displaces.
+    const outcome = describeConsequence(slot, validity);
+    if (consequenceEl) {
+      consequenceEl.textContent = outcome || "";
+      consequenceEl.hidden = !outcome;
+    }
+  }
+
+  // One short, factual line about the effect of dropping here. Deliberately
+  // describes only what is KNOWN at hover time — the origin cell that would
+  // empty, and the current occupant that would be handed back to the cursor.
+  // No promises about downstream effects the app cannot see.
+  function describeConsequence(slot, validity) {
+    if (!slot || !inHand) return "";
+    const parts = [];
+    const sameAsOrigin = inHand.originDay === parseInt(slot.dataset.day, 10)
+      && inHand.originPeriod === parseInt(slot.dataset.period, 10);
+    if (sameAsOrigin) return "back where it started";
+    const occupants = targetCardsForSlot(slot);
+    if (occupants.length) {
+      // Displace-and-carry: the occupant is not swapped into the origin, it stays
+      // in hand so you can keep going. Naming that here is the only place the
+      // model is explained before it happens.
+      const subj = subjectOfLesson(occupants[0].lessonId);
+      const n = occupants.length;
+      parts.push(n === 1
+        ? `takes ${subj || "the occupant"} into hand`
+        : `takes ${n} cards into hand`);
+    }
+    if (inHand.originDay != null && inHand.originPeriod != null && !inHand.fromPending) {
+      parts.push(`frees ${dayLabel(inHand.originDay)} P${inHand.originPeriod}`);
+    } else if (inHand.fromPending) {
+      parts.push("reduces unplaced by 1");
+    }
+    if (validity && validity.validity === "red") return "";
+    return parts.join(" · ");
+  }
+
+  function subjectOfLesson(lessonId) {
+    const S = window.APP && window.APP.school;
+    const lesson = S && S._idx && S._idx.lessonById ? S._idx.lessonById[lessonId] : null;
+    const subject = lesson && S._idx.subjectById ? S._idx.subjectById[lesson.subjectId] : null;
+    if (!subject) return "";
+    const code = subject.abbr || subject.name || "";
+    return code && code.length <= 18 ? code : code.slice(0, 17) + "…";
   }
 
   // Drag feedback is a single fixed-position line, so the reason list is capped

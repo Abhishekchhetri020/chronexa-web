@@ -894,6 +894,24 @@ body.chrx-card-in-hand .chrx-shell .chrx-slot.empty:focus { outline: 2px solid v
 .chrx-shell .chrx-carry-panel__status[data-state="red"] { background: var(--chrx-red-bg); color: var(--chrx-red); }
 .chrx-shell .chrx-carry-panel__status[data-state="red"]::before { background: var(--chrx-red); }
 
+/* Consequence line: what the drop will DO, under what it will allow. Validity
+   answers "may I drop here?"; this answers "and then what?", which is the
+   question a coordinator actually weighs before committing a move. Quieter than
+   the status line on purpose — it is a consequence, not a verdict. */
+.chrx-shell .chrx-carry-panel__consequence {
+  margin-top: 2px;
+  padding: 0 10px 2px 17px;
+  color: var(--chrx-fg-tertiary);
+  font: 500 11px/1.4 var(--chrx-font-sans);
+}
+.chrx-shell .chrx-carry-panel__consequence[hidden] { display: none; }
+
+/* Marks the consequence line as a result rather than another rule. */
+.chrx-shell .chrx-carry-panel__consequence::before {
+  content: "→ ";
+  color: var(--chrx-fg-faint);
+}
+
 /* Class panel */
 .chrx-shell .chrx-class-panel { padding: 12px 14px; border-bottom: 1px solid var(--line-soft); background: transparent; }
 .chrx-shell .chrx-class-panel__eyebrow { font: 600 10.5px/1 var(--chrx-font-sans); letter-spacing: 0.04em; color: var(--chrx-fg-tertiary); }
