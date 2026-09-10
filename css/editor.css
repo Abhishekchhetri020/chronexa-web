@@ -127,9 +127,6 @@ body.chrx-card-in-hand .chrx-slot.empty.out-of-bell{outline:1px solid var(--chrx
 .chrx-vk-line1{font-weight:var(--chrx-fw-bold);font-size:var(--chrx-font-cell-s);text-align:left;width:100%}
 .chrx-vk-line2,.chrx-vk-line3{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.88;text-align:left;width:100%}
 .chrx-vk-line1{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;font-weight:var(--chrx-fw-semibold)}
-/* Compact card: subject-only, centered, taller font. Title tooltip still has full detail. */
-.chrx-vkarta--compact{align-items:flex-start;justify-content:center;padding:2px 4px}
-.chrx-vkarta--compact .chrx-vk-line1{font-size:var(--chrx-font-cell-m);line-height:1.1;text-align:left;width:100%}
 .chrx-vkarta.locked{cursor:not-allowed;opacity:.85}
 .chrx-vkarta.locked::after{content:"🔒";position:absolute;top:0;right:2px;font-size:8px}
 /* Verification halo — painted by canvas_geometry.paintHalos() per card.
@@ -733,8 +730,9 @@ body.chrx-body--resizing * {
   #editor-quick-tools button, .chrx-topbar-editor-tools button,
   .step-btn, .chrx-pending-tab, .chrx-day-tab,
   .chrx-matrix-teachersel, .chrx-matrix-save, .chrx-matrix-cancel{ min-height:44px; }
-  /* Roomier rows so cards are tappable */
-  .chrx-editor--compact .chrx-row{ height:40px; min-height:40px; }
+  /* Roomier rows so cards are tappable. Zoom levels that fall below this
+     (far 22px, mid 36px) are lifted to 40px in editor-v3.css, which loads last
+     and therefore wins the cascade. */
   .chrx-grid{ --chrx-cell-min:44px; }
   /* Let vertical scroll work when a drag hasn't started; long-press picks up. */
   .chrx-vkarta{ touch-action:pan-x pan-y; }

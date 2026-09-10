@@ -654,21 +654,60 @@ import "./start_screen.js";
       };
     }
 
-    // ─── Card density toggle in editor header ──────────────────
+    // ─── Semantic zoom toggle in editor header ──────────────────
+    // Replaces the old binary "Compact/Comfortable" density switch. That control
+    // kept the font at 11px in both states and made "comfortable" give the card
+    // LESS text width, so the two modes differed by row height alone — and it
+    // did nothing at all in the default Focus view, silently. Zoom now walks
+    // three levels that each change what a cell shows (see ZOOM_LEVELS in
+    // grid_canvas.js), and the button says so when it cannot apply.
     const densBtn = document.getElementById("editor-density");
     if (densBtn) {
-      // Restore from localStorage; default to compact.
-      let savedDens = "compact";
-      try { savedDens = localStorage.getItem("chronexa.editor.density") || "compact"; } catch {}
       window.APP.editor = window.APP.editor || {};
-      window.APP.editor.density = savedDens;
-      setToolLabel(densBtn, savedDens === "compact" ? "Compact" : "Comfortable");
+      const ZOOM_ORDER = ["far", "mid", "near"];
+      const ZOOM_LABEL = { far: "Overview", mid: "Codes", near: "Detail" };
+      const ZOOM_HINT = {
+        far: "Zoom: colour-only overview — click for subject codes",
+        mid: "Zoom: subject codes — click for teacher and room detail",
+        near: "Zoom: code, teacher and room — click to zoom back out",
+      };
+      // Read the saved level, migrating a legacy density value.
+      let savedZoom = "";
+      try { savedZoom = localStorage.getItem("chronexa.editor.zoom") || ""; } catch {}
+      if (ZOOM_ORDER.indexOf(savedZoom) === -1) {
+        let legacy = "";
+        try { legacy = localStorage.getItem("chronexa.editor.density") || ""; } catch {}
+        savedZoom = legacy === "comfortable" ? "near" : "mid";
+      }
+      window.APP.editor.zoom = savedZoom;
+      window.APP.editor.density = savedZoom === "near" ? "comfortable" : "compact";
+
+      const syncZoomBtn = () => {
+        const z = window.APP.editor.zoom || "mid";
+        setToolLabel(densBtn, ZOOM_LABEL[z]);
+        densBtn.title = ZOOM_HINT[z];
+      };
+      syncZoomBtn();
+
+      // Focus view has its own typography and does not use zoom, so the control
+      // is disabled there rather than appearing to work and doing nothing.
+      const syncZoomEnabled = () => {
+        const inFocus = (window.APP.editor.viewMode || "focus") === "focus";
+        densBtn.disabled = inFocus;
+        densBtn.setAttribute("aria-disabled", inFocus ? "true" : "false");
+        densBtn.title = inFocus ? "Zoom applies to the All-classes grid" : ZOOM_HINT[window.APP.editor.zoom || "mid"];
+      };
+      syncZoomEnabled();
+      document.addEventListener("editor:view-mode", syncZoomEnabled);
+
       densBtn.onclick = () => {
-        const cur = window.APP.editor.density || "compact";
-        const next = cur === "compact" ? "comfortable" : "compact";
-        window.APP.editor.density = next;
-        setToolLabel(densBtn, next === "compact" ? "Compact" : "Comfortable");
-        try { localStorage.setItem("chronexa.editor.density", next); } catch {}
+        if (densBtn.disabled) return;
+        const cur = window.APP.editor.zoom || "mid";
+        const next = ZOOM_ORDER[(ZOOM_ORDER.indexOf(cur) + 1) % ZOOM_ORDER.length];
+        window.APP.editor.zoom = next;
+        window.APP.editor.density = next === "near" ? "comfortable" : "compact";
+        try { localStorage.setItem("chronexa.editor.zoom", next); } catch {}
+        syncZoomBtn();
         if (window.EditorActivator) window.EditorActivator.activate();
       };
     }

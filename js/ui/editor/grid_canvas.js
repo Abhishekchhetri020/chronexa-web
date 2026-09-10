@@ -14,6 +14,33 @@ window.Editor = (function () {
   const NUM_DAYS = 6; // hard maximum; the school's daysPerWeek drives the real count
   const DAY_LABELS_EN = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+  // Semantic zoom levels, coarsest first. The cycle order matches the row
+  // heights, so stepping through it reads as zooming rather than reshuffling.
+  const ZOOM_LEVELS = ["far", "mid", "near"];
+  const ZOOM_LABELS = { far: "Overview", mid: "Codes", near: "Detail" };
+
+  // `density` was the old two-state control (compact | comfortable). It is kept
+  // as a read-only alias so a returning user's saved preference and the rest of
+  // the app keep working, and is translated once into a zoom level:
+  // compact → mid (the same 36px working view), comfortable → near.
+  function currentZoom() {
+    const A = window.APP && window.APP.editor;
+    if (!A) return "mid";
+    if (ZOOM_LEVELS.indexOf(A.zoom) !== -1) return A.zoom;
+    if (A.density === "comfortable") return "near";
+    if (A.density === "compact") return "mid";
+    return "mid";
+  }
+
+  function setZoom(level) {
+    if (ZOOM_LEVELS.indexOf(level) === -1) return;
+    const A = window.APP.editor;
+    A.zoom = level;
+    // Keep the legacy field in step for anything still reading it.
+    A.density = level === "near" ? "comfortable" : "compact";
+    try { localStorage.setItem("chronexa.editor.zoom", level); } catch (_e) {}
+  }
+
   // The school decides how many weekdays to show (set in School settings at
   // setup). Clamp to the 6 we have labels for; default to a full week.
   function dayCount(S) {
@@ -43,11 +70,17 @@ window.Editor = (function () {
 
     rootEl.classList.add("chrx-editor");
     rootEl.classList.toggle("chrx-editor--focus", window.APP.editor.viewMode === "focus");
-    // Compact density → shorter rows (subject-only cards), so the taller
-    // readable default rows don't cost vertical density when the user wants
-    // to see more classes at once.
-    rootEl.classList.toggle("chrx-editor--compact",
-      window.APP.editor.viewMode !== "focus" && (window.APP.editor.density || "compact") === "compact");
+    // Semantic zoom: the zoom level changes WHAT a cell shows, not just how big
+    // it is. A denser grid is only useful if it still answers the question you
+    // zoomed out to ask, so each step drops detail deliberately:
+    //   far  — colour only, no text; for reading pattern and load at a glance
+    //   mid  — the subject code; the aSc-style working view
+    //   near — code + teacher + room; read a specific cell without hovering
+    // Focus view has its own typography and ignores zoom.
+    const zoomLevel = currentZoom();
+    rootEl.classList.toggle("chrx-editor--zoom-far", window.APP.editor.viewMode !== "focus" && zoomLevel === "far");
+    rootEl.classList.toggle("chrx-editor--zoom-mid", window.APP.editor.viewMode !== "focus" && zoomLevel === "mid");
+    rootEl.classList.toggle("chrx-editor--zoom-near", window.APP.editor.viewMode !== "focus" && zoomLevel === "near");
 
     // Preserve scroll position across the innerHTML rebuild. Without this, a
     // pickup/place re-render reset the grid to the top — picking a card from a
@@ -658,9 +691,15 @@ window.Editor = (function () {
       members.forEach((s, i) => {
         const mine = suffixes[i];
         let pick = null;
+        // Every candidate is length-capped. Without this, a group whose suffixes
+        // share no first letter kept the full 4-char base and appended a suffix
+        // on top — "MATHS" vs "MATHS LAB PERIOD" (whose every form collides)
+        // produced MATHM/SporS, five characters that overflow a ~37px cell. The
+        // stem is trimmed per suffix length so the total never exceeds the cap.
+        const stemFor = (k) => stem.slice(0, Math.max(1, MAX_CODE_LEN - k));
         for (let k = 1; k <= mine.length && !pick; k++) {
           // Unique within the group AND not claimed by any subject outside it.
-          const cand = stem + mine.slice(0, k);
+          const cand = stemFor(k) + mine.slice(0, k);
           const shared = suffixes.some((o, j) => j !== i && o.slice(0, k) === mine.slice(0, k));
           if (!shared && !owners.has(cand)) pick = cand;
         }
@@ -668,17 +707,17 @@ window.Editor = (function () {
         // can separate at this length.
         if (!pick) {
           for (let k = 1; k <= mine.length && !pick; k++) {
-            const cand = stem + mine.slice(0, k);
+            const cand = stemFor(k) + mine.slice(0, k);
             if (!owners.has(cand)) pick = cand;
           }
         }
         if (!pick) {
           for (let n = 2; n < 100 && !pick; n++) {
-            const cand = base + n;
+            const cand = base.slice(0, Math.max(1, MAX_CODE_LEN - String(n).length)) + n;
             if (!owners.has(cand)) pick = cand;
           }
         }
-        if (!pick) pick = base;
+        if (!pick) pick = base.slice(0, MAX_CODE_LEN);
         owners.set(pick, new Set([s.id]));
         map.set(s.id, pick);
       });
@@ -712,6 +751,8 @@ window.Editor = (function () {
   // perspectives carry class lists that legitimately wrap.
   function autoFitSubjectCodes(rootEl, scopeEl) {
     if (!rootEl || (window.APP.editor.perspective || "class") !== "class") return;
+    // The overview zoom draws no text, so there is nothing to fit.
+    if (window.APP.editor.viewMode !== "focus" && currentZoom() === "far") return;
     const S = window.APP && window.APP.school;
     if (!S) return;
     const scope = scopeEl || rootEl;
@@ -754,6 +795,17 @@ window.Editor = (function () {
       .map(tid => S._idx.teacherById[tid])
       .filter(Boolean)
       .map(t => t.abbr || t.name)
+      .join(", ");
+    // Dense cells need an even shorter teacher form. Every teacher in the demo
+    // school carries abbr === name ("Mr. Zaid"), so the abbr path yields nothing
+    // shorter — and in a ~35px cell the honorific is what eats the space while
+    // being the least informative token. Dropping it is what makes the near-zoom
+    // second line readable ("Zaid") instead of clipped ("Mr. Z").
+    const teacherCompact = (lesson?.teacherIds || [])
+      .map(tid => S._idx.teacherById[tid])
+      .filter(Boolean)
+      .map(t => String(t.abbr || t.name).replace(/^(mr|mrs|ms|miss|dr|shri|smt|sri)\.?\s+/i, ""))
+      .filter(Boolean)
       .join(", ");
     const roomShort = (() => {
       const rid = card.classroomId || lesson?.preferredRoomId;
@@ -798,22 +850,39 @@ window.Editor = (function () {
     // The room/third field lives in the hover tooltip + card-detail panel, so
     // the cell isn't a clipped 3-line cram.
     let line1, line2;
+    const zoom = currentZoom();
+    const inFocus = window.APP.editor.viewMode === "focus";
     if (persp === "teacher") { line1 = classShort || subjShort; line2 = subjShort; }
     else if (persp === "subject") { line1 = classShort || teacherShort; line2 = teacherShort; }
     else if (persp === "room") { line1 = subjFull; line2 = classShort; }
-    // By-Class: a compact subject CODE alone is enough (the class is the row,
-    // colour already encodes subject/teacher). aSc uses short codes here for
-    // exactly this reason — at ~30px-wide cells the full name can't fit
-    // readably. subjectCode() uses the school's own abbr when it fits, else
-    // derives a tidy code. Full name stays in the hover tooltip + card detail.
+    // By-Class: a compact subject CODE is enough at the working zoom (the class
+    // is the row and colour already encodes the subject) — aSc uses short codes
+    // here for exactly this reason, since a ~28-38px cell cannot show a full
+    // name. subjectCode() prefers the school's own abbr and falls back to a
+    // derived, uniqueness-checked code; the full name stays in the hover tooltip,
+    // the card-detail panel and the code legend.
     else {
-      line1 = window.APP.editor.viewMode === "focus" ? subjFull : subjCode;
-      line2 = window.APP.editor.viewMode === "focus"
-        ? [teacherShort, roomShort].filter(Boolean).join(" · ")
-        : "";
+      if (inFocus) {
+        line1 = subjFull;
+        line2 = [teacherShort, roomShort].filter(Boolean).join(" · ");
+      } else if (zoom === "far") {
+        // Pattern-reading zoom: the colour IS the datum. A 3-character code in a
+        // 22px row would be illegible anyway, so it is deliberately not drawn.
+        line1 = "";
+        line2 = "";
+      } else if (zoom === "near") {
+        // Reading zoom: spend the extra row height on the fields you would
+        // otherwise have to hover for. Still the code, not the full name — the
+        // cell is no wider here, so a name would only clip.
+        line1 = subjCode;
+        line2 = [teacherCompact, roomShort].filter(Boolean).join(" · ");
+      } else {
+        line1 = subjCode;
+        line2 = "";
+      }
     } // class
-    const compact = window.APP.editor.viewMode !== "focus" && window.APP.editor.density === "compact";
-    const densityClass = compact ? " chrx-vkarta--compact" : "";
+    // Zoom reaches the card so CSS never has to infer it from the density flag.
+    const zoomClass = inFocus ? "" : " chrx-vkarta--zoom-" + zoom;
 
     // No native title attribute — ConstraintExplainer renders the single
     // rich hover tooltip (info header + violations). A title here made the
@@ -826,7 +895,7 @@ window.Editor = (function () {
     const ariaLabel = [subjFull, classShort, teacherShort, roomShort]
       .filter(Boolean).join(", ") + ` — ${dayName} period ${period}` + (locked ? ", locked" : "");
     return `
-      <div class="chrx-vkarta${locked}${densityClass}"
+      <div class="chrx-vkarta${locked}${zoomClass}"
            data-card-id="${cardId}"
            data-lesson-id="${esc(card.lessonId)}"
            data-day="${day}"
@@ -836,8 +905,8 @@ window.Editor = (function () {
            role="button" tabindex="0" aria-label="${esc(ariaLabel)}"
            aria-roledescription="timetable card"
            style="--chrx-card-hue:${hue}${bgStyle}">
-        <div class="chrx-vk-line1">${esc(line1)}</div>
-        ${compact || !line2 ? "" : `<div class="chrx-vk-line2">${esc(line2)}</div>`}
+        ${line1 ? `<div class="chrx-vk-line1">${esc(line1)}</div>` : ""}
+        ${line2 ? `<div class="chrx-vk-line2">${esc(line2)}</div>` : ""}
       </div>
     `;
   }
@@ -1029,6 +1098,12 @@ window.Editor = (function () {
         const next = rows[(index + direction + rows.length) % rows.length];
         if (next) window.APP.editor.focusRowByPerspective[perspective] = next.key;
       }
+      // Announce the mode change so the toolbar can reflect what now applies —
+      // the zoom control is inert in Focus view and must say so rather than
+      // appearing to work (its old silent no-op was a reported confusion).
+      document.dispatchEvent(new CustomEvent("editor:view-mode", {
+        detail: { viewMode: window.APP.editor.viewMode },
+      }));
       render(focusNav.closest(".chrx-editor"));
       return;
     }
@@ -1067,10 +1142,10 @@ window.Editor = (function () {
   function handleEditorTool(kind, host) {
     window.APP.editor = window.APP.editor || {};
     // A card held in hand is bound to the current perspective's row layout.
-    // Releasing it before a perspective/colour/density change avoids a lingering
+    // Releasing it before a perspective/colour/zoom change avoids a lingering
     // drag ghost and a validity heatmap painted against the wrong rows after the
     // grid is rebuilt. (BUG_REPORT_2026-06-13 S0.2.)
-    if ((kind === "perspective" || kind === "color" || kind === "density") &&
+    if ((kind === "perspective" || kind === "color" || kind === "density" || kind === "zoom") &&
         window.APP.editor.cardInHand &&
         window.CardInHand && typeof window.CardInHand.cancel === "function") {
       window.CardInHand.cancel();
@@ -1086,11 +1161,10 @@ window.Editor = (function () {
       window.APP.editor.colorBy = next;
       try { localStorage.setItem("chronexa.editor.colorBy", next); } catch (_e) {}
       syncExternalButton("editor-color-by", COLOR_LABEL[next]);
-    } else if (kind === "density") {
-      const next = (window.APP.editor.density || "compact") === "compact" ? "comfortable" : "compact";
-      window.APP.editor.density = next;
-      try { localStorage.setItem("chronexa.editor.density", next); } catch (_e) {}
-      syncExternalButton("editor-density", next === "compact" ? "Compact" : "Comfortable");
+    } else if (kind === "density" || kind === "zoom") {
+      const cur = currentZoom();
+      setZoom(ZOOM_LEVELS[(ZOOM_LEVELS.indexOf(cur) + 1) % ZOOM_LEVELS.length]);
+      syncExternalButton("editor-density", ZOOM_LABELS[currentZoom()]);
     }
     if (host) render(host);
     const pend = document.querySelector(".chrx-pending-strip");

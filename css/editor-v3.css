@@ -34,6 +34,11 @@
 
   --e3-row-h: 52px;
   --e3-row-h-compact: 36px;
+  /* Semantic zoom row heights. "far" is for reading pattern rather than text,
+     so it drops below the 36px working row; "near" spends height on a second
+     line of real information (teacher · room) instead of just more padding. */
+  --e3-row-h-far: 22px;
+  --e3-row-h-near: 56px;
 }
 
 /* Light surfaces */
@@ -371,14 +376,18 @@
 }
 .chrx-shell .chrx-grid { background: var(--chrx-bg-canvas); }
 
-/* The compact density rule further down also matches the header (it carries
-   .chrx-row), and at (0,3,0) it out-specifies .chrx-row-head at (0,2,0). That
-   squeezed the header into 36px while the day name (12.5px + 9/3px padding) and
-   the period numbers (10.5px + 3/6px padding) need 44px — so 8px of every
-   period number was sliced off, in the DEFAULT density. The header is chrome,
-   not a data row: it never compacts. (0,4,0) beats the compact rule's (0,3,0),
-   so this wins regardless of source order. */
-.chrx-shell .chrx-editor--compact .chrx-row.chrx-row-head {
+/* The zoom/compact row rules further down also match the header (it carries
+   .chrx-row), and they out-specify .chrx-row-head. That squeezed the header
+   down to the data-row height, slicing the period numbers in half — 9px of
+   every glyph cut off in the default view. The header is chrome, not a data
+   row, so it holds its own height at EVERY zoom level.
+   This must list every level that has a row-height rule: an earlier version
+   keyed only on --compact and silently regressed the moment zoom introduced
+   --zoom-far/--zoom-mid/--zoom-near. If you add a level, add it here too. */
+.chrx-shell .chrx-editor--compact .chrx-row.chrx-row-head,
+.chrx-shell .chrx-editor--zoom-far .chrx-row.chrx-row-head,
+.chrx-shell .chrx-editor--zoom-mid .chrx-row.chrx-row-head,
+.chrx-shell .chrx-editor--zoom-near .chrx-row.chrx-row-head {
   height: 46px;
   min-height: 46px;
 }
@@ -410,7 +419,10 @@
 
 /* Rows */
 .chrx-shell .chrx-row { height: calc(var(--e3-row-h) * var(--chrx-grid-zoom, 1)); border-bottom: 1px solid var(--chrx-bg-grid-line); }
-.chrx-shell .chrx-editor--compact .chrx-row { height: calc(var(--e3-row-h-compact) * var(--chrx-grid-zoom, 1)); min-height: calc(var(--e3-row-h-compact) * var(--chrx-grid-zoom, 1)); }
+.chrx-shell .chrx-editor--compact .chrx-row,
+.chrx-shell .chrx-editor--zoom-mid .chrx-row { height: calc(var(--e3-row-h-compact) * var(--chrx-grid-zoom, 1)); min-height: calc(var(--e3-row-h-compact) * var(--chrx-grid-zoom, 1)); }
+.chrx-shell .chrx-editor--zoom-far .chrx-row { height: calc(var(--e3-row-h-far) * var(--chrx-grid-zoom, 1)); min-height: calc(var(--e3-row-h-far) * var(--chrx-grid-zoom, 1)); }
+.chrx-shell .chrx-editor--zoom-near .chrx-row { height: calc(var(--e3-row-h-near) * var(--chrx-grid-zoom, 1)); min-height: calc(var(--e3-row-h-near) * var(--chrx-grid-zoom, 1)); }
 .chrx-shell .chrx-row:hover:not(.chrx-row-head) .chrx-rowlabel { color: var(--chrx-fg); }
 .chrx-shell .chrx-rowlabel {
   --chrx-rowlabel-w: 72px;
@@ -470,9 +482,44 @@
 .chrx-shell .chrx-vkarta:has(.chrx-vk-line2) { justify-content: space-between; padding-top: 4px; padding-bottom: 4px; }
 .chrx-shell .chrx-vkarta:has(.chrx-vk-line2) .chrx-vk-line1 { margin-bottom: 0; }
 .chrx-shell .chrx-vkarta .chrx-vk-line2 { margin-top: 0; }
-.chrx-shell .chrx-vkarta--compact { padding: 0 3px 0 4px; justify-content: center; }
-.chrx-shell .chrx-vkarta--compact .chrx-vk-line1 { font-size: 11px; -webkit-line-clamp: 1; white-space: nowrap; overflow: hidden; text-overflow: clip; display: block; }
-.chrx-shell .chrx-editor--compact .chrx-vkarta { inset: 2px 1.5px; border-radius: 5px; border-left-width: 2.5px; }
+/* ── Semantic zoom card treatments ───────────────────────────────────────
+   Each level changes what a cell SAYS, not merely how tall it is. The old
+   two-state "density" control kept the font at 11px in both states and its
+   "comfortable" mode actually left LESS horizontal text room (it tightened the
+   inset while adding padding) — measured 20.7px vs 24.7px — so the same cell
+   read "MA" in one mode and "MAT" in the other. Width is not the lever here;
+   what the cell shows is. */
+.chrx-shell .chrx-vkarta--zoom-far {
+  padding: 0;
+  justify-content: center;
+  border-left-width: 0;
+}
+/* No text node is emitted at this level, but guard anyway so a stray label can
+   never paint into a 22px row. */
+.chrx-shell .chrx-vkarta--zoom-far .chrx-vk-line1,
+.chrx-shell .chrx-vkarta--zoom-far .chrx-vk-line2 { display: none; }
+
+.chrx-shell .chrx-vkarta--zoom-mid { padding: 0 3px 0 4px; justify-content: center; }
+.chrx-shell .chrx-vkarta--zoom-mid .chrx-vk-line1 {
+  font-size: 11px; -webkit-line-clamp: 1; white-space: nowrap;
+  overflow: hidden; text-overflow: clip; display: block;
+}
+.chrx-shell .chrx-editor--zoom-mid .chrx-vkarta { inset: 2px 1.5px; border-radius: 5px; border-left-width: 2.5px; }
+
+/* Reading zoom: two real lines. line2 carries teacher · room, which is the
+   information you would otherwise have to hover each cell to get. */
+.chrx-shell .chrx-vkarta--zoom-near { padding: 2px 4px 3px 5px; justify-content: center; gap: 2px; }
+.chrx-shell .chrx-vkarta--zoom-near .chrx-vk-line1 {
+  font-size: 11px; -webkit-line-clamp: 1; white-space: nowrap;
+  overflow: hidden; text-overflow: clip; display: block;
+}
+.chrx-shell .chrx-vkarta--zoom-near .chrx-vk-line2 {
+  font-size: 9.5px; line-height: 1.1; opacity: 0.78;
+  /* Ellipsis, not a hard cut: names that still overrun end in "…" so the cell
+     reads as abbreviated rather than broken. */
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%;
+}
+.chrx-shell .chrx-editor--zoom-near .chrx-vkarta { inset: 2px 1px; border-radius: 5px; border-left-width: 2.5px; }
 
 /* Hover: lift, deepen, slight tint */
 .chrx-shell .chrx-vkarta:hover,
@@ -1005,6 +1052,15 @@ body.chrx-card-in-hand .chrx-shell .chrx-card-panel { display: none; }
   .chrx-shell .chrx-vkarta:hover, .chrx-shell .chrx-vkarta.chrx-vkarta--lift { transform: none; }
   body.chrx-card-in-hand .chrx-shell .chrx-slot[data-validity]::after { animation: none; }
 }
+/* Touch: 40px is the practical floor for a tappable row (Apple HIG asks for
+   44px targets; the 22px "far" and 36px "mid" rows are below it). This lives
+   here rather than in editor.css because this stylesheet loads last — the same
+   override in editor.css lost the cascade to the zoom rules above. */
+@media (max-width: 767px), (pointer: coarse) {
+  .chrx-shell .chrx-editor--zoom-far .chrx-row,
+  .chrx-shell .chrx-editor--zoom-mid .chrx-row { height: 40px; min-height: 40px; }
+}
+
 @media (max-width: 860px) {
   .chrx-shell .chrx-overview-bar { flex-wrap: wrap; row-gap: 8px; padding: 10px 12px; }
   .chrx-shell .chrx-ob-stats { margin-left: 0; width: 100%; order: 3; flex-wrap: wrap; }
