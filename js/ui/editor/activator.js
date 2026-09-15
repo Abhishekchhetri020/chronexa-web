@@ -192,11 +192,13 @@ import "../wizard/create_new.js";
     for (const c of (APP.school.cards || [])) {
       placedByLesson[c.lessonId] = (placedByLesson[c.lessonId] || 0) + 1;
     }
-    for (const l of APP.school.lessons) {
-      const needed = l.periodsPerWeek || 0;
-      const placed = placedByLesson[l.id] || 0;
-      pending += Math.max(0, needed - placed);
-    }
+   for (const l of APP.school.lessons) {
+     const len = l.lessonLength || (l.isLabDouble ? 2 : 1);
+     const ppw = Math.ceil(l.periodsPerWeek || 0);
+     const needed = ppw > 0 ? Math.max(1, Math.round(ppw / len)) : 0;
+     const placed = placedByLesson[l.id] || 0;
+     pending += Math.max(0, needed - placed);
+   }
     const el = document.getElementById("pending-count");
     if (el) el.textContent = "(" + pending + " unplaced)";
   }

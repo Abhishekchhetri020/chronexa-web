@@ -69,12 +69,14 @@ import "../entities/dialog_shell.js";
     for (const c of (school.cards || []))
       placedByLesson[c.lessonId] = (placedByLesson[c.lessonId] || 0) + 1;
 
-    // Find unplaced or under-placed lessons
-    const candidates = lessons.filter(l => {
-      const needed = l.periodsPerWeek || 0;
-      const placed = placedByLesson[l.id] || 0;
-      return needed > placed;
-    });
+   // Find unplaced or under-placed lessons
+   const candidates = lessons.filter(l => {
+     const len = l.lessonLength || (l.isLabDouble ? 2 : 1);
+     const ppw = Math.ceil(l.periodsPerWeek || 0);
+     const needed = ppw > 0 ? Math.max(1, Math.round(ppw / len)) : 0;
+     const placed = placedByLesson[l.id] || 0;
+     return needed > placed;
+   });
     if (!candidates.length) { notify("No unplaced lessons found. Try Generate."); return; }
 
     // For each candidate, find the best (day, period) using constraint check

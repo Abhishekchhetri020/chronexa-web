@@ -2,37 +2,45 @@
 import "../state.js";
 import "./backend_client.js";
 
-/* Chronexa Solver — Pre-launch dialog
+/* Chronexa Solver — Pre-launch dialog (Generate flow redesign).
  *
- * Mirrors Classic's `Test the timetable` / `Generate timetable` pre-flight.
- * See docs/legacy-research §B and the gap-map's
- * Complexity / Conditions / Algorithm matrix.
+ * Moment 1 of 3 in the unified Generate flow: ASK.
+ *   Ask (this dialog) → Work (progress_modal.js) → Land (result_panel.js)
  *
- * Public API:
+ * Redesign principles:
+ *   - Preset-first: Fast preview / Balanced / Best result / Custom. The old
+ *     Complexity + Conditions + Algorithm radios still exist with the same
+ *     input names, but live inside a collapsed "Advanced" section — Custom
+ *     reveals them. School size auto-picks the preset.
+ *   - One language: titles/counts use "placed / left to place" everywhere so
+ *     Ask, Work and Land read as one flow.
+ *   - Class-name contract (do not rename — e2e + solver_presets observer):
+ *       .csu-modebtn[data-mode] + .is-selected, .chrx-preset-card,
+ *       #csu-prelaunch-start, #csu-prelaunch-summary,
+ *       input names complexity/conditions/algorithm.
+ *
+ * Public API (unchanged):
  *   SolverUI.PreLaunch.open(opts)
- *     opts.defaultMode      : "generate" | "test"   (default "generate")
- *     opts.school           : SchoolData            (only used for the card-count badge)
- *     opts.onConfirm(cfg)   : called with the chosen config, the dialog has already closed
- *     opts.onCancel()       : called when user dismisses
- *
- *   cfg = {
- *     mode:       "generate" | "test",
- *     complexity: "normal" | "large" | "huge",   // → timeLimitSec 30 / 60 / 120
- *     conditions: "draft" | "relax" | "strict",  // → solver options.conditions (advisory; solver ignores today)
- *     algorithm:  "browser" | "wasm" | "cloud",  // JS Worker · WASM CP-SAT · POST /solve
- *     showReport: true | false                   // open solver report after run
- *   }
- *
- * Design notes:
- *   - Globals/IIFE pattern (matches other components in js/ui/components/).
- *   - Uses the existing `chrx-*` theme tokens; no Tailwind.
- *   - The dialog is built on first open and reused (cheap toggle).
- *   - Card-count badge helps the user pick complexity ("1482 cards → Large").
+ *     opts.defaultMode : "generate" | "test" | "improve" | "best" (default "best")
+ *     opts.school      : SchoolData (only used for the summary strip)
+ *     opts.onConfirm(cfg), opts.onCancel()
+ *   cfg = { mode, complexity, conditions, algorithm, showReport,
+ *           timeLimitSec, warmStart?, useLNS?, improve? }
  */
 (function (global) {
   "use strict";
 
   const TIME_LIMIT_BY_COMPLEXITY = { normal: 30, large: 60, huge: 120 };
+
+  // Preset → underlying solver knobs. Conditions values must match the
+  // Advanced radio values (draft / relax / strict).
+  const PRESETS = [
+    { id: "fast",     label: "Fast preview", sub: "30s · quick check",        timeLimitSec: 30,  complexity: "normal", conditions: "draft",  icon: "◷" },
+    { id: "balanced", label: "Balanced",     sub: "90s · recommended",        timeLimitSec: 90,  complexity: "large",  conditions: "relax",  icon: "⚖", recommended: true },
+    { id: "best",     label: "Best result",  sub: "5 min · final timetable",  timeLimitSec: 300, complexity: "huge",   conditions: "strict", icon: "★" },
+    { id: "custom",   label: "Custom",       sub: "Tune everything",          custom: true, icon: "⚙" },
+  ];
+  const PRESET_BY_COMPLEXITY = { normal: "fast", large: "balanced", huge: "best" };
 
   let host, dialog, current;
 
@@ -68,85 +76,90 @@ import "./backend_client.js";
     return r ? r.value : null;
   }
 
+  function modeButton(mode, icon, title, hint) {
+    return el("button", {
+      type: "button",
+      class: "csu-modebtn",
+      "data-mode": mode,
+      onclick: () => setMode(mode),
+    },
+      el("span", { class: "csu-modebtn__icon" }, icon),
+      el("span", { class: "csu-modebtn__title" }, title),
+      el("span", { class: "csu-modebtn__hint" }, hint),
+    );
+  }
+
   function build() {
     host = el("div", { class: "csu-backdrop", role: "presentation", "aria-hidden": "true" });
     host.addEventListener("click", (e) => { if (e.target === host) doCancel(); });
 
     dialog = el("section", {
-      class: "csu-dialog",
+      class: "csu-dialog csu-prelaunch",
       role: "dialog",
       "aria-modal": "true",
       "aria-labelledby": "csu-prelaunch-title",
     });
 
-    const titleEl = el("h2", { class: "csu-dialog__title", id: "csu-prelaunch-title" }, "Run the solver");
-    const sub = el("p", { class: "csu-dialog__sub" }, "Pick how to check or build your timetable.");
+    const titleEl = el("h2", { class: "csu-dialog__title", id: "csu-prelaunch-title" }, "Generate timetable");
+    const sub = el("p", { class: "csu-dialog__sub" }, "One click builds the whole week. Pick a speed — the details stay automatic.");
     const summary = el("div", { class: "csu-dialog__summary", id: "csu-prelaunch-summary" }, "");
 
-    // --- Mode (Test vs Generate) — big buttons + linked hidden radio --------
-    const modeBtnTest = el("button", {
-      type: "button",
-      class: "csu-modebtn",
-      "data-mode": "test",
-      onclick: () => setMode("test"),
-    },
-      el("span", { class: "csu-modebtn__icon" }, "✓"),
-      el("span", { class: "csu-modebtn__title" }, "Test the timetable"),
-      el("span", { class: "csu-modebtn__hint" }, "Validate constraints — does not move any card."),
-    );
-    const modeBtnGen = el("button", {
-      type: "button",
-      class: "csu-modebtn",
-      "data-mode": "generate",
-      onclick: () => setMode("generate"),
-    },
-      el("span", { class: "csu-modebtn__icon" }, "✦"),
-      el("span", { class: "csu-modebtn__title" }, "Generate timetable"),
-      el("span", { class: "csu-modebtn__hint" }, "Run the solver from scratch and place cards."),
-    );
-    const modeBtnImp = el("button", {
-      type: "button",
-      class: "csu-modebtn",
-      "data-mode": "improve",
-      onclick: () => setMode("improve"),
-    },
-      el("span", { class: "csu-modebtn__icon" }, "⚡"),
-      el("span", { class: "csu-modebtn__title" }, "Improve current schedule"),
-      el("span", { class: "csu-modebtn__hint" }, "Keep existing placements; search outward via LNS for improvements."),
-    );
-    const modeBtnBest = el("button", {
-      type: "button",
-      class: "csu-modebtn",
-      "data-mode": "best",
-      onclick: () => setMode("best"),
-    },
-      el("span", { class: "csu-modebtn__icon" }, "★"),
-      el("span", { class: "csu-modebtn__title" }, "Best timetable"),
-      el("span", { class: "csu-modebtn__hint" }, "Draft fast, then perfect with CP-SAT — one click, offline, toward 100%."),
-    );
-    const modeRow = el("div", { class: "csu-mode-row" }, modeBtnTest, modeBtnGen, modeBtnImp, modeBtnBest);
+    // --- Mode: Best first (default), Test demoted to a quiet secondary ----
+    const modeBtnBest = modeButton("best", "★", "Best timetable", "Draft fast, then polish — one click, offline, toward 100%.");
+    const modeBtnGen = modeButton("generate", "✦", "Generate timetable", "Run the solver from scratch and place cards.");
+    const modeBtnImp = modeButton("improve", "⚡", "Improve current schedule", "Keep placements; search outward for improvements.");
+    const modeBtnTest = modeButton("test", "✓", "Test the timetable", "Validate constraints — does not move any card.");
+    modeBtnTest.classList.add("csu-modebtn--quiet");
+    const modeRow = el("div", { class: "csu-mode-row" }, modeBtnBest, modeBtnGen, modeBtnImp, modeBtnTest);
 
-    // --- Complexity ----------------------------------------------------------
+    // --- Preset picker (native; same class names the old observer injected
+    // so e2e locators and the observer guard keep working) ------------------
+    const presetGrid = el("div", { class: "chrx-preset-grid", role: "radiogroup", "aria-label": "Speed" });
+    for (const p of PRESETS) {
+      const card = el("button", {
+        type: "button",
+        class: "chrx-preset-card" + (p.recommended ? " chrx-preset-card--recommended" : ""),
+        "data-preset": p.id,
+        role: "radio",
+        "aria-checked": p.id === "balanced" ? "true" : "false",
+        onclick: () => selectPreset(p.id),
+      },
+        el("div", { class: "chrx-preset-label" }, (p.icon ? p.icon + " " : "") + p.label),
+        el("div", { class: "chrx-preset-sub" }, p.sub),
+      );
+      if (p.recommended) card.appendChild(el("span", { class: "chrx-preset-badge" }, "Recommended"));
+      presetGrid.appendChild(card);
+    }
+    const presetStrip = el("div", { class: "chrx-preset-strip", "data-native": "true" },
+      el("p", { class: "chrx-preset-title" }, "Speed"),
+      presetGrid,
+    );
+
+    // --- Advanced (collapsed): the old Complexity / Conditions / Algorithm --
     const complexity = radioGroup("complexity", [
       { value: "normal", label: "Normal", hint: "30s · small school" },
       { value: "large",  label: "Large",  hint: "60s · 30–50 classes" },
       { value: "huge",   label: "Huge",   hint: "2 min · 60+ teachers" },
     ], "large");
-
-    // --- Conditions ----------------------------------------------------------
     const conditions = radioGroup("conditions", [
       { value: "draft",  label: "Draft",             hint: "Accept any partial result." },
       { value: "relax",  label: "Allow relaxation",  hint: "Skip the toughest soft constraints if stuck." },
       { value: "strict", label: "Strict",            hint: "Reject anything with hard conflicts." },
     ], "relax");
-
-    // --- Algorithm -----------------------------------------------------------
     const cloudReady = !!(global.CHRONEXA_BACKEND_URL && global.CHRONEXA_BACKEND_URL.length > 0);
     const algorithm = radioGroup("algorithm", [
       { value: "browser", label: "Run on this computer", hint: "Uses a Web Worker. Stays offline." },
       { value: "wasm",    label: "CP-SAT in browser",    hint: "Full OR-Tools portfolio · offline · multi-threaded." },
       { value: "cloud",   label: "Run on cloud",          hint: cloudReady ? "OR-Tools CP-SAT via backend." : "Backend URL not set — will fall back to browser." },
     ], "browser");
+    const advanced = el("details", { class: "csu-advanced", id: "csu-advanced" },
+      el("summary", { class: "csu-advanced__toggle" }, "Advanced — complexity, conditions, algorithm"),
+      el("div", { class: "csu-advanced__body" },
+        sectionTitle("Complexity"),    complexity,
+        sectionTitle("Conditions"),    conditions,
+        el("div", { id: "csu-algo-section" }, sectionTitle("Algorithm"), algorithm),
+      ),
+    );
 
     // --- Report toggle -------------------------------------------------------
     const reportTog = el("input", { type: "checkbox", id: "csu-show-report" });
@@ -157,26 +170,16 @@ import "./backend_client.js";
     );
 
     // --- Actions -------------------------------------------------------------
-    const cancelBtn = el("button", { type: "button", class: "chrx-btn", onclick: doCancel }, "Cancel");
-    const startBtn  = el("button", { type: "button", class: "chrx-btn chrx-btn--primary", id: "csu-prelaunch-start", onclick: doStart }, "Start");
+    const cancelBtn = el("button", { type: "button", class: "chrx-btn csu-btn--ghost", onclick: doCancel }, "Cancel");
+    const startBtn  = el("button", { type: "button", class: "chrx-btn chrx-btn--primary", id: "csu-prelaunch-start", onclick: doStart }, "Build best timetable");
+    const footNote = el("p", { class: "csu-dialog__foot" }, "Offline by default · cloud only if you pick it.");
     const actions = el("div", { class: "csu-dialog__actions" }, cancelBtn, startBtn);
 
-    dialog.append(
-      titleEl, sub,
-      modeRow,
-      summary,
-      sectionTitle("Complexity"),    complexity,
-      sectionTitle("Conditions"),    conditions,
-      // Algorithm (backend) only matters for Generate/Improve. setMode() hides
-      // this section for Test (always local) and Best (always the pipeline).
-      el("div", { id: "csu-algo-section" }, sectionTitle("Algorithm"), algorithm),
-      reportLabel,
-      actions,
-    );
+    dialog.append(titleEl, sub, summary, modeRow, presetStrip, advanced, reportLabel, actions, footNote);
+    dialog.dataset.preset = "balanced";
     host.appendChild(dialog);
     document.body.appendChild(host);
 
-    // Esc to cancel.
     host.addEventListener("keydown", (e) => {
       if (e.key === "Escape") { e.preventDefault(); doCancel(); }
     });
@@ -184,6 +187,29 @@ import "./backend_client.js";
 
   function sectionTitle(text) {
     return el("h3", { class: "csu-dialog__section" }, text);
+  }
+
+  function selectPreset(id) {
+    if (!dialog) return;
+    const preset = PRESETS.find(p => p.id === id) || PRESETS[1];
+    dialog.dataset.preset = preset.id;
+    if (preset.timeLimitSec) dialog.dataset.timeLimitSec = String(preset.timeLimitSec);
+    else delete dialog.dataset.timeLimitSec;
+    dialog.querySelectorAll(".chrx-preset-card").forEach(c => {
+      const on = c.dataset.preset === preset.id;
+      c.classList.toggle("is-selected", on);
+      c.setAttribute("aria-checked", on ? "true" : "false");
+    });
+    if (!preset.custom) {
+      const radios = dialog.querySelectorAll('input[type="radio"]');
+      radios.forEach(r => {
+        if (r.name === "complexity" && r.value === preset.complexity) r.checked = true;
+        if (r.name === "conditions" && r.value === preset.conditions) r.checked = true;
+      });
+      dialog.querySelector("#csu-advanced").open = false;
+    } else {
+      dialog.querySelector("#csu-advanced").open = true;
+    }
   }
 
   function setMode(mode) {
@@ -199,6 +225,9 @@ import "./backend_client.js";
     // Algorithm/backend choice only applies to Generate and Improve.
     const algoSec = dialog.querySelector("#csu-algo-section");
     if (algoSec) algoSec.style.display = (mode === "generate" || mode === "improve") ? "" : "none";
+    // Test is validate-only: speed presets don't apply.
+    const strip = dialog.querySelector(".chrx-preset-strip");
+    if (strip) strip.style.display = mode === "test" ? "none" : "";
     dialog.dataset.mode = mode;
   }
 
@@ -206,15 +235,23 @@ import "./backend_client.js";
     const sum = dialog.querySelector("#csu-prelaunch-summary");
     if (!sum) return;
     if (!school) { sum.textContent = ""; sum.classList.remove("is-on"); return; }
-    // Prefer live arrays (set by templates / wizards) over _meta.counts which
-    // is only populated by the XML import path. Without this the dialog
-    // showed "0 teachers · 0 classes" on freshly-templated schools.
     const c = (school._meta && school._meta.counts) || {};
     const teachers = (school.teachers && school.teachers.length) || c.teachers || 0;
     const classes  = (school.classes  && school.classes.length)  || c.classes  || 0;
     const lessons  = (school.lessons  && school.lessons.length)  || c.lessons  || 0;
     const cards    = (school.cards    && school.cards.length)    || c.cards    || 0;
-    sum.textContent = `${school.schoolName || "(school)"} · ${teachers} teachers · ${classes} classes · ${lessons} lessons · ${cards} placed`;
+    sum.innerHTML = "";
+    const chip = (n, label) => {
+      const s = el("span", { class: "csu-chip" },
+        el("strong", {}, String(n)), document.createTextNode(" " + label));
+      sum.appendChild(s);
+    };
+    const name = el("span", { class: "csu-chip csu-chip--name" }, school.schoolName || "(school)");
+    sum.appendChild(name);
+    chip(teachers, "teachers");
+    chip(classes, "classes");
+    chip(lessons, "lessons");
+    chip(cards, "placed");
     sum.classList.add("is-on");
   }
 
@@ -228,6 +265,7 @@ import "./backend_client.js";
 
   function doStart() {
     const mode = dialog.dataset.mode || "best";
+    const preset = PRESETS.find(p => p.id === dialog.dataset.preset);
     const cfg = {
       mode,
       complexity: selectedRadio(dialog, "complexity") || "large",
@@ -235,15 +273,13 @@ import "./backend_client.js";
       algorithm:  selectedRadio(dialog, "algorithm")  || "browser",
       showReport: !!dialog.querySelector("#csu-show-report").checked,
     };
-    cfg.timeLimitSec = TIME_LIMIT_BY_COMPLEXITY[cfg.complexity] || 60;
-    // "Best timetable" = silent two-stage pipeline (JS draft -> WASM-CP-SAT
-    // improve). Forces the "auto" backend regardless of the Algorithm radio.
+    // Preset time wins; Custom (or no preset) falls back to complexity tiers.
+    cfg.timeLimitSec = (preset && preset.timeLimitSec)
+      || Number(dialog.dataset.timeLimitSec)
+      || TIME_LIMIT_BY_COMPLEXITY[cfg.complexity]
+      || 60;
     if (mode === "best") cfg.algorithm = "auto";
     if (mode === "improve") cfg.improve = true;
-    // Improve mode = warm-start from current cards + LNS perturbation +
-    // longer search budget. The solver also accepts options.mode==="improve"
-    // as a shorthand alias for the same combination, so callers that pass
-    // cfg directly into solve() work either way.
     if (mode === "improve") {
       cfg.warmStart = true;
       cfg.useLNS    = true;
@@ -261,9 +297,6 @@ import "./backend_client.js";
     const lessons  = (school.lessons  && school.lessons.length)  || 0;
     const teachers = (school.teachers && school.teachers.length) || 0;
     const classes  = (school.classes  && school.classes.length)  || 0;
-    // Empirical: a 23-class / 66-teacher / 381-lesson school needs >60s.
-    // Auto-pick Huge for anything above the Large threshold so first-time
-    // Generate doesn't time out on real-world XML imports.
     if (lessons > 200 || teachers > 50 || classes > 25) return "huge";
     if (lessons > 80  || teachers > 25 || classes > 12) return "large";
     return "normal";
@@ -274,6 +307,8 @@ import "./backend_client.js";
     if (!suggested) return;
     const radios = dialog.querySelectorAll("input[name='complexity']");
     radios.forEach(r => { r.checked = (r.value === suggested); });
+    // Mirror the suggestion into the preset picker (school size picks speed).
+    selectPreset(PRESET_BY_COMPLEXITY[suggested] || "balanced");
   }
 
   function open(opts) {
@@ -285,7 +320,6 @@ import "./backend_client.js";
     applySuggestedComplexity(targetSchool);
     host.classList.add("is-open");
     host.setAttribute("aria-hidden", "false");
-    // Focus the start button after frame so screen readers track it.
     requestAnimationFrame(() => {
       const f = dialog.querySelector("#csu-prelaunch-start");
       if (f) f.focus();

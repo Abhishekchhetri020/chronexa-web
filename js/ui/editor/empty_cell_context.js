@@ -48,11 +48,13 @@ import "./placement_validator.js";
       return true;
     };
     const out = [];
-    for (const l of lessons) {
-      if (!matchesRow(l)) continue;
-      const need = (l.periodsPerWeek || 0);
-      const placed = placedByLesson[l.id] || 0;
-      if (placed >= need) continue;
+   for (const l of lessons) {
+     if (!matchesRow(l)) continue;
+     const len = l.lessonLength || (l.isLabDouble ? 2 : 1);
+     const ppw = Math.ceil(l.periodsPerWeek || 0);
+     const need = ppw > 0 ? Math.max(1, Math.round(ppw / len)) : 0;
+     const placed = placedByLesson[l.id] || 0;
+     if (placed >= need) continue;
       // Hard-violation pre-check so we don't suggest illegal slots.
       let validity = "green";
       if (window.Placement && typeof window.Placement.classify === "function") {

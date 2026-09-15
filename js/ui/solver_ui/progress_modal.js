@@ -149,6 +149,10 @@ import "./backend_client.js";
     const titleArea = el("div", { class: "csu-progress__title-text" }, phaseRow, title, sub);
     const header = el("div", { class: "csu-progress__header" }, ringWrap, titleArea);
 
+    // Hero line — one honest number shared with Ask + Land:
+    // "312 of 946 placed". Updated on every progress event that carries it.
+    const placedHero = el("p", { class: "csu-placed-hero", id: "csu-placed-hero" }, "Starting…");
+
     // ---- progress bars
     const bar1Fill = el("div", { class: "csu-bar__fill", style: "width:0%" });
     const bar1 = el("div", { class: "csu-bar" }, el("div", { class: "csu-bar__label" }, "Overall"), el("div", { class: "csu-bar__track" }, bar1Fill));
@@ -167,10 +171,11 @@ import "./backend_client.js";
       parent.appendChild(t);
       return v;
     }
-    // Key metrics (top row — larger)
-    const tHard    = tile(tilesKey, "csu-stat-hard",    "Conflicts",  "⚡");
-    const tElapsed = tile(tilesKey, "csu-stat-elapsed", "Time",       "⏱");
-    const tSoft    = tile(tilesKey, "csu-stat-soft",    "Soft score", "◎");
+    // Key metrics (top row — larger). Labels use the flow-wide language
+    // "left to place" so Ask → Work → Land read as one story.
+    const tHard    = tile(tilesKey, "csu-stat-hard",    "Left to place", "⚡");
+    const tElapsed = tile(tilesKey, "csu-stat-elapsed", "Time",          "⏱");
+    const tSoft    = tile(tilesKey, "csu-stat-soft",    "Soft penalties", "◎");
     // Secondary metrics (bottom row — smaller)
     const tSpeed   = tile(tilesSec, "csu-stat-speed",   "Schedules / sec", "▸");
     const tIter    = tile(tilesSec, "csu-stat-iter",    "Iterations",      "↻");
@@ -200,12 +205,12 @@ import "./backend_client.js";
     const acceptBtn = el("button", { type: "button", class: "chrx-btn csu-btn--gradient", onclick: doAcceptPartial }, "Accept partial result");
     const actions = el("div", { class: "csu-dialog__actions" }, cancelBtn, pauseBtn, acceptBtn);
 
-    dlg.append(header, bar1, bar2, tilesWrap, heat, branches, faults, actions);
+    dlg.append(header, placedHero, bar1, bar2, tilesWrap, heat, branches, faults, actions);
     host.appendChild(dlg);
     document.body.appendChild(host);
 
     refs = {
-      title, sub, bar1Fill, bar2Fill, tSpeed, tIter, tHard, tSoft, tElapsed, tStuck,
+      title, sub, placedHero, bar1Fill, bar2Fill, tSpeed, tIter, tHard, tSoft, tElapsed, tStuck,
       heat, faultsList, placingLabel, pauseBtn, cancelBtn, acceptBtn,
       ringCircle: ring.circle, ringPct: ring.pctText, ringCircumference: ring.circumference,
       branches,
@@ -394,7 +399,7 @@ import "./backend_client.js";
     buildBranches(branchCount);
 
     // Reset DOM
-    refs.title.textContent = state.mode === "test" ? "Testing timetable…" : "Generating timetable…";
+    refs.title.textContent = state.mode === "test" ? "Checking your timetable…" : "Building your timetable…";
     const modeLabel = (opts.source && opts.source.mode === "cloud")
       ? "cloud (OR-Tools)"
       : (opts.source && opts.source.branches)
@@ -415,6 +420,12 @@ import "./backend_client.js";
     refs.bar2Fill.style.width = "0%";
     refs.pauseBtn.textContent = "Pause";
     refs.acceptBtn.style.display = state.mode === "test" ? "none" : "";
+    // "Keep what you have so far" is only meaningful once something exists.
+    refs.acceptBtn.disabled = true;
+    refs.acceptBtn.textContent = "Accept partial result";
+    refs.placedHero.textContent = state.totalLessons > 0
+      ? `0 of ${state.totalLessons.toLocaleString()} placed`
+      : "Starting…";
     refs.tSpeed.textContent = "—";
     refs.tIter.textContent = "—";
     refs.tHard.textContent = "—";
@@ -473,6 +484,10 @@ import "./backend_client.js";
       // else approximate from time-based overall progress.
       if (ev.placed != null && state.totalLessons > 0) {
         updateRing(ev.placed, state.totalLessons);
+        if (refs.placedHero) refs.placedHero.textContent =
+          `${fmtInt(ev.placed)} of ${fmtInt(state.totalLessons)} placed`;
+        // Something real exists now — accepting a partial is meaningful.
+        if (refs.acceptBtn && ev.placed > 0) refs.acceptBtn.disabled = false;
       } else {
         // Fallback: ring tracks overall time progress
         updateRing(p1 * state.totalLessons, state.totalLessons || 1);

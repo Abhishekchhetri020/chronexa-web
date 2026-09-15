@@ -623,3 +623,99 @@
   50%{ filter:drop-shadow(0 0 9px rgba(13,79,84,.55)); }
 }
 @media (prefers-reduced-motion: reduce){ .csu-progress .csu-ring{ animation:none } }
+
+/* ============ Generate-flow redesign: Ask → Work → Land ============
+   One language ("placed / left to place") across prelaunch, progress
+   and result. All selectors are additive — the base rules above stay
+   the source of truth for the dialog frame. */
+
+/* ---- Ask: school at a glance as chips ---- */
+.csu-dialog__summary.is-on {
+  display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+}
+.csu-chip {
+  display: inline-flex; align-items: baseline; gap: 4px;
+  background: rgba(255,255,255,0.65);
+  border: 1px solid var(--chrx-line, rgba(0,0,0,0.10));
+  border-radius: 999px; padding: 3px 10px;
+  font-size: 12px; color: var(--chrx-fg, #111);
+  font-variant-numeric: tabular-nums;
+}
+.csu-chip strong { font-weight: 700; }
+.csu-chip--name { font-weight: 600; background: transparent; border-style: dashed; }
+
+/* ---- Ask: Best-first mode order; Test quiet ---- */
+.csu-modebtn--quiet { opacity: 0.75; }
+.csu-modebtn--quiet.is-selected { opacity: 1; }
+
+/* ---- Ask: native speed presets (same class names the legacy
+   observer injected, so its guard skips + e2e locators still match) ---- */
+.csu-dialog .chrx-preset-strip {
+  margin: 16px 0 4px; padding: 12px 14px;
+  background: var(--chrx-bg-tile, rgba(255,255,255,0.85));
+  border: 1px solid var(--chrx-line, rgba(0,0,0,0.10));
+  border-radius: var(--chrx-radius-lg, 8px);
+}
+.csu-dialog .chrx-preset-title {
+  margin: 0 0 8px; font-size: 11px; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--chrx-fg-secondary, rgba(0,0,0,0.55));
+  font-weight: 600;
+}
+.csu-dialog .chrx-preset-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
+}
+.csu-dialog .chrx-preset-card {
+  background: var(--chrx-bg-input, #fff);
+  border: 1.5px solid var(--chrx-line, rgba(0,0,0,0.10));
+  color: var(--chrx-fg, #111);
+  padding: 10px 12px; border-radius: var(--chrx-radius-md, 6px);
+  text-align: left; cursor: pointer; position: relative;
+  transition: border-color 120ms, background 120ms, transform 120ms;
+  font: inherit;
+}
+.csu-dialog .chrx-preset-card:hover { transform: translateY(-1px); border-color: var(--chrx-accent, #007AFF); }
+.csu-dialog .chrx-preset-card.is-selected {
+  border-color: var(--chrx-accent, #007AFF);
+  background: var(--chrx-accent-bg, rgba(0,100,224,0.16));
+}
+.csu-dialog .chrx-preset-card--recommended { border-style: dashed; }
+.csu-dialog .chrx-preset-label { font-weight: 600; font-size: 13px; margin-bottom: 2px; }
+.csu-dialog .chrx-preset-sub { font-size: 11px; color: var(--chrx-fg-secondary, rgba(0,0,0,0.55)); line-height: 1.35; }
+.csu-dialog .chrx-preset-badge {
+  position: absolute; top: -8px; right: 8px;
+  background: var(--chrx-green, #34c759); color: #fff;
+  font-size: 9px; padding: 2px 7px; border-radius: 999px;
+  font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+}
+
+/* ---- Ask: advanced folds the old knobs away ---- */
+.csu-advanced { margin-top: 14px; }
+.csu-advanced__toggle {
+  font-size: 12.5px; font-weight: 600; cursor: pointer;
+  color: var(--chrx-fg-secondary, rgba(0,0,0,0.55));
+  list-style: none; user-select: none;
+}
+.csu-advanced__toggle::before { content: "▸"; display: inline-block; margin-right: 6px; transition: transform 0.15s; }
+.csu-advanced[open] > .csu-advanced__toggle::before { transform: rotate(90deg); }
+.csu-advanced__body { padding-top: 4px; }
+.csu-dialog__foot {
+  margin: 12px 0 0; font-size: 11.5px;
+  color: var(--chrx-fg-tertiary, rgba(0,0,0,0.40)); text-align: right;
+}
+
+/* ---- Work: one hero number; fake activity visuals retired ---- */
+.csu-placed-hero {
+  margin: 0 0 4px; font-size: 15px; font-weight: 700;
+  letter-spacing: -0.01em; font-variant-numeric: tabular-nums;
+}
+/* The heatmap was a decorative wave, not live data — retire it from view
+   (the element stays mounted so progress events still have a target). */
+.csu-progress .csu-heatmap { display: none; }
+.csu-progress .chrx-btn[disabled] { opacity: 0.45; cursor: not-allowed; }
+
+/* ---- Land: verdict-first; density grid capped so issues stay above ---- */
+.csu-result__grid { max-height: 180px; }
+@media (max-width: 640px) {
+  .csu-dialog .chrx-preset-grid { grid-template-columns: 1fr 1fr; }
+  .csu-dialog__foot { text-align: left; }
+}

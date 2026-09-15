@@ -238,12 +238,14 @@ window.PendingStrip = (function () {
     const groups = Object.create(null);
     const classFilterId = window.APP && window.APP.editor && window.APP.editor.selectedClassId;
 
-    for (const L of (S.lessons || [])) {
-      if (classFilterId && !(L.classIds || []).includes(classFilterId)) continue;
-      const ppw = Math.ceil(L.periodsPerWeek || 0);
-      const placed = placedCounts[L.id] || 0;
-      const missing = ppw - placed;
-      if (missing <= 0) continue;
+   for (const L of (S.lessons || [])) {
+     if (classFilterId && !(L.classIds || []).includes(classFilterId)) continue;
+     const len = L.lessonLength || (L.isLabDouble ? 2 : 1);
+     const ppw = Math.ceil(L.periodsPerWeek || 0);
+     const needed = ppw > 0 ? Math.max(1, Math.round(ppw / len)) : 0;
+     const placed = placedCounts[L.id] || 0;
+     const missing = needed - placed;
+     if (missing <= 0) continue;
 
       const subj = S._idx.subjectById[L.subjectId];
       const subjShort = subj ? (subj.abbr || subj.name) : "?";

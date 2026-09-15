@@ -48,14 +48,14 @@ import "./placement_validator.js";
     if (!lesson) return;
     
     const mode = d.mode || "drag";
-    inHand = { cardId: d.cardId, lessonId: d.lessonId,
-               originDay: d.day, originPeriod: d.period,
-               originClassroomId: d.originClassroomId,
-               fromPending: !!d.fromPending,
-               blockLen: Math.max(1, parseInt(d.blockLen, 10) || 1),  // double-period block moves as one
-               rowKey: d.rowKey,
-               sourceRetained: !!d.sourceRetained,
-               mode: mode };
+   inHand = { cardId: d.cardId, lessonId: d.lessonId,
+              originDay: d.day, originPeriod: d.period,
+              originClassroomId: d.originClassroomId,
+              fromPending: !!d.fromPending,
+              blockLen: Math.max(1, parseInt(d.blockLen, 10) || (lesson && (lesson.lessonLength || (lesson.isLabDouble ? 2 : 1))) || 1),  // double-period block moves as one
+              rowKey: d.rowKey,
+              sourceRetained: !!d.sourceRetained,
+              mode: mode };
 
     // Baseline for the post-commit cell-diff patch: grid mutators send their
     // pre-removal snapshot in the event; pending-strip pickups don't change
@@ -546,13 +546,16 @@ import "./placement_validator.js";
     const S = window.APP && window.APP.school;
     const before = pickupSnap; pickupSnap = null;
     let detail = null;
-    if (S && inHand && !inHand.fromPending &&
-        Number.isFinite(inHand.originDay) && Number.isFinite(inHand.originPeriod)) {
-      const i = S.cards.findIndex(c =>
-        c.lessonId === inHand.lessonId && c.day === inHand.originDay && c.period === inHand.originPeriod);
-      if (i !== -1) S.cards.splice(i, 1);
-      detail = { cardId: inHand.cardId, lessonId: inHand.lessonId, unplaced: true };
-    }
+   if (S && inHand && !inHand.fromPending &&
+       Number.isFinite(inHand.originDay) && Number.isFinite(inHand.originPeriod)) {
+     const bLen = inHand.blockLen || 1;
+     for (let k = 0; k < bLen; k++) {
+       const i = S.cards.findIndex(c =>
+         c.lessonId === inHand.lessonId && c.day === inHand.originDay && c.period === inHand.originPeriod + k);
+       if (i !== -1) S.cards.splice(i, 1);
+     }
+     detail = { cardId: inHand.cardId, lessonId: inHand.lessonId, unplaced: true };
+   }
     if (window.APP.editor) window.APP.editor.cardInHand = null;
     cleanup();
     rerender(null, before);

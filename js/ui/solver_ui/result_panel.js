@@ -66,8 +66,8 @@ import "./backend_client.js";
 
     const grid = el("div", { class: "csu-result__grid", id: "csu-result-grid" });
 
-    const apply = el("button", { type: "button", class: "chrx-btn chrx-btn--primary", onclick: doApply, id: "csu-result-apply" }, "Apply to timetable");
-    const view  = el("button", { type: "button", class: "chrx-btn", onclick: doView },  "View violations");
+    const apply = el("button", { type: "button", class: "chrx-btn chrx-btn--primary", onclick: doApply, id: "csu-result-apply" }, "Keep this timetable");
+    const view  = el("button", { type: "button", class: "chrx-btn", onclick: doView },  "See issues");
     const disc  = el("button", { type: "button", class: "chrx-btn chrx-btn--danger", onclick: doDiscard, id: "csu-result-discard" }, "Discard");
     const close = el("button", { type: "button", class: "chrx-btn", onclick: doClose }, "Close");
     const actions = el("div", { class: "csu-dialog__actions" }, disc, view, close, apply);
@@ -104,7 +104,7 @@ import "./backend_client.js";
     );
     refs.soft.append(
       el("div", { class: "csu-result__num" }, fmt(s.softScore)),
-      el("div", { class: "csu-result__lbl" }, "soft score"),
+      el("div", { class: "csu-result__lbl" }, "soft penalties"),
     );
   }
 
@@ -170,16 +170,17 @@ import "./backend_client.js";
     }
     refs.diagSection.style.display = "";
 
-    const wrap = (title, bodyNode) => {
+    const wrap = (title, bodyNode, isOpen) => {
       const hdr = el("div", { class: "csu-result__diagHdr" }, title);
       const box = el("details", { class: "csu-result__diagBox" }, hdr, bodyNode);
+      if (isOpen) box.open = true;
       return box;
     };
 
     if (warnings.length) {
       const list = el("ul", { class: "csu-result__diagList" });
       for (const w of warnings) list.appendChild(el("li", {}, "⚠  " + w.msg));
-      refs.diagSection.appendChild(wrap("Input warnings (" + warnings.length + ")", list));
+      refs.diagSection.appendChild(wrap("Input warnings (" + warnings.length + ")", list, true));
     }
 
     if (diag.length) {
@@ -236,7 +237,7 @@ import "./backend_client.js";
         list.appendChild(el("li", { class: "csu-result__diagMore" },
           `…and ${ordered.length - cap} more. Open "View violations" for the full list.`));
       }
-      refs.diagSection.appendChild(wrap("Unplaceable lessons (" + diag.length + ")", list));
+      refs.diagSection.appendChild(wrap("Unplaceable lessons (" + diag.length + ")", list, true));
     }
 
     if (ws) {
@@ -289,12 +290,13 @@ import "./backend_client.js";
     // Force the editor (and pending strip) to re-render against the new
     // school.cards. Without this the grid stays empty and the pending
     // strip stays full even though the data is now in place.
-    try {
-      const editorRoot = document.querySelector(".chrx-editor");
-      if (editorRoot && global.Editor && global.Editor.render) global.Editor.render(editorRoot);
-      const pendRoot = document.querySelector(".chrx-pending-strip");
-      if (pendRoot && global.PendingStrip && global.PendingStrip.render) global.PendingStrip.render(pendRoot);
-    } catch (e) { console.warn("[result_panel] post-apply re-render failed", e); }
+   try {
+     const editorRoot = document.querySelector(".chrx-editor");
+     if (editorRoot && global.Editor && global.Editor.render) global.Editor.render(editorRoot);
+     const pendRoot = document.querySelector(".chrx-pending-strip");
+     if (pendRoot && global.PendingStrip && global.PendingStrip.render) global.PendingStrip.render(pendRoot);
+     if (global.EditorActivator && global.EditorActivator.updatePendingCount) global.EditorActivator.updatePendingCount();
+   } catch (e) { console.warn("[result_panel] post-apply re-render failed", e); }
     // Snapshot the freshly applied timetable immediately (AutoSave listens).
     try { window.dispatchEvent(new CustomEvent("app:solve-applied")); } catch {}
     if (state.onApply) try { state.onApply(newCards); } catch (e) { console.error(e); }
@@ -410,18 +412,30 @@ import "./backend_client.js";
       snapshot: null,
     };
     const status = state.result.status || "DONE";
-    // Hero denominator should be total expected cards (lessons × periodsPerWeek),
-    // not lesson count — a single lesson can spawn many cards per week.
-    let expectedCards = 0;
-    if (state.school && state.school.lessons) {
-      for (const l of state.school.lessons) {
-        expectedCards += Math.max(1, (l.periodsPerWeek || 1));
-      }
-    }
+   // Hero denominator should be total expected cards (lessons × periodsPerWeek),
+   // not lesson count — a single lesson can spawn many cards per week.
+   let expectedCards = 0;
+   if (state.school && state.school.lessons) {
+     for (const l of state.school.lessons) {
+       const len = l.lessonLength || (l.isLabDouble ? 2 : 1);
+       const ppw = Number(l.periodsPerWeek) || 0;
+       expectedCards += ppw > 0 ? Math.max(1, Math.round(ppw / len)) : 0;
+     }
+   }
     const placedNum  = (state.result.stats && state.result.stats.placed)   || 0;
     const unplacedNm = (state.result.stats && state.result.stats.unplaced) || 0;
     const totalLessons = expectedCards || (placedNum + unplacedNm);
-    refs.title.textContent = state.mode === "test" ? "Test finished" : "Generator finished";
+    // Verdict headline — one plain sentence shared with Ask + Work.
+    const pct = totalLessons > 0 ? placedNum / totalLessons : 1;
+    if (state.mode === "test") {
+      refs.title.textContent = "Check finished";
+    } else if (pct >= 1) {
+      refs.title.textContent = "Timetable ready — everything placed";
+    } else if (pct >= 0.9) {
+      refs.title.textContent = `Almost there — ${fmt(placedNum)} of ${fmt(totalLessons)} placed`;
+    } else {
+      refs.title.textContent = `Needs attention — ${fmt(placedNum)} of ${fmt(totalLessons)} placed`;
+    }
     refs.status.textContent = `${status} · ${(state.result.stats && state.result.stats.durationMs) ? Math.round(state.result.stats.durationMs / 1000) + "s" : ""}`;
     refs.status.style.color = (status === "OPTIMAL" || status === "FEASIBLE") ? "var(--chrx-green)" : "var(--chrx-orange)";
     refs.apply.disabled = state.mode === "test";

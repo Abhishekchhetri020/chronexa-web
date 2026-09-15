@@ -431,13 +431,18 @@ window.Editor = (function () {
     return window.ChrxIcons ? window.ChrxIcons.svg(name, size || 16) : "";
   }
 
-  function pendingCount(S) {
-    const placed = Object.create(null);
-    for (const c of (S.cards || [])) placed[c.lessonId] = (placed[c.lessonId] || 0) + 1;
-    let total = 0;
-    for (const L of (S.lessons || [])) total += Math.max(0, Math.ceil(L.periodsPerWeek || 0) - (placed[L.id] || 0));
-    return total;
-  }
+ function pendingCount(S) {
+   const placed = Object.create(null);
+   for (const c of (S.cards || [])) placed[c.lessonId] = (placed[c.lessonId] || 0) + 1;
+   let total = 0;
+   for (const L of (S.lessons || [])) {
+     const len = L.lessonLength || (L.isLabDouble ? 2 : 1);
+     const ppw = Math.ceil(L.periodsPerWeek || 0);
+     const needed = ppw > 0 ? Math.max(1, Math.round(ppw / len)) : 0;
+     total += Math.max(0, needed - (placed[L.id] || 0));
+   }
+   return total;
+ }
 
   function dayTabsHtml_(mobileDay, numDays) {
     const tabs = DAY_LABELS_EN.slice(0, numDays || NUM_DAYS).map((label, d) =>
@@ -1224,9 +1229,11 @@ window.Editor = (function () {
     const classNames = (L.classIds || []).map(id => S._idx.classById[id]).filter(Boolean).map(c => c.name || c.id).join(", ");
     const teacherNames = (L.teacherIds || []).map(id => S._idx.teacherById[id]).filter(Boolean).map(t => t.abbr || t.name).join(", ");
     const roomId = opts && opts.classroomId ? opts.classroomId : L.preferredRoomId;
-    const room = roomId ? S._idx.classroomById[roomId] : null;
-    const need = Math.ceil(L.periodsPerWeek || 0);
-    const placed = (S.cards || []).filter(c => c.lessonId === L.id).length;
+   const room = roomId ? S._idx.classroomById[roomId] : null;
+   const len = L.lessonLength || (L.isLabDouble ? 2 : 1);
+   const ppw = Math.ceil(L.periodsPerWeek || 0);
+   const need = ppw > 0 ? Math.max(1, Math.round(ppw / len)) : 0;
+   const placed = (S.cards || []).filter(c => c.lessonId === L.id).length;
     const position = opts && Number.isFinite(opts.day) && Number.isFinite(opts.period)
       ? `${DAY_LABELS_EN[opts.day] || ("D" + opts.day)} P${opts.period}`
       : "Unplaced";
@@ -1282,10 +1289,12 @@ window.Editor = (function () {
   function classStats(S, classId) {
     let pending = 0, placed = 0, conflicts = 0;
     const teacherNames = new Set();
-    for (const L of (S.lessons || [])) {
-      if (!(L.classIds || []).includes(classId)) continue;
-      const need = Math.ceil(L.periodsPerWeek || 0);
-      const have = (S.cards || []).filter(c => c.lessonId === L.id).length;
+   for (const L of (S.lessons || [])) {
+     if (!(L.classIds || []).includes(classId)) continue;
+     const len = L.lessonLength || (L.isLabDouble ? 2 : 1);
+     const ppw = Math.ceil(L.periodsPerWeek || 0);
+     const need = ppw > 0 ? Math.max(1, Math.round(ppw / len)) : 0;
+     const have = (S.cards || []).filter(c => c.lessonId === L.id).length;
       pending += Math.max(0, need - have);
       placed += have;
       (L.teacherIds || []).forEach(tid => {
