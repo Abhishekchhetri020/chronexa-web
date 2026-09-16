@@ -28,7 +28,12 @@ test("source shell carries the GitHub Pages cache recovery guard", () => {
 test("generated worker self-heals shell assets", () => {
   const worker = fs.readFileSync("dist/sw.js", "utf8");
 
-  expect(worker).toContain('const APP_VER = "20260803-p201-pages-shell-recovery"');
+  // APP_VER is bumped in index.html on every deploy; the built worker must
+  // carry the same stamp. Read it from the source of truth instead of
+  // hardcoding, so this check survives version bumps.
+  const appVer = fs.readFileSync("index.html", "utf8").match(/APP_VER = "([^"]+)"/)?.[1];
+  expect(appVer).toBeTruthy();
+  expect(worker).toContain(`const APP_VER = "${appVer}"`);
   expect(worker).toContain('request.destination === "style"');
   expect(worker).toContain("keeping the previous worker");
 });
