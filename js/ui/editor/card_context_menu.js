@@ -256,25 +256,25 @@ import "./card_in_hand.js";
 
     menu = document.createElement("div");
     menu.id = "chrx-card-ctx";
-    menu.style.cssText = "position:fixed;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 16px 40px rgba(15,23,42,.22);padding:6px 0;min-width:200px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;color:#0f172a;z-index:10010";
+    menu.style.cssText = "position:fixed;background:var(--chrx-bg-elev);border:1px solid var(--chrx-line);border-radius:var(--chrx-radius-md);box-shadow:0 4px 8px rgba(26,23,20,.06),0 12px 24px rgba(26,23,20,.12);padding:6px 0;min-width:200px;font-family:var(--chrx-font-sans);font-size:var(--chrx-font-section);color:var(--chrx-fg);z-index:10010";
 
     // Header
     const head = document.createElement("div");
-    head.style.cssText = "padding:6px 14px;color:#475569;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid #f1f5f9;margin-bottom:4px";
+    head.style.cssText = "padding:6px 14px;color:var(--chrx-fg-secondary);font-size:var(--chrx-font-cell-m);font-weight:600;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--chrx-line-soft);margin-bottom:4px";
     head.textContent = buildLabel(S, lessonId);
     menu.appendChild(head);
 
     for (const it of items) {
       if (it.sep) {
         const sep = document.createElement("div");
-        sep.style.cssText = "border-top:1px solid #f1f5f9;margin:4px 0";
+        sep.style.cssText = "border-top:1px solid var(--chrx-line-soft);margin:4px 0";
         menu.appendChild(sep);
         continue;
       }
       const btn = document.createElement("button");
       btn.type = "button";
-      btn.style.cssText = "display:flex;width:100%;align-items:center;gap:10px;padding:6px 14px;background:none;border:0;cursor:pointer;text-align:left;color:#0f172a";
-      btn.onmouseenter = () => { btn.style.background = "#f1f5f9"; };
+      btn.style.cssText = "display:flex;width:100%;align-items:center;gap:10px;padding:6px 14px;background:none;border:0;cursor:pointer;text-align:left;color:var(--chrx-fg)";
+      btn.onmouseenter = () => { btn.style.background = "var(--chrx-bg-tile)"; };
       btn.onmouseleave = () => { btn.style.background = "none"; };
       btn.innerHTML = '<span style="width:16px;text-align:center;font-size:13px">' + (it.icon || "") + '</span><span>' + it.label + '</span>';
       btn.onclick = () => { close(); try { it.run(); } catch (e) { console.error("[card-ctx]", e); } };

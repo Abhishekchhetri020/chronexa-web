@@ -23,6 +23,7 @@ import "../ribbon/topbar.js";
   "use strict";
   const APP = window.APP;
   const notify = window._chrxNotify || console.log;
+  let activeDiffRoot = null;
 
   function indexBy(arr, key) {
     const m = new Map();
@@ -106,12 +107,18 @@ import "../ribbon/topbar.js";
   function esc(s) { return String(s == null ? "" : s); }
 
   function showDiff(d) {
+    if (activeDiffRoot && activeDiffRoot.isConnected) {
+      activeDiffRoot.querySelector(".chrx-diff-panel")?.focus();
+      return activeDiffRoot;
+    }
+    const previousFocus = document.activeElement;
     const root = el("div", { class: "chrx-diff-root",
-      onclick: e => { if (e.target === root) root.remove(); }, role: "dialog", "aria-modal": "true" });
-    const panel = el("div", { class: "chrx-diff-panel" });
+      onclick: e => { if (e.target === root) close(); } });
+    const panel = el("div", { class: "chrx-diff-panel", role: "dialog", "aria-modal": "true",
+      "aria-labelledby": "chrx-diff-title", tabindex: "-1" });
     panel.appendChild(el("header", null,
-      el("h2", null, `🔍 Diff — ${esc(d.summary.a_name)} vs ${esc(d.summary.b_name)}`),
-      el("button", { class: "chrx-diff-close", "aria-label": "Close", onclick: () => root.remove() }, "×"),
+      el("h2", { id: "chrx-diff-title" }, `Compare ${esc(d.summary.a_name)} with ${esc(d.summary.b_name)}`),
+      el("button", { class: "chrx-diff-close", "aria-label": "Close", onclick: close }, "×"),
     ));
     panel.appendChild(el("div", { class: "chrx-diff-summary" },
       `${d.summary.a_cards} cards → ${d.summary.b_cards} cards. ` +
@@ -146,7 +153,18 @@ import "../ribbon/topbar.js";
 
     root.appendChild(panel);
     document.body.appendChild(root);
+    activeDiffRoot = root;
     ensureStyles();
+    panel.focus();
+
+    function close() {
+      root.remove();
+      if (activeDiffRoot === root) activeDiffRoot = null;
+      document.removeEventListener("keydown", onKey, true);
+      if (previousFocus && previousFocus.isConnected && typeof previousFocus.focus === "function") previousFocus.focus();
+    }
+    function onKey(e) { if (e.key === "Escape") { e.preventDefault(); close(); } }
+    document.addEventListener("keydown", onKey, true);
     return root;
   }
 
@@ -166,16 +184,18 @@ import "../ribbon/topbar.js";
     const s = document.createElement("style");
     s.id = "chrx-diff-styles";
     s.textContent = `
-.chrx-diff-root{position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:flex-start;justify-content:center;padding:24px;z-index:1000;overflow:auto}
-.chrx-diff-panel{background:#fff;border-radius:12px;max-width:900px;width:100%;padding:18px 22px;box-shadow:0 20px 60px rgba(0,0,0,.3);font-family:-apple-system,BlinkMacSystemFont,sans-serif;color:#0f172a}
-.chrx-diff-panel header{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e2e8f0;padding-bottom:10px;margin-bottom:12px}
-.chrx-diff-panel h2{margin:0;font-size:18px;color:#1e3a8a}
-.chrx-diff-close{background:none;border:0;font-size:22px;cursor:pointer;color:#64748b}
-.chrx-diff-summary{background:#f1f5f9;padding:10px 14px;border-radius:8px;font-size:13px;line-height:1.5;color:#334155;margin-bottom:14px}
-.chrx-diff-panel h3{margin:12px 0 4px;font-size:13px;color:#475569;text-transform:uppercase;letter-spacing:.04em}
-.chrx-diff-list{margin:4px 0 12px 16px;font-size:13px;color:#1f2937;list-style:square}
+.chrx-diff-root{position:fixed;inset:0;background:rgba(5,7,10,.52);display:flex;align-items:flex-start;justify-content:center;padding:24px;z-index:1000;overflow:auto}
+.chrx-diff-panel{background:var(--chrx-bg-elev);border:1px solid var(--chrx-line);border-radius:var(--chrx-radius-lg);max-width:900px;width:100%;padding:18px 22px;box-shadow:0 4px 8px rgba(26,23,20,.06),0 12px 24px rgba(26,23,20,.08),0 24px 48px rgba(26,23,20,.06);font-family:var(--chrx-font-sans);color:var(--chrx-fg)}
+.chrx-diff-panel header{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--chrx-line);padding-bottom:10px;margin-bottom:12px}
+.chrx-diff-panel h2{margin:0;font-family:var(--chrx-font-display);font-size:var(--chrx-font-h2);color:var(--chrx-fg)}
+.chrx-diff-close{background:none;border:0;border-radius:var(--chrx-radius-sm);font-size:22px;cursor:pointer;color:var(--chrx-fg-tertiary)}
+.chrx-diff-close:hover{background:var(--chrx-bg-tile);color:var(--chrx-fg)}
+.chrx-diff-summary{background:var(--chrx-bg-tile);padding:10px 14px;border-radius:var(--chrx-radius-sm);font-size:var(--chrx-font-section);line-height:1.5;color:var(--chrx-fg-secondary);margin-bottom:14px}
+.chrx-diff-panel h3{margin:12px 0 4px;font-size:var(--chrx-font-section);color:var(--chrx-fg-secondary);text-transform:uppercase;letter-spacing:.04em}
+.chrx-diff-list{margin:4px 0 12px 16px;font-size:var(--chrx-font-section);color:var(--chrx-fg);list-style:square}
 .chrx-diff-list li{padding:2px 0}
-.chrx-diff-more{color:#94a3b8;font-style:italic;list-style:none;margin-left:-16px}
+.chrx-diff-more{color:var(--chrx-fg-tertiary);font-style:italic;list-style:none;margin-left:-16px}
+.chrx-diff-panel :focus-visible{outline:2px solid var(--chrx-accent);outline-offset:2px}
     `;
     document.head.appendChild(s);
   }
