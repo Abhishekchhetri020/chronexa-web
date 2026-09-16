@@ -269,10 +269,14 @@ import "../components/time_off_matrix.js";
     });
   }
 
-  function open() {
+  function open(opts) {
+    opts = opts || {};
+    const focusId = opts.focusTimeoff || opts.focusConstraintId;
     D.open({
       entity:"classrooms", title:"Classrooms",
       columns:columns(), rows:rows(),
+      initialSelectedId: focusId,
+      initialAction: opts.focusTimeoff ? "timeoff" : (opts.focusConstraintId ? "constraints" : null),
       extras:[
         { id:"timeoff",     label:"Time off" },
         { id:"constraints", label:"Constraints" },

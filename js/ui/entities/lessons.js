@@ -926,11 +926,14 @@ import "./dialog_shell.js";
     });
   }
 
-  function open() {
+  function open(opts) {
+    opts = opts || {};
     const s = window.APP.school;
     D.open({
       entity:"lessons", title:"Lessons",
       columns:columns(), rows:rows(),
+      initialSelectedId: opts.focusLessonId,
+      initialAction: opts.create ? "new" : (opts.focusLessonId ? "edit" : null),
       extras:[
         { id:"copy",   label:"Copy to" },
         { id:"change", label:"Change" },

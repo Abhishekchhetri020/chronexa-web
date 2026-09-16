@@ -348,10 +348,14 @@ import "../components/teacher_constraints_dialog.js";
     D.openSheet(list, { title: `Lessons of ${ref.name} (${lessons.length})` });
   }
 
-  function open() {
+  function open(opts) {
+    opts = opts || {};
+    const focusId = opts.focusTimeoff || opts.focusConstraintId;
     D.open({
       entity:"teachers", title:"Teachers",
       columns:columns(), rows:rows(),
+      initialSelectedId: focusId,
+      initialAction: opts.focusTimeoff ? "timeoff" : (opts.focusConstraintId ? "constraints" : null),
       extras:[
         { id:"lessons",     label:"Lessons" },
         { id:"timeoff",     label:"Time off" },

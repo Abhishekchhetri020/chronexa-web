@@ -72,13 +72,29 @@ import "../components/help_tooltip.js";
     cfg = c;
     sortKey = (c.columns[0] && c.columns[0].key) || null;
     sortDir = 1; filterText = ""; selectedId = null; selectedIds = new Set(); lastClickedIdx = -1;
+    if (c.initialSelectedId != null) {
+      selectedId = c.initialSelectedId;
+      selectedIds.add(c.initialSelectedId);
+    }
     lastFocused = document.activeElement;
     if (host) host.remove();
     host = buildShell();
     document.body.appendChild(host);
     document.addEventListener("keydown", onKey, true);
     renderRows();
-    setTimeout(() => { if (host) host.querySelector(".chrx-ent-search")?.focus(); }, 30);
+    setTimeout(() => {
+      if (!host) return;
+      if (c.initialAction) {
+        fireAction(c.initialAction);
+        return;
+      }
+      const selected = c.initialSelectedId != null
+        ? [...host.querySelectorAll(".chrx-ent-tr")]
+          .find(row => row.dataset.id === String(c.initialSelectedId))
+        : null;
+      (selected || host.querySelector(".chrx-ent-search"))?.focus();
+      selected?.scrollIntoView({ block: "nearest" });
+    }, 30);
   }
   function close() {
     document.removeEventListener("keydown", onKey, true);

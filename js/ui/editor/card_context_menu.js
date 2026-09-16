@@ -132,13 +132,13 @@ import "./card_in_hand.js";
     }
   }
 
- function quickChanges(lessonId) {
+  function quickChanges(lessonId) {
    const S = window.APP && window.APP.school;
    if (!S) return;
    const lesson = S._idx && S._idx.lessonById && S._idx.lessonById[lessonId];
    if (lesson) {
      window.dispatchEvent(new CustomEvent("app:open-entity",
-       { detail: { kind: "subjects" } }));
+       { detail: { kind: "lessons", focusLessonId: lessonId } }));
    }
  }
 

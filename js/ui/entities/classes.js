@@ -457,10 +457,14 @@ import "../components/divisions_tree.js";
     D.openSheet(list, { title: `Subjects of ${ref.name} (${seen.size})` });
   }
 
-  function open() {
+  function open(opts) {
+    opts = opts || {};
+    const focusId = opts.focusTimeoff || opts.focusConstraintId;
     D.open({
       entity:"classes", title:"Classes",
       columns:columns(), rows:rows(),
+      initialSelectedId: focusId,
+      initialAction: opts.focusTimeoff ? "timeoff" : (opts.focusConstraintId ? "constraints" : null),
       extras:[
         { id:"timeoff",     label:"Time off" },
         { id:"constraints", label:"Constraints" },

@@ -240,7 +240,7 @@ window.ConstraintExplainer = (function () {
     if (btn) {
       btn.addEventListener("click", function (ev) {
         ev.stopPropagation();
-        document.dispatchEvent(new CustomEvent("app:suggest-fix", {
+        window.dispatchEvent(new CustomEvent("app:suggest-fix", {
           detail: { cardId, day, period, severity: data.severity, reasons: data.reasons },
         }));
       });

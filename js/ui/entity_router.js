@@ -52,11 +52,11 @@ import "./entities/holidays.js";
     },
 
     // Edit menu (Subjects/Teachers/Classes/Classrooms/Lessons/Relations/Supervisions)
-    "subjects":    () => window.EntitySubjects    && window.EntitySubjects.open(),
-    "teachers":    () => window.EntityTeachers    && window.EntityTeachers.open(),
-    "classes":     () => window.EntityClasses     && window.EntityClasses.open(),
-    "classrooms":  () => window.EntityClassrooms  && window.EntityClassrooms.open(),
-    "lessons":     () => window.EntityLessons     && window.EntityLessons.open(),
+    "subjects":    (detail) => window.EntitySubjects    && window.EntitySubjects.open(detail),
+    "teachers":    (detail) => window.EntityTeachers    && window.EntityTeachers.open(detail),
+    "classes":     (detail) => window.EntityClasses     && window.EntityClasses.open(detail),
+    "classrooms":  (detail) => window.EntityClassrooms  && window.EntityClassrooms.open(detail),
+    "lessons":     (detail) => window.EntityLessons     && window.EntityLessons.open(detail),
     "relations":   () => window.EntityRelations   && window.EntityRelations.open(),
     "supervisions": () => window.EntitySupervisions && window.EntitySupervisions.open(),
     "divisions":   () => window.EntityDivisions   && window.EntityDivisions.open(),
@@ -104,7 +104,7 @@ import "./entities/holidays.js";
       openStub("Coming soon", `Action “${kind}” is not wired yet. File an issue if you need it.`);
       return;
     }
-    try { fn(); }
+    try { fn(e.detail || {}); }
     catch (err) {
       console.error("[entity_router] handler threw for kind:", kind, err);
       openStub("Error", `Couldn't open ${kind}: ${err && err.message ? err.message : String(err)}`);
