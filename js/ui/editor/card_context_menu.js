@@ -142,25 +142,38 @@ import "./card_in_hand.js";
    }
  }
 
-  function clearRowCards(lessonId) {
+  function clearRowCards(lessonId, day, period, clickedRowKey) {
     const S = window.APP && window.APP.school;
     if (!S || !S.cards || !S._idx) return;
     const lesson = S._idx.lessonById && S._idx.lessonById[lessonId];
     if (!lesson) return;
     const perspective = (window.APP && window.APP.editor && window.APP.editor.perspective) || "class";
-    const entityId = perspective === "class" ? (lesson.classIds && lesson.classIds[0])
+    const clickedCard = S.cards.find(c =>
+      c.lessonId === lessonId && c.day === day && c.period === period);
+    const focusedRow = window.APP?.editor?.focusRowByPerspective?.[perspective]
+      || window.APP?.editor?.focusedRowId;
+    const entityId = clickedRowKey || focusedRow
+                   || (perspective === "class" ? (lesson.classIds && lesson.classIds[0])
                    : perspective === "teacher" ? (lesson.teacherIds && lesson.teacherIds[0])
-                   : lesson.subjectId;
+                   : perspective === "room" ? (clickedCard?.classroomId || lesson.preferredRoomId)
+                   : lesson.subjectId);
+    if (!entityId) {
+      notify(`Cannot determine the ${perspective} row for this card.`);
+      return;
+    }
     const entityName = perspective === "class" ? (S._idx.classById?.[entityId]?.name || entityId)
                      : perspective === "teacher" ? (S._idx.teacherById?.[entityId]?.name || entityId)
+                     : perspective === "room" ? (S._idx.classroomById?.[entityId]?.name || entityId)
                      : (S._idx.subjectById?.[entityId]?.name || entityId);
     if (!confirm(`Clear all placed cards for ${perspective} "${entityName}"?`)) return;
 
-    const cardsToRemove = S.cards.filter(c => {
+    const cardsBefore = S.cards.slice();
+    const cardsToRemove = cardsBefore.filter(c => {
       const l = S._idx.lessonById?.[c.lessonId];
       if (!l) return false;
       if (perspective === "class") return (l.classIds || []).includes(entityId);
       if (perspective === "teacher") return (l.teacherIds || []).includes(entityId);
+      if (perspective === "room") return (c.classroomId || l.preferredRoomId) === entityId;
       return l.subjectId === entityId;
     });
 
@@ -169,19 +182,31 @@ import "./card_in_hand.js";
       return;
     }
 
-    const removedSnapshot = cardsToRemove.slice();
+    const removedSet = new Set(cardsToRemove);
+    const cardsAfter = cardsBefore.filter(c => !removedSet.has(c));
+    function emit(kind, card) {
+      document.dispatchEvent(new CustomEvent(kind, { detail: {
+        lessonId: card.lessonId,
+        day: card.day,
+        period: card.period,
+        classroomId: card.classroomId,
+      } }));
+    }
     function doIt() {
-      const idsToRemove = new Set(removedSnapshot);
-      S.cards = S.cards.filter(c => !idsToRemove.has(c));
+      if (window.CardInHand && typeof window.CardInHand._cleanup === "function") {
+        try { window.CardInHand._cleanup(); } catch {}
+      }
+      if (window.APP?.editor) window.APP.editor.cardInHand = null;
+      S.cards = cardsAfter.slice();
+      cardsToRemove.forEach(card => emit("editor:unplace", card));
       rerender();
-      notify(`Cleared ${removedSnapshot.length} cards for ${entityName}.`);
+      notify(`Cleared ${cardsToRemove.length} cards for ${entityName}.`);
     }
     function undoIt() {
-      for (const c of removedSnapshot) {
-        if (!S.cards.includes(c)) S.cards.push(c);
-      }
+      S.cards = cardsBefore.slice();
+      cardsToRemove.forEach(card => emit("editor:place", card));
       rerender();
-      notify(`Restored ${removedSnapshot.length} cards for ${entityName}.`);
+      notify(`Restored ${cardsToRemove.length} cards for ${entityName}.`);
     }
 
     if (window.APP && window.APP.audit && typeof window.APP.audit.commit === "function") {
@@ -206,7 +231,7 @@ import "./card_in_hand.js";
     return subjName + (classes ? " (" + classes + ")" : "");
   }
 
-  function open(lessonId, day, period, x, y) {
+  function open(lessonId, day, period, x, y, clickedRowKey) {
     close();
     const S = window.APP && window.APP.school;
     if (!S) return;
@@ -220,7 +245,7 @@ import "./card_in_hand.js";
      isLocked
        ? { icon: "🔓", label: "Unlock",   run: () => unlockCard(lessonId, day, period) }
        : { icon: "🔒", label: "Lock",     run: () => lockCard(lessonId, day, period) },
-      { icon: "🧹", label: "Delete row",   run: () => clearRowCards(lessonId) },
+      { icon: "🧹", label: "Delete row",   run: () => clearRowCards(lessonId, day, period, clickedRowKey) },
      { sep: true },
       { icon: "✎",  label: "Edit lesson", run: () => editLesson(lessonId) },
       { icon: "🔍", label: "Find",        run: () => findCard(lessonId) },
@@ -279,7 +304,10 @@ import "./card_in_hand.js";
     e.preventDefault();
     const day = parseInt(vk.dataset.day, 10);
     const period = parseInt(vk.dataset.period, 10);
-    open(lessonId, day, period, e.clientX, e.clientY);
+    const clickedRowKey = vk.closest(".chrx-row")?.dataset.row
+      || window.APP?.editor?.focusRowByPerspective?.[window.APP?.editor?.perspective || "class"]
+      || window.APP?.editor?.focusedRowId;
+    open(lessonId, day, period, e.clientX, e.clientY, clickedRowKey);
   });
 
   window.CardContextMenu = { open, close };
