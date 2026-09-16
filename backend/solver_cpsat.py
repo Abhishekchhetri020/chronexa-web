@@ -34,6 +34,7 @@ Two/three-phase solve (so quality never un-places cards):
            CP-SAT here and degrades spread/convergence on the free host.
 """
 import math
+import re
 from collections import defaultdict
 from ortools.sat.python import cp_model
 
@@ -53,6 +54,18 @@ def build_and_solve(school, time_limit_sec=30, num_workers=8, seed=1,
     slot_index = {s: i for i, s in enumerate(slots)}
 
     groups_by_id = {g["id"]: g for g in school.get("groups", [])}
+
+    # Index locked cards by lessonId and normalized baseId
+    locked_cards_by_lesson = defaultdict(list)
+    for c in (school.get("cards") or []):
+        if c.get("locked") and c.get("day") is not None and c.get("period") is not None:
+            lid = str(c.get("lessonId", ""))
+            base_lid = re.sub(r"#\d+$", "", lid)
+            locked_cards_by_lesson[lid].append(c)
+            if base_lid != lid:
+                locked_cards_by_lesson[base_lid].append(c)
+    for k in locked_cards_by_lesson:
+        locked_cards_by_lesson[k].sort(key=lambda c: (c["day"], c["period"]))
 
     # ---- expand lessons into session-cards -------------------------------
     cards = []
@@ -78,14 +91,46 @@ def build_and_solve(school, time_limit_sec=30, num_workers=8, seed=1,
         rooms = list(L.get("_lessonRoomIds") or [])
         fixed_day = L.get("fixedDay")
         fixed_period = L.get("fixedPeriod")
-        for _ in range(ncards):
+        locked_list = locked_cards_by_lesson.get(L["id"], [])
+        for k in range(ncards):
+            is_locked = False
+            fixed_room = None
+            fday = fixed_day
+            fper = fixed_period
+            if k < len(locked_list):
+                fday = locked_list[k]["day"]
+                fper = locked_list[k]["period"]
+                is_locked = True
+                if locked_list[k].get("classroomId"):
+                    fixed_room = locked_list[k]["classroomId"]
             cards.append({
                 "lesson_id": L["id"], "subject": subject, "length": length,
                 "teachers": teachers, "classes": classes, "cls_occ": cls_occ,
-                "rooms": rooms, "fixed_day": fixed_day, "fixed_period": fixed_period,
+                "rooms": rooms, "fixed_day": fday, "fixed_period": fper,
+                "is_locked": is_locked, "fixed_room": fixed_room,
             })
 
     m = cp_model.CpModel()
+
+    locked_days_set = set(school.get("lockedDays") or school.get("blockedDays") or [])
+    teacher_timeoff = {}
+    for t in (school.get("teachers") or []):
+        off = t.get("timeOff")
+        if off:
+            teacher_timeoff[t["id"]] = off
+
+    def teacher_unavailable(t_id, d, p):
+        off = teacher_timeoff.get(t_id)
+        if not off:
+            return False
+        if isinstance(off, dict):
+            val = off.get(f"{d}_{p}") or off.get(f"{d}_{pidx.get(p, p)}")
+            return val in ("unavailable", 2, "2")
+        elif isinstance(off, list):
+            pi = pidx.get(p, p)
+            if 0 <= d < len(off) and isinstance(off[d], list) and 0 <= pi < len(off[d]):
+                return off[d][pi] in ("unavailable", 2, "2")
+        return False
 
     def valid_starts(card):
         out = []
@@ -94,8 +139,20 @@ def build_and_solve(school, time_limit_sec=30, num_workers=8, seed=1,
                 continue
             if card["fixed_period"] is not None and p != card["fixed_period"]:
                 continue
-            if card["length"] == 2 and pidx[p] + 1 >= len(periods):
-                continue  # a double cannot start at the last teaching period
+            if card["fixed_day"] is None and d in locked_days_set:
+                continue
+            if card["length"] == 2 and (pidx[p] + 1 >= len(periods) or periods[pidx[p] + 1] != p + 1):
+                continue  # a double cannot start at the last teaching period or gap
+            conflict = False
+            for t in card["teachers"]:
+                if teacher_unavailable(t, d, p):
+                    conflict = True
+                    break
+                if card["length"] == 2 and teacher_unavailable(t, d, periods[pidx[p] + 1]):
+                    conflict = True
+                    break
+            if conflict:
+                continue
             out.append((d, p))
         return out
 
@@ -194,16 +251,23 @@ def build_and_solve(school, time_limit_sec=30, num_workers=8, seed=1,
         for c in card["classes"]:
             ncards_cs[(c, card["subject"])] += 1
     cap_cs = {k: max(1, math.ceil(v / ndays)) for k, v in ncards_cs.items()}
+    min_cs = {k: math.floor(v / ndays) for k, v in ncards_cs.items()}
     csd = defaultdict(list)                 # (class, subject, day) -> [start vars]
     for ci, card in enumerate(cards):
         for c in card["classes"]:
             for start, avar in assign[ci].items():
                 csd[(c, card["subject"], start[0])].append(avar)
 
+    under_vars = []
     for (c, subj, d), vs in csd.items():
         hard = cap_cs[(c, subj)]
         if len(vs) > hard:
             m.Add(sum(vs) <= hard)
+        ideal_min = min_cs.get((c, subj), 0)
+        if ideal_min > 0:
+            under = m.NewIntVar(0, ideal_min, f"under_{c}_{subj}_{d}")
+            m.Add(sum(vs) + under >= ideal_min)
+            under_vars.append(under)
 
     # ---- symmetry breaking + warm-start hint -----------------------------
     lesson_cards = defaultdict(list)
@@ -223,20 +287,30 @@ def build_and_solve(school, time_limit_sec=30, num_workers=8, seed=1,
     saved = defaultdict(list)
     for c in (school.get("cards") or []):
         if c.get("day") is not None and c.get("period") is not None:
-            saved[c["lessonId"]].append(c)
+            lid = str(c.get("lessonId", ""))
+            base_lid = re.sub(r"#\d+$", "", lid)
+            saved[lid].append(c)
+            if base_lid != lid:
+                saved[base_lid].append(c)
     for lid, cis in lesson_cards.items():
         sc = sorted(saved.get(lid, []), key=lambda c: (c["day"], c["period"]))
         if not sc:
             continue
         length = cards[cis[0]]["length"]
         starts = sc[::length]   # for doubles take the first period of each pair
-        for ci, card in zip(cis, starts):
-            s = (card["day"], card["period"])
+        for ci, sc_card in zip(cis, starts):
+            s = (sc_card["day"], sc_card["period"])
             if s in assign[ci]:
-                m.AddHint(assign[ci][s], 1)
-                rm = card.get("classroomId")
-                if rm and (ci, s, rm) in yroom:
-                    m.AddHint(yroom[(ci, s, rm)], 1)
+                if sc_card.get("locked") or cards[ci].get("is_locked"):
+                    m.Add(assign[ci][s] == 1)
+                    rm = sc_card.get("classroomId") or cards[ci].get("fixed_room")
+                    if rm and (ci, s, rm) in yroom:
+                        m.Add(yroom[(ci, s, rm)] == 1)
+                else:
+                    m.AddHint(assign[ci][s], 1)
+                    rm = sc_card.get("classroomId")
+                    if rm and (ci, s, rm) in yroom:
+                        m.AddHint(yroom[(ci, s, rm)], 1)
 
     # ---- soft objective --------------------------------------------------
     soft_terms = []   # list of (weight, IntVar/expr) to MINIMIZE
@@ -245,6 +319,10 @@ def build_and_solve(school, time_limit_sec=30, num_workers=8, seed=1,
         # teacher-gaps. Gaps are the cheapest to sacrifice and the slowest to
         # optimize, so they act as a tiebreaker that never degrades spread.
         W_SPREAD, W_B2B, W_BAL, W_GAP = 1000, 200, 30, 1
+
+        # subject even-spread: penalize each session under the ideal per-day min.
+        for u in under_vars:
+            soft_terms.append((W_SPREAD, u))
 
         # subject even-spread: penalize each session over the ideal per-day cap.
         for (c, subj, d), vs in csd.items():
@@ -329,13 +407,18 @@ def build_and_solve(school, time_limit_sec=30, num_workers=8, seed=1,
             def on_solution_callback(self):
                 if progress_fn is not None:
                     try:
-                        pn = int(round(self.ObjectiveValue())) if report is None else report
-                        progress_fn(pn if report is None else report,
-                                    int((elapsed + self.WallTime()) * 1000))
+                        pn = sum(int(self.BooleanValue(p)) for p in placed) if report is None else report
+                        progress_fn(pn, int((elapsed + self.WallTime()) * 1000))
                     except Exception:
                         pass
-                if report is None and int(round(self.ObjectiveValue())) >= total_cards:
-                    self.StopSearch()
+                if report is None:
+                    try:
+                        all_placed = all(self.BooleanValue(p) for p in placed)
+                        all_spread = all(self.Value(u) == 0 for u in under_vars)
+                        if all_placed and all_spread:
+                            self.StopSearch()
+                    except Exception:
+                        pass
                 elif cancelled():
                     self.StopSearch()
         return _CB()
@@ -348,11 +431,12 @@ def build_and_solve(school, time_limit_sec=30, num_workers=8, seed=1,
         for k, v in yroom.items():
             m.AddHint(v, prev.Value(v))
 
-    # PHASE 1 — maximize placement (doubles hard). Reaches all-placed fast.
-    m.Maximize(sum(placed))
+    # PHASE 1 — maximize placement while rewarding even spread.
+    p1_terms = [100 * p for p in placed] + [-1 * u for u in under_vars]
+    m.Maximize(sum(p1_terms))
     solver = _new_solver(float(time_limit_sec) * (0.6 if do_quality else 1.0))
     status = solver.Solve(m, _cb(None))
-    pstar = int(round(solver.ObjectiveValue())) if status in (cp_model.OPTIMAL, cp_model.FEASIBLE) else 0
+    pstar = sum(int(solver.Value(p)) for p in placed) if status in (cp_model.OPTIMAL, cp_model.FEASIBLE) else 0
     elapsed += solver.WallTime()
 
     # PHASE 2 — lock placement, minimize quality (spread/back-to-back/balance).

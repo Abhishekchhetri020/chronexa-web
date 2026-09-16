@@ -169,6 +169,12 @@
   min-height: 52px;
   border-bottom: 1px solid var(--line);
   background: var(--chrx-bg-drawer);
+  /* The relocated editor quick-tools can make the topbar taller than the
+     shell grid row, overflowing into .chrx-main's area. Main is positioned
+     (relative), so without a stacking level here it would cover — and eat
+     the clicks of — the Test/Generate actions. */
+  position: relative;
+  z-index: 5;
 }
 .chrx-shell .chrx-shell-toggle {
   width: 32px; height: 32px;

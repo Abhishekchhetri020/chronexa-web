@@ -76,6 +76,21 @@ export async function buildAndSolve(school, options = {}) {
 
   const groupsById = new Map((school.groups || []).map((g) => [g.id, g]));
 
+  const lockedCardsByLesson = Object.create(null);
+  if (Array.isArray(school.cards)) {
+    for (const c of school.cards) {
+      if (!c || !c.locked || !c.lessonId) continue;
+      const baseId = String(c.lessonId).replace(/#\d+$/, "");
+      (lockedCardsByLesson[baseId] = lockedCardsByLesson[baseId] || []).push(c);
+      if (baseId !== c.lessonId) {
+        (lockedCardsByLesson[c.lessonId] = lockedCardsByLesson[c.lessonId] || []).push(c);
+      }
+    }
+    for (const k in lockedCardsByLesson) {
+      lockedCardsByLesson[k].sort((a, b) => (a.day - b.day) || (a.period - b.period));
+    }
+  }
+
   const cards = [];
   for (const L of school.lessons) {
     const length = L.isLabDouble ? 2 : 1;
@@ -103,23 +118,55 @@ export async function buildAndSolve(school, options = {}) {
       }
     }
     const rooms = L._lessonRoomIds || [];
+    const lockedList = lockedCardsByLesson[L.id];
     for (let k = 0; k < ncards; k++) {
+      let fixed_day = (k === 0 && L.fixedDay != null) ? (L.fixedDay | 0) : null;
+      let fixed_period = (k === 0 && L.fixedPeriod != null) ? (L.fixedPeriod | 0) : null;
+      let is_locked = false;
+      let fixed_room = null;
+      if (lockedList && k < lockedList.length) {
+        fixed_day = lockedList[k].day | 0;
+        fixed_period = lockedList[k].period | 0;
+        is_locked = true;
+        if (lockedList[k].classroomId) fixed_room = lockedList[k].classroomId;
+      }
       cards.push({
         lesson_id: L.id, subject, length, teachers, classes, clsOcc, rooms,
-        fixed_day: L.fixedDay ?? null, fixed_period: L.fixedPeriod ?? null,
+        fixed_day, fixed_period, is_locked, fixed_room,
       });
     }
   }
 
   const m = new CpModel();
+  const tIdxOf = new Map((jm.teacherIds || []).map((id, i) => [id, i]));
+  const lockedDaysSet = new Set(school.lockedDays || school.blockedDays || []);
 
   const validStarts = (card) => {
     const out = [];
     for (const [d, p] of slots) {
       if (card.fixed_day != null && d !== card.fixed_day) continue;
       if (card.fixed_period != null && p !== card.fixed_period) continue;
+      if (card.fixed_day == null && lockedDaysSet.has(d)) continue;
       // A lab cannot jump over a break or a missing bell index.
       if (card.length === 2 && !pidx.has(p + 1)) continue;
+
+      if (jm.teacherAvailabilityMask) {
+        const bit = (1 << p) >>> 0;
+        const bit2 = card.length === 2 ? ((1 << (p + 1)) >>> 0) : 0;
+        let conflict = false;
+        for (const t of card.teachers) {
+          const ti = tIdxOf.get(t);
+          if (ti != null) {
+            const mask = jm.teacherAvailabilityMask[ti * ndays + d];
+            if ((mask & bit) === 0 || (bit2 && (mask & bit2) === 0)) {
+              conflict = true;
+              break;
+            }
+          }
+        }
+        if (conflict) continue;
+      }
+
       out.push([d, p]);
     }
     return out;
@@ -257,7 +304,11 @@ export async function buildAndSolve(school, options = {}) {
     }
   }
   const capCs = new Map();
-  for (const [k, v] of ncardsCs) capCs.set(k, Math.max(1, Math.ceil(v / ndays)));
+  const minCs = new Map();
+  for (const [k, v] of ncardsCs) {
+    capCs.set(k, Math.max(1, Math.ceil(v / ndays)));
+    minCs.set(k, Math.floor(v / ndays));
+  }
   const csd = new Map();
   for (let ci = 0; ci < cards.length; ci++) {
     const card = cards[ci];
@@ -270,21 +321,19 @@ export async function buildAndSolve(school, options = {}) {
       }
     }
   }
+  const underDailySubjectVars = [];
   for (const [k, vs] of csd) {
     const c = k.split('|')[0];
     const subj = k.split('|')[1];
-    // HARD cap = ideal = ceil(v / ndays). For v<=ndays this is 1 (strict
-    // 1-per-day); for v>ndays this is ceil(v/ndays) (e.g. 7/6 -> 2). Matches
-    // the JS CSP solver's subjectDailyLimit so Best mode (JS draft -> WASM
-    // polish) can't relax the spread that the draft just enforced. Was +1
-    // historically: that slack let the polish stage consolidate two same-
-    // subject cards on one day (e.g. English II B on Tue), producing a
-    // visible block that the renderer then hid. With cap=ideal, the solver
-    // either spreads or leaves cards unplaced — the latter surfaces the
-    // true bottleneck (teacher availability, room cap) instead of masking
-    // it behind a spread violation.
     const hard = capCs.get(`${c}|${subj}`);
     if (vs.length > hard) atMost(m, sum(vs), hard);
+
+    const idealMin = minCs.get(`${c}|${subj}`) || 0;
+    if (idealMin > 0) {
+      const under = m.newIntVar(0, idealMin, `under_${k}`);
+      atLeast(m, LinearExpr.sum([...vs, under]), idealMin);
+      underDailySubjectVars.push(under);
+    }
   }
 
   const lessonCards = new Map();
@@ -314,8 +363,13 @@ export async function buildAndSolve(school, options = {}) {
   const saved = new Map();
   for (const c of school.cards || []) {
     if (c.day != null && c.period != null) {
-      if (!saved.has(c.lessonId)) saved.set(c.lessonId, []);
-      saved.get(c.lessonId).push(c);
+      const baseId = String(c.lessonId).replace(/#\d+$/, "");
+      if (!saved.has(baseId)) saved.set(baseId, []);
+      saved.get(baseId).push(c);
+      if (baseId !== c.lessonId) {
+        if (!saved.has(c.lessonId)) saved.set(c.lessonId, []);
+        saved.get(c.lessonId).push(c);
+      }
     }
   }
   // --- Hard card-relations -------------------------------------------------
@@ -519,12 +573,22 @@ export async function buildAndSolve(school, options = {}) {
       if (assign[cis[i]].has(s)) {
         hintOnce(assign[cis[i]].get(s), 1);
         hintedCards++;
-        // Hard relation the model can't express -> pin the card to its draft slot.
-        if (lock) { m.addEquality(assign[cis[i]].get(s), 1); lockedCards++; }
-        const rm = starts[i].classroomId;
-        if (rm) {
-          const yv = yroom.get(`${cis[i]}|${s}|${rm}`);
-          if (yv) hintOnce(yv, 1);
+        const card = cards[cis[i]];
+        const shouldPin = (card && card.is_locked) || starts[i].locked || lock;
+        if (shouldPin) {
+          m.addEquality(assign[cis[i]].get(s), 1);
+          lockedCards++;
+          const rm = (card && card.fixed_room) || starts[i].classroomId;
+          if (rm) {
+            const yv = yroom.get(`${cis[i]}|${s}|${rm}`);
+            if (yv) m.addEquality(yv, 1);
+          }
+        } else {
+          const rm = starts[i].classroomId;
+          if (rm) {
+            const yv = yroom.get(`${cis[i]}|${s}|${rm}`);
+            if (yv) hintOnce(yv, 1);
+          }
         }
       }
     }
@@ -650,6 +714,9 @@ export async function buildAndSolve(school, options = {}) {
       }
     }
     if (softRelCount) console.error('SOFT RELATIONS: terms added=', softRelCount);
+    for (const u of underDailySubjectVars) {
+      softTerms.push([1000, u]);
+    }
 
     // ══════════════════════════════════════════════════════════════════════
     // Extended soft constraints — port of the JS solver's softScore() family
@@ -1198,15 +1265,22 @@ export async function buildAndSolve(school, options = {}) {
     onSolutionCallback() {
       if (progressFn) {
         try {
-          const ov = this.objectiveValue;
-          progressFn(this._report ?? Math.round(ov), Math.round(this.wallTime * 1000));
+          let placedCount = 0;
+          for (let i = 0; i < placed.length; i++) {
+            if (this.booleanValue(placed[i])) placedCount++;
+          }
+          progressFn(this._report ?? placedCount, Math.round(this.wallTime * 1000));
         } catch {}
       }
       if (cancelled()) this.stopSearch();
     }
   }
 
-  m.maximize(sum(placed));
+  const p1Terms = placed.map((p) => LinearExpr.term(p, 100));
+  for (const u of underDailySubjectVars) {
+    p1Terms.push(LinearExpr.term(u, -1));
+  }
+  m.maximize(LinearExpr.sum(p1Terms));
   // Adaptive phase split (was a fixed 60/40). Phase 1 (placement) gets a
   // share that grows with problem size — small models prove placement
   // optimality in seconds and the quality phase deserves the remainder;
@@ -1229,13 +1303,29 @@ export async function buildAndSolve(school, options = {}) {
   class Phase1Cb extends ProgressCb {
     onSolutionCallback() {
       super.onSolutionCallback();
-      try { if (Math.round(this.objectiveValue) >= cards.length) this.stopSearch(); } catch {}
+      try {
+        let placedCount = 0;
+        for (let i = 0; i < placed.length; i++) {
+          if (this.booleanValue(placed[i])) placedCount++;
+        }
+        if (placedCount >= cards.length) {
+          let allUnderZero = true;
+          for (const u of underDailySubjectVars) {
+            if (this.value(u) > 0) { allUnderZero = false; break; }
+          }
+          if (allUnderZero) this.stopSearch();
+        }
+      } catch {}
     }
   }
   const status1 = await solver1.solve(m, new Phase1Cb(null));
   console.error('PHASE 1 status:', status1);
-  const pstar = (status1 === 'OPTIMAL' || status1 === 'FEASIBLE')
-    ? Math.round(solver1.objectiveValue()) : 0;
+  let pstar = 0;
+  if (status1 === 'OPTIMAL' || status1 === 'FEASIBLE') {
+    for (const p of placed) {
+      if (solver1.value(p) > 0) pstar++;
+    }
+  }
   console.error('PHASE 1 pstar:', pstar, 'wall:', solver1.wallTime);
   elapsed += solver1.wallTime;
 

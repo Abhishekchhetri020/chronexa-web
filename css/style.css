@@ -355,3 +355,11 @@ table.preview tr:nth-child(even) { background: var(--chrx-bg-tile); }
   background: var(--chrx-bg-tile);
   color: var(--chrx-fg);
 }
+
+/* ───── Error slot: an empty slot is invisible, so it must not eat clicks ──
+   The empty #error-slot div (padding only, no content) overlaps the shell
+   workspace's Generate button in some viewports and intercepts the click —
+   the entry point of the Generate flow. When it actually carries an error
+   banner (:empty no longer matches) hit-testing stays normal. Mirrors the
+   landing rule in landing-redesign.css, which hides it while Start is on. */
+#error-slot:empty { pointer-events: none; }

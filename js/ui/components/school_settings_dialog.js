@@ -187,6 +187,9 @@ import "../entities/weeks.js";
         }
         const before = { schoolName: school.schoolName, settings: { ...school.settings } };
         school.schoolName = draft.schoolName.trim();
+        if (typeof draft.daysPerWeek === "number") {
+          school.daysPerWeek = draft.daysPerWeek;
+        }
         school.settings = { ...draft };
         delete school.settings.schoolName; // already on school root
         if (window.APP.audit && window.APP.audit.append) {

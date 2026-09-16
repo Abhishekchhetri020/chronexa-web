@@ -29,6 +29,7 @@ primary (teacherIds[0]); Assignment.classIds returns the full list.
 from __future__ import annotations
 
 import logging
+import math
 import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -290,24 +291,45 @@ def solve(
             # Pre-placed cards (if any) override variables for matching (lesson_id, occ_idx).
             # We honour the first card for occ 0, second card for occ 1, etc.
             cards = payload.get("cards") or []
-            lesson_cards = [c for c in cards if c.get("lessonId") == lesson.get("id")]
+            lesson_cards = [c for c in cards if (c.get("lessonId") or "").split("#")[0] == lesson.get("id")]
+            is_locked = False
             if occ_idx < len(lesson_cards):
                 c = lesson_cards[occ_idx]
-                if isinstance(c.get("day"), int):
-                    model.Add(day_var == c["day"])
-                if isinstance(c.get("period"), int) and c["period"] in period_to_offset:
-                    model.Add(period_var == c["period"])
-                cid_lock = c.get("classroomId")
-                if cid_lock is not None:
-                    if rooms and cid_lock in room_index:
-                        model.Add(room_var == room_index[cid_lock])
-                    else:
-                        # Unknown room id: don't silently downgrade the lock to
-                        # "any room" — record it so the response can surface it.
-                        bad_room_locks.append({
-                            "lessonId": lesson.get("id") or f"lesson_{lesson_idx}",
-                            "classroomId": str(cid_lock),
-                        })
+                is_locked = bool(c.get("locked"))
+                if is_locked:
+                    if isinstance(c.get("day"), int) and 0 <= c["day"] < num_days:
+                        model.Add(day_var == c["day"])
+                    if isinstance(c.get("period"), int) and c["period"] in period_to_offset:
+                        model.Add(period_var == c["period"])
+                    cid_lock = c.get("classroomId")
+                    if cid_lock is not None:
+                        if rooms and cid_lock in room_index:
+                            model.Add(room_var == room_index[cid_lock])
+                        else:
+                            bad_room_locks.append({
+                                "lessonId": lesson.get("id") or f"lesson_{lesson_idx}",
+                                "classroomId": str(cid_lock),
+                            })
+                else:
+                    if isinstance(c.get("day"), int) and 0 <= c["day"] < num_days:
+                        model.AddHint(day_var, c["day"])
+                    if isinstance(c.get("period"), int) and c["period"] in period_to_offset:
+                        model.AddHint(period_var, c["period"])
+                    cid_lock = c.get("classroomId")
+                    if cid_lock is not None:
+                        if rooms and cid_lock in room_index:
+                            model.AddHint(room_var, room_index[cid_lock])
+                        else:
+                            bad_room_locks.append({
+                                "lessonId": lesson.get("id") or f"lesson_{lesson_idx}",
+                                "classroomId": str(cid_lock),
+                            })
+
+            locked_days = set(payload.get("lockedDays") or payload.get("blockedDays") or [])
+            if not is_locked:
+                for ld in locked_days:
+                    if 0 <= ld < num_days:
+                        model.Add(day_var != ld)
 
             # Teacher timeOff: hard-forbid "unavailable" slots for any teacher on this lesson.
             for tidx in teacher_idxs_lesson:
@@ -433,7 +455,24 @@ def solve(
         lesson_to_occs.setdefault(o["lesson_idx"], []).append(o)
     for lesson_idx, group in lesson_to_occs.items():
         if len(group) > 1 and lesson_idx not in same_day_relation_lessons:
-            model.AddAllDifferent([g["day_var"] for g in group])
+            if len(group) <= num_days:
+                model.AddAllDifferent([g["day_var"] for g in group])
+            else:
+                cap = math.ceil(len(group) / num_days)
+                ideal_min = math.floor(len(group) / num_days)
+                for day in range(num_days):
+                    on_day_bools = []
+                    for g in group:
+                        b = model.NewBoolVar(f"L{lesson_idx}_O{g['occ_idx']}_on_d{day}")
+                        model.Add(g["day_var"] == day).OnlyEnforceIf(b)
+                        model.Add(g["day_var"] != day).OnlyEnforceIf(b.Not())
+                        on_day_bools.append(b)
+                    model.Add(sum(on_day_bools) <= cap)
+                    if ideal_min > 0:
+                        under = model.NewIntVar(0, ideal_min, f"L{lesson_idx}_under_d{day}")
+                        model.Add(sum(on_day_bools) + under >= ideal_min)
+                        soft_terms.append(under)
+                        soft_weights.append(50)
 
     # --- Card relations (ported from JS solver — hard constraints only) ---
     relations = payload.get("relations") or []

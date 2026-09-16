@@ -262,13 +262,24 @@ import "./backend_client.js";
 
   function assignmentToCards(assignment) {
     if (!Array.isArray(assignment)) return [];
+    const origCards = (state && state.school && state.school.cards) || [];
+    const origLocked = new Set(
+      origCards
+        .filter((c) => c && c.locked)
+        .map((c) => `${String(c.lessonId).replace(/#\d+$/, "")}|${c.day}|${c.period}`)
+    );
     const out = [];
     for (const a of assignment) {
+      const baseId = String(a.lessonId).replace(/#\d+$/, "");
+      const isLocked = !!a.locked
+        || origLocked.has(`${baseId}|${a.day}|${a.period}`)
+        || origLocked.has(`${a.lessonId}|${a.day}|${a.period}`);
       out.push({
         lessonId: a.lessonId,
         day: a.day,
         period: a.period,
         classroomId: a.classroomId || null,
+        ...(isLocked ? { locked: true } : {}),
       });
     }
     return out;

@@ -271,12 +271,29 @@
         sub.emit({ type: "done", result: draft });
         return;
       }
+      const origLocked = new Set(
+        (school.cards || [])
+          .filter((c) => c && c.locked)
+          .map((c) => `${String(c.lessonId).replace(/#\d+$/, "")}|${c.day}|${c.period}`)
+      );
       const cards = (draft && draft.assignment)
-        ? draft.assignment.map((a) => ({ lessonId: a.lessonId, day: a.day, period: a.period, classroomId: a.classroomId }))
+        ? draft.assignment.map((a) => {
+            const baseId = String(a.lessonId).replace(/#\d+$/, "");
+            const isLocked = !!a.locked || origLocked.has(`${baseId}|${a.day}|${a.period}`) || origLocked.has(`${a.lessonId}|${a.day}|${a.period}`);
+            return {
+              lessonId: a.lessonId,
+              day: a.day,
+              period: a.period,
+              classroomId: a.classroomId,
+              locked: isLocked,
+            };
+          })
         // Cold generate must NOT fall back to the school's existing cards —
         // that would silently replay the old timetable (the "fake
-        // generation" bug). Polish from scratch instead.
-        : (options.mode === "generate" ? [] : (school.cards || []));
+        // generation" bug). Polish from scratch instead, but preserve user-locked cards.
+        : (options.mode === "generate"
+            ? (school.cards || []).filter((c) => c && c.locked)
+            : (school.cards || []));
       const seeded = { ...school, cards };
       // Stage 1 finished → transition to "polishing" before kicking off stage 2.
       sub.emit({ type: "phase", phase: "polishing" });

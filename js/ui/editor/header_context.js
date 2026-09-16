@@ -31,7 +31,14 @@ import "./grid_canvas.js";
 
   function lockDay(d, lock) {
     const S = window.APP && window.APP.school;
-    if (!S || !S.cards) return;
+    if (!S) return;
+    S.cards = S.cards || [];
+    S.lockedDays = S.lockedDays || [];
+    if (lock) {
+      if (!S.lockedDays.includes(d)) S.lockedDays.push(d);
+    } else {
+      S.lockedDays = S.lockedDays.filter((x) => x !== d);
+    }
     let count = 0;
     for (const card of S.cards) {
       if (card.day !== d) continue;
@@ -45,7 +52,7 @@ import "./grid_canvas.js";
     const host = document.querySelector(".chrx-editor");
     if (host && window.Editor && window.Editor.render) window.Editor.render(host);
     const dayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-    notify((lock ? "Locked " : "Unlocked ") + count + " cards on " + (dayNames[d] || "day " + (d + 1)));
+    notify((lock ? "Locked " : "Unlocked ") + (dayNames[d] || "day " + (d + 1)) + (count ? ` (${count} cards pinned)` : " (blocked from new placements)"));
   }
 
   function itemsForDay(d) {

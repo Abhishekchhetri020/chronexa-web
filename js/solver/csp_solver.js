@@ -198,7 +198,11 @@ function buildModel(school) {
   if (Array.isArray(school.cards)) {
     for (const c of school.cards) {
       if (!c || !c.locked || !c.lessonId) continue;
-      (lockedCardsByLesson[c.lessonId] = lockedCardsByLesson[c.lessonId] || []).push(c);
+      const baseId = String(c.lessonId).replace(/#\d+$/, "");
+      (lockedCardsByLesson[baseId] = lockedCardsByLesson[baseId] || []).push(c);
+      if (baseId !== c.lessonId) {
+        (lockedCardsByLesson[c.lessonId] = lockedCardsByLesson[c.lessonId] || []).push(c);
+      }
     }
     for (const k in lockedCardsByLesson) {
       lockedCardsByLesson[k].sort((a, b) => (a.day - b.day) || (a.period - b.period));
@@ -1303,8 +1307,11 @@ function buildModel(school) {
     }
   }
 
+  const lockedDays = new Set(school.lockedDays || school.blockedDays || []);
+
   return {
     days, periodsPerDay, totalSlots,
+    lockedDays,
     lessonCount, teacherCount: teacherIds.length, classCount: classIds.length,
     roomCount: roomIds.length, subjectCount: subjectIds.length,
     teacherIds, classIds, roomIds, subjectIds,
@@ -1373,9 +1380,11 @@ function buildModel(school) {
 }
 
 function inferDays(school) {
-  // Caller can explicitly set school.daysPerWeek; otherwise infer from the
-  // largest dayIdx referenced in cards / timeOff / fixedDay, defaulting to 5.
-  if (typeof school.daysPerWeek === "number") return school.daysPerWeek | 0;
+  // Caller can explicitly set school.daysPerWeek or school.settings.daysPerWeek;
+  // otherwise infer from the largest dayIdx referenced in cards / timeOff / fixedDay, defaulting to 5.
+  const explicit = (typeof school.daysPerWeek === "number" ? school.daysPerWeek : null)
+    ?? (typeof school.settings?.daysPerWeek === "number" ? school.settings.daysPerWeek : null);
+  if (explicit != null) return Math.max(1, explicit | 0);
   let maxDay = 0;
   if (school.cards && school.cards.length) {
     for (const c of school.cards) if (c.day > maxDay) maxDay = c.day | 0;
@@ -1791,6 +1800,11 @@ function _canPlaceJS(model, state, lessonIdx, slot, roomIdx) {
   // Fixed-slot check
   const fixed = model.lessonFixedSlot[lessonIdx];
   if (fixed >= 0 && fixed !== slot) return FAIL.FIXED_SLOT_MISMATCH;
+
+  // Blocked / locked day check: if the school has lockedDays and this lesson is NOT fixed to this slot
+  if (model.lockedDays && model.lockedDays.has(d)) {
+    if (fixed !== slot) return FAIL.DAY_LOCKED;
+  }
 
   for (let k = 0; k < teacherCount; k++) {
     const t = model.lessonTeacherFlat[teacherStart + k];
