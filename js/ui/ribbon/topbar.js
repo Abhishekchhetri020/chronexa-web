@@ -114,10 +114,6 @@ import "../state.js";
     if ((e.metaKey || e.ctrlKey) && ((e.key === "y" || e.key === "Y") || (e.shiftKey && (e.key === "Z" || e.key === "z")))) {
       e.preventDefault(); dispatch("app:redo");
     }
-    if ((e.metaKey || e.ctrlKey) && !e.shiftKey && (e.key === "o" || e.key === "O")) { e.preventDefault(); dispatch("app:open-file"); }
-    if ((e.metaKey || e.ctrlKey) && !e.shiftKey && (e.key === "v" || e.key === "V")) { e.preventDefault(); dispatch("app:verify"); }
-    if ((e.metaKey || e.ctrlKey) && !e.shiftKey && (e.key === "n" || e.key === "N")) { e.preventDefault(); dispatch("app:new"); }
-    if ((e.metaKey || e.ctrlKey) && !e.shiftKey && (e.key === "p" || e.key === "P")) { e.preventDefault(); dispatch("app:print-preview"); }
   });
 
   let _perspective = "class", _zoom = 100;

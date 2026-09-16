@@ -318,6 +318,7 @@ import "./state.js";
       else if (k === "e") { e.preventDefault(); fire("app:export-timetable-xml"); }
       else if (k === "o") { e.preventDefault(); fire("app:open-file"); }
       else if (k === "n") { e.preventDefault(); fire("app:new"); }
+      else if (k === "p") { e.preventDefault(); fire("app:print-preview"); }
     } else if ((e.key === "[" || e.key === "]") && !e.metaKey && !e.ctrlKey && !e.altKey && !isTypingTarget(e.target)) {
       e.preventDefault();
       togglePanel(e.key === "[" ? "side" : "rail");

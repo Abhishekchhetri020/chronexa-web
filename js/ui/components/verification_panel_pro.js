@@ -20,6 +20,8 @@ import "../ribbon/topbar.js";
 (function (global) {
   "use strict";
 
+  let activeRoot = null;
+
   function el(tag, attrs, ...kids) {
     const n = document.createElement(tag);
     if (attrs) for (const k in attrs) {
@@ -151,14 +153,19 @@ import "../ribbon/topbar.js";
   function open(school) {
     school = school || (window.APP && window.APP.school);
     if (!school) { (window._chrxNotify || console.log)("Open a timetable first.", "error"); return; }
+    if (activeRoot && activeRoot.isConnected) {
+      activeRoot.querySelector(".chrx-vpro-panel")?.focus();
+      return activeRoot;
+    }
     ensureStyles();
     const root = el("div", { class: "chrx-vpro-root",
-      onclick: e => { if (e.target === root) root.remove(); } });
-    const panel = el("div", { class: "chrx-vpro-panel" });
+      onclick: e => { if (e.target === root) close(); } });
+    const panel = el("div", { class: "chrx-vpro-panel", role: "dialog",
+      "aria-modal": "true", "aria-labelledby": "chrx-vpro-title", tabindex: "-1" });
 
     panel.appendChild(el("header", null,
-      el("h2", null, "🔍 Verification — with auto-fix suggestions"),
-      el("button", { class: "chrx-vpro-close", "aria-label": "Close", onclick: () => root.remove() }, "×"),
+      el("h2", { id: "chrx-vpro-title" }, "🔍 Verification — with auto-fix suggestions"),
+      el("button", { class: "chrx-vpro-close", "aria-label": "Close", onclick: close }, "×"),
     ));
 
     const violations = collectViolations(school);
@@ -187,10 +194,18 @@ import "../ribbon/topbar.js";
 
     root.appendChild(panel);
     document.body.appendChild(root);
+    activeRoot = root;
     render(violations, school, root, panel);
+    panel.focus();
 
-    function onKey(e) { if (e.key === "Escape") { root.remove(); document.removeEventListener("keydown", onKey, true); } }
+    function close() {
+      root.remove();
+      if (activeRoot === root) activeRoot = null;
+      document.removeEventListener("keydown", onKey, true);
+    }
+    function onKey(e) { if (e.key === "Escape") { e.preventDefault(); close(); } }
     document.addEventListener("keydown", onKey, true);
+    return root;
   }
 
   function ensureStyles() {
