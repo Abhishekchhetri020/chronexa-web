@@ -2,6 +2,7 @@
 import "../state.js";
 import "../i18n.js";
 import "./backend_client.js";
+import "./progress_modal.js";  // provides SolverUI.expectedCardCount
 
 /* Chronexa Solver — Result panel.
  *
@@ -425,14 +426,7 @@ import "./backend_client.js";
     const status = state.result.status || "DONE";
    // Hero denominator should be total expected cards (lessons × periodsPerWeek),
    // not lesson count — a single lesson can spawn many cards per week.
-   let expectedCards = 0;
-   if (state.school && state.school.lessons) {
-     for (const l of state.school.lessons) {
-       const len = l.lessonLength || (l.isLabDouble ? 2 : 1);
-       const ppw = Number(l.periodsPerWeek) || 0;
-       expectedCards += ppw > 0 ? Math.max(1, Math.round(ppw / len)) : 0;
-     }
-   }
+   const expectedCards = global.SolverUI.expectedCardCount(state.school);
     const placedNum  = (state.result.stats && state.result.stats.placed)   || 0;
     const unplacedNm = (state.result.stats && state.result.stats.unplaced) || 0;
     const totalLessons = expectedCards || (placedNum + unplacedNm);

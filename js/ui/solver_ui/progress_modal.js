@@ -526,6 +526,20 @@ import "./backend_client.js";
     host.setAttribute("aria-hidden", "true");
   }
 
+  // Progress events count CARDS, so the denominator must too. A lesson with
+  // periodsPerWeek=4 spawns 4 cards, so lessons.length under-counts by ~2.5x
+  // and pins the ring at 100% ("862 of 381 placed").
+  function expectedCardCount(school) {
+    let n = 0;
+    for (const l of (school && school.lessons) || []) {
+      const len = l.lessonLength || (l.isLabDouble ? 2 : 1);
+      const ppw = Number(l.periodsPerWeek) || 0;
+      n += ppw > 0 ? Math.max(1, Math.round(ppw / len)) : 0;
+    }
+    return n;
+  }
+
   global.SolverUI = global.SolverUI || {};
   global.SolverUI.Progress = { open, close, setPhase, PHASE_ORDER };
+  global.SolverUI.expectedCardCount = expectedCardCount;
 })(typeof window !== "undefined" ? window : globalThis);

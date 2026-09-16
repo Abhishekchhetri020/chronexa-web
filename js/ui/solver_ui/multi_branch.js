@@ -46,7 +46,8 @@ import "./backend_client.js";
     let doneCount = 0;
     let bestProgress = null;
     let bestResult = null;
-    let bestScore = Infinity; // lower is better (soft score = penalty)
+    let bestScore = -Infinity; // HIGHER is better: stats.softScore is a negated
+                               // penalty (csp_solver.js keeps the greater value)
     let bestPlaced = 0;
     // Best mid-run placement snapshot across all branches (solver attaches
     // `snapshot` to progress events every ~2s). This is what "Accept partial
@@ -93,12 +94,17 @@ import "./backend_client.js";
       const stats = result && result.stats;
       const placed = stats ? (stats.placed || 0) : 0;
       const unplaced = stats ? (stats.unplaced || 0) : 0;
-      const softScore = (result && typeof result.softScore === "number")
-        ? result.softScore : Infinity;
+      // softScore lives on result.stats (see csp_solver.js solve() return),
+      // NOT at the top level. Reading it from the wrong place made every
+      // branch score Infinity, so the tie-break was never true and the
+      // 8-branch search silently kept whichever branch finished FIRST
+      // instead of the best one.
+      const softScore = (stats && typeof stats.softScore === "number")
+        ? stats.softScore : -Infinity;
 
-      // Best = most placed, then lowest soft score
+      // Best = most placed, then highest soft score
       const isBetter = placed > bestPlaced ||
-        (placed === bestPlaced && softScore < bestScore);
+        (placed === bestPlaced && softScore > bestScore);
 
       if (isBetter || !bestResult) {
         bestResult = result;

@@ -2,6 +2,7 @@
 import "../state.js";
 import "../components/verification.js";
 import "./backend_client.js";
+import "./progress_modal.js";  // provides SolverUI.expectedCardCount
 
 /* Chronexa Solver — Test dialog.
  *
@@ -104,7 +105,7 @@ import "./backend_client.js";
       source,
       mode: "test",
       timeLimitSec: 5,
-      totalLessons: (school.lessons || []).length,
+      totalLessons: global.SolverUI.expectedCardCount(school),
       onDone: (result) => {
         if (!result) { if (onClose) onClose(); return; }
         const v = result.violations || [];
