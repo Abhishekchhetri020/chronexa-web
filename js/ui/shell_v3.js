@@ -259,6 +259,8 @@ import "./state.js";
     items.push({ icon: "↘",  label: "Export XML",          sub: "⌘E", run: () => fire("app:export-timetable-xml") });
     items.push({ icon: "📊", label: "Statistics",          sub: "",   run: () => fire("app:statistics") });
     items.push({ icon: "💡", label: "Advisor",             sub: "",   run: () => fire("app:advisor") });
+    items.push({ icon: "📜", label: "List inputted constraints", sub: "", run: () => fire("app:list-constraints") });
+    items.push({ icon: "🛡", label: "Verify all",          sub: "⌘V", run: () => fire("app:verify") });
     return items;
   }
   let activeIdx = 0;
@@ -309,6 +311,13 @@ import "./state.js";
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
       e.preventDefault();
       openPalette();
+    } else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !isTypingTarget(e.target)) {
+      const k = e.key.toLowerCase();
+      if (k === "v") { e.preventDefault(); fire("app:verify"); }
+      else if (k === "i") { e.preventDefault(); fire("app:improve"); }
+      else if (k === "e") { e.preventDefault(); fire("app:export-timetable-xml"); }
+      else if (k === "o") { e.preventDefault(); fire("app:open-file"); }
+      else if (k === "n") { e.preventDefault(); fire("app:new"); }
     } else if ((e.key === "[" || e.key === "]") && !e.metaKey && !e.ctrlKey && !e.altKey && !isTypingTarget(e.target)) {
       e.preventDefault();
       togglePanel(e.key === "[" ? "side" : "rail");

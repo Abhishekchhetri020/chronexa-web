@@ -546,6 +546,19 @@ import "./start_screen.js";
       if (n) showStep(n);
     });
 
+    // ─── App event router for menu actions ───────────────────────
+    window.addEventListener("app:quick-add-lesson", () => {
+      window.dispatchEvent(new CustomEvent("app:open-entity", { detail: { kind: "lessons", create: true } }));
+    });
+    window.addEventListener("app:compare-last", () => {
+      window.dispatchEvent(new CustomEvent("app:open-snapshot"));
+    });
+    window.addEventListener("app:suggest-fix", () => {
+      if (window.VerificationPro && typeof window.VerificationPro.open === "function") {
+        window.VerificationPro.open();
+      }
+    });
+
     // ─── Editor view tools: icon + label, so the label can change without
     //     wiping the icon (v3 studio toolbar). ─────────────────────────
     function setToolLabel(btn, text) {
@@ -665,9 +678,9 @@ import "./start_screen.js";
     if (densBtn) {
       window.APP.editor = window.APP.editor || {};
       const ZOOM_ORDER = ["far", "mid", "near"];
-      const ZOOM_LABEL = { far: "Overview", mid: "Codes", near: "Detail" };
+      const ZOOM_LABEL = { far: "Compact", mid: "Codes", near: "Detail" };
       const ZOOM_HINT = {
-        far: "Zoom: colour-only overview — click for subject codes",
+        far: "Zoom: 26px compact — full school view (aSc density)",
         mid: "Zoom: subject codes — click for teacher and room detail",
         near: "Zoom: code, teacher and room — click to zoom back out",
       };

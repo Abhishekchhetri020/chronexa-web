@@ -194,6 +194,7 @@ import "../ui/components/solver_presets.js";
 import "../ui/components/per_day_bell_override.js";
 import "../ui/components/entity_field_gaps.js";
 import "../ui/components/advisor.js";
+import "../ui/components/inputted_constraints_dialog.js";
 import "../solver/improve_mode.js";
 import "../solver/score_expr.js";
 import "../ui/print_preview/print_preview.js";

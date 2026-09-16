@@ -17,7 +17,7 @@ window.Editor = (function () {
   // Semantic zoom levels, coarsest first. The cycle order matches the row
   // heights, so stepping through it reads as zooming rather than reshuffling.
   const ZOOM_LEVELS = ["far", "mid", "near"];
-  const ZOOM_LABELS = { far: "Overview", mid: "Codes", near: "Detail" };
+  const ZOOM_LABELS = { far: "Compact", mid: "Codes", near: "Detail" };
 
   // `density` was the old two-state control (compact | comfortable). It is kept
   // as a read-only alias so a returning user's saved preference and the rest of
@@ -871,9 +871,8 @@ window.Editor = (function () {
         line1 = subjFull;
         line2 = [teacherShort, roomShort].filter(Boolean).join(" · ");
       } else if (zoom === "far") {
-        // Pattern-reading zoom: the colour IS the datum. A 3-character code in a
-        // 22px row would be illegible anyway, so it is deliberately not drawn.
-        line1 = "";
+        // aSc density mode (26px row pitch): crisp subject code, fits full school
+        line1 = subjCode;
         line2 = "";
       } else if (zoom === "near") {
         // Reading zoom: spend the extra row height on the fields you would

@@ -539,7 +539,16 @@ import "./backend_client.js";
     return n;
   }
 
-  global.SolverUI = global.SolverUI || {};
-  global.SolverUI.Progress = { open, close, setPhase, PHASE_ORDER };
-  global.SolverUI.expectedCardCount = expectedCardCount;
+ global.SolverUI = global.SolverUI || {};
+ global.SolverUI.Progress = { open, close, setPhase, PHASE_ORDER };
+ global.SolverUI.expectedCardCount = expectedCardCount;
+
+  window.addEventListener("app:generate-stop", () => {
+    if (state && state.source) {
+      doCancel();
+      (window._chrxNotify || console.log)("Generation stopped.");
+    } else {
+      (window._chrxNotify || console.log)("No generation running.");
+    }
+  });
 })(typeof window !== "undefined" ? window : globalThis);

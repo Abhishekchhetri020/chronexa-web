@@ -34,10 +34,9 @@
 
   --e3-row-h: 52px;
   --e3-row-h-compact: 36px;
-  /* Semantic zoom row heights. "far" is for reading pattern rather than text,
-     so it drops below the 36px working row; "near" spends height on a second
-     line of real information (teacher · room) instead of just more padding. */
-  --e3-row-h-far: 22px;
+  /* Semantic zoom row heights. "far" is the ultra-dense aSc mode (26px pitch),
+     fitting 20+ classes in a single screen; "near" adds teacher · room line. */
+  --e3-row-h-far: 26px;
   --e3-row-h-near: 56px;
 }
 
@@ -496,13 +495,19 @@
    read "MA" in one mode and "MAT" in the other. Width is not the lever here;
    what the cell shows is. */
 .chrx-shell .chrx-vkarta--zoom-far {
-  padding: 0;
+  padding: 0 2px;
   justify-content: center;
-  border-left-width: 0;
+  border-left-width: 2px;
 }
-/* No text node is emitted at this level, but guard anyway so a stray label can
-   never paint into a 22px row. */
-.chrx-shell .chrx-vkarta--zoom-far .chrx-vk-line1,
+.chrx-shell .chrx-vkarta--zoom-far .chrx-vk-line1 {
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: clip;
+  display: block;
+}
 .chrx-shell .chrx-vkarta--zoom-far .chrx-vk-line2 { display: none; }
 
 .chrx-shell .chrx-vkarta--zoom-mid { padding: 0 3px 0 4px; justify-content: center; }

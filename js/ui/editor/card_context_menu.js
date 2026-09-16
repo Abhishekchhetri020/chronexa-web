@@ -132,13 +132,62 @@ import "./card_in_hand.js";
     }
   }
 
-  function quickChanges(lessonId) {
+ function quickChanges(lessonId) {
+   const S = window.APP && window.APP.school;
+   if (!S) return;
+   const lesson = S._idx && S._idx.lessonById && S._idx.lessonById[lessonId];
+   if (lesson) {
+     window.dispatchEvent(new CustomEvent("app:open-entity",
+       { detail: { kind: "subjects" } }));
+   }
+ }
+
+  function clearRowCards(lessonId) {
     const S = window.APP && window.APP.school;
-    if (!S) return;
-    const lesson = S._idx && S._idx.lessonById && S._idx.lessonById[lessonId];
-    if (lesson) {
-      window.dispatchEvent(new CustomEvent("app:open-entity",
-        { detail: { kind: "subjects" } }));
+    if (!S || !S.cards || !S._idx) return;
+    const lesson = S._idx.lessonById && S._idx.lessonById[lessonId];
+    if (!lesson) return;
+    const perspective = (window.APP && window.APP.editor && window.APP.editor.perspective) || "class";
+    const entityId = perspective === "class" ? (lesson.classIds && lesson.classIds[0])
+                   : perspective === "teacher" ? (lesson.teacherIds && lesson.teacherIds[0])
+                   : lesson.subjectId;
+    const entityName = perspective === "class" ? (S._idx.classById?.[entityId]?.name || entityId)
+                     : perspective === "teacher" ? (S._idx.teacherById?.[entityId]?.name || entityId)
+                     : (S._idx.subjectById?.[entityId]?.name || entityId);
+    if (!confirm(`Clear all placed cards for ${perspective} "${entityName}"?`)) return;
+
+    const cardsToRemove = S.cards.filter(c => {
+      const l = S._idx.lessonById?.[c.lessonId];
+      if (!l) return false;
+      if (perspective === "class") return (l.classIds || []).includes(entityId);
+      if (perspective === "teacher") return (l.teacherIds || []).includes(entityId);
+      return l.subjectId === entityId;
+    });
+
+    if (!cardsToRemove.length) {
+      notify("No placed cards to remove.");
+      return;
+    }
+
+    const removedSnapshot = cardsToRemove.slice();
+    function doIt() {
+      const idsToRemove = new Set(removedSnapshot);
+      S.cards = S.cards.filter(c => !idsToRemove.has(c));
+      rerender();
+      notify(`Cleared ${removedSnapshot.length} cards for ${entityName}.`);
+    }
+    function undoIt() {
+      for (const c of removedSnapshot) {
+        if (!S.cards.includes(c)) S.cards.push(c);
+      }
+      rerender();
+      notify(`Restored ${removedSnapshot.length} cards for ${entityName}.`);
+    }
+
+    if (window.APP && window.APP.audit && typeof window.APP.audit.commit === "function") {
+      window.APP.audit.commit({ label: "Clear row cards", do: doIt, undo: undoIt });
+    } else {
+      doIt();
     }
   }
 
@@ -165,13 +214,14 @@ import "./card_in_hand.js";
     const lesson = S._idx && S._idx.lessonById && S._idx.lessonById[lessonId];
     const isLocked = (card && card.locked) || (lesson && (lesson.fixedDay != null || lesson.fixedPeriod != null));
 
-    const items = [
-      { icon: "🗑", label: "Remove",       run: () => removeCard(lessonId, day, period) },
-      { sep: true },
-      isLocked
-        ? { icon: "🔓", label: "Unlock",   run: () => unlockCard(lessonId, day, period) }
-        : { icon: "🔒", label: "Lock",     run: () => lockCard(lessonId, day, period) },
-      { sep: true },
+   const items = [
+     { icon: "🗑", label: "Remove",       run: () => removeCard(lessonId, day, period) },
+     { sep: true },
+     isLocked
+       ? { icon: "🔓", label: "Unlock",   run: () => unlockCard(lessonId, day, period) }
+       : { icon: "🔒", label: "Lock",     run: () => lockCard(lessonId, day, period) },
+      { icon: "🧹", label: "Delete row",   run: () => clearRowCards(lessonId) },
+     { sep: true },
       { icon: "✎",  label: "Edit lesson", run: () => editLesson(lessonId) },
       { icon: "🔍", label: "Find",        run: () => findCard(lessonId) },
       { sep: true },

@@ -188,6 +188,9 @@ import "../ribbon/topbar.js";
     root.appendChild(panel);
     document.body.appendChild(root);
     render(violations, school, root, panel);
+
+    function onKey(e) { if (e.key === "Escape") { root.remove(); document.removeEventListener("keydown", onKey, true); } }
+    document.addEventListener("keydown", onKey, true);
   }
 
   function ensureStyles() {
@@ -220,6 +223,7 @@ import "../ribbon/topbar.js";
   }
 
   window.addEventListener("app:verification-pro", () => open());
+  window.addEventListener("app:verify", () => open());
 
   global.VerificationPro = { open };
 })(window);
