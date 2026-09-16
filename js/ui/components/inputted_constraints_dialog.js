@@ -11,6 +11,8 @@ import "../state.js";
 (function (global) {
   "use strict";
 
+  let activeRoot = null;
+
   function el(tag, attrs, ...kids) {
     const n = document.createElement(tag);
     if (attrs) for (const k in attrs) {
@@ -27,6 +29,40 @@ import "../state.js";
     return n;
   }
 
+  function humanize(value) {
+    return String(value || "")
+      .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+      .replace(/[_-]+/g, " ")
+      .replace(/^./, c => c.toUpperCase());
+  }
+
+  function hasTimeOff(entity) {
+    const value = entity && (entity.timeOff != null ? entity.timeOff : entity.timeoff);
+    if (Array.isArray(value)) {
+      return value.flat(Infinity).some(cell => Number(cell) > 0 || cell === "-");
+    }
+    return typeof value === "string" && (value.includes("1") || value.includes("2") || value.includes("-"));
+  }
+
+  function hasConstraintValue(value) {
+    if (value == null || value === "" || value === false) return false;
+    if (Array.isArray(value)) return value.some(hasConstraintValue);
+    if (typeof value === "object") return Object.values(value).some(hasConstraintValue);
+    return true;
+  }
+
+  function describeValue(value) {
+    if (Array.isArray(value)) return value.map(describeValue).join(", ");
+    if (value && typeof value === "object") {
+      return Object.entries(value)
+        .filter(([, v]) => hasConstraintValue(v))
+        .map(([k, v]) => `${humanize(k)}: ${describeValue(v)}`)
+        .join(" · ");
+    }
+    if (value === true) return "Enabled";
+    return String(value);
+  }
+
   function collectConstraints(school) {
     school = school || (window.APP && window.APP.school);
     if (!school) return [];
@@ -35,89 +71,110 @@ import "../state.js";
     const teachers = school.teachers || [];
     const classes = school.classes || [];
     const rooms = school.classrooms || [];
+    const subjects = school.subjects || [];
     const relations = school.relations || [];
     const cards = school.cards || [];
     const lessons = school.lessons || [];
     const lessonById = _idx.lessonById || Object.fromEntries(lessons.map(l => [l.id, l]));
     const teacherById = _idx.teacherById || Object.fromEntries(teachers.map(t => [t.id, t]));
     const classById = _idx.classById || Object.fromEntries(classes.map(c => [c.id, c]));
-    const subjectById = _idx.subjectById || Object.fromEntries((school.subjects || []).map(s => [s.id, s]));
+    const roomById = _idx.classroomById || Object.fromEntries(rooms.map(r => [r.id, r]));
+    const subjectById = _idx.subjectById || Object.fromEntries(subjects.map(s => [s.id, s]));
+    const openEntity = (kind, detail) => () => window.dispatchEvent(new CustomEvent("app:open-entity", {
+      detail: Object.assign({ kind }, detail || {}),
+    }));
 
-    // 1. Relations
     for (const r of relations) {
-      const subjs = (r.subjectids || []).map(id => subjectById[id]?.name || id).join(", ");
-      const cls = (r.classids || []).map(id => classById[id]?.name || id).join(", ");
-      const tchs = (r.teacherids || []).map(id => teacherById[id]?.name || id).join(", ");
-      const desc = [subjs, cls, tchs].filter(Boolean).join(" · ");
+      const relationType = r.type || r.typ || "cardrelation";
+      const names = [];
+      names.push(...(r.subjectids || []).map(id => subjectById[id]?.name || id));
+      names.push(...(r.subject2ids || []).map(id => subjectById[id]?.name || id));
+      names.push(...(r.classids || []).map(id => classById[id]?.name || id));
+      names.push(...(r.teacherids || []).map(id => teacherById[id]?.name || id));
+      names.push(...(r.classroomids || []).map(id => roomById[id]?.name || id));
+      const state = r.disabled ? "Disabled" : "Enabled";
       items.push({
         kind: "Relation",
-        type: r.type || "cardrelation",
-        target: r.name || ("Relation #" + (r.id || "")),
-        details: desc || (r.description || "Constraint relation"),
+        type: relationType,
+        target: r.name || humanize(relationType),
+        details: [state, names.join(", ") || r.description].filter(Boolean).join(" · "),
         badge: "Relation",
-        action: () => window.dispatchEvent(new CustomEvent("app:open-entity", { detail: { kind: "relations" } }))
+        action: openEntity("relations", { focusRelationId: r.id }),
       });
     }
 
-    // 2. Time-off constraints
-    for (const t of teachers) {
-      if (t.timeoff && typeof t.timeoff === "string" && (t.timeoff.includes("1") || t.timeoff.includes("-"))) {
-        items.push({
-          kind: "Time-off",
-          type: "teacher-timeoff",
-          target: t.name || t.lastName || t.id,
-          details: "Teacher availability restrictions applied",
-          badge: "Teacher",
-          action: () => window.dispatchEvent(new CustomEvent("app:open-entity", { detail: { kind: "teachers", focusTimeoff: t.id } }))
-        });
-      }
-    }
-    for (const c of classes) {
-      if (c.timeoff && typeof c.timeoff === "string" && (c.timeoff.includes("1") || c.timeoff.includes("-"))) {
-        items.push({
-          kind: "Time-off",
-          type: "class-timeoff",
-          target: c.name || c.short || c.id,
-          details: "Class period availability restrictions applied",
-          badge: "Class",
-          action: () => window.dispatchEvent(new CustomEvent("app:open-entity", { detail: { kind: "classes", focusTimeoff: c.id } }))
-        });
+    const entitySets = [
+      { list: teachers, label: "Teacher", route: "teachers" },
+      { list: classes, label: "Class", route: "classes" },
+      { list: rooms, label: "Room", route: "classrooms" },
+      { list: subjects, label: "Subject", route: "subjects" },
+    ];
+    for (const set of entitySets) {
+      for (const entity of set.list) {
+        const name = entity.name || entity.short || entity.abbr || entity.id;
+        if (hasTimeOff(entity)) {
+          items.push({
+            kind: "Time-off",
+            type: `${set.label.toLowerCase()}-timeoff`,
+            target: name,
+            details: `${set.label} availability restrictions applied`,
+            badge: set.label,
+            action: openEntity(set.route, { focusTimeoff: entity.id }),
+          });
+        }
+        for (const [key, value] of Object.entries(entity.constraints || {})) {
+          if (!hasConstraintValue(value)) continue;
+          items.push({
+            kind: "Rule",
+            type: `${set.label.toLowerCase()}-constraint-${key}`,
+            target: `${name} · ${humanize(key)}`,
+            details: describeValue(value),
+            badge: set.label,
+            action: openEntity(set.route, { focusConstraintId: entity.id }),
+          });
+        }
       }
     }
 
-    // 3. Locked / Fixed cards
-    let lockedCount = 0;
-    for (const card of cards) {
-      const l = lessonById[card.lessonId];
-      if (card.locked || (l && (l.fixedDay != null || l.fixedPeriod != null))) {
-        lockedCount++;
-      }
-    }
-    if (lockedCount > 0) {
+    const lockedCards = cards.filter(card => card.locked);
+    if (lockedCards.length) {
       items.push({
         kind: "Lock",
         type: "locked-cards",
-        target: `${lockedCount} Locked Card(s)`,
-        details: "Cards pinned to specific day and period slots (protected from solver)",
+        target: `${lockedCards.length} locked card${lockedCards.length === 1 ? "" : "s"}`,
+        details: "Pinned placements are protected from solver changes",
         badge: "Fixed",
-        action: () => (window._chrxNotify || console.log)(`${lockedCount} cards are locked on the grid.`)
+        action: () => (window._chrxNotify || console.log)(`${lockedCards.length} cards are locked on the grid.`),
       });
     }
 
-    // 4. Lessons with fixed room requirements
-    let labCount = 0;
-    for (const l of lessons) {
-      if (l.isLabDouble || l.requiresLab || l.preferredRoomId) labCount++;
-    }
-    if (labCount > 0) {
-      items.push({
-        kind: "Room",
-        type: "lab-requirements",
-        target: `${labCount} Lesson(s) with Room Constraints`,
-        details: "Dedicated lab, shared room, or specific classroom requirements",
-        badge: "Room",
-        action: () => window.dispatchEvent(new CustomEvent("app:open-entity", { detail: { kind: "lessons" } }))
-      });
+    for (const lesson of lessons) {
+      const subject = subjectById[lesson.subjectId];
+      const classNames = (lesson.classIds || []).map(id => classById[id]?.name || id).join(", ");
+      const lessonName = [subject?.name || lesson.subjectId || lesson.id, classNames].filter(Boolean).join(" · ");
+      const action = openEntity("lessons", { focusLessonId: lesson.id });
+      if (lesson.fixedDay != null || lesson.fixedPeriod != null) {
+        const slot = [lesson.fixedDay != null ? `day ${Number(lesson.fixedDay) + 1}` : "",
+          lesson.fixedPeriod != null ? `period ${lesson.fixedPeriod}` : ""].filter(Boolean).join(", ");
+        items.push({ kind: "Lock", type: "fixed-lesson", target: lessonName,
+          details: `Fixed to ${slot}`, badge: "Fixed", action });
+      }
+      const roomRules = [];
+      if (lesson.isLabDouble) roomRules.push("double-period lab");
+      if (lesson.requiresLab) roomRules.push("lab required");
+      if (lesson.preferredRoomId) roomRules.push(`preferred room: ${roomById[lesson.preferredRoomId]?.name || lesson.preferredRoomId}`);
+      if (roomRules.length) {
+        items.push({ kind: "Room", type: "lesson-room", target: lessonName,
+          details: roomRules.join(" · "), badge: "Room", action });
+      }
+      if (lesson.weeksDefId) {
+        items.push({ kind: "Calendar", type: "lesson-weeks", target: lessonName,
+          details: `Week definition: ${lesson.weeksDefId}`, badge: "Weeks", action });
+      }
+      if (lesson.termsDefId) {
+        items.push({ kind: "Calendar", type: "lesson-terms", target: lessonName,
+          details: `Term definition: ${lesson.termsDefId}`, badge: "Terms", action });
+      }
     }
 
     return items;
@@ -129,49 +186,99 @@ import "../state.js";
       (window._chrxNotify || console.log)("Open a timetable first.", "error");
       return;
     }
+    if (activeRoot && activeRoot.isConnected) {
+      activeRoot.querySelector(".chrx-cst-search")?.focus();
+      return activeRoot;
+    }
     ensureStyles();
     const constraints = collectConstraints(school);
+    const previousFocus = document.activeElement;
 
     const root = el("div", { class: "chrx-cst-root", onclick: e => { if (e.target === root) close(); } });
-    const panel = el("div", { class: "chrx-cst-panel" });
+    const panel = el("div", { class: "chrx-cst-panel", role: "dialog", "aria-modal": "true",
+      "aria-labelledby": "chrx-cst-title" });
 
     panel.appendChild(el("header", { class: "chrx-cst-head" },
-      el("h2", null, "📜 List of Inputted Constraints"),
+      el("h2", { id: "chrx-cst-title" }, "List of inputted constraints"),
       el("button", { class: "chrx-cst-close", "aria-label": "Close", onclick: close }, "×"),
     ));
 
-    const summary = el("div", { class: "chrx-cst-summary" },
-      el("span", null, `${constraints.length} active constraint rules in this timetable.`),
-      el("span", { style: "flex:1" }),
-      el("span", { class: "chrx-cst-hint" }, "Click any constraint to edit.")
+    const count = el("span", { class: "chrx-cst-count", "aria-live": "polite" });
+    const summary = el("div", { class: "chrx-cst-summary" }, count,
+      el("span", { class: "chrx-cst-hint" }, "Select a row to edit its source."),
     );
     panel.appendChild(summary);
 
+    const search = el("input", { class: "chrx-cst-search", type: "search",
+      placeholder: "Search constraints…", "aria-label": "Search constraints" });
+    const filter = el("select", { class: "chrx-cst-filter", "aria-label": "Filter by constraint type" },
+      el("option", { value: "" }, "All types"));
+    [...new Set(constraints.map(c => c.kind))].sort().forEach(kind =>
+      filter.appendChild(el("option", { value: kind }, kind)));
+    panel.appendChild(el("div", { class: "chrx-cst-tools" }, search, filter));
+
     const list = el("div", { class: "chrx-cst-list" });
-    if (!constraints.length) {
-      list.appendChild(el("div", { class: "chrx-cst-empty" },
-        "No constraints or relations defined yet. Use Specification → Relations or Time-off to add rules."));
-    } else {
-      constraints.forEach(c => {
-        const row = el("div", { class: "chrx-cst-row", onclick: c.action });
+    panel.appendChild(list);
+
+    function renderList() {
+      const query = search.value.trim().toLowerCase();
+      const kind = filter.value;
+      const visible = constraints.filter(c => {
+        if (kind && c.kind !== kind) return false;
+        if (!query) return true;
+        return [c.kind, c.type, c.target, c.details, c.badge]
+          .some(value => String(value || "").toLowerCase().includes(query));
+      });
+      count.textContent = `${visible.length} of ${constraints.length} inputted constraint${constraints.length === 1 ? "" : "s"}`;
+      list.replaceChildren();
+      if (!visible.length) {
+        list.appendChild(el("div", { class: "chrx-cst-empty" }, constraints.length
+          ? "No constraints match this search. Clear the search or choose another type."
+          : "No constraints are defined yet. Add a relation, availability rule, or entity constraint to see it here."));
+        return;
+      }
+      visible.forEach(c => {
+        const row = el("button", { type: "button", class: "chrx-cst-row", onclick: () => {
+          close();
+          c.action();
+        } });
         row.appendChild(el("span", { class: `chrx-cst-badge chrx-cst-badge--${c.kind.toLowerCase()}` }, c.badge));
         const body = el("div", { class: "chrx-cst-body" },
           el("div", { class: "chrx-cst-title" }, c.target),
           el("div", { class: "chrx-cst-desc" }, c.details)
         );
         row.appendChild(body);
-        row.appendChild(el("button", { type: "button", class: "chrx-cst-edit" }, "Edit"));
+        row.appendChild(el("span", { class: "chrx-cst-edit", "aria-hidden": "true" }, "Edit"));
         list.appendChild(row);
       });
     }
-    panel.appendChild(list);
+    search.addEventListener("input", renderList);
+    filter.addEventListener("change", renderList);
+    renderList();
 
     root.appendChild(panel);
     document.body.appendChild(root);
+    activeRoot = root;
+    search.focus();
 
-    function close() { root.remove(); document.removeEventListener("keydown", onKey, true); }
-    function onKey(e) { if (e.key === "Escape") { e.preventDefault(); close(); } }
+    function close() {
+      root.remove();
+      if (activeRoot === root) activeRoot = null;
+      document.removeEventListener("keydown", onKey, true);
+      if (previousFocus && previousFocus.isConnected && typeof previousFocus.focus === "function") previousFocus.focus();
+    }
+    function onKey(e) {
+      if (e.key === "Escape") { e.preventDefault(); close(); return; }
+      if (e.key !== "Tab") return;
+      const focusable = [...panel.querySelectorAll("button:not([disabled]),input:not([disabled]),select:not([disabled])")]
+        .filter(node => node.offsetParent !== null);
+      if (!focusable.length) return;
+      const first = focusable[0], last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
     document.addEventListener("keydown", onKey, true);
+    return root;
   }
 
   function ensureStyles() {
@@ -179,27 +286,26 @@ import "../state.js";
     const s = document.createElement("style");
     s.id = "chrx-cst-styles";
     s.textContent = `
-.chrx-cst-root{position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:flex-start;justify-content:center;padding:24px;z-index:1100;overflow:auto}
-.chrx-cst-panel{background:#fff;border-radius:14px;width:min(750px,95vw);max-height:85vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#0f172a}
-.chrx-cst-head{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid #e2e8f0}
-.chrx-cst-head h2{margin:0;font-size:16px;color:#1e3a8a}
-.chrx-cst-close{background:none;border:0;font-size:22px;cursor:pointer;color:#64748b}
-.chrx-cst-summary{display:flex;align-items:center;padding:10px 18px;background:#f8fafc;font-size:12px;color:#475569;border-bottom:1px solid #e2e8f0}
-.chrx-cst-hint{color:#64748b;font-style:italic}
-.chrx-cst-list{flex:1;overflow-y:auto;padding:10px 18px}
-.chrx-cst-empty{padding:32px;text-align:center;color:#64748b;font-size:14px}
-.chrx-cst-row{display:flex;align-items:center;gap:12px;padding:10px 8px;border-bottom:1px solid #f1f5f9;cursor:pointer;border-radius:6px;transition:background .15s}
-.chrx-cst-row:hover{background:#f8fafc}
-.chrx-cst-badge{font-size:10px;font-weight:700;text-transform:uppercase;padding:3px 7px;border-radius:4px;letter-spacing:.04em;color:#fff;flex-shrink:0}
-.chrx-cst-badge--relation{background:#2563eb}
-.chrx-cst-badge--time-off{background:#f59e0b}
-.chrx-cst-badge--lock{background:#dc2626}
-.chrx-cst-badge--room{background:#0d9488}
-.chrx-cst-body{flex:1}
-.chrx-cst-title{font-weight:600;font-size:13px;color:#0f172a}
-.chrx-cst-desc{font-size:11px;color:#64748b;margin-top:2px}
-.chrx-cst-edit{background:#fff;border:1px solid #cbd5e1;color:#1e3a8a;padding:4px 10px;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;flex-shrink:0}
-.chrx-cst-edit:hover{background:#dbeafe}
+.chrx-cst-root{position:fixed;inset:0;background:rgba(5,7,10,.52);display:flex;align-items:flex-start;justify-content:center;padding:24px;z-index:1100;overflow:auto}
+.chrx-cst-panel{background:var(--chrx-bg-elev,#fff);border:1px solid var(--chrx-line,#d8cfbb);border-radius:var(--chrx-radius-lg,14px);width:min(780px,95vw);max-height:85vh;display:flex;flex-direction:column;box-shadow:0 4px 8px rgba(26,23,20,.06),0 12px 24px rgba(26,23,20,.08),0 24px 48px rgba(26,23,20,.06);font-family:var(--chrx-font-sans,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif);color:var(--chrx-fg,#1a1714)}
+.chrx-cst-head{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid var(--chrx-line,#d8cfbb)}
+.chrx-cst-head h2{margin:0;font-family:var(--chrx-font-display,Georgia,serif);font-size:18px;color:var(--chrx-fg,#1a1714)}
+.chrx-cst-close{background:none;border:0;border-radius:var(--chrx-radius-sm,6px);font-size:22px;cursor:pointer;color:var(--chrx-fg-tertiary,#837a6d)}
+.chrx-cst-close:hover{background:var(--chrx-bg-tile,#efe9da);color:var(--chrx-fg,#1a1714)}
+.chrx-cst-summary{display:flex;justify-content:space-between;gap:16px;align-items:center;padding:9px 18px;background:var(--chrx-bg-tile,#efe9da);font-size:12px;color:var(--chrx-fg-secondary,#4a4339);border-bottom:1px solid var(--chrx-line,#d8cfbb)}
+.chrx-cst-count{font-weight:600}.chrx-cst-hint{color:var(--chrx-fg-tertiary,#837a6d)}
+.chrx-cst-tools{display:grid;grid-template-columns:1fr minmax(150px,auto);gap:8px;padding:12px 18px;border-bottom:1px solid var(--chrx-line,#d8cfbb)}
+.chrx-cst-search,.chrx-cst-filter{min-width:0;padding:7px 9px;border:1px solid var(--chrx-line,#d8cfbb);border-radius:var(--chrx-radius-sm,6px);background:var(--chrx-bg-input,#f6f1e6);color:var(--chrx-fg,#1a1714);font:inherit;font-size:13px}
+.chrx-cst-search:focus,.chrx-cst-filter:focus,.chrx-cst-row:focus-visible,.chrx-cst-close:focus-visible{outline:2px solid var(--chrx-accent,#0d4f54);outline-offset:2px}
+.chrx-cst-list{flex:1;overflow-y:auto;padding:8px 18px 14px}
+.chrx-cst-empty{padding:32px;text-align:center;color:var(--chrx-fg-tertiary,#837a6d);font-size:13px;line-height:1.5}
+.chrx-cst-row{display:flex;width:100%;align-items:center;gap:12px;padding:10px 8px;border:0;border-bottom:1px solid var(--chrx-line-soft,#e5dfce);cursor:pointer;border-radius:var(--chrx-radius-sm,6px);background:transparent;color:inherit;text-align:left;font:inherit;transition:background var(--chrx-duration-fast,140ms) var(--chrx-ease-out,ease)}
+.chrx-cst-row:hover{background:var(--chrx-bg-tile,#efe9da)}
+.chrx-cst-badge{font-size:10px;font-weight:700;text-transform:uppercase;padding:3px 7px;border-radius:var(--chrx-radius-xs,4px);letter-spacing:.04em;color:#fff;flex-shrink:0;background:var(--chrx-accent,#0d4f54)}
+.chrx-cst-badge--time-off{background:#9c5c16}.chrx-cst-badge--lock{background:var(--chrx-danger,#9c4322)}.chrx-cst-badge--room{background:#0d7377}.chrx-cst-badge--calendar{background:#6750a4}
+.chrx-cst-body{flex:1;min-width:0}.chrx-cst-title{font-weight:600;font-size:13px;color:var(--chrx-fg,#1a1714);overflow-wrap:anywhere}.chrx-cst-desc{font-size:11px;color:var(--chrx-fg-secondary,#4a4339);margin-top:2px;overflow-wrap:anywhere}
+.chrx-cst-edit{border:1px solid var(--chrx-line,#d8cfbb);color:var(--chrx-accent,#0d4f54);padding:4px 10px;border-radius:var(--chrx-radius-sm,6px);font-size:11px;font-weight:600;flex-shrink:0}
+@media(max-width:600px){.chrx-cst-root{padding:8px}.chrx-cst-panel{width:100%;max-height:94vh}.chrx-cst-summary{align-items:flex-start;flex-direction:column;gap:2px}.chrx-cst-tools{grid-template-columns:1fr}.chrx-cst-list{padding-inline:10px}.chrx-cst-edit{display:none}}
     `;
     document.head.appendChild(s);
   }
