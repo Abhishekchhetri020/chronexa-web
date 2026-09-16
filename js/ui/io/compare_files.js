@@ -132,19 +132,33 @@ import "../ribbon/topbar.js";
       return wrap;
     }
 
-    panel.appendChild(section("Teachers added", d.teachers.added.map(t => `+ ${esc(t.name)}`)));
-    panel.appendChild(section("Teachers removed", d.teachers.removed.map(t => `- ${esc(t.name)}`)));
-    panel.appendChild(section("Classes added", d.classes.added.map(c => `+ ${esc(c.name)}`)));
-    panel.appendChild(section("Classes removed", d.classes.removed.map(c => `- ${esc(c.name)}`)));
-    panel.appendChild(section("Subjects changed", d.subjects.changed.map(c => `~ ${esc(c.before.name)} → ${esc(c.after.name)}`)));
-    panel.appendChild(section("Lessons added", d.lessons.added.map(l => `+ ${esc(l.subjectId)} × ${l.periodsPerWeek || 0}`)));
-    panel.appendChild(section("Lessons removed", d.lessons.removed.map(l => `- ${esc(l.subjectId)} × ${l.periodsPerWeek || 0}`)));
-    panel.appendChild(section("Cards moved", d.cards.moved.slice(0, 50).map(m =>
-      `Lesson ${esc(m.lessonId.slice(0, 10))}: D${m.from.day + 1}P${m.from.period + 1} → D${m.to.day + 1}P${m.to.period + 1}`)));
+    [
+      section("Teachers added", d.teachers.added.map(t => `+ ${esc(t.name)}`)),
+      section("Teachers removed", d.teachers.removed.map(t => `- ${esc(t.name)}`)),
+      section("Classes added", d.classes.added.map(c => `+ ${esc(c.name)}`)),
+      section("Classes removed", d.classes.removed.map(c => `- ${esc(c.name)}`)),
+      section("Subjects changed", d.subjects.changed.map(c => `~ ${esc(c.before.name)} → ${esc(c.after.name)}`)),
+      section("Lessons added", d.lessons.added.map(l => `+ ${esc(l.subjectId)} × ${l.periodsPerWeek || 0}`)),
+      section("Lessons removed", d.lessons.removed.map(l => `- ${esc(l.subjectId)} × ${l.periodsPerWeek || 0}`)),
+      section("Cards moved", d.cards.moved.slice(0, 50).map(m =>
+        `Lesson ${esc(m.lessonId.slice(0, 10))}: D${m.from.day + 1}P${m.from.period + 1} → D${m.to.day + 1}P${m.to.period + 1}`)),
+    ].filter(Boolean).forEach(node => panel.appendChild(node));
 
     root.appendChild(panel);
     document.body.appendChild(root);
     ensureStyles();
+    return root;
+  }
+
+  function compareSchools(other, names) {
+    if (!APP || !APP.school) { notify("Open a timetable first.", "error"); return null; }
+    const d = diffSchools(APP.school, other || {});
+    if (names) {
+      if (names.current) d.summary.a_name = names.current;
+      if (names.other) d.summary.b_name = names.other;
+    }
+    showDiff(d);
+    return d;
   }
 
   function ensureStyles() {
@@ -180,8 +194,7 @@ import "../ribbon/topbar.js";
       if (!f) return;
       try {
         const other = await window.parseTimetableXml.parseFile(f);
-        const d = diffSchools(APP.school, other);
-        showDiff(d);
+        compareSchools(other, { current: APP.school.schoolName || "Current timetable", other: f.name });
       } catch (err) {
         notify("Compare failed: " + err.message, "error");
       }
@@ -193,6 +206,8 @@ import "../ribbon/topbar.js";
   window.addEventListener("app:compare-with-file", trigger);
   APP.io = APP.io || {};
   APP.io.compareWithFile = trigger;
+  APP.io.compareSchools = compareSchools;
+  APP.io.diffSchools = diffSchools;
 })();
 
 // Chronexa Web

@@ -212,12 +212,38 @@ import "../ribbon/topbar.js";
       APP.school ? [close, newBtn] : [close]);
   }
 
+  function compareWithLast() {
+    if (!APP.school) { notify("Open a timetable first.", "error"); return; }
+    const list = listSnapshots().slice().sort((a, b) => b.ts - a.ts);
+    const currentId = getCurrent();
+    const saved = list.find(item => item.id === currentId) || list[0];
+    if (!saved) {
+      notify("No saved snapshot to compare. Use Save as… first.", "error");
+      return;
+    }
+    try {
+      const previous = decode(saved.payload);
+      if (!APP.io || typeof APP.io.compareSchools !== "function") {
+        notify("Comparison tools are still loading. Try again.", "error");
+        return;
+      }
+      return APP.io.compareSchools(previous, {
+        current: APP.school.schoolName || "Current timetable",
+        other: saved.name || "Last saved snapshot",
+      });
+    } catch (e) {
+      notify("Compare failed: " + e.message, "error");
+      console.error(e);
+    }
+  }
+
   // ─── Wire events ─────────────────────────────────────────────────────────
   window.addEventListener("app:save",          save);
   window.addEventListener("app:save-as",       saveAs);
   window.addEventListener("app:open-snapshot", openVersionHistory);
+  window.addEventListener("app:compare-last",  compareWithLast);
 
-  APP.snapshot = { save, saveAs, open, listSnapshots, openVersionHistory, diffSummary };
+  APP.snapshot = { save, saveAs, open, listSnapshots, openVersionHistory, compareWithLast, diffSummary };
 })();
 
 // Chronexa Web

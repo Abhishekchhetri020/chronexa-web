@@ -550,9 +550,6 @@ import "./start_screen.js";
     window.addEventListener("app:quick-add-lesson", () => {
       window.dispatchEvent(new CustomEvent("app:open-entity", { detail: { kind: "lessons", create: true } }));
     });
-    window.addEventListener("app:compare-last", () => {
-      window.dispatchEvent(new CustomEvent("app:open-snapshot"));
-    });
     window.addEventListener("app:suggest-fix", () => {
       if (window.VerificationPro && typeof window.VerificationPro.open === "function") {
         window.VerificationPro.open();
