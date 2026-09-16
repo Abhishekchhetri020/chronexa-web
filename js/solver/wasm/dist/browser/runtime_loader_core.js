@@ -6,9 +6,9 @@ const RUNTIME_ARTIFACTS = {
       wasm: "cp_sat_runtime.wasm"
     },
     asyncify: {
-      webJs: "cp_sat_runtime_asyncify.js",
-      nodeJs: "cp_sat_runtime_node_asyncify.js",
-      wasm: "cp_sat_runtime_asyncify.wasm"
+      webJs: "cp_sat_runtime.js",
+      nodeJs: "cp_sat_runtime_node.js",
+      wasm: "cp_sat_runtime.wasm"
     }
   },
   routing_runtime: {

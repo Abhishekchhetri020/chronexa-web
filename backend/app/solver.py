@@ -114,9 +114,18 @@ def _resolve_days(payload: Dict[str, Any]) -> int:
 
 def _teaching_period_indices(school: Dict[str, Any]) -> List[int]:
     """Return the 1-based period indices that are teaching periods."""
-    periods = school.get("bell", {}).get("periods") or []
+    bell = school.get("bell")
+    if not isinstance(bell, dict) or not bell.get("periods"):
+        bells = school.get("bells")
+        if isinstance(bells, list) and bells:
+            if isinstance(bell, str):
+                found = next((b for b in bells if isinstance(b, dict) and b.get("id") == bell), None)
+                bell = found or bells[0]
+            else:
+                bell = bells[0]
+    periods = bell.get("periods") if isinstance(bell, dict) else []
     out: List[int] = []
-    for p in periods:
+    for p in (periods or []):
         if p.get("isTeaching", True):
             out.append(int(p["index"]))
     if not out:
@@ -211,24 +220,33 @@ def solve(
 
     # --- per-lesson occurrence variables ---
     for lesson_idx, lesson in enumerate(lessons):
-        periods_per_week = max(1, int(lesson.get("periodsPerWeek") or 1))
+        ppc = int(lesson.get("periodsPerCard") or lesson.get("periodspercard") or (2 if lesson.get("isLabDouble") else 1))
+        ppw = int(lesson.get("periodsPerWeek") or 1)
+        if ppc > 1 and ppw > 1 and ppw % ppc == 0:
+            ncards = ppw // ppc
+        else:
+            ncards = max(1, ppw)
+        is_lab = ppc > 1
         pref_room_id = lesson.get("preferredRoomId")
         pref_room_idx = room_index.get(pref_room_id) if pref_room_id else None
         fixed_day = lesson.get("fixedDay")
         fixed_period = lesson.get("fixedPeriod")
         required_room_type = lesson.get("requiredRoomType")
-        is_lab = bool(lesson.get("isLabDouble"))
 
-        # Pre-compute allowed rooms (filter by roomType if specified).
-        if required_room_type and rooms:
+        # Only assign rooms to lessons that actually request or specify one.
+        lesson_rooms = lesson.get("_lessonRoomIds") or lesson.get("classroomIds") or []
+        if lesson_rooms:
+            allowed_rooms = [room_index[rid] for rid in lesson_rooms if rid in room_index]
+        elif required_room_type and rooms:
             allowed_rooms = [
                 i for i, r in enumerate(rooms) if (r.get("roomType") or "") == required_room_type
             ]
+        elif pref_room_idx is not None:
+            allowed_rooms = [pref_room_idx]
         else:
-            allowed_rooms = list(range(len(rooms)))
+            allowed_rooms = [-1]
 
-        # If no rooms exist at all, model still works — we'll use a "no-room" sentinel.
-        room_domain = allowed_rooms if rooms else [-1]
+        room_domain = allowed_rooms if allowed_rooms else [-1]
 
         # Teachers tagged on this lesson.
         teacher_ids_lesson = lesson.get("teacherIds") or []
@@ -245,13 +263,13 @@ def solve(
             })
             continue
 
-        for occ_idx in range(periods_per_week):
+        for occ_idx in range(ncards):
             day_var = model.NewIntVar(0, num_days - 1, f"L{lesson_idx}_O{occ_idx}_day")
             period_var = model.NewIntVarFromDomain(
                 cp_model.Domain.FromValues(teaching_periods),
                 f"L{lesson_idx}_O{occ_idx}_period",
             )
-            if rooms:
+            if rooms and room_domain != [-1]:
                 room_var = model.NewIntVarFromDomain(
                     cp_model.Domain.FromValues(room_domain),
                     f"L{lesson_idx}_O{occ_idx}_room",
@@ -269,17 +287,17 @@ def solve(
             slot_var = model.NewIntVar(0, num_days * P - 1, f"L{lesson_idx}_O{occ_idx}_slot")
             model.Add(slot_var == day_var * P + period_offset_var)
 
-            # A lab-double occupies this period AND the next contiguous one, so it
-            # books two adjacent slots. Pinning the start to a valid block-start
-            # offset keeps the pair on the same day with no break between them; an
-            # empty offset set (bell too small) makes the lesson INFEASIBLE rather
-            # than silently placing a half lab.
             slot_vars = [slot_var]
             if is_lab:
-                model.AddAllowedAssignments([period_offset_var], [[o] for o in lab_start_offsets])
-                slot_var2 = model.NewIntVar(0, num_days * P - 1, f"L{lesson_idx}_O{occ_idx}_slot2")
-                model.Add(slot_var2 == slot_var + 1)
-                slot_vars.append(slot_var2)
+                valid_offsets = [
+                    o for o in range(P - ppc + 1)
+                    if all(teaching_periods[o + k] == teaching_periods[o] + k for k in range(ppc))
+                ]
+                model.AddAllowedAssignments([period_offset_var], [[o] for o in valid_offsets])
+                for k in range(1, ppc):
+                    slot_var_k = model.NewIntVar(0, num_days * P - 1, f"L{lesson_idx}_O{occ_idx}_slot{k}")
+                    model.Add(slot_var_k == slot_var + k)
+                    slot_vars.append(slot_var_k)
 
             # Fix first occurrence if pinned.
             if occ_idx == 0:
@@ -362,10 +380,12 @@ def solve(
                 "slot_var": slot_var,
                 "slot_vars": slot_vars,
                 "is_lab": is_lab,
+                "ppc": ppc,
                 "room_var": room_var,
                 "teacher_idxs": teacher_idxs_lesson,
                 "class_idxs": class_idxs_lesson,
                 "pref_room_idx": pref_room_idx,
+                "room_domain": room_domain,
             })
 
     if not occs:
@@ -415,6 +435,8 @@ def solve(
             n_slots = num_days * P
             sentinel_base = n_slots + 1  # every sentinel will be > any real slot
             for i, o in enumerate(occs):
+                if o.get("room_domain") == [-1]:
+                    continue
                 rv = o["room_var"]
                 is_this = model.NewBoolVar(f"L{o['lesson_idx']}_O{o['occ_idx']}_room{room_idx}")
                 model.Add(rv == room_idx).OnlyEnforceIf(is_this)
@@ -740,39 +762,41 @@ def solve(
                     model.Add(tail == P).OnlyEnforceIf(on_day.Not())
                     on_day_period_offs.append(tail)
 
-            # count_used should count periods, not lesson occurrences. A lab
-            # double contributes 2 to its (teacher, day) load.
-            plus_one_for_lab: List[Any] = []
+            # count_used should count periods, not lesson occurrences. A card
+            # with ppc periods contributes ppc to its (teacher, day) load.
+            plus_for_span: List[Any] = []
             for b, o in zip(on_day_bools, teacher_occs):
-                if o["is_lab"]:
-                    extra = model.NewBoolVar(f"T{tidx}_L{o['lesson_idx']}_O{o['occ_idx']}_d{day}_extra")
-                    model.Add(extra == 1).OnlyEnforceIf(b)
+                ppc_val = o.get("ppc", 1)
+                if ppc_val > 1:
+                    extra = model.NewIntVar(0, ppc_val - 1, f"T{tidx}_L{o['lesson_idx']}_O{o['occ_idx']}_d{day}_extra")
+                    model.Add(extra == ppc_val - 1).OnlyEnforceIf(b)
                     model.Add(extra == 0).OnlyEnforceIf(b.Not())
-                    plus_one_for_lab.append(extra)
-            count_used = model.NewIntVar(0, len(teacher_occs) + len(plus_one_for_lab),
-                                         f"T{tidx}_d{day}_count")
-            model.Add(count_used == sum(on_day_bools) + sum(plus_one_for_lab))
+                    plus_for_span.append(extra)
+            count_used = model.NewIntVar(0, len(teacher_occs) * P, f"T{tidx}_d{day}_count")
+            model.Add(count_used == sum(on_day_bools) + sum(plus_for_span))
 
             min_off = model.NewIntVar(0, P, f"T{tidx}_d{day}_min")
             max_off = model.NewIntVar(0, P, f"T{tidx}_d{day}_max")
             model.AddMinEquality(min_off, on_day_period_offs)
-            # Max equality only meaningful when at least one occurs that day; use a guarded form.
-            # We compute max over (period_offset_var if on_day else 0). To do that, create eff_max.
+            # Max equality includes the full span of the card (head + ppc - 1).
             on_day_period_offs_max: List[Any] = []
             for o, b in zip(teacher_occs, on_day_bools):
+                ppc_val = o.get("ppc", 1)
                 eff_max = model.NewIntVar(0, P - 1, f"T{tidx}_L{o['lesson_idx']}_O{o['occ_idx']}_d{day}_effmax")
-                model.Add(eff_max == o["period_offset_var"]).OnlyEnforceIf(b)
+                tail_max = model.NewIntVar(0, P - 1, f"T{tidx}_L{o['lesson_idx']}_O{o['occ_idx']}_d{day}_tailmax")
+                model.Add(tail_max == o["period_offset_var"] + ppc_val - 1)
+                model.Add(eff_max == tail_max).OnlyEnforceIf(b)
                 model.Add(eff_max == 0).OnlyEnforceIf(b.Not())
                 on_day_period_offs_max.append(eff_max)
             model.AddMaxEquality(max_off, on_day_period_offs_max)
 
-            # gap = (max - min + 1) - count when count >= 1 ; else 0
+            # gap = max(0, (max - min + 1) - count) when count >= 1 ; else 0
             gap = model.NewIntVar(0, P, f"T{tidx}_d{day}_gap")
             none_today = model.NewBoolVar(f"T{tidx}_d{day}_none")
             model.Add(count_used == 0).OnlyEnforceIf(none_today)
             model.Add(count_used >= 1).OnlyEnforceIf(none_today.Not())
             model.Add(gap == 0).OnlyEnforceIf(none_today)
-            model.Add(gap == max_off - min_off + 1 - count_used).OnlyEnforceIf(none_today.Not())
+            model.Add(gap >= max_off - min_off + 1 - count_used).OnlyEnforceIf(none_today.Not())
 
             soft_terms.append(gap)
             soft_weights.append(1)
@@ -822,7 +846,7 @@ def solve(
             class_ids = [classes[cidx]["id"] for cidx in o["class_idxs"]]
             # A lab-double occupies this period and the next; emit a card for each
             # half so the timetable shows both slots busy (no phantom free period).
-            periods_out = [period, period + 1] if o["is_lab"] else [period]
+            periods_out = [period + k for k in range(o.get("ppc", 2 if o.get("is_lab") else 1))] if o.get("is_lab") else [period]
             for pout in periods_out:
                 entry = {
                     "lessonId": o["lesson"]["id"],
@@ -836,12 +860,7 @@ def solve(
                 assignment.append(entry)
 
     placed = len(assignment)
-    # A lab-double demands two periods per weekly occurrence — count it as such so
-    # placed == expected when fully scheduled.
-    expected = sum(
-        max(1, int(l.get("periodsPerWeek") or 1)) * (2 if l.get("isLabDouble") else 1)
-        for l in lessons
-    )
+    expected = len(occs)
     unplaced = max(0, expected - placed)
 
     soft_score = 0

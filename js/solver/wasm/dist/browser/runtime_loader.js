@@ -9,8 +9,8 @@ const runtimeAssets = {
       wasmUrl: new URL("../wasm/cp_sat_runtime.wasm", import.meta.url).href
     },
     asyncify: {
-      jsUrl: new URL("../wasm/cp_sat_runtime_asyncify.js", import.meta.url).href,
-      wasmUrl: new URL("../wasm/cp_sat_runtime_asyncify.wasm", import.meta.url).href
+      jsUrl: new URL("../wasm/cp_sat_runtime.js", import.meta.url).href,
+      wasmUrl: new URL("../wasm/cp_sat_runtime.wasm", import.meta.url).href
     }
   },
   routing_runtime: {
@@ -97,7 +97,15 @@ const loader = createRuntimeLoader({
   logFlavorSelection: !0,
   loadFactory,
   async resolveAsset(runtimeName, flavor) {
-    const asset = runtimeAssets[runtimeName][flavor], wasmBinary = new Uint8Array(await (await fetch(asset.wasmUrl)).arrayBuffer());
+    const asset = runtimeAssets[runtimeName][flavor];
+    let buf;
+    if (typeof process !== "undefined" && process.versions?.node && String(asset.wasmUrl).startsWith("file:")) {
+      const fs = await import("fs");
+      buf = fs.readFileSync(new URL(asset.wasmUrl));
+    } else {
+      buf = await (await fetch(asset.wasmUrl)).arrayBuffer();
+    }
+    const wasmBinary = new Uint8Array(buf);
     return {
       jsUrl: asset.jsUrl,
       locateFile: locateRuntimeFile,

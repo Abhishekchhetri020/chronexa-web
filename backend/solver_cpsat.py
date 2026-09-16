@@ -40,7 +40,21 @@ from ortools.sat.python import cp_model
 
 
 def _teaching_periods(school):
-    ps = [p for p in school["bell"]["periods"] if p.get("isTeaching", True) is not False]
+    bell = school.get("bell")
+    if not isinstance(bell, dict) or not bell.get("periods"):
+        bells = school.get("bells")
+        if isinstance(bells, list) and bells:
+            if isinstance(bell, str):
+                found = next((b for b in bells if isinstance(b, dict) and b.get("id") == bell), None)
+                bell = found or bells[0]
+            else:
+                bell = bells[0]
+    ps = []
+    if isinstance(bell, dict) and bell.get("periods"):
+        ps = [p for p in bell["periods"] if p.get("isTeaching", True) is not False]
+    if not ps:
+        dp = int(school.get("periodsPerDay") or 8)
+        return list(range(1, dp + 1))
     return [p["index"] for p in ps]
 
 
@@ -70,7 +84,7 @@ def build_and_solve(school, time_limit_sec=30, num_workers=8, seed=1,
     # ---- expand lessons into session-cards -------------------------------
     cards = []
     for L in school["lessons"]:
-        length = 2 if L.get("isLabDouble") else 1
+        length = int(L.get("periodsPerCard") or L.get("periodspercard") or (2 if L.get("isLabDouble") else 1))
         ppw = int(L.get("periodsPerWeek") or 0)
         ncards = max(1, round(ppw / length)) if ppw > 0 else 0
         teachers = L.get("teacherIds") or []
@@ -141,26 +155,28 @@ def build_and_solve(school, time_limit_sec=30, num_workers=8, seed=1,
                 continue
             if card["fixed_day"] is None and d in locked_days_set:
                 continue
-            if card["length"] == 2 and (pidx[p] + 1 >= len(periods) or periods[pidx[p] + 1] != p + 1):
-                continue  # a double cannot start at the last teaching period or gap
-            conflict = False
-            for t in card["teachers"]:
-                if teacher_unavailable(t, d, p):
-                    conflict = True
+            if pidx[p] + card["length"] - 1 >= len(periods):
+                continue  # cannot fit remaining periods of this block
+            invalid_block = False
+            for offset in range(card["length"]):
+                curr_p = periods[pidx[p] + offset]
+                if curr_p != p + offset:
+                    invalid_block = True
                     break
-                if card["length"] == 2 and teacher_unavailable(t, d, periods[pidx[p] + 1]):
-                    conflict = True
+                for t in card["teachers"]:
+                    if teacher_unavailable(t, d, curr_p):
+                        invalid_block = True
+                        break
+                if invalid_block:
                     break
-            if conflict:
+            if invalid_block:
                 continue
             out.append((d, p))
         return out
 
     def cover(card, start):
         d, p = start
-        if card["length"] == 1:
-            return [(d, p)]
-        return [(d, p), (d, periods[pidx[p] + 1])]
+        return [(d, periods[pidx[p] + offset]) for offset in range(card["length"])]
 
     # assign[ci][start] bool ; placed[ci] ; yroom[(ci,start,room)]
     assign = {}

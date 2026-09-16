@@ -22,8 +22,22 @@ import { orderedSubjects } from '../relation_enforcer.js';
 const jsBuildModel = __jsInternals.buildModel;
 
 function teachingPeriods(school) {
-  return school.bell.periods
-    .filter((p) => p.isTeaching !== false)
+  let bell = school && school.bell;
+  if (!bell || !Array.isArray(bell.periods)) {
+    if (Array.isArray(school && school.bells) && school.bells.length) {
+      if (typeof school.bell === "string") {
+        bell = school.bells.find((b) => b && b.id === school.bell) || school.bells[0];
+      } else {
+        bell = school.bells[0];
+      }
+    }
+  }
+  if (!bell || !Array.isArray(bell.periods)) {
+    const periodsPerDay = (school && school.periodsPerDay) || 8;
+    return Array.from({ length: periodsPerDay }, (_, i) => i + 1);
+  }
+  return bell.periods
+    .filter((p) => p && p.isTeaching !== false)
     .map((p) => p.index);
 }
 
@@ -93,7 +107,7 @@ export async function buildAndSolve(school, options = {}) {
 
   const cards = [];
   for (const L of school.lessons) {
-    const length = L.isLabDouble ? 2 : 1;
+    const length = Number(L.periodsPerCard) || (L.isLabDouble ? 2 : 1) || 1;
     const ppw = Number(L.periodsPerWeek) || 0;
     const ncards = ppw > 0 ? Math.max(1, Math.round(ppw / length)) : 0;
     const teachers = L.teacherIds || [];
@@ -147,22 +161,31 @@ export async function buildAndSolve(school, options = {}) {
       if (card.fixed_day != null && d !== card.fixed_day) continue;
       if (card.fixed_period != null && p !== card.fixed_period) continue;
       if (card.fixed_day == null && lockedDaysSet.has(d)) continue;
-      // A lab cannot jump over a break or a missing bell index.
-      if (card.length === 2 && !pidx.has(p + 1)) continue;
+      // Multi-period: every consecutive period must exist in teaching periods without break
+      let validBlock = true;
+      for (let off = 1; off < card.length; off++) {
+        if (!pidx.has(p + off)) {
+          validBlock = false;
+          break;
+        }
+      }
+      if (!validBlock) continue;
 
       if (jm.teacherAvailabilityMask) {
-        const bit = (1 << p) >>> 0;
-        const bit2 = card.length === 2 ? ((1 << (p + 1)) >>> 0) : 0;
         let conflict = false;
         for (const t of card.teachers) {
           const ti = tIdxOf.get(t);
           if (ti != null) {
             const mask = jm.teacherAvailabilityMask[ti * ndays + d];
-            if ((mask & bit) === 0 || (bit2 && (mask & bit2) === 0)) {
-              conflict = true;
-              break;
+            for (let off = 0; off < card.length; off++) {
+              const bit = (1 << (p + off)) >>> 0;
+              if ((mask & bit) === 0) {
+                conflict = true;
+                break;
+              }
             }
           }
+          if (conflict) break;
         }
         if (conflict) continue;
       }
@@ -173,8 +196,11 @@ export async function buildAndSolve(school, options = {}) {
   };
   const cover = (card, start) => {
     const [d, p] = start;
-    if (card.length === 1) return [[d, p]];
-    return [[d, p], [d, p + 1]];
+    const res = [];
+    for (let off = 0; off < card.length; off++) {
+      res.push([d, p + off]);
+    }
+    return res;
   };
 
   const assign = [];
