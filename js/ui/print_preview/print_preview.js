@@ -470,24 +470,60 @@ import "./print_settings_dialog.js";
   // page into docShell for the duration of print(), then restore single-page
   // view afterwards. .chrx-preview-page already has page-break-after:always
   // in the print CSS so each page gets its own physical sheet.
+  //
+  // The preview document is also a flex row on screen so the single page can be
+  // centred (.chrx-preview-doc { display:flex; justify-content:center }). That
+  // layout must NOT survive into the printout: with every page mounted at once
+  // flex-shrink squeezes each 297mm A4 page down to a narrow column (~230px),
+  // the fixed-layout grid then gives the body columns ~0px, and the autofit
+  // cells clip their now zero-width lesson text through overflow:hidden. The
+  // printout then shows the school name / class title / period + day labels /
+  // BREAK columns / footer with completely EMPTY timetable cells. Force a plain
+  // block flow (full-width pages, no scroll clipping, no padded wrapper) before
+  // anything is measured or printed, then put the screen layout back.
+  function enterPrintLayout() {
+    const saved = docShell.getAttribute("style");
+    docShell.style.display = "block";
+    docShell.style.overflow = "visible";
+    docShell.style.height = "auto";
+    docShell.style.maxHeight = "none";
+    docShell.style.padding = "0";
+    docShell.style.margin = "0";
+    docShell.style.background = "none";
+    return saved;
+  }
+  function exitPrintLayout(saved) {
+    if (saved == null) docShell.removeAttribute("style");
+    else docShell.setAttribute("style", saved);
+  }
+
   function printAllPages() {
     if (!pages.length || !docShell) { window.print(); return; }
     // Strip the on-screen zoom so the printout uses the true A4 page size,
     // not whatever magnification the user is previewing at.
     pages.forEach(p => { p.style.zoom = "1"; });
     const saved = pageIdx;
+    // Must run BEFORE mounting/measuring: the shrink-to-fit pass below reads
+    // real pixel geometry, so measuring inside the squeezed flex row bakes
+    // floor-size fonts (2-4px) and overflow:hidden into every cell even if a
+    // print stylesheet later widens the page.
+    const savedStyle = enterPrintLayout();
     if (pages.length > 1) {
       while (docShell.firstChild) docShell.removeChild(docShell.firstChild);
       for (const p of pages) docShell.appendChild(p);
-      // Autofit every page while all of them are mounted: showPage() only
-      // fits the single on-screen page, so pages 2..N used to print unfitted
-      // (cells carry data-fit marks, so the current page re-runs as a no-op).
+      // Autofit every page while all of them are mounted AND laid out as full
+      // blocks — showPage() only fits the single on-screen page, so pages 2..N
+      // used to print unfitted (cells carry data-fit marks, so the current page
+      // re-runs as a no-op).
       for (const p of pages) {
         try { autofitMountedPage(p); } catch (e) { /* never break printing */ }
       }
     }
     try { window.print(); }
-    finally { showPage(saved); }  // re-mounts current page + re-applies zoom
+    finally {
+      exitPrintLayout(savedStyle);
+      showPage(saved);  // re-mounts current page + re-applies zoom
+    }
   }
   function showPage(i) {
     docShell.innerHTML = "";
