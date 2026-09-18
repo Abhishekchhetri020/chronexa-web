@@ -479,6 +479,12 @@ import "./print_settings_dialog.js";
     if (pages.length > 1) {
       while (docShell.firstChild) docShell.removeChild(docShell.firstChild);
       for (const p of pages) docShell.appendChild(p);
+      // Autofit every page while all of them are mounted: showPage() only
+      // fits the single on-screen page, so pages 2..N used to print unfitted
+      // (cells carry data-fit marks, so the current page re-runs as a no-op).
+      for (const p of pages) {
+        try { autofitMountedPage(p); } catch (e) { /* never break printing */ }
+      }
     }
     try { window.print(); }
     finally { showPage(saved); }  // re-mounts current page + re-applies zoom

@@ -197,7 +197,7 @@ import "../state.js";
       forceClose();
       if (typeof onSave === "function") onSave(report);
     }
-    function onKey(e) { if (e.key === "Escape") { e.preventDefault(); close(); } }
+    function onKey(e) { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close(); } }
     document.addEventListener("keydown", onKey, true);
 
     const header = el("div", {

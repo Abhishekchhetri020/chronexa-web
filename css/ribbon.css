@@ -290,11 +290,49 @@
 
 @media print {
   /* Hide everything but the preview pages when printing */
-  body > *:not(.chrx-preview-overlay) { display: none; }
-  .chrx-preview-overlay { position: static; background: none; display: block; }
+  body:has(.chrx-preview-overlay.is-open) > *:not(.chrx-preview-overlay) { display: none; }
+  .chrx-preview-overlay {
+    position: static; background: none; display: block;
+    visibility: visible !important;
+  }
+  .chrx-preview-overlay * { visibility: visible; }
   .chrx-preview-shell, .chrx-preview-doc { box-shadow: none; background: none; padding: 0; margin: 0; }
-  .chrx-preview-bar, .chrx-preview-controls { display: none; }
-  .chrx-preview-page { box-shadow: none; page-break-after: always; }
+  .chrx-preview-bar, .chrx-preview-controls { display: none !important; }
+  .chrx-preview-page {
+    box-shadow: none;
+    page-break-after: always;
+    break-after: page;
+    visibility: visible !important;
+  }
+  .chrx-preview-page:last-child {
+    page-break-after: auto;
+    break-after: auto;
+  }
+  .chrx-preview-page * { visibility: visible; }
+
+  @page chrx-preview-portrait {
+    size: A4 portrait;
+    margin: 0;
+  }
+  @page chrx-preview-landscape {
+    size: A4 landscape;
+    margin: 0;
+  }
+  .chrx-preview-page {
+    page: chrx-preview-portrait;
+  }
+  .chrx-preview-page[style*="width: 297mm"],
+  .chrx-preview-page[style*="width:297mm"],
+  .chrx-preview-page.is-landscape,
+  .chrx-preview-page[data-orientation="landscape"] {
+    page: chrx-preview-landscape;
+  }
+  .chrx-preview-page[style*="width: 210mm"],
+  .chrx-preview-page[style*="width:210mm"],
+  .chrx-preview-page.is-portrait,
+  .chrx-preview-page[data-orientation="portrait"] {
+    page: chrx-preview-portrait;
+  }
 }
 
 /* Dialogs (snapshot rename, save-as, version history) */

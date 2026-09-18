@@ -155,7 +155,7 @@ import "../state.js";
     scrim.appendChild(dlg);
 
     function close() { scrim.remove(); document.removeEventListener("keydown", onKey, true); }
-    function onKey(e) { if (e.key === "Escape") { e.preventDefault(); close(); } }
+    function onKey(e) { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close(); } }
     document.addEventListener("keydown", onKey, true);
 
     const header = el("div", {

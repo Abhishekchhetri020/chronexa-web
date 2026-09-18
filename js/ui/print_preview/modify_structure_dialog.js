@@ -97,7 +97,7 @@ import "../ribbon/topbar.js";
     scrim.appendChild(dialog);
 
     function close() { scrim.remove(); document.removeEventListener("keydown", onKey, true); }
-    function onKey(e) { if (e.key === "Escape") { e.preventDefault(); close(); } }
+    function onKey(e) { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close(); } }
     document.addEventListener("keydown", onKey, true);
 
     // ── Header

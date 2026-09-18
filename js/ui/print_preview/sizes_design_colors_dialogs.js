@@ -44,7 +44,7 @@ import "../state.js";
     function close() { scrim.remove(); document.removeEventListener("keydown", onKey, true); }
     function doCancel() { close(); if (typeof onCancel === "function") onCancel(); }
     function doOk() { close(); if (typeof onOk === "function") onOk(); }
-    function onKey(e) { if (e.key === "Escape") { e.preventDefault(); doCancel(); } }
+    function onKey(e) { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); doCancel(); } }
     document.addEventListener("keydown", onKey, true);
 
     const header = el("div", {

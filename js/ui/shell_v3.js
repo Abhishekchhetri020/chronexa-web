@@ -318,7 +318,13 @@ import "./state.js";
       else if (k === "e") { e.preventDefault(); fire("app:export-timetable-xml"); }
       else if (k === "o") { e.preventDefault(); fire("app:open-file"); }
       else if (k === "n") { e.preventDefault(); fire("app:new"); }
-      else if (k === "p") { e.preventDefault(); fire("app:print-preview"); }
+      else if (k === "p") {
+        e.preventDefault();
+        // Print preview open? Its own ⌘P handler triggers the print; don't
+        // rebuild the preview on top of it.
+        if (document.querySelector(".chrx-preview-overlay.is-open")) return;
+        fire("app:print-preview");
+      }
     } else if ((e.key === "[" || e.key === "]") && !e.metaKey && !e.ctrlKey && !e.altKey && !isTypingTarget(e.target)) {
       e.preventDefault();
       togglePanel(e.key === "[" ? "side" : "rail");

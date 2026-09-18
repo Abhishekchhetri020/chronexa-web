@@ -311,16 +311,19 @@
 
 /* ---------------- print ---------------- */
 @media print {
-  @page { size: A4; margin: 12mm 10mm; }
-  body * { visibility: hidden; }
-  .chrx-sub-memo, .chrx-sub-memo * { visibility: visible; }
+  @page chrx-sub-memo { size: A4 portrait; margin: 12mm 10mm; }
+  body:has(.chrx-sub-memo):not(:has(.chrx-preview-overlay.is-open)) * { visibility: hidden; }
+  .chrx-sub-dialog { display: block !important; position: static !important; }
+  .chrx-sub-panel { display: block !important; width: 100% !important; border: none !important; box-shadow: none !important; }
+  .chrx-sub-memo, .chrx-sub-memo * { visibility: visible !important; }
   .chrx-sub-memo {
+    page: chrx-sub-memo;
     position: absolute; left: 0; top: 0;
     width: 100%; min-height: 0;
     padding: 0; margin: 0;
     box-shadow: none; border: none;
   }
-  .chrx-sub-print-toolbar { display: none; }
+  .chrx-sub-print-toolbar { display: none !important; }
 }
 
 /* ───── Dark-mode overrides ──────────────────────────────────────────────
