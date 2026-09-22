@@ -1,0 +1,42 @@
+/* Lane D — placement-suggestion ("Best slot") marker.
+ *
+ * INTEGRATION NOTE: this file is not yet imported by the bundle.
+ * A later integration step must add `@import "../../css/lane-suggestions.css";`
+ * (path relative to js/entry/main.js) AFTER editor-v3.css so the marker
+ * resolves over the skin. Until then the Best slot is still chosen and
+ * marked in the DOM (class + data-suggest), only the visual badge is absent.
+ * No e2e in this lane depends on these styles — specs assert the DOM marker.
+ */
+
+/* Best destination: calm teal ring + small "Best" pill. No tooltip, no
+ * explanation — the badge is the whole surface. Scoped to .chrx-shell so it
+ * matches the cascade specificity of the other editor skins. */
+.chrx-shell .chrx-slot--suggest-best {
+  outline: 2px solid var(--chrx-accent, #0d4f54);
+  outline-offset: -2px;
+  position: relative;
+}
+
+.chrx-shell .chrx-slot--suggest-best::after {
+  content: "Best";
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  z-index: 3;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--chrx-accent, #0d4f54);
+  color: var(--chrx-accent-on, #fff);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 14px;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chrx-shell .chrx-slot--suggest-best {
+    outline-style: solid;
+  }
+}
