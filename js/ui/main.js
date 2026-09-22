@@ -301,6 +301,7 @@ import "./start_screen.js";
       document.getElementById("step-" + i)?.classList.toggle("hidden", i !== n);
     }
     relocateEditorTools(n === 6);
+    if (n === 6) scheduleFocusBoardMetrics();
     document.querySelectorAll(".step-btn").forEach(b => {
       const active = parseInt(b.dataset.step, 10) === n;
       // step 6 has its own emerald primary; don't paint it blue when active
@@ -330,6 +331,78 @@ import "./start_screen.js";
     if (tools.parentElement !== slot) slot.appendChild(tools);
     slot.style.display = editorActive ? "flex" : "none";
   }
+
+  // The single-class board prints the FULL subject name on every card
+  // (grid_canvas vkarta line1 in focus mode), so the "Codes" decoder has
+  // nothing to decode there — it only means something for the dense
+  // all-classes grid, which is the one place 2-4 char codes appear. Density
+  // is likewise inert in focus view. Hide both rather than parking a dead
+  // disabled control in a toolbar we are trying to shrink; they come back
+  // the moment the user switches to All classes.
+  function syncEditorChrome() {
+    const inFocus = ((window.APP.editor && window.APP.editor.viewMode) || "focus") === "focus";
+    for (const id of ["editor-legend", "editor-density"]) {
+      const btn = document.getElementById(id);
+      if (btn) btn.hidden = inFocus;
+    }
+    // A legend left open across the switch would float over a board that
+    // never shows codes.
+    if (inFocus && window.SubjectLegend && typeof window.SubjectLegend.close === "function") {
+      try { window.SubjectLegend.close(); } catch {}
+    }
+  }
+
+  // Publish the rendered period-row count so editor-v3.css can divide the
+  // viewport between the rows (--chrx-focus-row-h). Read-only against the
+  // board's DOM; the grid module is not touched.
+  function syncFocusBoardMetrics() {
+    const shell = document.getElementById("chrx-shell");
+    if (!shell) return;
+    const root = document.getElementById("editor-root");
+    const rows = document.querySelectorAll("#editor-root .chrx-focus-period").length;
+    if (rows > 0) shell.style.setProperty("--chrx-focus-rows", String(rows));
+    else shell.style.removeProperty("--chrx-focus-rows");
+
+    // How much height the scroller actually received. Measuring beats a
+    // 100vh formula because the chrome above it (board bar, entity toolbar,
+    // browser UI) varies. clientHeight excludes the scrollbar, and the value
+    // does not depend on the board's own height — #editor-root is flex-sized
+    // by its siblings — so publishing it cannot feed back into itself.
+    // clientHeight includes padding, and the bottom padding is the slack
+    // reserved for the overlaying curtain — subtract it so rows are sized
+    // against the height that is genuinely visible.
+    let avail = 0;
+    if (root) {
+      const pad = parseFloat(getComputedStyle(root).paddingBottom) || 0;
+      avail = Math.max(0, root.clientHeight - pad);
+      // The board bar sits inside the scroller above the board, so the rows
+      // get less than the scroller's full height. Offset is measured within
+      // the scroll content (scroll-position independent) and depends on the
+      // bar, never on the board's own height — so this cannot feed back.
+      const board = root.querySelector(".chrx-focus-board");
+      if (board) {
+        const offset = (board.getBoundingClientRect().top - root.getBoundingClientRect().top) + root.scrollTop;
+        avail = Math.max(0, avail - offset);
+      }
+    }
+    if (avail > 0) shell.style.setProperty("--chrx-focus-avail-h", avail + "px");
+    else shell.style.removeProperty("--chrx-focus-avail-h");
+  }
+
+  // The board is re-rendered synchronously by several editor events; measure
+  // on the next frame so we read the new DOM, and coalesce bursts (a drag
+  // fires pickup + place back to back).
+  let focusMetricsRaf = 0;
+  function scheduleFocusBoardMetrics() {
+    if (focusMetricsRaf) return;
+    const raf = typeof requestAnimationFrame === "function"
+      ? requestAnimationFrame : (fn) => setTimeout(fn, 16);
+    focusMetricsRaf = raf(() => { focusMetricsRaf = 0; syncFocusBoardMetrics(); });
+  }
+  for (const evt of ["editor:view-mode", "editor:place", "editor:unplace", "entity:changed"]) {
+    document.addEventListener(evt, scheduleFocusBoardMetrics);
+  }
+  window.addEventListener("resize", scheduleFocusBoardMetrics);
   function renderActiveStep() {
     switch (window.APP.step) {
       case 1:
@@ -709,6 +782,8 @@ import "./start_screen.js";
       };
       syncZoomEnabled();
       document.addEventListener("editor:view-mode", syncZoomEnabled);
+      syncEditorChrome();
+      document.addEventListener("editor:view-mode", syncEditorChrome);
 
       densBtn.onclick = () => {
         if (densBtn.disabled) return;
