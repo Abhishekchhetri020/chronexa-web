@@ -3,6 +3,10 @@ import "../state.js";
 import "../components/first_card_coachmark.js";
 import "../entities/dialog_shell.js";
 import "../wizard/create_new.js";
+// Lane-curtain: the docked bottom curtain that hosts the inspector + unplaced
+// tray and overlays the grid. Imported for its side effects (it swaps
+// #editor-lower for a fixed curtain and ships its own stylesheet).
+import "./curtain.js";
 
 /**
  * Editor activator — turns on the editor + pending strip when the user enters Step 6.
@@ -32,6 +36,14 @@ import "../wizard/create_new.js";
     if (!editorRoot || !pendingRoot) return;
     editorRoot.hidden = false;
     pendingRoot.hidden = false;
+
+    // Mount the curtain BEFORE the first render so the inspector and the tray
+    // are already adopted into it — otherwise the first paint would happen in
+    // the retired in-flow wrapper and then jump into the curtain.
+    if (global.Curtain) {
+      global.Curtain.mount();
+      global.Curtain.show();
+    }
 
     // ─── Empty-school coaching: instead of a blank grid, show "Get started" ─
     if (needsSetupHero(APP.school)) {
@@ -182,11 +194,26 @@ import "../wizard/create_new.js";
     const pendingRoot = document.getElementById("pending-strip-root");
     if (editorRoot) editorRoot.hidden = true;
     if (pendingRoot) pendingRoot.hidden = true;
+    // The curtain lives outside #step-6, so leaving the editor has to hide it
+    // explicitly or it would float over every other step.
+    if (global.Curtain) global.Curtain.hide();
   }
 
+  /**
+   * Recompute the unplaced-lesson count and publish it to the curtain.
+   *
+   * This is the single source of truth for "how many cards are unplaced" —
+   * the curtain does not count anything itself. It only uses the number to
+   * decide its resting height (slim when empty, at least peek when not).
+   *
+   * @returns {number} the unplaced count (0 when there is no school yet)
+   */
   function updatePendingCount() {
     const APP = global.APP || {};
-    if (!APP.school || !APP.school.lessons) return;
+    if (!APP.school || !APP.school.lessons) {
+      if (global.Curtain) global.Curtain.syncCount(0);
+      return 0;
+    }
     let pending = 0;
     const placedByLesson = {};
     for (const c of (APP.school.cards || [])) {
@@ -201,6 +228,9 @@ import "../wizard/create_new.js";
    }
     const el = document.getElementById("pending-count");
     if (el) el.textContent = "(" + pending + " unplaced)";
+    // Lane-curtain: keep the curtain's resting height in step with the count.
+    if (global.Curtain) global.Curtain.syncCount(pending);
+    return pending;
   }
 
   function setBannerOnce() {

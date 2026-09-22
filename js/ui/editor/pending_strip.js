@@ -130,7 +130,19 @@ window.PendingStrip = (function () {
       const editor = document.querySelector(".chrx-editor");
       if (editor && window.Editor && window.Editor.render) window.Editor.render(editor);
     });
-    rootEl.querySelector(".chrx-pending-resize")?.addEventListener("pointerdown", (ev) => startResize(ev, rootEl));
+    rootEl.querySelector(".chrx-pending-resize")?.addEventListener("pointerdown", (ev) => {
+      // Lane-curtain: once the curtain is mounted it owns vertical sizing,
+      // because it OVERLAYS the grid and must stay the only thing that moves.
+      // Letting the tray's legacy handle resize the tray independently would
+      // give two drag paths the same gesture. The curtain's own handle is the
+      // supported one; this forwards a stray grab of the old grip to it.
+      if (curtainOwnsHeight() && window.Curtain.beginDrag) {
+        ev.preventDefault();
+        window.Curtain.beginDrag(ev);
+        return;
+      }
+      startResize(ev, rootEl);
+    });
     if (rootEl._chrxPendingWired) return;
     rootEl.addEventListener("mouseover", (ev) => {
       const vk = ev.target.closest(".chrx-vk-pending");
@@ -282,7 +294,20 @@ window.PendingStrip = (function () {
     return S && S._idx && id ? S._idx.classById[id] : null;
   }
 
+  /** True once the bottom curtain owns the tray's vertical sizing. */
+  function curtainOwnsHeight() {
+    return !!(window.Curtain && typeof window.Curtain.isMounted === "function"
+      && window.Curtain.isMounted());
+  }
+
   function applyTrayHeight(rootEl) {
+    // Lane-curtain: the persisted height is an INLINE style, so no CSS rule
+    // can override it — it has to be cleared here. Inside the curtain the
+    // tray fills its slot instead (see css/lane-curtain.css §6).
+    if (curtainOwnsHeight()) {
+      rootEl.style.height = "";
+      return;
+    }
     const h = window.APP && window.APP.editor && window.APP.editor.pendingTrayHeight;
     if (Number.isFinite(h)) rootEl.style.height = Math.max(72, Math.min(420, h)) + "px";
   }
