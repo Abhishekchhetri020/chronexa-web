@@ -380,19 +380,43 @@ import "./state.js";
       }));
     } catch (e) {}
   }
+  // The editor's Classic-skin button reflects <html data-skin>. The workspace
+  // forces that attribute on, so without this the button reads "off" while the
+  // skin is on, and its first click appears to do nothing.
+  function syncSkinButton() {
+    const btn = document.getElementById("editor-toggle-skin");
+    if (!btn) return;
+    btn.classList.toggle("is-on", document.documentElement.getAttribute("data-skin") === "classic");
+  }
+
   function setEditorWorkspace(active) {
     const shellEl = document.getElementById("chrx-shell");
     if (!shellEl) return;
+    const html = document.documentElement;
     if (active) {
       if (!shellEl.classList.contains("is-fullscreen")) {
         shellEl.dataset.autoFullscreen = "1";
         shellEl.classList.add("is-fullscreen", "is-side-hidden", "is-rail-hidden");
       }
-      document.documentElement.setAttribute("data-skin", "classic");
-    } else if (shellEl.dataset.autoFullscreen === "1") {
-      delete shellEl.dataset.autoFullscreen;
-      shellEl.classList.remove("is-fullscreen", "is-side-hidden", "is-rail-hidden");
+      // Remember what the rest of the app was using so leaving the editor
+      // doesn't strand every other route in the Classic skin.
+      if (shellEl.dataset.skinBeforeEditor == null) {
+        shellEl.dataset.skinBeforeEditor = html.getAttribute("data-skin") || "";
+      }
+      html.setAttribute("data-skin", "classic");
+    } else {
+      if (shellEl.dataset.autoFullscreen === "1") {
+        delete shellEl.dataset.autoFullscreen;
+        shellEl.classList.remove("is-fullscreen", "is-side-hidden", "is-rail-hidden");
+      }
+      if (shellEl.dataset.skinBeforeEditor != null) {
+        const prev = shellEl.dataset.skinBeforeEditor;
+        delete shellEl.dataset.skinBeforeEditor;
+        if (prev) html.setAttribute("data-skin", prev);
+        else html.removeAttribute("data-skin");
+      }
     }
+    syncSkinButton();
   }
   function togglePanel(which) {
     const shellEl = document.getElementById("chrx-shell");

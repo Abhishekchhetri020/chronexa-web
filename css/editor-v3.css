@@ -1209,3 +1209,156 @@ body.chrx-card-in-hand .chrx-shell .chrx-card-panel { display: none; }
   .chrx-shell .chrx-vkarta:hover { transform: none !important; box-shadow: none !important; }
   .chrx-legend { display: none !important; }
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   11 · MAXIMIZED TIMETABLE WORKSPACE  (lane: ui/grid-shell)
+   ────────────────────────────────────────────────────────────────────────
+   The single-class board (viewMode "focus", the editor default) is the
+   primary surface. Everything here buys it vertical and horizontal room
+   without touching lesson-card content.
+
+   Contract with the bottom curtain lane:
+     --chrx-curtain-h   height the curtain currently occupies. The curtain
+                        OVERLAYS the board; it is not in the grid's flow, so
+                        board rows keep their height at every curtain size.
+                        Set it on .chrx-shell; this file only reads it.
+   Contract with grid geometry:
+     --chrx-focus-rows  number of period rows on the board. main.js measures
+                        the rendered board and publishes it; the fallback of
+                        9 keeps the first paint sane before that runs.
+   ════════════════════════════════════════════════════════════════════════ */
+
+.chrx-shell {
+  /* Height the lower region occupies. The collapsed default keeps the
+     inspector + unplaced strip on screen without scrolling; the curtain
+     lane overwrites it as the user drags. */
+  --chrx-curtain-h: 132px;
+  --chrx-focus-rows: 9;
+  /* Height the board scroller actually got, published by main.js after each
+     render. The 100vh expression is only the pre-measurement fallback. */
+  --chrx-focus-avail-h: calc(100vh - 132px);
+  /* 34px = the sticky day-header band; 8px = board border + bottom breathing
+     room, so the last row is not flush against the scroller edge. */
+  --chrx-focus-row-h: clamp(
+    44px,
+    calc((var(--chrx-focus-avail-h) - 42px) / var(--chrx-focus-rows)),
+    92px
+  );
+}
+
+/* ── 11.1 Reclaim the top band ─────────────────────────────────────────── */
+.chrx-shell.is-fullscreen { grid-template-rows: 46px 1fr 0; }
+.chrx-shell.is-fullscreen .chrx-topbar { min-height: 46px; padding: 0 10px; }
+.chrx-shell.is-fullscreen .chrx-main > main { padding: 6px 8px 0; }
+/* The tip banner is a one-off hint; in the maximized workspace it costs a
+   whole row of grid. It stays available in the windowed editor. */
+.chrx-shell.is-fullscreen #editor-banner { display: none !important; }
+
+/* ── 11.2 Editor fills the viewport instead of growing the page ────────── */
+.chrx-shell.is-fullscreen #step-6 {
+  display: flex; flex-direction: column;
+  height: 100%; min-height: 0;
+  position: relative;
+}
+.chrx-shell.is-fullscreen #editor-root {
+  /* basis 0, not auto: the board must take ALL the leftover height rather
+     than settle at its content size. The !important overrides the legacy
+     inline min-height:500px on the element, which otherwise floors the
+     scroller at 500px and forces an inner scrollbar at 720p. */
+  flex: 1 1 0;
+  min-height: 0 !important;
+  height: auto;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.chrx-shell.is-fullscreen #editor-root > .chrx-editor { height: auto; min-height: 100%; }
+.chrx-shell.is-fullscreen .chrx-editor--focus { overflow: visible; }
+.chrx-shell.is-fullscreen #step-6 > #entity-toolbar-mount { flex: 0 0 auto; }
+
+/* ── 11.3 Fixed board rows — immune to the curtain ─────────────────────── */
+.chrx-shell .chrx-focus-board {
+  width: auto; min-width: 0;
+  grid-template-columns: 62px repeat(var(--chrx-days, 6), minmax(96px, 1fr));
+  /* Row 1 is the day-header band; every period row after it is a fixed
+     height, so the board never reflows when something overlays it. */
+  grid-template-rows: 34px;
+  grid-auto-rows: var(--chrx-focus-row-h);
+}
+.chrx-shell .chrx-focus-corner,
+.chrx-shell .chrx-focus-day { min-height: 34px; }
+.chrx-shell .chrx-focus-period { padding: 4px; gap: 1px; }
+.chrx-shell .chrx-focus-period strong { font-size: 12px; }
+.chrx-shell .chrx-focus-period span { font-size: 10px; }
+/* Day headers stay put while the periods scroll. */
+.chrx-shell.is-fullscreen .chrx-focus-corner,
+.chrx-shell.is-fullscreen .chrx-focus-day {
+  position: sticky; top: 0; z-index: 3;
+}
+.chrx-shell.is-fullscreen .chrx-focus-period {
+  position: sticky; left: 0; z-index: 2;
+}
+
+/* ── 11.4 Slimmer board bar ────────────────────────────────────────────── */
+.chrx-shell.is-fullscreen .chrx-focus-boardbar {
+  padding: 6px 8px;
+  margin-bottom: 6px;
+  top: 0; z-index: 4;
+}
+.chrx-shell.is-fullscreen .chrx-focus-boardbar__nav { width: 28px !important; height: 28px !important; }
+.chrx-shell.is-fullscreen .chrx-focus-boardbar__picker select { height: 30px; }
+
+/* ── 11.5 Curtain overlays, board keeps its rows ───────────────────────── */
+/* The lower region gets one declared height instead of growing to fit its
+   content, so it can never quietly take the board's space. It stays in flow
+   and fully reachable — today it is only reachable by scrolling .chrx-main,
+   which at this height it no longer needs.
+
+   The curtain lane owns dragging it. Two hooks, no edits to this block:
+     --chrx-curtain-h          the height it occupies (drag writes this)
+     data-curtain="overlay"    float it over the board instead of sitting
+                               under it; the scroller then reserves matching
+                               slack so the last period stays reachable.
+   Board rows are a fixed height in both modes, so no curtain height — and
+   no switch between the two modes — reflows the timetable. */
+.chrx-shell.is-fullscreen #step-6 > #editor-lower {
+  flex: 0 0 auto;
+  height: var(--chrx-curtain-h);
+  min-height: 0;
+  margin: 8px 0 0;
+  overflow: auto;
+}
+.chrx-shell.is-fullscreen[data-curtain="overlay"] #step-6 > #editor-lower {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  margin: 0;
+  z-index: 6;
+}
+.chrx-shell.is-fullscreen[data-curtain="overlay"] #editor-root {
+  padding-bottom: var(--chrx-curtain-h);
+  scroll-padding-bottom: var(--chrx-curtain-h);
+}
+
+/* ── 11.6 Actions stay reachable and on one line down to 1280×720 ──────── */
+.chrx-shell .chrx-topbar { flex-wrap: nowrap; }
+.chrx-shell .chrx-crumbs { min-width: 0; overflow: hidden; }
+.chrx-shell .chrx-crumbs > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chrx-shell #editor-quick-tools { flex-wrap: nowrap !important; }
+.chrx-shell .chrx-action-row { flex: 0 0 auto; }
+@media (max-width: 1440px) {
+  .chrx-shell #editor-quick-tools .chrx-tool__label { display: none; }
+  .chrx-shell #editor-quick-tools button { padding: 0 8px; }
+}
+@media (max-width: 1320px) {
+  .chrx-shell .chrx-kbd-search { display: none; }
+  .chrx-shell .chrx-crumbs { font-size: 13px; max-width: 26ch; }
+}
+@media (max-width: 1100px) {
+  .chrx-shell .chrx-crumbs__sep,
+  .chrx-shell .chrx-crumbs__current { display: none; }
+}
+/* Short viewports (720p and laptop browser chrome): give the rows the floor
+   and let the board scroll rather than squeezing text out of the cards. */
+@media (max-height: 760px) {
+  .chrx-shell { --chrx-board-chrome-h: 118px; }
+  .chrx-shell.is-fullscreen .chrx-focus-boardbar { padding: 4px 8px; margin-bottom: 4px; }
+}
