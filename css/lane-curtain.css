@@ -1,0 +1,432 @@
+/* ==========================================================================
+   LANE-CURTAIN · the docked lesson curtain
+   --------------------------------------------------------------------------
+   What this is
+     A `position:fixed` bottom curtain that OVERLAYS the timetable grid. It
+     adopts the two nodes that used to sit in flow below the grid —
+     `#editor-inspector-root` (lesson inspector, left) and `.chrx-pending-region`
+     (unplaced-lesson tray, right) — and lets the user pull it up/down through
+     three snap states: collapsed · peek · expanded.
+
+   The one invariant this file exists to protect
+     Opening, closing or dragging the curtain must NEVER change the grid's box.
+     The curtain is fixed, out of flow, and owns only its own height. Nothing
+     here touches #editor-root, and no rule in this file sets grid sizing.
+     (Contract asserted in e2e/curtain.spec.js.)
+
+   Placement in the cascade
+     INTEGRATION NOTE — this stylesheet must be imported by the cascade owner,
+     js/entry/main.js, in the final position:
+
+         import "../../css/lane-curtain.css";   // LAST, after editor-v3.css
+
+     It is currently imported by js/ui/editor/curtain.js so that this lane is
+     self-contained and testable on its own. Vite resolves both imports to the
+     same module id and emits the CSS once, so adding the main.js import as
+     well is safe — that is the preferred canonical position.
+
+   Scope
+     Base rules are deliberately NOT prefixed with `.chrx-shell`: the curtain
+     may mount under `.chrx-shell` (preferred) or fall back to <body>, and the
+     adopted nodes must look the same either way. Selectors that override
+     editor-v3.css / editor.css carry one extra class so they win on
+     specificity rather than on import order.
+   ========================================================================== */
+
+/* ── 0 · Accessible state inks for the inspector's status chip ────────────
+   Declared on :root (not on .chrx-curtain) so the dark-mode block below can
+   override them — a value set on .chrx-curtain itself would shadow the
+   inherited :root value and dark mode would never apply.
+   Mirrors the selector pair editor-v3.css uses to switch the card tint model. */
+:root {
+  --cur-green-ink: #14602a;
+  --cur-amber-ink: #7a3103;
+  --cur-red-ink:   #8c0010;
+  --cur-chip-bg:   rgba(255, 255, 255, 0.82);
+}
+
+:root[data-theme="dark"]:has(body:not(.chrx-landing-active)),
+:root:not([data-theme="light"]):has(body:not(.chrx-landing-active)).e3-system-dark {
+  --cur-green-ink: #6fdc8c;
+  --cur-amber-ink: #ffb340;
+  --cur-red-ink:   #ff7b70;
+  --cur-chip-bg:   rgba(255, 255, 255, 0.10);
+}
+
+/* ── 1 · The curtain shell ────────────────────────────────────────────────
+   Fixed, full-bleed, out of flow. `--chrx-curtain-h` is the single number the
+   JS state machine writes. */
+.chrx-curtain {
+  --cur-h: var(--chrx-curtain-h, 118px);
+
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  height: var(--cur-h);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  background: var(--chrx-bg-elev, #fff);
+  border-top: 1px solid var(--line, rgba(0, 0, 0, 0.09));
+  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.10);
+  font-family: var(--chrx-font-sans);
+  transition: height 220ms var(--e3-ease, cubic-bezier(0.2, 0.8, 0.2, 1));
+  will-change: height;
+}
+
+/* The authored `display:flex` above would otherwise defeat the UA's
+   `[hidden]{display:none}` — restate it so show()/hide() actually hide. */
+.chrx-curtain[hidden] { display: none; }
+
+/* While the handle is held, height must track the pointer 1:1 — no easing,
+   no `will-change` layer promotion. */
+.chrx-curtain.is-dragging { transition: none; }
+
+/* Content-driven re-fit: applied for the duration of a single style flush so
+   the tray can change height without the cards inside it sliding around. */
+.chrx-curtain.no-anim { transition: none; }
+
+/* Drag grip, painted on the curtain itself so the handle row can stay a
+   plain flex row. */
+.chrx-curtain::before {
+  content: "";
+  position: absolute;
+  top: 5px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 38px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--chrx-fg-faint, rgba(0, 0, 0, 0.22));
+  opacity: 0.55;
+  pointer-events: none;
+}
+.chrx-curtain.is-dragging::before { opacity: 0.95; }
+
+/* ── 2 · Header row: drag handle + collapse toggle ─────────────────────── */
+.chrx-curtain__head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 6px 10px 2px 12px;
+  border-bottom: 1px solid var(--line-soft, rgba(0, 0, 0, 0.055));
+}
+
+.chrx-curtain__handle {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 24px;
+  cursor: ns-resize;
+  touch-action: none;              /* a drag must never scroll the page */
+  border-radius: 6px;
+  padding: 0 4px;
+}
+.chrx-curtain__handle:focus-visible {
+  outline: 2px solid var(--chrx-accent, #007aff);
+  outline-offset: 1px;
+}
+
+/* The adopted `<h3>Unplaced lessons <span id="pending-count">` becomes the
+   curtain title. Moved, not duplicated — activator.js keeps updating
+   #pending-count exactly as before. */
+.chrx-curtain__handle h3 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  min-width: 0;
+  font: 600 12px/1 var(--chrx-font-sans);
+  letter-spacing: -0.005em;
+  color: var(--chrx-fg-secondary, #4a4a4f);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chrx-curtain__handle h3 .chrx-ic { color: var(--chrx-fg-tertiary, #86868b); flex: 0 0 auto; }
+.chrx-curtain__handle h3 #pending-count {
+  font: 600 11px/1 var(--chrx-font-sans);
+  color: var(--chrx-fg-tertiary, #86868b);
+}
+/* Once work exists, the title stops being decorative. */
+.chrx-curtain[data-count-nonzero="1"] .chrx-curtain__handle h3 { color: var(--chrx-fg, #1a1714); }
+.chrx-curtain[data-count-nonzero="1"] .chrx-curtain__handle h3 #pending-count { color: var(--chrx-amber, #c93400); }
+
+.chrx-curtain__toggle {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line, rgba(0, 0, 0, 0.09));
+  border-radius: 7px;
+  background: var(--chrx-bg-tile, #f2f2f4);
+  color: var(--chrx-fg-secondary, #4a4a4f);
+  cursor: pointer;
+  padding: 0;
+}
+.chrx-curtain__toggle:hover { color: var(--chrx-fg, #1a1714); }
+.chrx-curtain__toggle:focus-visible { outline: 2px solid var(--chrx-accent, #007aff); outline-offset: 1px; }
+.chrx-curtain__toggle svg { display: block; transition: transform 180ms var(--e3-ease, ease); }
+.chrx-curtain[data-state="expanded"] .chrx-curtain__toggle svg { transform: rotate(180deg); }
+
+/* ── 3 · Body: inspector (left) + unplaced tray (right) ────────────────── */
+.chrx-curtain__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 12px;
+  padding: 8px 12px 12px;
+}
+.chrx-curtain__body[hidden] { display: none; }
+
+.chrx-curtain__inspector {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.chrx-curtain__tray {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Narrow viewports: one column, tray under the inspector, both scroll. */
+@media (max-width: 900px) {
+  .chrx-curtain__body { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .chrx-curtain__inspector { max-height: 96px; }
+}
+
+/* ── 4 · The inspector host, deframed ────────────────────────────────────
+   The HOST is only a slot now: the lesson panel inside it is the card. */
+.chrx-curtain .chrx-curtain__inspector #editor-inspector-root {
+  flex: 1 1 auto;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+.chrx-curtain .chrx-curtain__inspector #editor-inspector-root:empty::before {
+  content: "Hover a lesson to see its details";
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1 1 auto;
+  min-height: 64px;
+  padding: 12px;
+  border: 1px dashed var(--line, rgba(0, 0, 0, 0.09));
+  border-radius: 10px;
+  font: 500 12px/1.4 var(--chrx-font-sans);
+  color: var(--chrx-fg-tertiary, #86868b);
+  text-align: center;
+}
+
+/* ── 5 · INSPECTOR AS A LESSON CARD ──────────────────────────────────────
+   Mirrors `.chrx-vkarta`'s tint model exactly (same --e3-card-* tokens, same
+   hue rail + tinted fill + deep ink) so the panel reads as the same object
+   the cursor is over. `--chrx-panel-hue` is written by grid_canvas.js and is
+   re-pointed at the hovered card's own `--chrx-card-hue` by curtain.js, so
+   the panel follows the active colour axis (subject / teacher / class / room)
+   instead of always guessing subject. */
+.chrx-curtain .chrx-curtain__inspector #chrx-card-panel {
+  --hue: var(--chrx-panel-hue, 210);
+  --cur-bg: hsl(var(--hue) var(--e3-card-bg-s, 78%) var(--e3-card-bg-l, 92%));
+  --cur-rail: hsl(var(--hue) var(--e3-card-rail-s, 62%) var(--e3-card-rail-l, 52%));
+  --cur-ink: hsl(var(--hue) var(--e3-card-ink-s, 52%) var(--e3-card-ink-l, 30%));
+  --cur-ink-strong: hsl(var(--hue) var(--e3-card-ink-s, 52%) calc(var(--e3-card-ink-l, 30%) - 8%));
+  --cur-ink-muted: hsl(var(--hue) calc(var(--e3-card-ink-s, 52%) - 12%) calc(var(--e3-card-ink-l, 30%) + 4%));
+
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px 12px 11px 14px;
+  border: 0;
+  border-left: 4px solid var(--cur-rail);
+  border-radius: 10px;
+  background: var(--cur-bg);
+  color: var(--cur-ink);
+  box-shadow: var(--chrx-shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.08));
+  font-family: var(--chrx-font-sans);
+}
+
+.chrx-curtain .chrx-curtain__inspector #chrx-card-panel .chrx-card-panel__eyebrow {
+  font: 700 10px/1 var(--chrx-font-sans);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--cur-ink-muted);
+  margin-bottom: 5px;
+}
+.chrx-curtain .chrx-curtain__inspector #chrx-card-panel .chrx-card-panel__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 7px;
+  font: 600 15px/1.2 var(--chrx-font-sans);
+  letter-spacing: -0.012em;
+  color: var(--cur-ink-strong);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chrx-curtain .chrx-curtain__inspector #chrx-card-panel .chrx-card-panel__dot {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--cur-rail);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--cur-rail) 26%, transparent);
+}
+.chrx-curtain .chrx-curtain__inspector #chrx-card-panel .chrx-card-panel__rows {
+  display: flex;
+  flex-direction: column;
+  margin: 0 0 9px;
+}
+.chrx-curtain .chrx-curtain__inspector #chrx-card-panel .chrx-card-panel__row {
+  display: grid;
+  grid-template-columns: 18px 56px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+  padding: 3px 0;
+  border-top: 1px solid color-mix(in srgb, var(--cur-rail) 22%, transparent);
+  font: 500 12px/1.2 var(--chrx-font-sans);
+}
+.chrx-curtain .chrx-curtain__inspector #chrx-card-panel .chrx-card-panel__row:first-child { border-top: 0; }
+.chrx-curtain .chrx-curtain__inspector #chrx-card-panel .chrx-card-panel__row .chrx-ic { color: var(--cur-ink-muted); }
+.chrx-curtain .chrx-curtain__inspector #chrx-card-panel .chrx-card-panel__row dt { color: var(--cur-ink-muted); font-weight: 600; }
+.chrx-curtain .chrx-curtain__inspector #chrx-card-panel .chrx-card-panel__row dd {
+  margin: 0;
+  color: var(--cur-ink);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chrx-curtain .chrx-curtain__inspector #chrx-card-panel .chrx-card-panel__progress {
+  height: 4px;
+  border-radius: 999px;
+  overflow: hidden;
+  margin-bottom: 7px;
+  background: color-mix(in srgb, var(--cur-rail) 24%, transparent);
+}
+.chrx-curtain .chrx-curtain__inspector #chrx-card-panel .chrx-card-panel__progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--chrx-accent, #007aff);
+  transition: width 240ms var(--e3-ease, ease);
+}
+.chrx-curtain .chrx-curtain__inspector #chrx-card-panel .chrx-card-panel__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font: 600 11.5px/1.2 var(--chrx-font-sans);
+  color: var(--cur-ink-muted);
+}
+
+/* Status chip: a solid surface with its own measured ink, so the state colour
+   never has to win against the hue tint behind it. */
+.chrx-curtain .chrx-curtain__inspector #chrx-card-panel .chrx-card-panel__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  max-width: 62%;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--cur-chip-bg);
+  color: var(--cur-ink-strong);
+  font: 600 11px/1 var(--chrx-font-sans);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chrx-curtain .chrx-curtain__inspector #chrx-card-panel .chrx-card-panel__pill::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: 0 0 auto;
+}
+.chrx-curtain .chrx-curtain__inspector #chrx-card-panel[data-state="green"] .chrx-card-panel__pill { color: var(--cur-green-ink); }
+.chrx-curtain .chrx-curtain__inspector #chrx-card-panel[data-state="green"] .chrx-card-panel__progress span { background: var(--cur-green-ink); }
+.chrx-curtain .chrx-curtain__inspector #chrx-card-panel[data-state="amber"] .chrx-card-panel__pill { color: var(--cur-amber-ink); }
+.chrx-curtain .chrx-curtain__inspector #chrx-card-panel[data-state="amber"] .chrx-card-panel__progress span { background: var(--cur-amber-ink); }
+.chrx-curtain .chrx-curtain__inspector #chrx-card-panel[data-state="red"] .chrx-card-panel__pill { color: var(--cur-red-ink); }
+.chrx-curtain .chrx-curtain__inspector #chrx-card-panel[data-state="red"] .chrx-card-panel__progress span { background: var(--cur-red-ink); }
+
+/* ── 6 · The unplaced tray, re-fitted to the curtain ─────────────────────
+   The tray's own resize handle and fixed 192px height belonged to the old
+   in-flow layout. The curtain now owns vertical sizing, so the strip fills
+   the slot instead. Selector carries an id + 2 classes to beat
+   `.chrx-shell #pending-strip-root` with an id + 3 classes: editor-v3.css
+   declares the 192px height at id + 2 classes, and a tie would fall to
+   whichever sheet Vite emits last. */
+.chrx-curtain .chrx-curtain__tray .chrx-pending-region {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.chrx-curtain .chrx-curtain__tray .chrx-pending-region #pending-strip-root {
+  position: static;
+  resize: none;
+  height: auto;
+  min-height: 0;
+  max-height: none;
+  flex: 1 1 auto;
+  overflow: hidden;
+  border-radius: 10px;
+}
+.chrx-curtain .chrx-curtain__tray .chrx-pending-resize { display: none; }
+.chrx-curtain .chrx-curtain__tray .chrx-pending-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: auto;
+}
+.chrx-curtain .chrx-curtain__tray .chrx-pending-search { flex: 0 1 200px; }
+
+/* ── 7 · The old in-flow wrapper, retired ────────────────────────────────
+   #editor-lower's children move into the curtain; the emptied wrapper must
+   stop contributing margin. Marked from JS so this rule cannot fire before
+   adoption has actually happened. */
+#editor-lower[data-curtain-adopted="1"] { display: none; }
+
+/* ── 8 · Never mount outside the workspace ───────────────────────────────
+   The shell renders on the landing page too; the curtain must not. */
+body.chrx-landing-active .chrx-curtain { display: none; }
+
+/* ── 9 · Print: a curtain is chrome, not a report ────────────────────────
+   design-v3.css already hides .chrx-pending-region and #editor-lower in
+   print; the curtain now hosts those nodes, so it must be hidden too. */
+@media print {
+  .chrx-curtain { display: none !important; }
+}
+
+/* ── 10 · Reduced motion ────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .chrx-curtain,
+  .chrx-curtain__toggle svg,
+  .chrx-curtain .chrx-curtain__inspector #chrx-card-panel .chrx-card-panel__progress span { transition: none; }
+}
