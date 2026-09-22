@@ -35,6 +35,9 @@ import "../../css/landing-anim.css";
 // Editor v3 "Studio" — system-native surface for the whole editor page.
 // Loaded LAST so it resolves over editor.css / drag_ux.css / design-v3.css.
 import "../../css/editor-v3.css";
+import "../../css/lane-curtain.css";
+import "../../css/lane-class-rail.css";
+import "../../css/lane-suggestions.css";
 
 import "../ui/state.js";
 import "../ui/components/icons.js";
