@@ -1,5 +1,4 @@
-import { describe, it } from "node:test";
-import assert from "node:assert/strict";
+import { describe, it, expect } from "vitest";
 import {
   computeUnplacedCountsByClass,
   getUnplacedCountForClass,
@@ -8,10 +7,10 @@ import {
 
 describe("unplaced_counts", () => {
   it("returns empty object for empty or missing school", () => {
-    assert.deepStrictEqual(computeUnplacedCountsByClass(null), {});
-    assert.deepStrictEqual(computeUnplacedCountsByClass(undefined), {});
-    assert.deepStrictEqual(computeUnplacedCountsByClass({}), {});
-    assert.deepStrictEqual(computeUnplacedCountsByClass({ lessons: [] }), {});
+    expect(computeUnplacedCountsByClass(null)).toEqual({});
+    expect(computeUnplacedCountsByClass(undefined)).toEqual({});
+    expect(computeUnplacedCountsByClass({})).toEqual({});
+    expect(computeUnplacedCountsByClass({ lessons: [] })).toEqual({});
   });
 
   it("calculates unplaced lessons for single-class lessons", () => {
@@ -31,11 +30,11 @@ describe("unplaced_counts", () => {
     };
 
     const counts = computeUnplacedCountsByClass(school);
-    assert.strictEqual(counts["class_1"], 1);
-    assert.strictEqual(counts["class_2"], 3);
-    assert.strictEqual(getUnplacedCountForClass(counts, "class_1"), 1);
-    assert.strictEqual(getUnplacedCountForClass(counts, "class_2"), 3);
-    assert.strictEqual(getUnplacedCountForClass(counts, "class_nonexistent"), 0);
+    expect(counts["class_1"]).toBe(1);
+    expect(counts["class_2"]).toBe(3);
+    expect(getUnplacedCountForClass(counts, "class_1")).toBe(1);
+    expect(getUnplacedCountForClass(counts, "class_2")).toBe(3);
+    expect(getUnplacedCountForClass(counts, "class_nonexistent")).toBe(0);
   });
 
   it("handles joint lessons by counting once for each participating class", () => {
@@ -56,10 +55,8 @@ describe("unplaced_counts", () => {
     };
 
     const counts = computeUnplacedCountsByClass(school);
-    // class_A has 1 (solo) + 1 (joint) = 2
-    assert.strictEqual(counts["class_A"], 2);
-    // class_B has 1 (joint) = 1
-    assert.strictEqual(counts["class_B"], 1);
+    expect(counts["class_A"]).toBe(2);
+    expect(counts["class_B"]).toBe(1);
   });
 
   it("handles double-period lessons with lessonLength / isLabDouble", () => {
@@ -76,7 +73,7 @@ describe("unplaced_counts", () => {
     };
 
     const counts = computeUnplacedCountsByClass(school);
-    assert.strictEqual(counts["class_sci"], 2);
+    expect(counts["class_sci"]).toBe(2);
   });
 
   it("supports fallback classId field on lessons", () => {
@@ -88,16 +85,16 @@ describe("unplaced_counts", () => {
     };
 
     const counts = computeUnplacedCountsByClass(school);
-    assert.strictEqual(counts["class_single"], 2);
+    expect(counts["class_single"]).toBe(2);
   });
 
   it("formats counts: no badge / empty string for zero, plain numeric string for >0", () => {
-    assert.strictEqual(formatClassUnplacedCount(0), "");
-    assert.strictEqual(formatClassUnplacedCount(-1), "");
-    assert.strictEqual(formatClassUnplacedCount(null), "");
-    assert.strictEqual(formatClassUnplacedCount(undefined), "");
-    assert.strictEqual(formatClassUnplacedCount(1), "1");
-    assert.strictEqual(formatClassUnplacedCount(4), "4");
-    assert.strictEqual(formatClassUnplacedCount(12), "12");
+    expect(formatClassUnplacedCount(0)).toBe("");
+    expect(formatClassUnplacedCount(-1)).toBe("");
+    expect(formatClassUnplacedCount(null)).toBe("");
+    expect(formatClassUnplacedCount(undefined)).toBe("");
+    expect(formatClassUnplacedCount(1)).toBe("1");
+    expect(formatClassUnplacedCount(4)).toBe("4");
+    expect(formatClassUnplacedCount(12)).toBe("12");
   });
 });
