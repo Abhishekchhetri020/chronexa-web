@@ -3,6 +3,7 @@ import "../state.js";
 import "./grid_canvas.js";
 import "./pending_strip.js";
 import "./placement_validator.js";
+import "./placement_suggestions.js";
 
 /**
  * CardInHand — cursor-following ghost overlay.
@@ -112,6 +113,7 @@ import "./placement_validator.js";
       activePointerId = Number.isFinite(d.pointerId) ? d.pointerId : null;
       apply();
       prepareDropRows();
+      paintSuggestionBest();
       scrollEl = document.querySelector(".chrx-editor .chrx-grid-scroll");
       scrollRect = null;
       suppressClickUntil = 0;
@@ -139,6 +141,7 @@ import "./placement_validator.js";
       
       // Paint highlights instantly!
       paintHighlightsForClickMode();
+      paintSuggestionBest();
       
       document.addEventListener("keydown", onKey, true);
     }
@@ -185,6 +188,19 @@ import "./placement_validator.js";
       if (targetKeys && !targetKeys.has(rowEl.dataset.row)) continue;
       paintRowSlots(rowEl, cardsBySlot, blockLen);
     }
+  }
+
+  // Lane D: for unplaced (from-pending) cards, light every valid destination
+  // and mark exactly one Best. Runs once at pickup — never on the drag hot
+  // path — and never throws (a suggestion failure must not break pickup).
+  function paintSuggestionBest() {
+    try {
+      if (!inHand || !inHand.fromPending) return;
+      if (window.PlacementSuggestions &&
+          typeof window.PlacementSuggestions.paintForInHand === "function") {
+        window.PlacementSuggestions.paintForInHand(inHand);
+      }
+    } catch (_e) { /* suggestions are advisory only */ }
   }
 
   // Rows the in-hand card can never land in recede visually. Shared by drag
@@ -1044,6 +1060,11 @@ import "./placement_validator.js";
     });
     document.querySelectorAll(".chrx-slot--highlight-swap").forEach(el => el.classList.remove("chrx-slot--highlight-swap"));
     document.querySelectorAll(".chrx-vkarta--highlight-swap-target").forEach(el => el.classList.remove("chrx-vkarta--highlight-swap-target"));
+    // Lane D: exactly-one Best marker (plus its attribute) never survives carry.
+    document.querySelectorAll(".chrx-slot--suggest-best").forEach(el => {
+      el.classList.remove("chrx-slot--suggest-best");
+      el.removeAttribute("data-suggest");
+    });
     
     // Clear the at-pickup heatmap painted by paintDropZones() and the dimmed
     // non-target rows.
