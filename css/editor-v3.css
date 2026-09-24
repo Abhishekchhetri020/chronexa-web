@@ -1473,3 +1473,81 @@ body.chrx-card-in-hand .chrx-shell .chrx-card-panel { display: none; }
   color: var(--chrx-accent-on);
   font-weight: 700;
 }
+
+/* ─── Wave 2 Lane 5: Availability Shading on Card Select ─── */
+body.chrx-card-in-hand .chrx-shell .chrx-slot.chrx-avail-ok,
+body.chrx-card-in-hand .chrx-shell .chrx-slot[data-availability="ok"] {
+  background-color: rgba(22, 163, 74, 0.08) !important;
+  box-shadow: inset 0 0 0 1px rgba(22, 163, 74, 0.18);
+}
+
+body.chrx-card-in-hand .chrx-shell .chrx-slot.chrx-avail-soft-conflict,
+body.chrx-card-in-hand .chrx-shell .chrx-slot[data-availability="soft-conflict"] {
+  background-color: rgba(217, 119, 6, 0.10) !important;
+  box-shadow: inset 0 0 0 1px rgba(217, 119, 6, 0.22);
+}
+
+body.chrx-card-in-hand .chrx-shell .chrx-slot.chrx-avail-hard-conflict,
+body.chrx-card-in-hand .chrx-shell .chrx-slot.chrx-avail-forbidden,
+body.chrx-card-in-hand .chrx-shell .chrx-slot[data-availability="hard-conflict"] {
+  background-color: rgba(156, 67, 34, 0.10) !important;
+  box-shadow: inset 0 0 0 1px rgba(156, 67, 34, 0.22);
+}
+
+body.chrx-card-in-hand .chrx-shell .chrx-slot.chrx-avail-hard-conflict.empty,
+body.chrx-card-in-hand .chrx-shell .chrx-slot.chrx-avail-forbidden.empty {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 6px,
+    rgba(156, 67, 34, 0.06) 6px,
+    rgba(156, 67, 34, 0.06) 12px
+  ) !important;
+}
+
+/* Availability Legend in Inspector */
+.chrx-availability-legend {
+  margin-top: 10px;
+  padding: 8px 10px;
+  background: var(--chrx-bg-tile-thin, rgba(255, 255, 255, 0.6));
+  border: 1px solid var(--chrx-border-subtle, rgba(0, 0, 0, 0.08));
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 1.3;
+}
+.chrx-availability-legend .chrx-avail-legend-title {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 9.5px;
+  color: var(--chrx-fg-secondary, #64748b);
+  margin-bottom: 5px;
+}
+.chrx-availability-legend .chrx-avail-legend-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.chrx-availability-legend .chrx-avail-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--chrx-fg, #1e293b);
+}
+.chrx-availability-legend .chrx-avail-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+.chrx-availability-legend .chrx-avail-dot.is-ok {
+  background: var(--chrx-green, #16a34a);
+}
+.chrx-availability-legend .chrx-avail-dot.is-soft {
+  background: var(--chrx-amber, #d97706);
+}
+.chrx-availability-legend .chrx-avail-dot.is-hard {
+  background: var(--chrx-red, #9c4322);
+}
+
