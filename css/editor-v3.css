@@ -1362,3 +1362,42 @@ body.chrx-card-in-hand .chrx-shell .chrx-card-panel { display: none; }
   .chrx-shell { --chrx-board-chrome-h: 118px; }
   .chrx-shell.is-fullscreen .chrx-focus-boardbar { padding: 4px 8px; margin-bottom: 4px; }
 }
+
+/* Day tabs (mobile single-day view) */
+.chrx-shell .chrx-day-tabs {
+  display: none;
+  gap: 4px;
+  padding: 4px 6px;
+  background: var(--chrx-bg-tile);
+  border-radius: 8px;
+  margin-bottom: 6px;
+}
+@media (max-width: 767px) {
+  .chrx-shell .chrx-day-tabs {
+    display: flex;
+  }
+}
+.chrx-shell .chrx-day-tab {
+  flex: 1;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--chrx-fg-secondary);
+  font: 600 12px/1 var(--chrx-font-sans);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--e3-fast) var(--e3-ease), color var(--e3-fast) var(--e3-ease);
+}
+.chrx-shell .chrx-day-tab:hover {
+  color: var(--chrx-fg);
+  background: var(--paper-2);
+}
+.chrx-shell .chrx-day-tab.active {
+  background: var(--chrx-accent);
+  color: var(--chrx-accent-on);
+  font-weight: 700;
+}

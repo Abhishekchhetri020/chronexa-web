@@ -124,6 +124,7 @@ window.Editor = (function () {
     if (window.ConstraintExplainer && typeof window.ConstraintExplainer.attachTooltip === "function") {
       window.ConstraintExplainer.attachTooltip(rootEl);
     }
+    initRovingTabindex(rootEl);
   }
 
   function buildCardLookup(S, perspective, visiblePeriodSet) {
@@ -274,7 +275,28 @@ window.Editor = (function () {
     return name ? name : "Untitled timetable";
   }
 
+  function isMobileViewport(rootEl) {
+    if (typeof window === "undefined") return false;
+    if (typeof window.matchMedia === "function") {
+      const mq = window.matchMedia("(max-width: 767px)");
+      if (mq && mq.matches) return true;
+    }
+    const docEl = typeof document !== "undefined" && document.documentElement;
+    const clientW = docEl && docEl.clientWidth;
+    if (clientW && clientW > 0 && clientW <= 767) return true;
+    const innerW = window.innerWidth;
+    if (innerW && innerW > 0 && innerW <= 767) return true;
+    const board = (rootEl && rootEl.querySelector && rootEl.querySelector(".chrx-focus-board, .chrx-focus-workspace")) ||
+                  (typeof document !== "undefined" && document.querySelector(".chrx-focus-board, .chrx-focus-workspace"));
+    if (board && board.clientWidth > 0 && board.clientWidth <= 767) return true;
+    return false;
+  }
+
   function focusHtml(S, allRows, focusRow, periods, cardLookup) {
+    const numDays = dayCount(S);
+    const mobileDay = Math.max(0, Math.min(numDays - 1, (window.APP && window.APP.day) || 0));
+    const isMobile = isMobileViewport();
+    const dayTabsHtml = dayTabsHtml_(mobileDay, numDays);
     const perspective = window.APP.editor.perspective || "class";
     const options = allRows.map(row =>
       `<option value="${esc(row.key)}"${row.key === focusRow.key ? " selected" : ""}>${esc(row.label)}</option>`
@@ -305,6 +327,7 @@ window.Editor = (function () {
     }
 
     return `
+      <button type="button" class="chrx-skip-link chrx-sr-only" data-skip-to-grid style="position:absolute;z-index:100;padding:6px 12px;background:var(--chrx-accent,#5b6cff);color:#fff;border-radius:6px;font:600 12px var(--chrx-font-sans);border:0;cursor:pointer;">Skip to timetable</button>
       <div class="chrx-focus-boardbar">
         <button type="button" class="chrx-focus-boardbar__nav" data-focus-nav="prev" aria-label="Previous ${esc(perspective)}">${icon("chevL", 18)}</button>
         <label class="chrx-focus-boardbar__picker">
@@ -315,28 +338,32 @@ window.Editor = (function () {
         <p>Drag a lesson to another period. Conflicts show in the inspector.</p>
         <button type="button" class="chrx-focus-boardbar__overview" data-focus-nav="overview">All ${esc(PERSPECTIVE_PLURAL[perspective])}</button>
       </div>
+      ${dayTabsHtml}
       <div class="chrx-focus-workspace">
         ${classRailHtml}
         <div class="chrx-focus-board" role="grid" aria-label="${esc(focusRow.label)} weekly timetable"
-             style="--chrx-days:${dayCount(S)}">
-          ${focusBoardInnerHtml(S, focusRow, periods, cardLookup)}
+             style="--chrx-days:${isMobile ? 1 : numDays}">
+          ${focusBoardInnerHtml(S, focusRow, periods, cardLookup, mobileDay, isMobile)}
         </div>
       </div>
     `;
   }
 
-  function focusBoardInnerHtml(S, focusRow, periods, cardLookup) {
+  function focusBoardInnerHtml(S, focusRow, periods, cardLookup, mobileDay, isMobileArg) {
     const numDays = dayCount(S);
+    const mDay = Number.isFinite(mobileDay) ? mobileDay : ((typeof window !== "undefined" && window.APP && window.APP.day) || 0);
+    const isMobile = typeof isMobileArg === "boolean" ? isMobileArg : isMobileViewport();
+    const daysToRender = isMobile ? [mDay] : Array.from({ length: numDays }, (_, i) => i);
     const perspective = window.APP.editor.perspective || "class";
     const bellPeriodSet = bellSetFor(S, focusRow, perspective);
     const bucket = cardLookup[focusRow.key] || null;
     const cells = [`<div class="chrx-focus-corner" role="columnheader">Period</div>`];
-    for (let day = 0; day < numDays; day++) {
-      cells.push(`<div class="chrx-focus-day" role="columnheader">${esc(DAY_LABELS_EN[day])}</div>`);
+    for (const day of daysToRender) {
+      cells.push(`<div class="chrx-focus-day" role="columnheader" data-day="${day}">${esc(DAY_LABELS_EN[day])}</div>`);
     }
     for (const period of periods) {
       cells.push(`<div class="chrx-focus-period" role="rowheader"><strong>${esc(period.label || ("P" + period.index))}</strong><span>${esc(period.start || period.startTime || "")}</span></div>`);
-      for (let day = 0; day < numDays; day++) {
+      for (const day of daysToRender) {
         const cards = bucket ? bucket[day + "_" + period.index] : null;
         const outOfBell = period.synthetic || (bellPeriodSet && !bellPeriodSet.has(period.index | 0));
         const classes = ["chrx-slot", "chrx-focus-slot"];
@@ -345,7 +372,8 @@ window.Editor = (function () {
         if (cards && cards.length > 1) classes.push(cards.length === 2 ? "chrx-slot--split2" : "chrx-slot--split");
         const contents = cards ? cards.map(card => vkartaHtml(S, card, day, period.index, focusRow.key, 1)).join("") : "";
         const label = outOfBell ? ' aria-hidden="true"' : ` aria-label="${cards && cards.length ? "Scheduled" : "Empty"}, ${esc(DAY_LABELS_EN[day])} ${esc(period.label || ("period " + period.index))}"`;
-        cells.push(`<div class="${classes.join(" ")}" role="gridcell" data-day="${day}" data-period="${period.index}" data-row="${esc(focusRow.key)}"${label}>${contents}</div>`);
+        const slotTabindex = outOfBell ? "" : (!cards || !cards.length ? ' tabindex="-1"' : "");
+        cells.push(`<div class="${classes.join(" ")}" role="gridcell" data-day="${day}" data-period="${period.index}" data-row="${esc(focusRow.key)}"${slotTabindex}${label}>${contents}</div>`);
       }
     }
     return cells.join("");
@@ -522,9 +550,9 @@ window.Editor = (function () {
 
   function dayTabsHtml_(mobileDay, numDays) {
     const tabs = DAY_LABELS_EN.slice(0, numDays || NUM_DAYS).map((label, d) =>
-      `<button class="chrx-day-tab ${d === mobileDay ? "active" : ""}" data-day="${d}" type="button">${esc(label)}</button>`
+      `<button class="chrx-day-tab ${d === mobileDay ? "active" : ""}" data-day="${d}" type="button" role="tab" aria-selected="${d === mobileDay ? "true" : "false"}" aria-label="${esc(label)}">${esc(label)}</button>`
     ).join("");
-    return `<div class="chrx-day-tabs" role="tablist">${tabs}</div>`;
+    return `<div class="chrx-day-tabs" role="tablist" aria-label="Days of week">${tabs}</div>`;
   }
 
   function headerRowHtml(periods, mobileDay, numDays) {
@@ -1007,6 +1035,34 @@ window.Editor = (function () {
       rootEl.addEventListener("mouseover", onMouseOver);
       rootEl.addEventListener("focusin", onFocusIn);
       rootEl.addEventListener("mouseout", onMouseOut);
+      wireKeyboardNav(rootEl);
+
+      // Re-render when breakpoint changes between phone single-day and desktop multi-day,
+      // or on device orientation change / window resize.
+      if (typeof window !== "undefined") {
+        const triggerReRender = () => {
+          const host = document.querySelector(".chrx-editor");
+          if (host && window.APP && window.APP.school) {
+            render(host);
+          }
+        };
+        if (typeof window.matchMedia === "function") {
+          const mql = window.matchMedia("(max-width: 767px)");
+          if (typeof mql.addEventListener === "function") {
+            mql.addEventListener("change", triggerReRender);
+          } else if (typeof mql.addListener === "function") {
+            mql.addListener(triggerReRender);
+          }
+        }
+        let resizeTimer = null;
+        const onResize = () => {
+          if (resizeTimer) clearTimeout(resizeTimer);
+          resizeTimer = setTimeout(triggerReRender, 100);
+        };
+        window.addEventListener("resize", onResize, { passive: true });
+        window.addEventListener("orientationchange", onResize, { passive: true });
+      }
+
       // Plan C: pinch-to-zoom the grid (scales cell width + row height via the
       // --chrx-grid-zoom var, sticky-safe — no transform).
       let pinch = null;
@@ -1162,6 +1218,12 @@ window.Editor = (function () {
   }
 
   function onRootClick(ev) {
+    const skipBtn = ev.target.closest("[data-skip-to-grid]");
+    if (skipBtn) {
+      ev.preventDefault();
+      focusGridFirst(skipBtn.closest(".chrx-editor"));
+      return;
+    }
     const focusNav = ev.target.closest("[data-focus-nav]");
     if (focusNav) {
       ev.preventDefault();
@@ -1539,7 +1601,7 @@ window.Editor = (function () {
   // changes the active day. Desktop shows all days, so it's gated to ≤767px and
   // never fires while a card is being carried/picked up.
   function onSwipeStart(ev) {
-    if (window.innerWidth > 767) return;
+    if (!isMobileViewport()) return;
     if (window.APP.editor.cardInHand) return;
     const t = ev.touches[0]; if (!t) return;
     const sx = t.clientX, sy = t.clientY, t0 = Date.now();
@@ -1562,6 +1624,227 @@ window.Editor = (function () {
     window.APP.day = d;
     const host = document.querySelector(".chrx-editor");
     if (host) render(host);
+  }
+
+  /* ── Keyboard navigation & roving tabindex (B10) ────────────────────────── */
+  let activeRovingCardId = null;
+
+  function initRovingTabindex(rootEl) {
+    if (!rootEl) return;
+    const cards = Array.from(rootEl.querySelectorAll(".chrx-vkarta"));
+    const emptySlots = Array.from(rootEl.querySelectorAll(".chrx-slot.empty:not(.out-of-bell)"));
+    for (const slot of emptySlots) {
+      if (slot.getAttribute("tabindex") !== "0") slot.setAttribute("tabindex", "-1");
+    }
+    if (cards.length > 0) {
+      let targetCard = null;
+      if (activeRovingCardId) {
+        targetCard = cards.find(c => c.dataset.cardId === activeRovingCardId);
+      }
+      if (!targetCard) targetCard = cards[0];
+      for (const card of cards) {
+        card.setAttribute("tabindex", card === targetCard ? "0" : "-1");
+      }
+    } else if (emptySlots.length > 0) {
+      emptySlots[0].setAttribute("tabindex", "0");
+    }
+  }
+
+  function updateRovingTabindex(rootEl, activeEl) {
+    if (!rootEl || !activeEl) return;
+    const focusables = rootEl.querySelectorAll(".chrx-vkarta, .chrx-slot");
+    for (const f of focusables) {
+      if (f === activeEl) {
+        f.setAttribute("tabindex", "0");
+      } else if (f.getAttribute("tabindex") === "0") {
+        f.setAttribute("tabindex", "-1");
+      }
+    }
+  }
+
+  function focusTarget(el) {
+    if (!el) return;
+    const root = el.closest(".chrx-editor") || document.getElementById("editor-root");
+    if (root) updateRovingTabindex(root, el);
+    const card = el.classList.contains("chrx-vkarta") ? el : el.querySelector(".chrx-vkarta");
+    if (card && card.dataset.cardId) activeRovingCardId = card.dataset.cardId;
+    el.focus();
+  }
+
+  function focusGridFirst(rootEl) {
+    if (!rootEl) return;
+    const card = rootEl.querySelector(".chrx-vkarta");
+    const slot = rootEl.querySelector(".chrx-slot:not(.out-of-bell)");
+    focusTarget(card || slot);
+  }
+
+  function handleArrowNav(rootEl, currentSlot, currentCard, key) {
+    const isFocus = window.APP?.editor?.viewMode === "focus";
+    const isMobile = isMobileViewport(rootEl);
+    const inHand = !!window.APP?.editor?.cardInHand;
+    const slot = currentSlot || currentCard?.closest(".chrx-slot");
+
+    if (isFocus && slot) {
+      const board = rootEl.querySelector(".chrx-focus-board") || rootEl;
+      const day = parseInt(slot.dataset.day, 10);
+      const period = parseInt(slot.dataset.period, 10);
+      const S = window.APP?.school;
+      const numDays = dayCount(S);
+      const periods = displayPeriods(S);
+      const pIndices = periods.map(p => p.index | 0);
+      const pIdx = pIndices.indexOf(period);
+
+      if (isMobile) {
+        let nextPIdx = pIdx;
+        if (key === "ArrowDown" || key === "ArrowRight") nextPIdx = Math.min(pIndices.length - 1, pIdx + 1);
+        if (key === "ArrowUp" || key === "ArrowLeft") nextPIdx = Math.max(0, pIdx - 1);
+        const targetSlot = board.querySelector(`.chrx-slot[data-day="${day}"][data-period="${pIndices[nextPIdx]}"]`);
+        if (targetSlot) {
+          const targetCard = targetSlot.querySelector(".chrx-vkarta");
+          focusTarget(inHand ? targetSlot : (targetCard || targetSlot));
+          return;
+        }
+      } else {
+        let nextDay = day;
+        let nextPIdx = pIdx;
+        if (key === "ArrowRight") {
+          if (nextDay + 1 < numDays) nextDay++;
+          else if (nextPIdx + 1 < pIndices.length) { nextDay = 0; nextPIdx++; }
+        } else if (key === "ArrowLeft") {
+          if (nextDay - 1 >= 0) nextDay--;
+          else if (nextPIdx - 1 >= 0) { nextDay = numDays - 1; nextPIdx--; }
+        } else if (key === "ArrowDown") {
+          if (nextPIdx + 1 < pIndices.length) nextPIdx++;
+        } else if (key === "ArrowUp") {
+          if (nextPIdx - 1 >= 0) nextPIdx--;
+        }
+        const targetSlot = board.querySelector(`.chrx-slot[data-day="${nextDay}"][data-period="${pIndices[nextPIdx]}"]`);
+        if (targetSlot) {
+          const targetCard = targetSlot.querySelector(".chrx-vkarta");
+          focusTarget(inHand ? targetSlot : (targetCard || targetSlot));
+          return;
+        }
+      }
+    } else if (!isFocus && slot) {
+      const row = slot.closest(".chrx-row");
+      const allRows = Array.from(rootEl.querySelectorAll(".chrx-row[data-row]:not([data-row='head'])"));
+      const rowIdx = allRows.indexOf(row);
+      const day = parseInt(slot.dataset.day, 10);
+      const period = parseInt(slot.dataset.period, 10);
+      const S = window.APP?.school;
+      const numDays = dayCount(S);
+      const periods = displayPeriods(S);
+      const pIndices = periods.map(p => p.index | 0);
+      const pIdx = pIndices.indexOf(period);
+
+      let nextDay = day;
+      let nextPIdx = pIdx;
+      let nextRowIdx = rowIdx;
+      if (key === "ArrowRight") {
+        if (nextPIdx + 1 < pIndices.length) nextPIdx++;
+        else if (nextDay + 1 < numDays) { nextDay++; nextPIdx = 0; }
+      } else if (key === "ArrowLeft") {
+        if (nextPIdx - 1 >= 0) nextPIdx--;
+        else if (nextDay - 1 >= 0) { nextDay--; nextPIdx = pIndices.length - 1; }
+      } else if (key === "ArrowDown") {
+        if (nextRowIdx + 1 < allRows.length) nextRowIdx++;
+      } else if (key === "ArrowUp") {
+        if (nextRowIdx - 1 >= 0) nextRowIdx--;
+      }
+      const targetRow = allRows[nextRowIdx];
+      const targetSlot = targetRow?.querySelector(`.chrx-slot[data-day="${nextDay}"][data-period="${pIndices[nextPIdx]}"]`);
+      if (targetSlot) {
+        const targetCard = targetSlot.querySelector(".chrx-vkarta");
+        focusTarget(inHand ? targetSlot : (targetCard || targetSlot));
+        return;
+      }
+    }
+
+    if (inHand) {
+      const slots = Array.from(rootEl.querySelectorAll(".chrx-slot:not(.out-of-bell)"));
+      if (slots.length) {
+        const idx = slot ? slots.indexOf(slot) : -1;
+        const dir = (key === "ArrowDown" || key === "ArrowRight") ? 1 : -1;
+        const nextIdx = (idx + dir + slots.length) % slots.length;
+        focusTarget(slots[nextIdx]);
+        return;
+      }
+    }
+
+    const cards = Array.from(rootEl.querySelectorAll(".chrx-vkarta"));
+    if (cards.length) {
+      const idx = currentCard ? cards.indexOf(currentCard) : -1;
+      const dir = (key === "ArrowDown" || key === "ArrowRight") ? 1 : -1;
+      const nextIdx = (idx + dir + cards.length) % cards.length;
+      focusTarget(cards[nextIdx]);
+    }
+  }
+
+  function onGridKeyDown(ev) {
+    const key = ev.key;
+    const rootEl = ev.currentTarget;
+    const skipBtn = ev.target.closest("[data-skip-to-grid]");
+    if (skipBtn && (key === "Enter" || key === " ")) {
+      ev.preventDefault();
+      focusGridFirst(rootEl);
+      return;
+    }
+    const active = document.activeElement;
+    const card = active?.closest?.(".chrx-vkarta");
+    const slot = active?.closest?.(".chrx-slot");
+    if (!card && !slot) return;
+
+    if ((key === "Enter" || key === " ") && card && !window.APP.editor.cardInHand) {
+      if (card.classList.contains("locked")) return;
+      ev.preventDefault();
+      const rect = card.getBoundingClientRect();
+      startDragPickup(card, rect.left + rect.width / 2, rect.top + rect.height / 2);
+      const parentSlot = card.closest(".chrx-slot");
+      if (parentSlot) focusTarget(parentSlot);
+      return;
+    }
+
+    if (key === "Enter" && window.APP.editor.cardInHand) {
+      if (card && slot && active !== slot) {
+        slot.focus();
+      }
+      return;
+    }
+
+    if (key === "ArrowDown" || key === "ArrowUp" || key === "ArrowRight" || key === "ArrowLeft") {
+      ev.preventDefault();
+      handleArrowNav(rootEl, slot, card, key);
+    }
+  }
+
+  function wireKeyboardNav(rootEl) {
+    rootEl.addEventListener("keydown", onGridKeyDown);
+    rootEl.addEventListener("focusin", (ev) => {
+      const skipBtn = ev.target.closest("[data-skip-to-grid]");
+      if (skipBtn) {
+        skipBtn.classList.remove("chrx-sr-only");
+        skipBtn.style.top = "8px";
+        skipBtn.style.left = "8px";
+        return;
+      }
+      const vk = ev.target.closest(".chrx-vkarta");
+      const slot = ev.target.closest(".chrx-slot");
+      if (vk) {
+        activeRovingCardId = vk.dataset.cardId || null;
+        updateRovingTabindex(rootEl, vk);
+      } else if (slot) {
+        activeRovingCardId = null;
+        updateRovingTabindex(rootEl, slot);
+      }
+    });
+    rootEl.addEventListener("focusout", (ev) => {
+      const skipBtn = ev.target.closest("[data-skip-to-grid]");
+      if (skipBtn) {
+        skipBtn.classList.add("chrx-sr-only");
+        skipBtn.style.top = "";
+        skipBtn.style.left = "";
+      }
+    });
   }
 
   function onPointerDown(ev) {
@@ -1895,10 +2178,14 @@ window.Editor = (function () {
       if (!cells.some(cell => cell.rowKey === focusRow.key)) return true;
       const board = rootEl.querySelector(".chrx-focus-board");
       if (!board) return false;
-      board.innerHTML = focusBoardInnerHtml(S, focusRow, periods, cardLookup);
+      const isMobile = isMobileViewport(rootEl);
+      board.style.setProperty("--chrx-days", isMobile ? "1" : String(numDays));
+      const mobileDay = Math.max(0, Math.min(numDays - 1, (window.APP && window.APP.day) || 0));
+      board.innerHTML = focusBoardInnerHtml(S, focusRow, periods, cardLookup, mobileDay, isMobile);
       syncUnplacedCount(S);
       updateClassPanel(S);
       autoFitSubjectCodes(rootEl, board);
+      initRovingTabindex(rootEl);
       return true;
     }
     const escSel = (window.CSS && typeof CSS.escape === "function")
@@ -1918,6 +2205,7 @@ window.Editor = (function () {
     syncUnplacedCount(S);
     updateClassPanel(S);
     for (const groupEl of changedGroups) autoFitSubjectCodes(rootEl, groupEl);
+    initRovingTabindex(rootEl);
     return true;
   }
 
