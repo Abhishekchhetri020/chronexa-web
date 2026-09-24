@@ -26,9 +26,17 @@ import "../state.js";
   if (!APP) return;
 
   // ---------------- state ----------------
+  function mutateCompat(label, fn, opts) {
+    if (window.APP && typeof window.APP.mutate === "function") {
+      return window.APP.mutate(label, fn, opts);
+    }
+    const school = window.APP?.school;
+    return fn(school);
+  }
+
   function initState() {
     APP.substitution = APP.substitution || {
-      date: todayYmd(),
+      date: (window.APP?.editor?.date) || todayYmd(),
       absent: [],           // teacher IDs
       assignments: [],      // [{slotKey, classSection, period, subject, originalTeacher, candidates, chosen}]
     };
@@ -153,13 +161,357 @@ import "../state.js";
     }
   }
 
+  // ---------------- C3 Data model & operations ----------------
+  function recordAbsence(school, { date, teacherId, periods = "all", reason = "" }) {
+    const s = school || window.APP?.school;
+    if (!s) return null;
+    return mutateCompat("Record absence", (targetSchool) => {
+      const sc = targetSchool || s;
+      sc.absences = sc.absences || [];
+      let abs = sc.absences.find(a => a.date === date && a.teacherId === teacherId);
+      if (abs) {
+        abs.periods = periods || "all";
+        if (reason) abs.reason = reason;
+      } else {
+        abs = {
+          id: "abs_" + Math.random().toString(36).slice(2, 10),
+          date,
+          teacherId,
+          periods: periods || "all",
+          reason: reason || "",
+        };
+        sc.absences.push(abs);
+      }
+      if (window.APP?.substitution && window.APP.substitution.date === date) {
+        if (!window.APP.substitution.absent.includes(teacherId)) {
+          window.APP.substitution.absent.push(teacherId);
+        }
+      }
+      return abs;
+    });
+  }
+
+  function removeAbsence(school, { date, teacherId }) {
+    const s = school || window.APP?.school;
+    if (!s) return;
+    return mutateCompat("Remove absence", (targetSchool) => {
+      const sc = targetSchool || s;
+      if (sc.absences) {
+        sc.absences = sc.absences.filter(a => !(a.date === date && a.teacherId === teacherId));
+      }
+      if (sc.substitutions) {
+        sc.substitutions = sc.substitutions.filter(sub => !(sub.date === date && sub.absentTeacherId === teacherId));
+      }
+      if (window.APP?.substitution && window.APP.substitution.date === date) {
+        window.APP.substitution.absent = window.APP.substitution.absent.filter(id => id !== teacherId);
+        window.APP.substitution.assignments = (window.APP.substitution.assignments || []).filter(
+          a => a.originalTeacherId !== teacherId
+        );
+      }
+    });
+  }
+
+  function getAbsences(school, date) {
+    const s = school || window.APP?.school;
+    if (!s || !s.absences) return [];
+    return date ? s.absences.filter(a => a.date === date) : s.absences.slice();
+  }
+
+  function getSubstitutions(school, date) {
+    const s = school || window.APP?.school;
+    if (!s || !s.substitutions) return [];
+    return date ? s.substitutions.filter(sub => sub.date === date) : s.substitutions.slice();
+  }
+
+  function assignSubstitutions(school, date, absentTeacherIds) {
+    const s = school || window.APP?.school;
+    if (!s) return [];
+    const d = ymdToDay(date);
+    if (d < 0) return [];
+
+    const tids = (absentTeacherIds && absentTeacherIds.length)
+      ? absentTeacherIds.slice()
+      : (s.absences || []).filter(a => a.date === date).map(a => a.teacherId);
+
+    if (!tids.length) return [];
+
+    const ranker = window.SubstitutionRanker;
+    const assignments = ranker ? ranker.rankAll(s, tids, d) : [];
+
+    return mutateCompat("Assign substitutions", (targetSchool) => {
+      const sc = targetSchool || s;
+      sc.absences = sc.absences || [];
+      sc.substitutions = sc.substitutions || [];
+
+      // Ensure absences exist in sc.absences
+      for (const tid of tids) {
+        if (!sc.absences.some(a => a.date === date && a.teacherId === tid)) {
+          sc.absences.push({
+            id: "abs_" + Math.random().toString(36).slice(2, 10),
+            date,
+            teacherId: tid,
+            periods: "all",
+            reason: "",
+          });
+        }
+      }
+
+      // Existing substitutions for other dates stay untouched
+      const otherSubs = sc.substitutions.filter(sub => sub.date !== date);
+      const dateSubs = sc.substitutions.filter(sub => sub.date === date);
+
+      for (const a of assignments) {
+        const cardId = a.cardId || `placed_${a.lessonId}_${d}_${a.period}`;
+        let sub = dateSubs.find(x => x.cardId === cardId || (x.day === d && x.period === a.period && x.absentTeacherId === a.originalTeacherId));
+        if (!sub) {
+          sub = {
+            id: "sub_" + Math.random().toString(36).slice(2, 10),
+            date,
+            day: d,
+            period: a.period,
+            cardId,
+            absentTeacherId: a.originalTeacherId,
+            substituteTeacherId: a.chosen ? a.chosen.teacherId : null,
+            roomId: a.classroomId || undefined,
+            note: "",
+            createdAt: new Date().toISOString(),
+          };
+          dateSubs.push(sub);
+        } else {
+          sub.day = d;
+          sub.period = a.period;
+          sub.cardId = cardId;
+          sub.absentTeacherId = a.originalTeacherId;
+          sub.substituteTeacherId = a.chosen ? a.chosen.teacherId : null;
+          if (a.classroomId) sub.roomId = a.classroomId;
+        }
+      }
+
+      sc.substitutions = otherSubs.concat(dateSubs);
+
+      if (window.APP?.substitution) {
+        window.APP.substitution.date = date;
+        window.APP.substitution.absent = tids.slice();
+        window.APP.substitution.assignments = assignments;
+      }
+
+      window.dispatchEvent(new CustomEvent("substitution:saved", { detail: { date } }));
+      document.dispatchEvent(new CustomEvent("app:school-changed", { detail: { label: "Assign substitutions", source: "mutate" } }));
+
+      return sc.substitutions.filter(sub => sub.date === date);
+    });
+  }
+
+  function cancelSubstitution(school, { id, date, cardId, slotKey }) {
+    const s = school || window.APP?.school;
+    if (!s) return null;
+
+    return mutateCompat("Cancel substitution", (targetSchool) => {
+      const sc = targetSchool || s;
+      sc.substitutions = sc.substitutions || [];
+      let sub = sc.substitutions.find(x => (id && x.id === id) || (date && x.date === date && x.cardId === cardId));
+      if (sub) {
+        sub.substituteTeacherId = null;
+      } else if (date && cardId) {
+        const d = ymdToDay(date);
+        sub = {
+          id: "sub_" + Math.random().toString(36).slice(2, 10),
+          date,
+          day: d,
+          period: 1,
+          cardId,
+          absentTeacherId: "",
+          substituteTeacherId: null,
+          createdAt: new Date().toISOString(),
+        };
+        sc.substitutions.push(sub);
+      }
+
+      if (window.APP?.substitution?.assignments) {
+        const a = window.APP.substitution.assignments.find(x => (cardId && x.cardId === cardId) || (slotKey && x.slotKey === slotKey));
+        if (a) {
+          a.chosen = null;
+          a.cancelled = true;
+          a.uncovered = false;
+        }
+      }
+
+      window.dispatchEvent(new CustomEvent("substitution:saved", { detail: { date: sub?.date || date } }));
+      document.dispatchEvent(new CustomEvent("app:school-changed", { detail: { label: "Cancel substitution", source: "mutate" } }));
+
+      return sub;
+    });
+  }
+
+  function reassignSubstitution(school, { id, date, cardId, substituteTeacherId }) {
+    const s = school || window.APP?.school;
+    if (!s) return null;
+
+    return mutateCompat("Reassign substitution", (targetSchool) => {
+      const sc = targetSchool || s;
+      sc.substitutions = sc.substitutions || [];
+      let sub = sc.substitutions.find(x => (id && x.id === id) || (date && x.date === date && x.cardId === cardId));
+      if (sub) {
+        sub.substituteTeacherId = substituteTeacherId;
+      }
+
+      if (window.APP?.substitution?.assignments) {
+        const a = window.APP.substitution.assignments.find(x => x.cardId === cardId);
+        if (a) {
+          const pick = (a.allCandidates || a.candidates || []).find(c => c.teacherId === substituteTeacherId);
+          if (pick) {
+            a.chosen = pick;
+            a.uncovered = false;
+            a.cancelled = false;
+          }
+        }
+      }
+
+      window.dispatchEvent(new CustomEvent("substitution:saved", { detail: { date: sub?.date || date } }));
+      document.dispatchEvent(new CustomEvent("app:school-changed", { detail: { label: "Reassign substitution", source: "mutate" } }));
+
+      return sub;
+    });
+  }
+
+  // ---------------- Dated view grid hook ----------------
+  function applyGridOverrides(rootEl, S) {
+    if (!rootEl || !S) return;
+    const selectedDate = window.APP?.editor?.date;
+    if (!selectedDate) return;
+
+    const day = ymdToDay(selectedDate);
+    if (day < 0) return;
+
+    const substitutions = (S.substitutions || []).filter(s => s.date === selectedDate && s.day === day);
+    if (!substitutions.length) return;
+
+    const perspective = window.APP?.editor?.perspective || "class";
+
+    substitutions.forEach(sub => {
+      const isCancelled = sub.substituteTeacherId === null;
+      const subTeacher = sub.substituteTeacherId
+        ? (S._idx?.teacherById?.[sub.substituteTeacherId]?.name || sub.substituteTeacherId)
+        : null;
+      const origTeacher = (sub.absentTeacherId && S._idx?.teacherById?.[sub.absentTeacherId]?.name) || sub.absentTeacherId;
+
+      // 1. Affected original card(s)
+      const cardEls = rootEl.querySelectorAll(`.chrx-vkarta[data-card-id="${sub.cardId}"]`);
+      cardEls.forEach(cardEl => {
+        if (cardEl.classList.contains("chrx-vkarta--substitute")) return;
+        const line2 = cardEl.querySelector(".chrx-vk-line2");
+        const line1 = cardEl.querySelector(".chrx-vk-line1");
+
+        if (isCancelled) {
+          cardEl.classList.add("chrx-vkarta--cancelled");
+          cardEl.style.opacity = "0.75";
+          if (line2) {
+            line2.innerHTML = `<span style="text-decoration:line-through;opacity:0.6">${esc(origTeacher)}</span> <span class="chrx-sub-badge" style="background:#fee2e2;color:#b91c1c;padding:0 3px;border-radius:3px;font-size:9px;">Cancelled</span>`;
+          } else if (line1) {
+            line1.innerHTML = `<span style="text-decoration:line-through;opacity:0.6">${line1.innerHTML}</span> <span class="chrx-sub-badge" style="background:#fee2e2;color:#b91c1c;padding:0 3px;border-radius:3px;font-size:9px;">Cancelled</span>`;
+          }
+        } else if (subTeacher) {
+          cardEl.classList.add("chrx-vkarta--substituted");
+          if (line2) {
+            line2.innerHTML = `<span style="text-decoration:line-through;opacity:0.6">${esc(origTeacher)}</span> ➔ <b style="color:var(--chrx-accent,#2563eb);">${esc(subTeacher)}</b>`;
+          } else if (line1) {
+            line1.innerHTML += ` ➔ <b style="color:var(--chrx-accent,#2563eb);">${esc(subTeacher)}</b>`;
+          }
+        }
+      });
+
+      // 2. Extra lesson in substitute teacher's view
+      if (!isCancelled && sub.substituteTeacherId && perspective === "teacher") {
+        const slotEl = rootEl.querySelector(`.chrx-row[data-row="${sub.substituteTeacherId}"] .chrx-slot[data-day="${sub.day}"][data-period="${sub.period}"]`);
+        if (slotEl && !slotEl.querySelector(`.chrx-vkarta--substitute[data-sub-id="${sub.id}"]`)) {
+          slotEl.classList.remove("empty");
+          const origCard = (S.cards || []).find(c => (c.id || `placed_${c.lessonId}_${c.day}_${c.period}`) === sub.cardId);
+          const lesson = origCard && S._idx?.lessonById?.[origCard.lessonId];
+          const className = (lesson?.classIds || []).map(cid => S._idx?.classById?.[cid]?.name).filter(Boolean).join(", ") || "Class";
+          const subjectName = (lesson?.subjectId && S._idx?.subjectById?.[lesson.subjectId]?.name) || "Lesson";
+
+          const subCardHtml = `
+            <div class="chrx-vkarta chrx-vkarta--substitute" data-sub-id="${sub.id}" role="button" tabindex="0"
+                 style="border-left: 3px solid #10b981; background: #ecfdf5; box-shadow: 0 1px 2px rgba(0,0,0,0.05); padding: 2px 4px;">
+              <div class="chrx-vk-line1" style="color:#065f46; font-weight:600;">${esc(className)}</div>
+              <div class="chrx-vk-line2" style="color:#047857; font-size:10px;">${esc(subjectName)} <span style="background:#10b981;color:#fff;border-radius:3px;padding:0 3px;font-size:9px;">Sub</span></div>
+            </div>
+          `;
+          slotEl.innerHTML = subCardHtml;
+        }
+
+        // Focus mode board
+        if (window.APP?.editor?.viewMode === "focus") {
+          const select = rootEl.querySelector("select[data-focus-entity]");
+          if (select && select.value === sub.substituteTeacherId) {
+            const focusSlot = rootEl.querySelector(`.chrx-focus-slot[data-day="${sub.day}"][data-period="${sub.period}"]`);
+            if (focusSlot && !focusSlot.querySelector(`.chrx-vkarta--substitute[data-sub-id="${sub.id}"]`)) {
+              focusSlot.classList.remove("empty");
+              const origCard = (S.cards || []).find(c => (c.id || `placed_${c.lessonId}_${c.day}_${c.period}`) === sub.cardId);
+              const lesson = origCard && S._idx?.lessonById?.[origCard.lessonId];
+              const className = (lesson?.classIds || []).map(cid => S._idx?.classById?.[cid]?.name).filter(Boolean).join(", ") || "Class";
+              const subjectName = (lesson?.subjectId && S._idx?.subjectById?.[lesson.subjectId]?.name) || "Lesson";
+
+              focusSlot.innerHTML = `
+                <div class="chrx-vkarta chrx-vkarta--substitute" data-sub-id="${sub.id}" role="button" tabindex="0"
+                     style="border-left: 3px solid #10b981; background: #ecfdf5; box-shadow: 0 1px 2px rgba(0,0,0,0.05); padding: 2px 4px;">
+                  <div class="chrx-vk-line1" style="color:#065f46; font-weight:600;">${esc(className)}</div>
+                  <div class="chrx-vk-line2" style="color:#047857; font-size:10px;">${esc(subjectName)} <span style="background:#10b981;color:#fff;border-radius:3px;padding:0 3px;font-size:9px;">Sub</span></div>
+                </div>
+              `;
+            }
+          }
+        }
+      }
+    });
+  }
+
   // ---------------- wire ----------------
   window.addEventListener("app:substitutions", open);
+
+  // Wire date changes from editor date input
+  function wireDateControl() {
+    const input = document.getElementById("editor-date-input");
+    const clearBtn = document.getElementById("editor-date-clear");
+    if (input && !input._chrxWired) {
+      input._chrxWired = true;
+      input.addEventListener("change", (e) => {
+        window.APP.editor = window.APP.editor || {};
+        window.APP.editor.date = e.target.value || null;
+        if (window.APP?.substitution) window.APP.substitution.date = e.target.value || todayYmd();
+        const editorRoot = document.getElementById("editor-root");
+        if (editorRoot && window.Editor?.render) window.Editor.render(editorRoot);
+      });
+    }
+    if (clearBtn && !clearBtn._chrxWired) {
+      clearBtn._chrxWired = true;
+      clearBtn.addEventListener("click", () => {
+        if (input) input.value = "";
+        window.APP.editor = window.APP.editor || {};
+        window.APP.editor.date = null;
+        const editorRoot = document.getElementById("editor-root");
+        if (editorRoot && window.Editor?.render) window.Editor.render(editorRoot);
+      });
+    }
+  }
+
+  if (typeof document !== "undefined") {
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", wireDateControl);
+    } else {
+      wireDateControl();
+    }
+    document.addEventListener("app:school-loaded", wireDateControl);
+  }
 
   // ---------------- exports ----------------
   window.Substitution = {
     open, close, renderTab,
     el, esc, todayYmd, ymdToDay,
+    mutateCompat,
+    recordAbsence, removeAbsence, getAbsences,
+    assignSubstitutions, cancelSubstitution, reassignSubstitution, getSubstitutions,
+    applyGridOverrides, wireDateControl,
   };
 })();
 

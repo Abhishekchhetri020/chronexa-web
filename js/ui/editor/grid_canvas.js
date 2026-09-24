@@ -124,10 +124,18 @@ window.Editor = (function () {
     autoFitSubjectCodes(rootEl);
     syncUnplacedCount(S);
     updateClassPanel(S);
+    applyDatedOverridesHook(rootEl, S);
     if (window.ConstraintExplainer && typeof window.ConstraintExplainer.attachTooltip === "function") {
       window.ConstraintExplainer.attachTooltip(rootEl);
     }
     initRovingTabindex(rootEl);
+  }
+
+  /* Hook for dated substitution overrides (Lane W2-4). */
+  function applyDatedOverridesHook(rootEl, S) {
+    if (window.Substitution && typeof window.Substitution.applyGridOverrides === "function") {
+      window.Substitution.applyGridOverrides(rootEl, S);
+    }
   }
 
   function buildCardLookup(S, perspective, visiblePeriodSet) {

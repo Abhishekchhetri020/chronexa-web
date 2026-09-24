@@ -689,6 +689,25 @@ import "../state.js";
           return r?.abbreviation || r?.name || rid;
         }).join(", ");
       }
+
+      // Covered lessons calculation from school.substitutions
+      const coveredBySubject = Object.create(null);
+      const substitutions = (school && school.substitutions) || [];
+      if (substitutions.length > 0) {
+        for (const card of pageCards) {
+          const cid = card.id || `placed_${card.lessonId}_${card.day}_${card.period}`;
+          const isCovered = substitutions.some(s =>
+            (s.cardId === cid || (s.day === card.day && s.period === card.period && (card.teacherIds || []).includes(s.absentTeacherId))) &&
+            s.substituteTeacherId !== null &&
+            s.substituteTeacherId !== undefined
+          );
+          if (isCovered && card.subjectId) {
+            coveredBySubject[card.subjectId] = (coveredBySubject[card.subjectId] || 0) + 1;
+          }
+        }
+      }
+      const totalCovered = Object.values(coveredBySubject).reduce((a, b) => a + b, 0);
+
       for (const sub of subjList) {
         const tr = el("tr");
         for (let i = 0; i < cellPattern.length; i++) {
@@ -698,7 +717,7 @@ import "../state.js";
           else if (type === "sum-of-lessons")        text = String(sub.count);
           else if (type === "teachers-of-lessons")   text = distinctTeachersForSubject(sub.id);
           else if (type === "classrooms-of-lessons") text = distinctRoomsForSubject(sub.id);
-          else if (type === "sum-of-covered-lessons") text = "0";  // Chronexa substitution data not yet wired
+          else if (type === "sum-of-covered-lessons") text = String(coveredBySubject[sub.id] || 0);
           else if (type === "empty")                 text = "";
           else                                       text = sub.name;
           tr.appendChild(el("td", { style: "border:1px solid #ccc;padding:3px 6px;font-size:11px" }, text));
@@ -713,6 +732,7 @@ import "../state.js";
         else if (type === "sum-of-lessons")     text = String(totalLessons);
         else if (type === "teachers-of-lessons") text = "";
         else if (type === "classrooms-of-lessons") text = "";
+        else if (type === "sum-of-covered-lessons") text = String(totalCovered);
         totalTr.appendChild(el("td", {
           style: "border:1px solid #999;padding:3px 6px;font-weight:600;background:#fafafa;font-size:11px",
         }, text));

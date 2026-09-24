@@ -39,6 +39,38 @@ import "./candidate_ranker.js";
   function render(host, state, onRefresh) {
     host.innerHTML = "";
 
+    // If state.assignments is empty, rehydrate from APP.school.substitutions if available
+    if (!state.assignments.length && APP.school?.substitutions?.length) {
+      const subsForDate = APP.school.substitutions.filter(s => s.date === state.date);
+      if (subsForDate.length) {
+        const absentTids = Array.from(new Set(subsForDate.map(s => s.absentTeacherId).filter(Boolean)));
+        const d = S.ymdToDay(state.date);
+        const ranker = window.SubstitutionRanker;
+        if (ranker && absentTids.length) {
+          state.assignments = ranker.rankAll(APP.school, absentTids, d);
+          subsForDate.forEach(sub => {
+            const a = state.assignments.find(x => x.cardId === sub.cardId || (x.period === sub.period && x.originalTeacherId === sub.absentTeacherId));
+            if (a) {
+              if (sub.substituteTeacherId === null) {
+                a.chosen = null;
+                a.cancelled = true;
+                a.uncovered = false;
+              } else {
+                const cand = (a.allCandidates || a.candidates || []).find(c => c.teacherId === sub.substituteTeacherId);
+                if (cand) a.chosen = cand;
+                else {
+                  const t = APP.school._idx?.teacherById?.[sub.substituteTeacherId];
+                  a.chosen = { teacherId: sub.substituteTeacherId, teacher: t?.name || sub.substituteTeacherId, score: 0 };
+                }
+                a.uncovered = false;
+                a.cancelled = false;
+              }
+            }
+          });
+        }
+      }
+    }
+
     if (!state.assignments.length) {
       host.appendChild(el("div", { class: "chrx-sub-empty" },
         el("p", null, "No substitutions generated yet."),
@@ -49,17 +81,19 @@ import "./candidate_ranker.js";
     }
 
     const total    = state.assignments.length;
-    const filled   = state.assignments.filter(a => a.chosen).length;
-    const strong   = state.assignments.filter(a => a.chosen && a.chosen.score >= 100).length;
-    const ok       = state.assignments.filter(a => a.chosen && a.chosen.score >= 30 && a.chosen.score < 100).length;
-    const weak     = state.assignments.filter(a => a.chosen && a.chosen.score < 30).length;
-    const uncovered = total - filled;
+    const filled   = state.assignments.filter(a => a.chosen && !a.cancelled).length;
+    const cancelled = state.assignments.filter(a => a.cancelled).length;
+    const strong   = state.assignments.filter(a => a.chosen && !a.cancelled && a.chosen.score >= 100).length;
+    const ok       = state.assignments.filter(a => a.chosen && !a.cancelled && a.chosen.score >= 30 && a.chosen.score < 100).length;
+    const weak     = state.assignments.filter(a => a.chosen && !a.cancelled && a.chosen.score < 30).length;
+    const uncovered = total - filled - cancelled;
 
     host.appendChild(el("div", { class: "chrx-sub-banner" },
       el("b", null, `${total} slot${total === 1 ? "" : "s"} to cover`),
       el("span", { class: "chrx-sub-pill is-green" }, `★★★ ${strong}`),
       el("span", { class: "chrx-sub-pill is-blue"  }, `★★  ${ok}`),
       el("span", { class: "chrx-sub-pill is-yellow"}, `★   ${weak}`),
+      cancelled ? el("span", { class: "chrx-sub-pill", style: "background:#fee2e2;color:#b91c1c;" }, `Cancelled: ${cancelled}`) : null,
       el("span", { class: "chrx-sub-pill is-red"   }, `— ${uncovered}`),
     ));
 
@@ -83,7 +117,9 @@ import "./candidate_ranker.js";
       tr.appendChild(el("td", null, a.subject || "—"));
       tr.appendChild(el("td", null, a.originalTeacher || "—"));
       tr.appendChild(el("td", { class: "chrx-sub-subcell" },
-        a.chosen
+        a.cancelled
+          ? el("span", { class: "chrx-sub-cancelled", style: "color:#b91c1c;font-weight:600;" }, "— Cancelled (free period) —")
+          : a.chosen
           ? el("span", null,
               el("span", { class: "chrx-sub-stars" }, tierStars(a.chosen)),
               " ",
@@ -95,7 +131,7 @@ import "./candidate_ranker.js";
           : el("span", { class: "chrx-sub-uncov" }, "— No candidate available"),
       ));
       tr.appendChild(el("td", { class: "chrx-sub-score" },
-        a.chosen ? String(a.chosen.score) : "—"));
+        a.cancelled ? "0" : (a.chosen ? String(a.chosen.score) : "—")));
       tbody.appendChild(tr);
     });
     table.appendChild(tbody);
@@ -117,13 +153,43 @@ import "./candidate_ranker.js";
       el("button", { class: "chrx-sub-sheet__x", onclick: () => scrim.remove() }, "×"),
     ));
     const list = el("div", { class: "chrx-sub-cand-list" });
+
+    // Cancel option
+    list.appendChild(el("button", {
+      class: "chrx-sub-cand is-cancel",
+      style: "border:1px dashed #f87171; background:#fef2f2; color:#b91c1c; font-weight:600; justify-content:center;",
+      onclick: () => {
+        if (S.cancelSubstitution) {
+          S.cancelSubstitution(APP.school, {
+            date: state.date,
+            cardId: assignment.cardId,
+            slotKey: assignment.slotKey,
+          });
+        }
+        window.SubstitutionRanker.reassign(state.assignments, assignment.slotKey, null);
+        assignment.chosen = null;
+        assignment.cancelled = true;
+        assignment.uncovered = false;
+        scrim.remove();
+        if (typeof onRefresh === "function") onRefresh();
+      }
+    }, "✕ Cancel lesson (free period)"));
+
     all.slice(0, 30).forEach(c => {
-      const isChosen = assignment.chosen && c.teacherId === assignment.chosen.teacherId;
+      const isChosen = assignment.chosen && !assignment.cancelled && c.teacherId === assignment.chosen.teacherId;
       list.appendChild(el("button", {
         class: `chrx-sub-cand ${tierClass(c)} ${isChosen ? "is-chosen" : ""}`,
         onclick: () => {
+          if (S.reassignSubstitution) {
+            S.reassignSubstitution(APP.school, {
+              date: state.date,
+              cardId: assignment.cardId,
+              substituteTeacherId: c.teacherId,
+            });
+          }
           window.SubstitutionRanker.reassign(state.assignments,
             assignment.slotKey, c.teacherId);
+          assignment.cancelled = false;
           scrim.remove();
           if (typeof onRefresh === "function") onRefresh();
         },

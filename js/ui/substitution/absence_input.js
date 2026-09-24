@@ -26,6 +26,15 @@ import "./candidate_ranker.js";
 
     const school = APP.school;
     const teachers = (school && school.teachers) || [];
+
+    // Sync state with saved absences if present
+    if (school && school.absences && school.absences.length) {
+      const savedTids = school.absences.filter(a => a.date === state.date).map(a => a.teacherId);
+      for (const tid of savedTids) {
+        if (!state.absent.includes(tid)) state.absent.push(tid);
+      }
+    }
+
     const day = S.ymdToDay(state.date);
     const dayLabel = day < 0 ? "Sunday (no school)" : (school._idx?.days?.[day] || "?");
 
@@ -34,10 +43,16 @@ import "./candidate_ranker.js";
       class: "chrx-sub-date",
       onchange: (e) => {
         state.date = e.target.value || S.todayYmd();
+        state.absent = [];
+        if (school && school.absences) {
+          state.absent = school.absences.filter(a => a.date === state.date).map(a => a.teacherId);
+        }
         const d = S.ymdToDay(state.date);
         dayBadge.textContent = d < 0
           ? "Sunday (no school)"
           : (school._idx?.days?.[d] || "?");
+        renderChips();
+        updateGenerate();
       },
     });
     const dayBadge = el("span", { class: "chrx-sub-daybadge" }, dayLabel);
@@ -64,6 +79,7 @@ import "./candidate_ranker.js";
           el("button", { class: "chrx-sub-chip__x", "aria-label": "Remove",
             onclick: () => {
               state.absent = state.absent.filter(x => x !== tid);
+              if (S.removeAbsence) S.removeAbsence(school, { date: state.date, teacherId: tid });
               renderChips();
               updateGenerate();
             }, type: "button" }, "×"),
@@ -96,10 +112,14 @@ import "./candidate_ranker.js";
       out.forEach(t => {
         dropdown.appendChild(el("div", { class: "chrx-sub-opt",
           onclick: () => {
-            if (!state.absent.includes(t.id)) state.absent.push(t.id);
-            search.value = ""; dropdown.classList.add("is-hidden");
-            renderChips(); updateGenerate();
-            search.focus();
+            if (!state.absent.includes(t.id)) {
+              state.absent.push(t.id);
+              if (S.recordAbsence) S.recordAbsence(school, { date: state.date, teacherId: t.id });
+            }
+            search.value = "";
+            dropdown.classList.add("is-hidden");
+            renderChips();
+            updateGenerate();
           } },
           el("span", { class: "chrx-sub-opt__nm" }, t.name || t.id),
           t.abbr ? el("span", { class: "chrx-sub-opt__abbr" }, t.abbr) : null,
@@ -165,13 +185,23 @@ import "./candidate_ranker.js";
     if (!state.absent.length) return;
 
     const school = APP.school;
-    const ranker = window.SubstitutionRanker;
-    state.assignments = ranker.rankAll(school, state.absent, day);
+    if (S.assignSubstitutions) {
+      S.assignSubstitutions(school, state.date, state.absent);
+    } else {
+      const ranker = window.SubstitutionRanker;
+      state.assignments = ranker.rankAll(school, state.absent, day);
+    }
+
+    if (window.APP?.editor) {
+      window.APP.editor.date = state.date;
+      const editorDateInput = document.getElementById("editor-date-input");
+      if (editorDateInput) editorDateInput.value = state.date;
+    }
 
     window.dispatchEvent(new CustomEvent("substitution:generate", { detail: {
       date: state.date,
       absentTeachers: state.absent.slice(),
-      assignments: state.assignments.slice(),
+      assignments: (state.assignments || []).slice(),
     } }));
 
     if (summaryEl) {

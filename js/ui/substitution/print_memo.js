@@ -36,6 +36,40 @@ import "./teacherwise_output.js";
   function render(host, state) {
     host.innerHTML = "";
 
+    const school = APP.school;
+    // Rehydrate if empty
+    if (!state.assignments.length && school?.substitutions?.length) {
+      const subsForDate = school.substitutions.filter(s => s.date === state.date);
+      if (subsForDate.length) {
+        const absentTids = Array.from(new Set(subsForDate.map(s => s.absentTeacherId).filter(Boolean)));
+        state.absent = absentTids;
+        const d = S.ymdToDay(state.date);
+        const ranker = window.SubstitutionRanker;
+        if (ranker && absentTids.length) {
+          state.assignments = ranker.rankAll(school, absentTids, d);
+          subsForDate.forEach(sub => {
+            const a = state.assignments.find(x => x.cardId === sub.cardId || (x.period === sub.period && x.originalTeacherId === sub.absentTeacherId));
+            if (a) {
+              if (sub.substituteTeacherId === null) {
+                a.chosen = null;
+                a.cancelled = true;
+                a.uncovered = false;
+              } else {
+                const cand = (a.allCandidates || a.candidates || []).find(c => c.teacherId === sub.substituteTeacherId);
+                if (cand) a.chosen = cand;
+                else {
+                  const t = school._idx?.teacherById?.[sub.substituteTeacherId];
+                  a.chosen = { teacherId: sub.substituteTeacherId, teacher: t?.name || sub.substituteTeacherId, score: 0 };
+                }
+                a.uncovered = false;
+                a.cancelled = false;
+              }
+            }
+          });
+        }
+      }
+    }
+
     if (!state.assignments.length) {
       host.appendChild(el("div", { class: "chrx-sub-empty" },
         el("p", null, "No substitutions generated yet."),
@@ -45,7 +79,6 @@ import "./teacherwise_output.js";
       return;
     }
 
-    const school = APP.school;
     const schoolName = (school && school.schoolName) || "School";
 
     // Toolbar
@@ -92,7 +125,7 @@ import "./teacherwise_output.js";
         el("td", null, `P${a.period}`),
         el("td", null, a.subject || "—"),
         el("td", null, a.originalTeacher || "—"),
-        el("td", null, a.chosen ? a.chosen.teacher : "— UNCOVERED —"),
+        el("td", null, a.cancelled ? "— CANCELLED —" : (a.chosen ? a.chosen.teacher : "— UNCOVERED —")),
       ));
     });
     cwTable.appendChild(cwBody);
