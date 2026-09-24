@@ -67,6 +67,37 @@ import "../ribbon/topbar.js";
     return out;
   }
 
+  /* B1 — truthful status chip. Reuses the panel's own verifier
+   * (collectViolations above): counts hard rows, no re-implemented
+   * conflict detection. The editor chip calls this debounced. */
+  function countHardConflicts(school) {
+    if (!school) return 0;
+    try {
+      let n = 0;
+      for (const v of collectViolations(school)) if (v.severity === "hard") n++;
+      return n;
+    } catch (_) { return 0; }
+  }
+
+  /* B1 — pure chip copy for (unplaced, hardConflicts). Keeps the legacy
+   * "All placed" prefix so existing /all placed/i assertions keep passing,
+   * but never looks "all good" while hard conflicts exist. */
+  function statusChipText(unplaced, hardConflicts) {
+    const n = Math.max(0, (unplaced | 0));
+    const h = Math.max(0, (hardConflicts | 0));
+    const plural = h === 1 ? "conflict" : "conflicts";
+    if (n > 0 && h > 0)
+      return { text: `${n} unplaced · ${h} ${plural}`, warn: true, conflict: true,
+        hint: `${n} card(s) unplaced, ${h} hard ${plural} — open Verification` };
+    if (n > 0)
+      return { text: `${n} unplaced`, warn: true, conflict: false,
+        hint: `${n} card(s) unplaced — open Verification` };
+    if (h > 0)
+      return { text: `All placed · ${h} ${plural}`, warn: true, conflict: true,
+        hint: `${h} hard ${plural} — open Verification` };
+    return { text: "All placed", warn: false, conflict: false, hint: "Open Verification" };
+  }
+
   function suggestFix(school, violation) {
     if (!window.SolverConstraints?.checkPlacement) return null;
     const card = violation.card;
@@ -104,7 +135,21 @@ import "../ribbon/topbar.js";
     window.dispatchEvent(new CustomEvent("entity:changed", { detail: { entity: "cards" } }));
   }
 
+  function summaryText(violations) {
+    return `${violations.length} violation(s) found · ` +
+      `${violations.filter(v => v.severity === "hard").length} hard · ` +
+      `${violations.filter(v => v.severity === "soft").length} soft`;
+  }
+
+  function refreshSummary(panel, violations) {
+    const s = panel.querySelector(".chrx-vpro-summary");
+    if (s) s.textContent = summaryText(violations);
+  }
+
   function render(violations, school, root, panel) {
+    // B9 — the header count must reflect the current list after every
+    // apply/auto-fix, not just the initial open.
+    refreshSummary(panel, violations);
     const listEl = panel.querySelector(".chrx-vpro-list");
     listEl.innerHTML = "";
     if (!violations.length) {
@@ -131,14 +176,24 @@ import "../ribbon/topbar.js";
           if (!target) {
             fixBtn.textContent = "No feasible slot";
             fixBtn.disabled = true;
+            fixBtn.title = "No alternative slot is free of hard violations for this card.";
             return;
           }
-          fixBtn.textContent = `Move to D${target.d + 1}P${target.p + 1}?`;
+          // B9 — the proposal state is explicit: an "Apply:" label plus a
+          // visible hint that a second click applies the move.
+          const label = `D${target.d + 1}P${target.p + 1}`;
+          fixBtn.textContent = `Apply: move to ${label}`;
+          fixBtn.title = "Proposal ready — click again to apply this move.";
+          fixBtn.setAttribute("aria-label", `Apply fix: move ${v.entity} to ${label}`);
+          if (!row.querySelector(".chrx-vpro-hint")) {
+            row.appendChild(el("div", { class: "chrx-vpro-hint" },
+              "Proposal ready — click “Apply” again to move the card. Verification re-runs automatically."));
+          }
           fixBtn.onclick = () => {
             applyFix(v.card, target);
-            row.style.opacity = "0.4";
-            fixBtn.textContent = "✓ Fixed";
-            fixBtn.disabled = true;
+            (window._chrxNotify || console.log)(`✓ Applied fix: ${v.entity} → ${label}.`);
+            // B9 — re-run verification so the header count updates.
+            render(collectViolations(school), school, root, panel);
           };
         };
         row.appendChild(fixBtn);
@@ -170,10 +225,7 @@ import "../ribbon/topbar.js";
     ));
 
     const violations = collectViolations(school);
-    panel.appendChild(el("div", { class: "chrx-vpro-summary" },
-      `${violations.length} violation(s) found · `,
-      `${violations.filter(v => v.severity === "hard").length} hard · `,
-      `${violations.filter(v => v.severity === "soft").length} soft`));
+    panel.appendChild(el("div", { class: "chrx-vpro-summary" }, summaryText(violations)));
 
     panel.appendChild(el("div", { class: "chrx-vpro-list" }));
     panel.appendChild(el("footer", null,
@@ -223,7 +275,12 @@ import "../ribbon/topbar.js";
     const s = document.createElement("style");
     s.id = "chrx-vpro-styles";
     s.textContent = `
-.chrx-vpro-root{position:fixed;inset:0;background:rgba(5,7,10,.52);display:flex;align-items:flex-start;justify-content:center;padding:18px;z-index:1000;overflow:auto}
+.chrx-vpro-root{position:fixed;inset:0;background:rgba(5,7,10,.52);display:flex;align-items:flex-start;justify-content:center;padding:18px;z-index:10001;overflow:auto}
+/* B1 — the topbar status chip doubles as a Verification opener when hard
+   conflicts exist: warning style + pointer affordance. Lives here (not the
+   editor sheets) so the style exists even before the panel first opens. */
+#editor-unplaced-count.is-conflict{cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px}
+#editor-unplaced-count.is-conflict:focus-visible{outline:2px solid var(--chrx-accent);outline-offset:2px}
 .chrx-vpro-panel{background:var(--chrx-bg-elev);border:1px solid var(--chrx-line);border-radius:var(--chrx-radius-lg);width:min(900px,95vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 4px 8px rgba(26,23,20,.06),0 12px 24px rgba(26,23,20,.08),0 24px 48px rgba(26,23,20,.06);font-family:var(--chrx-font-sans);color:var(--chrx-fg)}
 .chrx-vpro-panel header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--chrx-line)}
 .chrx-vpro-panel h2{margin:0;font-family:var(--chrx-font-display);font-size:var(--chrx-font-h2);color:var(--chrx-fg)}
@@ -233,7 +290,9 @@ import "../ribbon/topbar.js";
 .chrx-vpro-list{flex:1;overflow-y:auto;padding:8px 16px}
 .chrx-vpro-empty{padding:24px;text-align:center;color:var(--chrx-fg-tertiary)}
 .chrx-vpro-group{font-size:var(--chrx-font-cell-m);text-transform:uppercase;letter-spacing:.04em;color:var(--chrx-fg-secondary);background:var(--chrx-bg-tile);padding:4px 10px;border-radius:var(--chrx-radius-xs);margin:8px 0 4px}
-.chrx-vpro-row{display:flex;justify-content:space-between;align-items:flex-start;padding:6px 10px;border-bottom:1px solid var(--chrx-line-soft);font-size:var(--chrx-font-small);gap:8px;border-radius:var(--chrx-radius-xs)}
+.chrx-vpro-row{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;padding:6px 10px;border-bottom:1px solid var(--chrx-line-soft);font-size:var(--chrx-font-small);gap:8px;border-radius:var(--chrx-radius-xs)}
+/* B9 — visible proposal hint: full-width line under the violation row. */
+.chrx-vpro-hint{flex:1 1 100%;font-size:12px;color:var(--chrx-fg-secondary);background:var(--chrx-accent-bg);border:1px dashed var(--chrx-accent);border-radius:var(--chrx-radius-xs);padding:4px 8px}
 .chrx-vpro-row--hard{background:var(--chrx-red-bg)}
 .chrx-vpro-row--soft{background:var(--chrx-amber-bg)}
 .chrx-vpro-msg{flex:1}
@@ -241,7 +300,9 @@ import "../ribbon/topbar.js";
 .chrx-vpro-fix:hover{background:var(--chrx-accent-bg)}
 .chrx-vpro-fix:disabled{opacity:0.5;cursor:default}
 .chrx-vpro-more{padding:6px 10px;color:var(--chrx-fg-tertiary);font-size:var(--chrx-font-cell-m);font-style:italic}
-.chrx-vpro-panel footer{display:flex;justify-content:flex-end;gap:8px;padding:10px 16px;border-top:1px solid var(--chrx-line);background:var(--chrx-bg-tile)}
+/* B17 — footer stays inside the dialog: wraps instead of clipping at the
+   dialog edge, never shrinks away, keeps the panel's bottom radius. */
+.chrx-vpro-panel footer{display:flex;justify-content:flex-end;flex-wrap:wrap;flex-shrink:0;gap:8px;row-gap:8px;padding:10px 16px;border-top:1px solid var(--chrx-line);background:var(--chrx-bg-tile);border-radius:0 0 var(--chrx-radius-lg) var(--chrx-radius-lg);overflow:hidden}
 .chrx-vpro-autofix{background:var(--chrx-accent);color:var(--chrx-accent-on);border:0;padding:6px 14px;border-radius:var(--chrx-radius-sm);font-weight:600;cursor:pointer;font-size:var(--chrx-font-small)}
 .chrx-vpro-rescan{background:var(--chrx-bg-input);color:var(--chrx-fg);border:1px solid var(--chrx-line);padding:6px 14px;border-radius:var(--chrx-radius-sm);cursor:pointer;font-size:var(--chrx-font-small)}
 .chrx-vpro-panel :focus-visible{outline:2px solid var(--chrx-accent);outline-offset:2px}
@@ -252,7 +313,10 @@ import "../ribbon/topbar.js";
   window.addEventListener("app:verification-pro", () => open());
   window.addEventListener("app:verify", () => open());
 
-  global.VerificationPro = { open };
+  global.VerificationPro = { open, collectViolations, countHardConflicts, statusChipText, suggestFix };
+
+  // B1 — chip warning style must exist even before the panel first opens.
+  try { if (typeof document !== "undefined") ensureStyles(); } catch (_) {}
 })(window);
 
 // [vite-esm] exports auto-generated by the 2026-07 Vite migration.
