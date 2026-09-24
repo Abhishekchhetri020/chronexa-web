@@ -17,6 +17,13 @@ import "../components/divisions_tree.js";
     const nD = ((s && s._idx && s._idx.days) || ["Mon","Tue","Wed","Thu","Fri","Sat"]).length;
     const idxT = window.APP.school?._idx?.teacherById || {};
     const idxR = window.APP.school?._idx?.classroomById || {};
+    const lessons = (s && s.lessons) || [];
+    const classCountMap = Object.create(null);
+    for (const l of lessons) {
+      for (const cid of (l.classIds || [])) {
+        classCountMap[cid] = (classCountMap[cid] || 0) + 1;
+      }
+    }
     return ((window.APP.school?.classes) || []).map(c => ({
       id: c.id, name: c.name || "", short: c.abbr || c.short || c.name || "",
       teacher: idxT[c.teacherId || c._teacherId]?.name || "",
@@ -24,6 +31,7 @@ import "../components/divisions_tree.js";
         .map(id => idxR[id]?.name).filter(Boolean).join(", "),
       bell: c.bell || "default", color: c.color || "",
       divCount: (c.divisions || []).length || 0,
+      count: classCountMap[c.id] || 0,
       timeOff: c.timeOff || {},
       _ref: c, _nP: nP, _nD: nD,
     }));
@@ -34,6 +42,7 @@ import "../components/divisions_tree.js";
     { key:"short", label:"Short" },
     { key:"teacher", label:"Class teacher" },
     { key:"classrooms", label:"Rooms" },
+    { key:"count", label:"Count" },
     { key:"bell",  label:"Bell" },
     { key:"color", label:"Color", sortable:false,
       render:(r)=>D.el("span", { class:"chrx-ent-swatch-dot",
@@ -124,7 +133,7 @@ import "../components/divisions_tree.js";
           draft.teacherIds = Array.from(teacherSet);
           renderTeacherList();
         });
-        const label = D.el("span", null, t.name + (t.abbr ? ` (${t.abbr})` : ""));
+        const label = D.el("span", null, D.formatOptionLabel(t));
         const tick = D.el("span", {
           style: `color:#16a34a;font-size:14px;${isSelected ? "" : "visibility:hidden"}`
         }, "✓");
@@ -163,7 +172,7 @@ import "../components/divisions_tree.js";
           draft.classroomIds = Array.from(roomSet);
           renderRoomList();
         });
-        const label = D.el("span", null, rm.name + (rm.abbr ? ` (${rm.abbr})` : ""));
+        const label = D.el("span", null, D.formatOptionLabel(rm));
         const tick = D.el("span", {
           style: `color:#16a34a;font-size:14px;${isSelected ? "" : "visibility:hidden"}`
         }, "✓");

@@ -60,8 +60,8 @@ import "../../state.js";
     return out;
   }
 
-  window.APP.printTemplates.register({
-    id: "list_of_classes",
+  window.APP.printTemplates.register("list_of_classes", {
+    name: "List of classes",
     title: "List of classes",
     category: "lists",
     render,
