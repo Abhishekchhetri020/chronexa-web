@@ -326,6 +326,12 @@ export function buildViewerHtml(snapshot, opts) {
   // </script> inside any published name would end the JSON block early.
   const json = JSON.stringify(snapshot).replace(/<\/(script)/gi, "<\\/$1");
   const js = viewerJs.replace(/^\/\/#\s*sourceMappingURL=.*$/gm, "");
+  // Minimal page shell only — the timetable itself is drawn by the reader, and
+  // its stylesheet travels inside the bundle. `chrx-viewer-active` is the class
+  // the reader's CSS expects on <body> (boot.js sets it in viewer mode).
+  const shell = "html,body{margin:0;background:#f8fafc}" +
+    "#chronexa-viewer-root{min-height:100vh}" +
+    ".chrx-pub-noscript{padding:16px;font:15px system-ui}";
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -333,10 +339,11 @@ export function buildViewerHtml(snapshot, opts) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>${esc(title)}</title>
+<style>${shell}</style>
 </head>
-<body>
+<body class="chrx-viewer-active">
 <div id="chronexa-viewer-root"></div>
-<noscript style="display:block;padding:16px;font:15px system-ui">This published timetable needs JavaScript to display.</noscript>
+<noscript class="chrx-pub-noscript">This published timetable needs JavaScript to display.</noscript>
 <script type="application/json" id="chronexa-snapshot">${json}</script>
 <script>${js}</script>
 </body>

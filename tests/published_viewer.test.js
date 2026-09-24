@@ -77,6 +77,13 @@ describe("one renderer: it delegates to W2-2's reader", () => {
     expect(root.querySelectorAll("table, .cxv, .cxv-grid, [data-class-chip]")).toHaveLength(0);
   });
 
+  it("marks the body the way the reader's CSS expects (chrx-viewer-active)", () => {
+    stubReader();
+    const root = mountPoint();
+    loader().render(root, snapshot());
+    expect(document.body.classList.contains("chrx-viewer-active")).toBe(true);
+  });
+
   it("has no renderer of its own: with the reader absent the page shows only an error", () => {
     const root = mountPoint();
     loader().render(root, snapshot());          // valid snapshot, no reader

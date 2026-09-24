@@ -14,7 +14,7 @@
  *    of hashed output files. It preserves the COOP/COEP header injection that
  *    cross-origin-isolates the page (required for WASM threads).
  */
-import { defineConfig } from "vite";
+import { build as viteBuild, defineConfig } from "vite";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
@@ -116,6 +116,73 @@ function chronexaViewerReader() {
   };
 }
 
+/**
+ * Emit the OFFLINE viewer bundle as dist/viewer.js — ONE self-contained classic
+ * script (contract C2, lane W2-3).
+ *
+ * Why a nested build instead of a second `input` of the app build: the reader
+ * (js/viewer/render.js) is also part of the APP's module graph (js/ui/main.js →
+ * viewer/boot.js → render.js), so as an app entry the viewer chunk is left with
+ * `import "./assets/render-<hash>.js";` — chunk imports that are a SyntaxError
+ * the moment the text is inlined in a classic <script> (file:// blocks module
+ * CORS), which shipped as a blank published page. A separate lib build with
+ * format "iife" inlines every import (render.js + validate.js) into the file.
+ *
+ * Runs from the app build's closeBundle, AFTER the app has written dist/, so
+ * dist/viewer.js lands next to the shell and ./viewer.js stays precached by the
+ * generated sw.js. configFile:false + a minimal plugin list keeps the nested
+ * build from re-entering this config.
+ */
+function chronexaViewerBundle() {
+  let outDir = "dist";
+  let root = process.cwd();
+  let done = false;
+  return {
+    name: "chronexa-viewer-bundle",
+    apply: "build",
+    configResolved(cfg) { outDir = cfg.build.outDir; root = cfg.root; },
+    async closeBundle() {
+      if (done) return;                     // never recurse
+      done = true;
+      await viteBuild({
+        configFile: false,
+        root,
+        base: "./",
+        logLevel: "warn",
+        build: {
+          outDir,
+          emptyOutDir: false,               // keep the app build in dist/
+          sourcemap: false,
+          target: "baseline-widely-available",
+          lib: {
+            entry: path.join(root, "js/viewer/viewer_entry.js"),
+            name: "ChronexaPublishedViewer",
+            formats: ["iife"],
+            fileName: () => "viewer.js",
+            cssFileName: "viewer-bundle",
+          },
+          rollupOptions: { output: { inlineDynamicImports: true } },
+        },
+        plugins: [chronexaViewerReader()],
+      });
+      const file = path.join(root, outDir, "viewer.js");
+      const text = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
+      if (/^\s*(import|export)[ {]/m.test(text)) {
+        throw new Error("dist/viewer.js contains ESM syntax — it cannot be inlined as a classic script.");
+      }
+      // render.js also imports css/viewer.css plainly, which a lib build must
+      // extract; the published file carries that CSS as an inlined string
+      // instead (virtual:chronexa-viewer-reader → ?inline), so the extracted
+      // by-product is referenced by nothing and would just be shipped dead.
+      const strayCss = path.join(root, outDir, "viewer-bundle.css");
+      if (fs.existsSync(strayCss)) fs.rmSync(strayCss);
+      const strayMap = path.join(root, outDir, "viewer.js.map");
+      if (fs.existsSync(strayMap)) fs.rmSync(strayMap);
+      console.log(`[viewer] offline bundle → ${outDir}/viewer.js (${text.length} B, self-contained)`);
+    },
+  };
+}
+
 // COOP/COEP for dev/preview so the WASM CP-SAT path (SharedArrayBuffer) works
 // without the service worker. In production the generated sw.js injects the
 // same headers.
@@ -126,7 +193,7 @@ const COI_HEADERS = {
 
 export default defineConfig({
   base: "./",
-  plugins: [chronexaSwAndCopy(), chronexaViewerReader()],
+  plugins: [chronexaSwAndCopy(), chronexaViewerReader(), chronexaViewerBundle()],
   server: { headers: COI_HEADERS },
   preview: { headers: COI_HEADERS },
   worker: {
@@ -137,17 +204,7 @@ export default defineConfig({
     sourcemap: true,
     target: "baseline-widely-available",
     rollupOptions: {
-      // Two entries: the app shell, plus the standalone OFFLINE viewer bundle
-      // (contract C2). The publish dialog fetches dist/viewer.js and inlines it
-      // into the single-file .html it downloads, so it gets a stable filename
-      // instead of Vite's content hash (see entryFileNames below).
-      input: {
-        index: "index.html",
-        viewer: "js/viewer/viewer_entry.js",
-      },
       output: {
-        entryFileNames: (chunk) =>
-          chunk.name === "viewer" ? "viewer.js" : "assets/[name]-[hash].js",
         advancedChunks: {
           groups: [
             { name: "solver", test: /\/js\/solver\// },
