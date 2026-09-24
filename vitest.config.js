@@ -7,6 +7,8 @@ export default defineConfig({
       "js/ui/editor/__tests__/**/*.test.js",
       // W2-2 published-viewer unit tests (lane owns js/viewer/).
       "js/viewer/__tests__/**/*.test.js",
+      // Wave-2 lane tests (00-common.md: unit → tests/**/*.test.js)
+      "tests/**/*.test.js",
     ],
     exclude: [
       "**/node_modules/**",
