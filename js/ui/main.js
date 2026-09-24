@@ -748,10 +748,10 @@ import "./start_screen.js";
     if (densBtn) {
       window.APP.editor = window.APP.editor || {};
       const ZOOM_ORDER = ["far", "mid", "near"];
-      const ZOOM_LABEL = { far: "Compact", mid: "Codes", near: "Detail" };
+      const ZOOM_LABEL = { far: "Compact", mid: "Standard", near: "Detail" };
       const ZOOM_HINT = {
         far: "Zoom: 26px compact — full school view (aSc density)",
-        mid: "Zoom: subject codes — click for teacher and room detail",
+        mid: "Zoom: standard — one subject code per cell; click for teacher and room",
         near: "Zoom: code, teacher and room — click to zoom back out",
       };
       // Read the saved level, migrating a legacy density value.

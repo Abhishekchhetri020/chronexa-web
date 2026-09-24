@@ -18,7 +18,10 @@ window.Editor = (function () {
   // Semantic zoom levels, coarsest first. The cycle order matches the row
   // heights, so stepping through it reads as zooming rather than reshuffling.
   const ZOOM_LEVELS = ["far", "mid", "near"];
-  const ZOOM_LABELS = { far: "Compact", mid: "Codes", near: "Detail" };
+  // "Standard", not "Codes": the legend button beside it is also called "Codes",
+  // and two controls with one name read as one feature. This label names the
+  // LEVEL (what a cell shows at the working zoom); the legend decodes codes.
+  const ZOOM_LABELS = { far: "Compact", mid: "Standard", near: "Detail" };
   let pendingCardClickTimer = null;
 
   function cancelPendingCardClick() {
@@ -838,9 +841,20 @@ window.Editor = (function () {
   }
 
   // Candidate forms of a subject label, most→least informative, used when the
-  // preferred code overflows the actual cell width. The unique code leads, and
-  // every form some OTHER subject could also produce is dropped, so the ladder
-  // can only ever shorten within codes that stay unambiguous.
+  // preferred code overflows the actual cell width. The unique code leads, every
+  // form some OTHER subject could also produce is dropped, and then the code's
+  // own leading substrings are appended as last-resort rungs.
+  //
+  // Why the extra rungs: uniqueness is computed from every form a subject COULD
+  // produce, not from the code it actually renders, so it rejects harmless
+  // shortenings — "MATHS" renders MATM and "MATHS LAB PERIOD" renders ML, yet
+  // the ladder for MATHS was [MATM] alone because "MAT" is a form both subjects
+  // could produce. With no shorter rung the fit pass had nothing to fall back to
+  // and the 4-character code was cut mid-glyph to "MA" in a 19px cell — a string
+  // that reads as a real 2-character code. A rung is only offered when it cannot
+  // be mistaken for another subject's rendered code: it must not equal one and
+  // must not be the beginning of one (so "FE" is still refused for Foundation
+  // English, whose siblings render FEn/FEV — the four-“Fn.”-subjects fix holds).
   function codeCandidates(subject) {
     const S = window.APP && window.APP.school;
     if (S) uniqueCodes(S);
@@ -850,18 +864,47 @@ window.Editor = (function () {
     shortForms(subject).forEach(c => {
       if (!ambiguous.has(c) && !out.includes(c)) out.push(c);
     });
+    for (let n = preferred.length - 1; n >= 2; n--) {
+      const cand = preferred.slice(0, n);
+      if (out.includes(cand)) continue;
+      if ((S && codeConflicts(S, cand, subject)) || (!S && ambiguous.has(cand))) continue;
+      out.push(cand);
+    }
     return out.filter(Boolean);
   }
 
-  // Post-render pass: the school's abbreviation is preferred, but if it still
-  // overflows the actual cell at the rendered font (e.g. abbr == full name like
-  // "Sports Meet Practice"), swap in the largest candidate code that fits on one
-  // line. Measured with canvas (accurate, reflow-free). By-Class only — other
+  // True when `cand` would be confusable with the code another subject renders.
+  function codeConflicts(S, cand, subject) {
+    for (const other of (S.subjects || [])) {
+      if (!other || other.id === subject.id) continue;
+      const code = subjectCode(other);
+      if (code === cand || code.indexOf(cand) === 0) return true;
+    }
+    return false;
+  }
+
+  // Post-render pass: fit every card's primary line into its cell. The school's
+  // abbreviation is preferred, but if it still overflows at the rendered font we
+  // walk a ladder of shorter codes, and only then shrink the type.
+  //
+  // The original pass CLIPPED (text-overflow: clip) whenever no ladder candidate
+  // fitted, and it skipped "far" zoom entirely on the assumption that level drew
+  // no text — it draws the subject code now, so Compact was the WORST level on
+  // screen (482 of 971 labels cut, 49.6%) while being the densest. A hard cut is
+  // also never acceptable on its own terms: "MATM" rendered as "MA", "URDU" as
+  // "UR", "Sports" as "Spo" — each reads as a real, different code.
+  // Measured with canvas (accurate, reflow-free). By-Class only — other
   // perspectives carry class lists that legitimately wrap.
+  const FIT_MIN_PX = 8.5;    // below this a 1-line code stops being readable
+  const FIT_COMFORT_PX = 10; // prefer a shorter rung over type smaller than this
+  const FIT_MIN_CHARS = 3;   // the code floor: 3 characters identify a subject
+  const FIT_STEP_PX = 0.5;
+
   function autoFitSubjectCodes(rootEl, scopeEl) {
     if (!rootEl || (window.APP.editor.perspective || "class") !== "class") return;
-    // The overview zoom draws no text, so there is nothing to fit.
-    if (window.APP.editor.viewMode !== "focus" && currentZoom() === "far") return;
+    // Focus view prints the FULL subject name and wraps it to two lines — that is
+    // its design, so the code-fitting pass stays out of it.
+    if (window.APP.editor.viewMode === "focus") return;
     const S = window.APP && window.APP.school;
     if (!S) return;
     const scope = scopeEl || rootEl;
@@ -872,22 +915,87 @@ window.Editor = (function () {
     const fam = cs.fontFamily || "sans-serif";
     const weight = cs.fontWeight || "700";
     const fontPx = parseFloat(cs.fontSize) || 11.5;
-    const avail = Math.max(10, lines[0].clientWidth || (slot.clientWidth - 12));   // the line box already excludes rail + padding
+    const slotW = Math.max(10, slot.clientWidth - 12);
     const ctx = (autoFitSubjectCodes._c || (autoFitSubjectCodes._c = document.createElement("canvas").getContext("2d")));
-    const wOf = t => { ctx.font = `${weight} ${fontPx}px ${fam}`; return ctx.measureText(t).width; };
-    const cache = new Map();
+    const wOf = (t, size) => { ctx.font = `${weight} ${size || fontPx}px ${fam}`; return ctx.measureText(t).width; };
+    // Measure every target BEFORE writing anything: the write pass below mutates
+    // text and font, which invalidates layout, so interleaving the two would
+    // force a reflow per card. 971 cards must stay one layout.
+    //
+    // Per-element widths, not one width for the whole grid: a split cell (two
+    // co-taught subjects stacked) is 7px narrower than a plain one, and measuring
+    // the first line only meant 'Sans' was kept at 22px inside an 18px box — the
+    // last 37 mid-glyph cuts on Compact.
+    const targets = [];
     for (const el of lines) {
-      if (wOf(el.textContent) <= avail) continue;       // fits on one line — keep
       const card = el.closest(".chrx-vkarta");
       const lesson = card && S._idx.lessonById[card.dataset.lessonId];
       const subject = lesson && S._idx.subjectById[lesson.subjectId];
+      targets.push({
+        el, subject,
+        avail: Math.max(10, el.clientWidth || slotW),
+        size: parseFloat(getComputedStyle(el).fontSize) || fontPx,
+      });
+    }
+    const cache = new Map();
+    for (const { el, subject, avail, size } of targets) {
+      // Reset whatever a previous pass (or a post-drag re-fit of this row) left
+      // behind, so the pass is idempotent and always re-measures the natural code.
+      el.style.fontSize = "";
+      el.style.textOverflow = "";
+      delete el.dataset.fit;
       if (!subject) continue;
-      let pick = cache.get(subject.id);
-      if (pick === undefined) {
-        pick = codeCandidates(subject).find(c => wOf(c) <= avail) || codeCandidates(subject).pop() || el.textContent;
-        cache.set(subject.id, pick);
+      const preferred = subjectCode(subject);
+      if (el.textContent !== preferred) el.textContent = preferred;
+      let ladder = cache.get(subject.id);
+      if (!ladder) { ladder = codeCandidates(subject); cache.set(subject.id, ladder); }
+      // Largest font size at which `cand` fits, from `size` down to `floor`; null
+      // when it cannot be shown whole at any size we are willing to print.
+      const sizeFor = (cand, floor) => {
+        for (let s = size; s >= floor; s -= FIT_STEP_PX) {
+          if (wOf(cand, s) <= avail) return s;
+        }
+        return null;
+      };
+      // Largest size at which each rung fits whole, or null when it cannot be
+      // shown at any size we are willing to print.
+      const sizes = ladder.map(c => [c, sizeFor(c, FIT_MIN_PX)]);
+      // A rung below the 3-character floor is only a candidate when it IS the
+      // subject's own code — GK, ML, FM, LA are genuinely two characters, and a
+      // derived 4-character stem must never outrank them.
+      const long = sizes.filter(([c]) => c.length >= FIT_MIN_CHARS || c === preferred);
+      // Pick the biggest size in a pool, breaking ties by the ladder's order
+      // (most informative first).
+      const pickFrom = (pool, floor) => {
+        let best = null;
+        for (const [cand, s] of pool) {
+          if (s === null || s < floor) continue;
+          if (!best || s > best[1]) best = [cand, s];
+        }
+        return best;
+      };
+      // The rounds, in the order the cell should sacrifice information: hold the
+      // 3-character floor while it is still readable, then prefer readable type
+      // over characters, then the floor, then a shorter code. Nothing fits whole
+      // at all → the ellipsis branch below, never a silent mid-glyph cut.
+      const chosen = pickFrom(long, FIT_COMFORT_PX) || pickFrom(sizes, FIT_COMFORT_PX) ||
+                     pickFrom(long, FIT_MIN_PX) || pickFrom(sizes, FIT_MIN_PX);
+      if (chosen) {
+        const [cand, s] = chosen;
+        if (el.textContent !== cand) el.textContent = cand;
+        if (s < size) {
+          el.style.fontSize = s + "px";
+          el.dataset.fit = "shrink";
+        }
+        continue;
       }
-      el.textContent = pick;
+      // Nothing fits whole even at the floor: the shortest rung plus an ellipsis,
+      // so the cell reads as abbreviated rather than as a wrong code.
+      const shortest = ladder[ladder.length - 1] || preferred;
+      if (el.textContent !== shortest) el.textContent = shortest;
+      el.style.fontSize = FIT_MIN_PX + "px";
+      el.style.textOverflow = "ellipsis";
+      el.dataset.fit = "truncate";
     }
   }
 
