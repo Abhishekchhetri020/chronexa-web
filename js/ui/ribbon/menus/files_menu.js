@@ -32,6 +32,7 @@ import "../../state.js";
           { icon: "📦", label: "Classic Timetable (*.roz)",        run: () => fire("app:export-legacy-roz") },
           { icon: "📄", label: "Classic Timetable XML",            run: () => fire("app:export-timetable-xml") },
           { icon: "🌐", label: "Standalone HTML",                  run: () => fire("app:export-html") },
+          { icon: "🔗", label: "Publish timetable…",                run: () => fire("app:publish-timetable") },
           { sep: true },
           { icon: "📊", label: "Excel — Contracts",             run: () => fire("app:export-excel", { kind: "contracts" }) },
           { icon: "📊", label: "Excel — Available teachers",    run: () => fire("app:export-excel", { kind: "available" }) },

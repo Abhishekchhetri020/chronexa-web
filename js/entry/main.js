@@ -93,6 +93,8 @@ import "../ui/components/school_toolbar.js";
 import "../ui/components/period_override_matrix.js";
 import "../ui/components/ai_actions.js";
 import "../ui/io/export_html.js";
+import "../ui/io/publish.js";
+import "../ui/components/publish_dialog.js";
 import "../ui/components/verification.js";
 import "../ui/solver_ui/backend_client.js";
 import "../ui/solver_ui/multi_branch.js";

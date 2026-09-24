@@ -5,6 +5,8 @@ export default defineConfig({
     include: [
       "js/solver/__tests__/**/*.test.js",
       "js/ui/editor/__tests__/**/*.test.js",
+      // Wave-2 lane tests (00-common.md: unit → tests/**/*.test.js)
+      "tests/**/*.test.js",
     ],
     exclude: [
       "**/node_modules/**",

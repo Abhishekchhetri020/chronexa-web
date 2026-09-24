@@ -58,7 +58,7 @@ function chronexaSwAndCopy() {
       const files = Object.keys(bundle).filter((f) =>
         /\.(js|mjs|css|html|wasm|png|svg|woff2?)$/.test(f)
       );
-      precache = ["./", "./index.html", "./manifest.json", ...files.map((f) => "./" + f)];
+      precache = ["./", "./index.html", "./manifest.json", "./viewer.js", ...files.map((f) => "./" + f)];
       const appVer = readAppVer(root);
       const listHash = crypto.createHash("sha256").update(precache.join("\n")).digest("hex").slice(0, 8);
       const tpl = fs.readFileSync(path.join(root, "sw.template.js"), "utf8");
@@ -82,6 +82,40 @@ function chronexaSwAndCopy() {
   };
 }
 
+/**
+ * The offline viewer bundle needs W2-2's reader (js/viewer/render.js + css/viewer.css).
+ * Those files live in lane W2-2 and may not exist yet, so they are pulled in
+ * through this virtual module instead of a hard import path:
+ *   - reader present → static imports of the real files (bundled normally);
+ *   - reader absent  → an empty module, and the loader in the published file
+ *     says the viewer is missing instead of failing the build.
+ * Deliberately a STATIC import and not `import.meta.glob`: a glob makes rolldown
+ * emit a shared runtime chunk, and the viewer chunk would then start with
+ * `import … from "./assets/rolldown-runtime-*.js"` — a hard syntax error once
+ * inlined in a classic <script> (file:// blocks module CORS anyway).
+ */
+function chronexaViewerReader() {
+  const VID = "virtual:chronexa-viewer-reader";
+  const RESOLVED = "\0" + VID;
+  let root = process.cwd();
+  const exists = (rel) => fs.existsSync(path.join(root, rel));
+  return {
+    name: "chronexa-viewer-reader",
+    configResolved(cfg) { root = cfg.root; },
+    resolveId(id) { return id === VID ? RESOLVED : null; },
+    load(id) {
+      if (id !== RESOLVED) return null;
+      return [
+        exists("js/viewer/render.js") ? 'import "/js/viewer/render.js";' : "",
+        exists("css/viewer.css")
+          ? 'import viewerCss from "/css/viewer.css?inline";'
+          : 'const viewerCss = "";',
+        "export { viewerCss };",
+      ].join("\n");
+    },
+  };
+}
+
 // COOP/COEP for dev/preview so the WASM CP-SAT path (SharedArrayBuffer) works
 // without the service worker. In production the generated sw.js injects the
 // same headers.
@@ -92,7 +126,7 @@ const COI_HEADERS = {
 
 export default defineConfig({
   base: "./",
-  plugins: [chronexaSwAndCopy()],
+  plugins: [chronexaSwAndCopy(), chronexaViewerReader()],
   server: { headers: COI_HEADERS },
   preview: { headers: COI_HEADERS },
   worker: {
@@ -103,7 +137,17 @@ export default defineConfig({
     sourcemap: true,
     target: "baseline-widely-available",
     rollupOptions: {
+      // Two entries: the app shell, plus the standalone OFFLINE viewer bundle
+      // (contract C2). The publish dialog fetches dist/viewer.js and inlines it
+      // into the single-file .html it downloads, so it gets a stable filename
+      // instead of Vite's content hash (see entryFileNames below).
+      input: {
+        index: "index.html",
+        viewer: "js/viewer/viewer_entry.js",
+      },
       output: {
+        entryFileNames: (chunk) =>
+          chunk.name === "viewer" ? "viewer.js" : "assets/[name]-[hash].js",
         advancedChunks: {
           groups: [
             { name: "solver", test: /\/js\/solver\// },
