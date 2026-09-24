@@ -361,9 +361,8 @@ body::before{
   text-align:left; width:100%;
 }
 .chrx-shell .chrx-vkarta.locked{opacity:.95}
-.chrx-shell .chrx-vkarta.locked::after{
-  content:"🔒"; position:absolute; top:2px; right:3px; font-size:9px; opacity:.8; color:#ffffff;
-}
+/* .locked::after content:"🔒" deleted — dead (editor-v3.css loads later and owns
+   .locked; a 9px emoji on a 21px Compact card was never legible either). */
 /* Inset rings (contained inside the card), not outer-spread — the old
    0 0 0 4px outer rings bled past the card and merged with neighbouring
    cards' halos and the two halves of a split/conflict slot, reading as

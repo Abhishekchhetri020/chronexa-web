@@ -128,7 +128,8 @@ body.chrx-card-in-hand .chrx-slot.empty.out-of-bell{outline:1px solid var(--chrx
 .chrx-vk-line2,.chrx-vk-line3{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.88;text-align:left;width:100%}
 .chrx-vk-line1{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;font-weight:var(--chrx-fw-semibold)}
 .chrx-vkarta.locked{cursor:not-allowed;opacity:.85}
-.chrx-vkarta.locked::after{content:"🔒";position:absolute;top:0;right:2px;font-size:8px}
+/* .locked::after content:"🔒" deleted — dead (editor-v3.css loads later and owns
+   .locked; see its "Locked" block for the shipped treatment). */
 /* Verification halo — painted by canvas_geometry.paintHalos() per card.
    Red = hard rule violated; amber = soft preference broken. Hover with
    the constraint explainer for the reason text. */

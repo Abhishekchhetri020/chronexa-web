@@ -223,6 +223,12 @@
 .chrx-shell #editor-quick-tools button.is-on { background: var(--chrx-bg-elev) !important; color: var(--chrx-accent) !important; box-shadow: var(--chrx-shadow-sm) !important; }
 .chrx-shell #editor-quick-tools button .chrx-ic { color: inherit; opacity: 0.9; flex: 0 0 auto; }
 .chrx-shell #editor-quick-tools .chrx-tool__label { white-space: nowrap; }
+/* A [hidden] button must actually disappear. The display rule above out-specifies
+   the UA's [hidden]{display:none}, so main.js's syncEditorChrome() — which hides
+   the density and legend buttons in Focus view — was writing an attribute that
+   painted nothing: the default view shipped a visible, disabled density control
+   whose only explanation was a tooltip. */
+.chrx-shell #editor-quick-tools button[hidden] { display: none !important; }
 .chrx-shell #editor-quick-tools #editor-unplaced-count {
   display: inline-flex; align-items: center; gap: 5px;
   height: 26px; padding: 0 9px 0 7px; margin: 0 2px 0 0;
@@ -379,7 +385,13 @@
   box-shadow: var(--chrx-shadow-sm);
   max-height: calc(100vh - 150px);
 }
-.chrx-shell .chrx-grid { background: var(--chrx-bg-canvas); }
+/* Sheet geometry. The legacy .chrx-grid rule in css/components.css carries a
+   3px grid gap, which turned Compact's row height (--e3-row-h-far: 26px, sized
+   for 20+ classes on a 1470×727 screen) into a 29px pitch — 18 rows, not 20.
+   The row height IS the density contract, so the gap goes and the cards keep
+   their own 2px inset as the gutter. The 3px also came off every cell's text
+   width, which the subject-code fit pass needs (see grid_canvas.js). */
+.chrx-shell .chrx-grid { background: var(--chrx-bg-canvas); gap: 0; }
 
 /* The zoom/compact row rules further down also match the header (it carries
    .chrx-row), and they out-specify .chrx-row-head. That squeezed the header
@@ -495,7 +507,11 @@
    read "MA" in one mode and "MAT" in the other. Width is not the lever here;
    what the cell shows is. */
 .chrx-shell .chrx-vkarta--zoom-far {
-  padding: 0 2px;
+  /* 1px side padding + 1px inset (not 2px/2px): at Compact the cell is ~32px
+     and 4 chars at 10px measure ~31px, so every pixel of text box the chrome
+     gives back is a whole character that stops being clipped. */
+  padding: 0 1px;
+  inset: 2px 1px;
   justify-content: center;
   border-left-width: 2px;
 }
@@ -510,16 +526,16 @@
 }
 .chrx-shell .chrx-vkarta--zoom-far .chrx-vk-line2 { display: none; }
 
-.chrx-shell .chrx-vkarta--zoom-mid { padding: 0 3px 0 4px; justify-content: center; }
+.chrx-shell .chrx-vkarta--zoom-mid { padding: 0 1px 0 2px; justify-content: center; }
 .chrx-shell .chrx-vkarta--zoom-mid .chrx-vk-line1 {
   font-size: 11px; -webkit-line-clamp: 1; white-space: nowrap;
   overflow: hidden; text-overflow: clip; display: block;
 }
-.chrx-shell .chrx-editor--zoom-mid .chrx-vkarta { inset: 2px 1.5px; border-radius: 5px; border-left-width: 2.5px; }
+.chrx-shell .chrx-editor--zoom-mid .chrx-vkarta { inset: 2px 1px; border-radius: 5px; border-left-width: 2.5px; }
 
 /* Reading zoom: two real lines. line2 carries teacher · room, which is the
    information you would otherwise have to hover each cell to get. */
-.chrx-shell .chrx-vkarta--zoom-near { padding: 2px 4px 3px 5px; justify-content: center; gap: 2px; }
+.chrx-shell .chrx-vkarta--zoom-near { padding: 2px 1px 3px 2px; justify-content: center; gap: 2px; }
 .chrx-shell .chrx-vkarta--zoom-near .chrx-vk-line1 {
   font-size: 11px; -webkit-line-clamp: 1; white-space: nowrap;
   overflow: hidden; text-overflow: clip; display: block;
@@ -545,15 +561,6 @@
 .chrx-shell .chrx-slot:focus-visible { outline: 2px solid var(--chrx-accent); outline-offset: -2px; }
 .chrx-shell .chrx-rowlabel:focus-visible { outline: 2px solid var(--chrx-accent); outline-offset: -2px; }
 
-/* Locked */
-.chrx-shell .chrx-vkarta.locked { opacity: 0.9; cursor: not-allowed; }
-.chrx-shell .chrx-vkarta.locked::after {
-  content: ""; position: absolute; top: 2px; right: 3px; width: 9px; height: 9px; font-size: 0;
-  background: currentColor; opacity: 0.65;
-  -webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'><rect x='5' y='10.5' width='14' height='10' rx='2.5'/><path d='M8 10.5V7.5a4 4 0 0 1 8 0v3'/></svg>") center / contain no-repeat;
-          mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'><rect x='5' y='10.5' width='14' height='10' rx='2.5'/><path d='M8 10.5V7.5a4 4 0 0 1 8 0v3'/></svg>") center / contain no-repeat;
-}
-
 /* Conflict halos: ring + dot, never a colour-only cue */
 .chrx-shell .chrx-vkarta[data-halo="red"] {
   border-left-color: var(--chrx-red);
@@ -573,8 +580,45 @@
 }
 .chrx-shell .chrx-vkarta[data-halo="amber"]::after { background: var(--chrx-amber); }
 
-/* Split cells (two co-taught subjects) — stacked, each with its own rail */
-.chrx-shell .chrx-slot--split2 .chrx-vkarta { border-radius: 5px; border-left: 2.5px solid var(--e3-rail); padding: 0 3px 0 4px; box-shadow: none; }
+/* Locked — a state that has to be readable off the grid at EVERY zoom level, and
+   it is placed AFTER the halo rules on purpose.
+   What shipped before was a 9×9 mask-drawn OUTLINE glyph at `opacity: .65`, so
+   at Compact (21px card) the mark was a hairline silhouette the size of a full
+   stop and the grid could not tell a locked cell from a free one without
+   hovering it. Two cues now, and the second is the one that survives at 21px:
+     · a solid-fill padlock silhouette (a filled path, not a 2.4px stroke, so it
+       stays a solid mark when scaled down to 9px), bottom-right — the conflict
+       dot owns top-right, so lock and conflict never share a box;
+     · a diagonal hatch across the whole card, which stays legible at any row
+       height because it is not a glyph. `color-mix` derives it from the card's
+       own ink, so it also holds up in the dark theme.
+   `.locked.locked` (0,4,x) is deliberate: `.chrx-vkarta[data-halo="red"]::before
+   { content: none }` sits above at (0,3,x), and a fixed lesson that also breaks a
+   hard rule must not lose its lock mark. */
+.chrx-shell .chrx-vkarta.locked {
+  opacity: 0.9; cursor: not-allowed;
+  background-image: repeating-linear-gradient(135deg, transparent 0 3px, color-mix(in srgb, currentColor 22%, transparent) 3px 6px);
+}
+.chrx-shell .chrx-vkarta.locked.locked::before {
+  /* `display: block` is load-bearing: css/teacher_colors.css resets
+     `.chrx-vkarta::before { content: ""; display: none; }` and nothing else
+     declares display on this pseudo-element, so without it the badge computes
+     to display:none and paints nothing at all. */
+  content: ""; display: block; position: absolute; right: 3px; bottom: 2px; width: 11px; height: 11px;
+  background: currentColor; opacity: 0.9;
+  -webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M8 10.4V7.6a4 4 0 0 1 8 0v2.8h.6A2.4 2.4 0 0 1 19 12.8v5.2a2.4 2.4 0 0 1-2.4 2.4H7.4A2.4 2.4 0 0 1 5 18v-5.2a2.4 2.4 0 0 1 2.4-2.4H8Zm1.9 0h4.2V7.6a2.1 2.1 0 0 0-4.2 0v2.8Z'/></svg>") center / contain no-repeat;
+          mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M8 10.4V7.6a4 4 0 0 1 8 0v2.8h.6A2.4 2.4 0 0 1 19 12.8v5.2a2.4 2.4 0 0 1-2.4 2.4H7.4A2.4 2.4 0 0 1 5 18v-5.2a2.4 2.4 0 0 1 2.4-2.4H8Zm1.9 0h4.2V7.6a2.1 2.1 0 0 0-4.2 0v2.8Z'/></svg>") center / contain no-repeat;
+}
+/* The badge is sized against the row it sits in, not in absolute pixels. */
+.chrx-shell .chrx-editor--zoom-far .chrx-vkarta.locked.locked::before { width: 9px; height: 9px; right: 2px; bottom: 1px; }
+.chrx-shell .chrx-editor--zoom-near .chrx-vkarta.locked.locked::before { width: 13px; height: 13px; right: 4px; bottom: 3px; }
+
+/* Split cells (two co-taught subjects) — stacked, each with its own rail.
+   A stacked cell is the narrowest card in the sheet (two cards inside one slot,
+   ~18px of text box): the old 4px/3px rail+padding ate 11 of its 29 usable
+   pixels, which is what left "SANSKRIT" rendering as two characters at every
+   zoom. Same tightened chrome as an ordinary card. */
+.chrx-shell .chrx-slot--split2 .chrx-vkarta { border-radius: 5px; border-left: 2px solid var(--e3-rail); padding: 0 1px 0 2px; box-shadow: none; }
 .chrx-shell .chrx-slot--split2 .chrx-vkarta:nth-child(1) { inset: 2px 2px calc(50% + 1px) 2px; }
 .chrx-shell .chrx-slot--split2 .chrx-vkarta:nth-child(2) { inset: calc(50% + 1px) 2px 2px 2px; }
 .chrx-shell .chrx-slot--split2 .chrx-vk-line1 { font-size: 9px; font-weight: 600; }
@@ -1339,10 +1383,12 @@ body.chrx-card-in-hand .chrx-shell .chrx-card-panel { display: none; }
 }
 
 /* ── 11.6 Actions stay reachable and on one line down to 1280×720 ──────── */
-.chrx-shell .chrx-topbar { flex-wrap: nowrap; }
+@media (min-width: 768px) {
+  .chrx-shell .chrx-topbar { flex-wrap: nowrap; }
+  .chrx-shell #editor-quick-tools { flex-wrap: nowrap !important; }
+}
 .chrx-shell .chrx-crumbs { min-width: 0; overflow: hidden; }
 .chrx-shell .chrx-crumbs > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.chrx-shell #editor-quick-tools { flex-wrap: nowrap !important; }
 .chrx-shell .chrx-action-row { flex: 0 0 auto; }
 @media (max-width: 1440px) {
   .chrx-shell #editor-quick-tools .chrx-tool__label { display: none; }
@@ -1351,6 +1397,32 @@ body.chrx-card-in-hand .chrx-shell .chrx-card-panel { display: none; }
 @media (max-width: 1320px) {
   .chrx-shell .chrx-kbd-search { display: none; }
   .chrx-shell .chrx-crumbs { font-size: 13px; max-width: 26ch; }
+}
+/* ── 11.6b THE SAME BAR ON A PHONE ────────────────────────────────────────
+   The nowrap above is a 1280×720 desktop contract; on a 390px phone it made the
+   topbar overflow. Measured before this block: the tools slot flex-shrank to
+   79px while its 351px of chips stayed nowrap, so the cluster painted straight
+   over Test/Generate (elementFromPoint on Test hit a chip instead), the
+   breadcrumb was squeezed to an 11px "U", and the document scrolled to 437px
+   inside a 390px viewport.
+   Fix: wrap the bar, give the breadcrumb the elastic slot, and put the tool
+   cluster on its own full-width row that scrolls sideways instead of
+   overflowing. */
+@media (max-width: 767px) {
+  /* The wrapped bar needs its own height: the shell pins the topbar row to 46px
+     (fullscreen) / 56px, and a two-row phone bar would overflow that row
+     straight over the grid, which is the same collision in a new place. */
+  .chrx-shell { grid-template-rows: auto 1fr 36px; }
+  .chrx-shell.is-fullscreen { grid-template-rows: auto 1fr 0; }
+  .chrx-shell .chrx-topbar { flex-wrap: wrap; height: auto; min-height: 52px; padding: 4px 8px; row-gap: 2px; }
+  .chrx-shell .chrx-crumbs { flex: 1 1 auto; min-width: 0; }
+  .chrx-shell .chrx-topbar__spacer { display: none; }
+  .chrx-shell .chrx-action-row { order: 2; }
+  .chrx-shell .chrx-topbar-editor-tools {
+    order: 3; flex: 1 0 100%; min-width: 0; margin-left: 0;
+    overflow-x: auto; overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
 }
 @media (max-width: 1100px) {
   .chrx-shell .chrx-crumbs__sep,
