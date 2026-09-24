@@ -169,6 +169,10 @@ describe("single-file offline viewer HTML", () => {
     expect(html).not.toMatch(/<link[^>]+href=/i);
     // layout: the snapshot block precedes the bundle
     expect(html.indexOf('id="chronexa-snapshot"')).toBeLessThan(html.indexOf(BUNDLE));
+    // page shell: the class the reader's CSS expects, and no ESM syntax anywhere
+    // (Review 2: raw module source inlined in a classic script = blank page)
+    expect(html).toContain('class="chrx-viewer-active"');
+    expect(html).not.toMatch(/^\s*(import|export)[ {]/m);
   });
 
   it("neutralizes a '</script>' inside the snapshot JSON", () => {

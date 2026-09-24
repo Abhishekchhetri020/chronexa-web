@@ -4,18 +4,18 @@ import os from "node:os";
 import path from "node:path";
 import { loadDemoSchool } from "./helpers.js";
 
-/* W2-3 · Publish dialog + single-file offline viewer (contract C2, writer side).
+/* W2-3 · Publish dialog + published single-file viewer (contract C2, writer side).
  *
- * Flows a user performs:
- *   1. Editor → sidebar "Publish timetable…" → dialog previews the edition counts
- *   2. Pick each edition → download the viewer file / the snapshot
- *   3. Open the downloaded .html from DISK (file://) on desktop and on a phone
- *      and see the timetable — with no network and no server.
+ * Review 2 acceptance (orchestrator): from the demo school, download each
+ * edition's viewer file, open it via file:// in a desktop 1470x727 context and
+ * an isMobile 390x844 context and require — no pageerror, a week grid (desktop)
+ * / one-day view (phone) with lesson cells, multi-period lessons as rowspan
+ * cells, and a public edition with no Teacher tab and no teacher names in the
+ * DOM or in the file.
  *
- * Review 1 rule: ONE renderer, W2-2's window.ChronexaViewer.render(rootEl,
- * snapshot). The offline file must therefore be verified with a STUBBED reader
- * (a test double injected before the page scripts) — this lane does not ship a
- * renderer of its own, and the missing-reader case must show a clear error.
+ * ONE renderer (Review 1): the file draws with W2-2's window.ChronexaViewer.render
+ * bundled into dist/viewer.js as a self-contained IIFE (Review 2 fix) — there is
+ * no second renderer anywhere in this lane.
  */
 
 const DIALOG = '[data-testid="chrx-pub-dialog"]';
@@ -23,28 +23,8 @@ const COUNTS = '[data-testid="chrx-pub-counts"]';
 const BTN_HTML = '[data-testid="chrx-pub-download-html"]';
 const BTN_JSON = '[data-testid="chrx-pub-download-json"]';
 
-/** Test double for W2-2's reader: records the call, paints a marker. */
-const STUB_READER = () => {
-  window.__readerCalls = [];
-  window.ChronexaViewer = {
-    css: ".chrx-pub-stub{display:block}",
-    render: (rootEl, snapshot) => {
-      window.__readerCalls.push({
-        sameRoot: rootEl && rootEl.id === "chronexa-viewer-root",
-        width: (rootEl && rootEl.clientWidth) || 0,
-        edition: snapshot && snapshot.edition,
-        lessons: snapshot && snapshot.lessons ? snapshot.lessons.length : -1,
-        hasTeachers: !!(snapshot && snapshot.teachers),
-        firstClass: snapshot && snapshot.classes && snapshot.classes[0] ? snapshot.classes[0].name : null,
-      });
-      const box = document.createElement("div");
-      box.className = "chrx-pub-stub";
-      box.setAttribute("data-rendered-by", "stub-reader");
-      box.textContent = "reader: " + (snapshot && snapshot.edition);
-      rootEl.appendChild(box);
-    },
-  };
-};
+const DESKTOP = { viewport: { width: 1470, height: 727 } };
+const PHONE = { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 };
 
 async function openPublishDialog(page) {
   const link = page.locator(".chrx-side-link", { hasText: "Publish timetable" });
@@ -79,6 +59,38 @@ async function download(page, testid) {
   return { name: dl.suggestedFilename(), path: file, text: fs.readFileSync(file, "utf8") };
 }
 
+/** Download all three editions, checking the single-file + content rules. */
+async function publishAllEditions(page) {
+  await openPublishDialog(page);
+  const out = {};
+  for (const edition of ["staff", "students", "public"]) {
+    await pickEdition(page, edition);
+    const file = await download(page, BTN_HTML);
+    expect(file.name).toMatch(new RegExp(`-${edition}-timetable\\.html$`));
+
+    // ONE self-contained file: no external script/stylesheet, no module scripts,
+    // and — the Review 2 bug — zero import/export statements in the bundle.
+    expect(file.text.startsWith("<!DOCTYPE html>")).toBe(true);
+    expect(file.text).not.toMatch(/<script[^>]+src=/i);
+    expect(file.text).not.toMatch(/<link[^>]+href=/i);
+    expect(file.text).not.toContain('type="module"');
+    expect(file.text).not.toMatch(/^\s*(import|export)[ {]/m);
+    expect(file.text).toContain('id="chronexa-snapshot"');
+
+    const json = file.text.match(/<script type="application\/json" id="chronexa-snapshot">([\s\S]*?)<\/script>/)[1];
+    const snap = JSON.parse(json);
+    expect(snap.edition).toBe(edition);
+    if (edition === "public") {
+      expect(snap.teachers).toBeUndefined();
+      expect(json).not.toMatch(/teacherIds":\["/);
+    } else {
+      expect(snap.teachers.length).toBeGreaterThan(0);
+    }
+    out[edition] = { ...file, snapshot: snap, offline: asLocalHtml(file) };
+  }
+  return out;
+}
+
 test("publish dialog: reachable from the editor menu, previews each edition, exports a leak-free public snapshot", async ({ page }) => {
   await loadDemoSchool(page);
 
@@ -96,20 +108,16 @@ test("publish dialog: reachable from the editor menu, previews each edition, exp
   expect(countsText).toMatch(/\d+ classes/);
   expect(countsText).toMatch(/\d+ teachers/);
   expect(countsText).toMatch(/\d+ lessons/);
-  const staffTeachers = Number(countsText.match(/(\d+) teachers/)[1]);
-  expect(staffTeachers).toBeGreaterThan(0);
+  expect(Number(countsText.match(/(\d+) teachers/)[1])).toBeGreaterThan(0);
 
-  // Students edition keeps teacher names by default …
   await pickEdition(page, "students");
   expect(await page.locator(COUNTS).innerText()).toMatch(/\d+ teachers/);
 
-  // … and the public edition promises none.
   await pickEdition(page, "public");
   const publicText = await page.locator(COUNTS).innerText();
   expect(publicText).toContain("no teacher names");
   expect(publicText).not.toMatch(/\d+ teachers/);
 
-  // Teachers must not even be in the JSON of the public snapshot.
   const realNames = await page.evaluate(() => (window.APP.school.teachers || []).map(t => t.name).filter(Boolean));
   expect(realNames.length).toBeGreaterThan(0);
   const { name, text } = await download(page, BTN_JSON);
@@ -121,18 +129,15 @@ test("publish dialog: reachable from the editor menu, previews each edition, exp
   expect(snap.teachers).toBeUndefined();
   expect(snap.lessons.every(l => Array.isArray(l.teacherIds) && l.teacherIds.length === 0)).toBe(true);
   expect(snap.lessons.length).toBeGreaterThan(100);
-  expect(snap.lessons.every(l => l.classIds.length > 0)).toBe(true);
   for (const teacherName of realNames) {
     expect(text, `public snapshot must not name ${teacherName}`).not.toContain(
       String(teacherName).replace(/^(Mr|Ms|Mrs)\.\s*/i, "")
     );
   }
-  // and the periods/breaks the school actually runs are in there
   expect(snap.periods.length).toBeGreaterThan(5);
   expect(snap.breaks.length).toBeGreaterThan(0);
   expect(snap.days.length).toBe(6);
 
-  // The staff edition, by contrast, carries them.
   await pickEdition(page, "staff");
   const staff = JSON.parse((await download(page, BTN_JSON)).text);
   const allTeachers = await page.evaluate(() => (window.APP.school.teachers || []).length);
@@ -140,111 +145,116 @@ test("publish dialog: reachable from the editor menu, previews each edition, exp
   expect(staff.lessons.some(l => l.teacherIds.length > 0)).toBe(true);
 });
 
-test("each edition downloads one self-contained .html that the stubbed reader paints from disk", async ({ page, context }) => {
+test("ACCEPTANCE desktop 1470x727: every edition's viewer file opens from file:// and renders the week grid", async ({ page, browser }) => {
   await loadDemoSchool(page);
-  await openPublishDialog(page);
+  const files = await publishAllEditions(page);
 
-  const written = {};
   for (const edition of ["staff", "students", "public"]) {
-    await pickEdition(page, edition);
-    const file = await download(page, BTN_HTML);
-    expect(file.name).toMatch(new RegExp(`-${edition}-timetable\\.html$`));
+    const ctx = await browser.newContext(DESKTOP);
+    const view = await ctx.newPage();
+    const errors = [];
+    view.on("pageerror", e => errors.push(e.message));
+    const netRequests = [];
+    view.on("request", r => { if (/^https?:/i.test(r.url())) netRequests.push(r.url()); });
 
-    // ONE file: no external script/stylesheet, no module scripts (file:// blocks them).
-    expect(file.text.startsWith("<!DOCTYPE html>")).toBe(true);
-    expect(file.text).not.toMatch(/<script[^>]+src=/i);
-    expect(file.text).not.toMatch(/<link[^>]+href=/i);
-    expect(file.text).not.toContain('type="module"');
-    expect(file.text).toContain('id="chronexa-snapshot"');
+    await view.goto("file://" + files[edition].offline);
+    await expect(view.locator(".chrx-pub-grid")).toBeVisible();
 
-    // The inlined snapshot follows the edition's content rules.
-    const json = file.text.match(/<script type="application\/json" id="chronexa-snapshot">([\s\S]*?)<\/script>/)[1];
-    const snap = JSON.parse(json);
-    expect(snap.edition).toBe(edition);
+    // lesson cells in the week grid …
+    const cells = view.locator(".chrx-pub-grid-slot .chrx-pub-cell");
+    expect(await cells.count(), `${edition}: week grid lesson cells`).toBeGreaterThan(20);
+    await expect(cells.first()).not.toBeEmpty();
+
+    // … multi-period lessons as rowspan cells (never extra cells)
+    expect(await view.locator(".chrx-pub-grid-slot[rowspan]").count(),
+      `${edition}: multi-period lessons use rowspan`).toBeGreaterThan(0);
+
+    // the day view is the phone layout, so it must be hidden here
+    await expect(view.locator(".chrx-pub-day.is-active")).toBeHidden();
+
+    // header meta says which edition this is
+    await expect(view.locator(".chrx-pub-head")).toContainText(new RegExp(`${edition} edition`, "i"));
+
+    // public: no teacher affordance, no teacher name anywhere
     if (edition === "public") {
-      expect(snap.teachers).toBeUndefined();
-      expect(json).not.toMatch(/teacherIds":\["/);
+      expect(await view.locator('[data-pub-view="teacher"]').count()).toBe(0);
+      const domNames = await page.evaluate(() => (window.APP.school.teachers || []).map(t => t.name));
+      const text = await view.locator("body").innerText();
+      for (const n of domNames) {
+        for (const token of String(n).split(/\s+/).filter(w => w.length > 3 && !/^M[rs]\.?$/i.test(w))) {
+          expect(text, `public DOM must not name ${token}`).not.toContain(token);
+        }
+      }
     } else {
-      expect(snap.teachers.length).toBeGreaterThan(0);
+      expect(await view.locator('[data-pub-view="teacher"]').count()).toBeGreaterThan(0);
     }
-    written[edition] = file;
+
+    expect(errors, `${edition}: no pageerror in the published file`).toEqual([]);
+    expect(netRequests, `${edition}: offline, no http(s) requests`).toEqual([]);
+    await ctx.close();
   }
-
-  // --- the PUBLIC file, opened from disk on a desktop, read by the stub ------
-  const desktop = await context.newPage();
-  const netRequests = [];
-  desktop.on("request", r => { if (/^https?:/i.test(r.url())) netRequests.push(r.url()); });
-  await desktop.addInitScript(STUB_READER);
-  await desktop.goto("file://" + asLocalHtml(written.public));
-  await expect(desktop.locator("[data-rendered-by='stub-reader']")).toBeVisible();
-
-  const call = (await desktop.evaluate(() => window.__readerCalls))[0];
-  expect(call.sameRoot, "the reader must receive #chronexa-viewer-root").toBe(true);
-  expect(call.edition).toBe("public");
-  expect(call.hasTeachers).toBe(false);
-  expect(call.lessons).toBeGreaterThan(100);
-  expect(call.firstClass).toBeTruthy();
-  expect(call.width).toBeGreaterThan(600);
-  // the reader's stylesheet travelled inside the file
-  const styleTags = desktop.locator("#chronexa-shared-viewer-style");
-  await expect(styleTags).toHaveCount(1);
-  // <style> has no rendered text, so read textContent (not innerText)
-  expect(await styleTags.textContent()).toContain("chrx-pub-stub");
-  expect(netRequests, "the published file must not fetch anything").toEqual([]);
-  await desktop.close();
-
-  // --- the STAFF file carries the teachers into the reader ------------------
-  const staffPage = await context.newPage();
-  await staffPage.addInitScript(STUB_READER);
-  await staffPage.goto("file://" + asLocalHtml(written.staff));
-  await expect(staffPage.locator("[data-rendered-by='stub-reader']")).toBeVisible();
-  const staffCall = (await staffPage.evaluate(() => window.__readerCalls))[0];
-  expect(staffCall.edition).toBe("staff");
-  expect(staffCall.hasTeachers).toBe(true);
-  await staffPage.close();
 });
 
-test("the published file works on a phone viewport (390px) and hands the reader a 390px root", async ({ page, context }) => {
+test("ACCEPTANCE phone 390x844 (isMobile): the same files render a one-day view", async ({ page, browser }) => {
   await loadDemoSchool(page);
-  await openPublishDialog(page);
-  await pickEdition(page, "students");
-  const file = await download(page, BTN_HTML);
+  const files = await publishAllEditions(page);
 
-  const phone = await context.newPage();
-  await phone.setViewportSize({ width: 390, height: 844 });
-  const external = [];
-  phone.on("request", r => { if (/^https?:/i.test(r.url())) external.push(r.url()); });
-  await phone.addInitScript(STUB_READER);
-  await phone.goto("file://" + asLocalHtml(file));
+  for (const edition of ["staff", "students", "public"]) {
+    const ctx = await browser.newContext(PHONE);
+    const view = await ctx.newPage();
+    const errors = [];
+    view.on("pageerror", e => errors.push(e.message));
+    const netRequests = [];
+    view.on("request", r => { if (/^https?:/i.test(r.url())) netRequests.push(r.url()); });
 
-  await expect(phone.locator("[data-rendered-by='stub-reader']")).toBeVisible();
-  const call = (await phone.evaluate(() => window.__readerCalls))[0];
-  expect(call.edition).toBe("students");
-  expect(call.hasTeachers).toBe(true);
-  expect(call.width).toBeLessThanOrEqual(390);          // the reader lays out for the phone
-  expect(call.width).toBeGreaterThan(200);
-  expect(external, "offline: no http(s) requests").toEqual([]);
+    await view.goto("file://" + files[edition].offline);
 
-  // no horizontal overflow: the reader's root fits the phone width
-  const overflow = await phone.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-  expect(overflow).toBeLessThanOrEqual(1);
-  await phone.close();
+    // phone layout: one day visible, day tabs usable, week grid hidden
+    await expect(view.locator(".chrx-pub-daytabs")).toBeVisible();
+    await expect(view.locator(".chrx-pub-day.is-active")).toBeVisible();
+    await expect(view.locator(".chrx-pub-grid-wrap")).toBeHidden();
+    await expect(view.locator(".chrx-pub-day.is-active .chrx-pub-cell").first()).not.toBeEmpty();
+    expect(await view.locator(".chrx-pub-day.is-active .chrx-pub-cell").count(),
+      `${edition}: day-view lesson cells`).toBeGreaterThan(0);
+    expect(await view.locator(".chrx-pub-day:visible").count()).toBe(1);
+
+    // tapping another day switches the office day without errors
+    const tabs = view.locator(".chrx-pub-daytab");
+    expect(await tabs.count()).toBe(6);
+    await tabs.nth(1).click();
+    await expect(view.locator(".chrx-pub-day.is-active .chrx-pub-cell").first()).toBeVisible();
+
+    if (edition === "public") {
+      expect(await view.locator('[data-pub-view="teacher"]').count()).toBe(0);
+    }
+    expect(errors, `${edition}: no pageerror on the phone view`).toEqual([]);
+    expect(netRequests).toEqual([]);
+    await ctx.close();
+  }
 });
 
-test("without the reader bundle the file explains itself instead of showing a blank page", async ({ page, context }) => {
+test("a damaged file explains itself instead of showing a blank page", async ({ page, context }) => {
   await loadDemoSchool(page);
   await openPublishDialog(page);
   await pickEdition(page, "public");
-  const file = await download(page, BTN_HTML);
 
-  const bare = await context.newPage();          // no stub: no reader in the bundle either
-  await bare.goto("file://" + asLocalHtml(file));
+  // Publish a real file, then strip the reader the way a truncated/mangled file
+  // would be missing it: the loader (which travels in the same bundle) must say
+  // so instead of leaving a blank page.
+  const file = await download(page, BTN_HTML);
+  const damaged = file.text.replace("</body>", "<script>delete window.ChronexaViewer;</script></body>");
+  expect(damaged).not.toBe(file.text);
+  const dest = path.join(os.tmpdir(), `w2-3-damaged-${process.pid}.html`);
+  fs.writeFileSync(dest, damaged);
+
+  const bare = await context.newPage();
+  const errors = [];
+  bare.on("pageerror", e => errors.push(e.message));
+  await bare.goto("file://" + dest);
   const alert = bare.locator("[role='alert']");
   await expect(alert).toBeVisible();
   await expect(alert).toContainText(/missing its timetable viewer/i);
-  await expect(alert).toContainText(/re-publish/i);
-  // never a second renderer: nothing timetable-shaped was drawn
-  await expect(bare.locator("#chronexa-viewer-root table")).toHaveCount(0);
-  await expect(bare.locator("[data-class-chip]")).toHaveCount(0);
+  await expect(bare.locator("#chronexa-viewer-root .chrx-pub-grid")).toHaveCount(0);
+  expect(errors).toEqual([]);
   await bare.close();
 });

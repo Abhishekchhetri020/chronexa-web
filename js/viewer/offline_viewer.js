@@ -80,11 +80,14 @@
 
   /**
    * render(rootEl, snapshot) — same argument order as W2-2's reader.
-   * Delegates; draws nothing itself.
+   * Delegates; draws nothing itself. The body class mirrors boot.js so the
+   * reader's own stylesheet applies in the published file too.
    */
   function render(rootEl, snapshot) {
     const root = resolveRoot(rootEl);
     if (!root) return null;
+    const doc = root.ownerDocument || document;
+    if (doc.body) doc.body.classList.add("chrx-viewer-active");
     const shared = global.ChronexaViewer;
     if (!shared || typeof shared.render !== "function") {
       return fail(root,
@@ -97,7 +100,7 @@
         'Expected a <script type="application/json" id="chronexa-snapshot"> block.');
     }
     try {
-      injectSharedStyle(root.ownerDocument || document);
+      injectSharedStyle(doc);
       const out = shared.render(root, snapshot);
       if (!root.childNodes.length) {
         return fail(root, "The timetable viewer did not render anything.",
