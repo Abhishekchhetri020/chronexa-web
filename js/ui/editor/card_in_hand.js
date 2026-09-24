@@ -4,6 +4,7 @@ import "./grid_canvas.js";
 import "./pending_strip.js";
 import "./placement_validator.js";
 import "./placement_suggestions.js";
+import "./availability_shading.js";
 
 /**
  * CardInHand — cursor-following ghost overlay.
@@ -65,6 +66,9 @@ import "./placement_suggestions.js";
                
     window.APP.editor = window.APP.editor || {};
     window.APP.editor.cardInHand = inHand;
+    if (window.AvailabilityShading && typeof window.AvailabilityShading.paint === "function") {
+      window.AvailabilityShading.paint(inHand);
+    }
     
     const subj = S._idx.subjectById[lesson.subjectId];
     const subjShort = subj ? (subj.abbr || subj.name) : "?";
@@ -1087,6 +1091,10 @@ import "./placement_suggestions.js";
       el.classList.remove("chrx-slot--suggest-best");
       el.removeAttribute("data-suggest");
     });
+    // Lane W2-5: Clear availability shading across the whole grid
+    if (window.AvailabilityShading && typeof window.AvailabilityShading.clear === "function") {
+      window.AvailabilityShading.clear();
+    }
     
     // Clear the at-pickup heatmap painted by paintDropZones() and the dimmed
     // non-target rows.
