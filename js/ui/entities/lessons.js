@@ -49,12 +49,46 @@ import "./dialog_shell.js";
     // Look up day/week/term pattern names by id. Falls back to the
     // legacy free-text l.term / l.week / l.fixedDay shape if no defId
     // is set, so pre-bitmask lessons keep showing something useful.
-    const days  = (s.days  || []);
-    const weeks = (s.weeks || []);
-    const terms = (s.terms || []);
+    const days  = (s.daysDefs  || s.days  || []);
+    const weeks = (s.weeksDefs || s.weeks || []);
+    const terms = (s.termsDefs || s.terms || []);
     const dayById  = Object.create(null); days.forEach (d => dayById[d.id]  = d);
     const wkById   = Object.create(null); weeks.forEach(w => wkById[w.id]   = w);
     const termById = Object.create(null); terms.forEach(t => termById[t.id] = t);
+
+    function isDefaultPattern(def, kind) {
+      if (!def) return true;
+      const name = (def.name || "").toLowerCase().trim();
+      const short = (def.short || "").toLowerCase().trim();
+      if (name === "all" || short === "all" || name === "default") return true;
+      if (kind === "terms") {
+        if (name === "whole year" || name === "all terms" || short === "yr" || def.terms === "1" || def.terms === "111111") return true;
+      } else if (kind === "weeks") {
+        if (name === "all weeks" || short === "all" || def.weeks === "1" || def.weeks === "111111") return true;
+      } else if (kind === "days") {
+        if (name === "any day" || name === "every day" || short === "x" || short === "e" || def.days === "111111") return true;
+        // "Any day" is stored as a comma list of every single day; a comma list of only
+        // some days ("Mon or Tue") is a real restriction and must keep its own name.
+        if (def.days && def.days.includes(",")) {
+          const opts = def.days.split(",");
+          const n = opts[0].length;
+          const covered = new Set(opts.map(o => o.indexOf("1")));
+          if (opts.every(o => o.length === n && o.split("1").length === 2) && covered.size === n) return true;
+        }
+      }
+      return false;
+    }
+
+    function resolvePatternName(defId, byId, kind, fallback) {
+      if (!defId) return fallback || "All";
+      const def = byId[defId];
+      if (def) {
+        if (isDefaultPattern(def, kind)) return "All";
+        return def.name || def.short || "All";
+      }
+      // An id with no matching definition is a data problem — say so rather than claim "All".
+      return "Unknown";
+    }
 
     return (s.lessons || []).map(l => ({
       id: l.id,
@@ -68,15 +102,9 @@ import "./dialog_shell.js";
         return String(len);
       })(),
       classroom: classroomDisplay(l, idxR),
-      term: l.termsDefId
-        ? (termById[l.termsDefId]?.name || l.termsDefId)
-        : (l.term || ""),
-      week: l.weeksDefId
-        ? (wkById[l.weeksDefId]?.name || l.weeksDefId)
-        : (l.week || ""),
-      days: l.daysDefId
-        ? (dayById[l.daysDefId]?.name || l.daysDefId)
-        : (l.fixedDay != null ? `Day ${l.fixedDay + 1}` : "Any"),
+      term: resolvePatternName(l.termsDefId, termById, "terms", l.term),
+      week: resolvePatternName(l.weeksDefId, wkById, "weeks", l.week),
+      days: resolvePatternName(l.daysDefId, dayById, "days", l.fixedDay != null ? `Day ${l.fixedDay + 1}` : "All"),
       _ref: l,
     }));
   }
@@ -212,7 +240,7 @@ import "./dialog_shell.js";
 
     // ── Subject dropdown ────────────────────────────────────────────────────
     const fSubj = makeSelect(s.subjects, draft.subjectId,
-      x => x.name + (x.abbr ? ` (${x.abbr})` : ""),
+      x => D.formatOptionLabel(x),
       v => { draft.subjectId = v; refreshRoomBlock(); refreshCardPreview(); }, true);
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -253,7 +281,7 @@ import "./dialog_shell.js";
           style: `display:inline-block;width:12px;height:12px;border-radius:50%;background:${t.color || "#94a3b8"};flex-shrink:0`
         });
         // Name + abbr
-        const name = D.el("span", null, t.name + (t.abbr ? ` (${t.abbr})` : ""));
+        const name = D.el("span", null, D.formatOptionLabel(t));
         // Lesson count badge
         const badge = D.el("span", {
           style: "font-size:11px;color:#6b7280;min-width:20px;text-align:right"
@@ -428,7 +456,7 @@ import "./dialog_shell.js";
         });
 
         const nameEl = D.el("span", { style: "cursor:pointer", onclick: () => { cb.checked = !cb.checked; cb.dispatchEvent(new Event("change")); } },
-          c.name + (c.short ? ` (${c.short})` : ""));
+          D.formatOptionLabel(c));
 
         const tick = D.el("span", {
           style: `color:#16a34a;font-size:14px;${isSel ? "" : "visibility:hidden"}`
@@ -498,7 +526,7 @@ import "./dialog_shell.js";
           });
           classSel.appendChild(D.el("option", { value: "" }, "—"));
           for (const c of (s.classes || [])) {
-            const opt = D.el("option", { value: c.id }, c.name + (c.short ? ` (${c.short})` : ""));
+            const opt = D.el("option", { value: c.id }, D.formatOptionLabel(c));
             if (c.id === slot.classId) opt.selected = true;
             classSel.appendChild(opt);
           }
@@ -658,7 +686,7 @@ import "./dialog_shell.js";
       const sel = D.el("select", null, D.el("option", { value:"" }, "—"));
       (s.classrooms || []).forEach(rm => {
         const opt = D.el("option", { value:rm.id },
-          rm.name + (rm.abbr ? ` (${rm.abbr})` : ""));
+          D.formatOptionLabel(rm));
         if (rm.id === currentId) opt.selected = true;
         sel.appendChild(opt);
       });
@@ -803,17 +831,17 @@ import "./dialog_shell.js";
     refreshCardPreview();
 
     // ── Day / Week / Term dropdowns (split-schedule + multi-term support) ─
-    const dayPatterns  = (window.EntityDays  && window.EntityDays.ensure()  || s.days  || []);
-    const weekPatterns = (window.EntityWeeks && window.EntityWeeks.ensure() || s.weeks || []);
-    const termPatterns = (window.EntityTerms && window.EntityTerms.ensure() || s.terms || []);
+    const dayPatterns  = (window.EntityDays  && window.EntityDays.ensure()  || s.daysDefs  || s.days  || []);
+    const weekPatterns = (window.EntityWeeks && window.EntityWeeks.ensure() || s.weeksDefs || s.weeks || []);
+    const termPatterns = (window.EntityTerms && window.EntityTerms.ensure() || s.termsDefs || s.terms || []);
     const fDaysDef  = makeSelect(dayPatterns,  draft.daysDefId,
-      d => d.name + (d.short ? ` (${d.short})` : ""),
+      d => D.formatOptionLabel(d),
       v => { draft.daysDefId = v || ""; }, false);
     const fWeeksDef = makeSelect(weekPatterns, draft.weeksDefId,
-      w => w.name + (w.short ? ` (${w.short})` : ""),
+      w => D.formatOptionLabel(w),
       v => { draft.weeksDefId = v || ""; }, false);
     const fTermsDef = makeSelect(termPatterns, draft.termsDefId,
-      t => t.name + (t.short ? ` (${t.short})` : ""),
+      t => D.formatOptionLabel(t),
       v => { draft.termsDefId = v || ""; }, false);
 
     D.buildEditSheet({
@@ -1270,7 +1298,7 @@ import "./dialog_shell.js";
 
     if (fieldId === "subject") {
       body.appendChild(D.el("label", { style: "font-size:13px;margin-bottom:6px;display:block" }, "New subject:"));
-      const sel = makeSelect(s.subjects, "", x => x.name + (x.abbr ? ` (${x.abbr})` : ""), () => {}, true);
+      const sel = makeSelect(s.subjects, "", x => D.formatOptionLabel(x), () => {}, true);
       body.appendChild(sel);
       const foot = D.el("div", { style: "display:flex;gap:8px;justify-content:flex-end;margin-top:12px" });
       foot.appendChild(D.el("button", { type: "button", style: "padding:6px 16px;border:1px solid #d1d5db;border-radius:5px;background:#fff;cursor:pointer",
@@ -1282,7 +1310,7 @@ import "./dialog_shell.js";
     }
     else if (fieldId === "teachers") {
       body.appendChild(D.el("label", { style: "font-size:13px;margin-bottom:6px;display:block" }, "Set teachers:"));
-      const tSel = makeMulti(s.teachers, [], x => x.name + (x.abbr ? ` (${x.abbr})` : ""), () => {}, 8);
+      const tSel = makeMulti(s.teachers, [], x => D.formatOptionLabel(x), () => {}, 8);
       body.appendChild(tSel);
       const foot = D.el("div", { style: "display:flex;gap:8px;justify-content:flex-end;margin-top:12px" });
       foot.appendChild(D.el("button", { type: "button", style: "padding:6px 16px;border:1px solid #d1d5db;border-radius:5px;background:#fff;cursor:pointer",
@@ -1330,7 +1358,7 @@ import "./dialog_shell.js";
       body.appendChild(D.el("label", { style: "font-size:13px;margin-bottom:6px;display:block" }, "Set classroom:"));
       const sel = D.el("select", null, D.el("option", { value: "" }, "— None —"));
       (s.classrooms || []).forEach(rm => {
-        sel.appendChild(D.el("option", { value: rm.id }, rm.name + (rm.abbr ? ` (${rm.abbr})` : "")));
+        sel.appendChild(D.el("option", { value: rm.id }, D.formatOptionLabel(rm)));
       });
       body.appendChild(sel);
       const foot = D.el("div", { style: "display:flex;gap:8px;justify-content:flex-end;margin-top:12px" });
@@ -1346,8 +1374,8 @@ import "./dialog_shell.js";
     }
     else if (fieldId === "term") {
       body.appendChild(D.el("label", { style: "font-size:13px;margin-bottom:6px;display:block" }, "Set term:"));
-      const termPatterns = (window.EntityTerms && window.EntityTerms.ensure() || s.terms || []);
-      const sel = makeSelect(termPatterns, "", t => t.name + (t.short ? ` (${t.short})` : ""), () => {}, true);
+      const termPatterns = (window.EntityTerms && window.EntityTerms.ensure() || s.termsDefs || s.terms || []);
+      const sel = makeSelect(termPatterns, "", t => D.formatOptionLabel(t), () => {}, true);
       body.appendChild(sel);
       const foot = D.el("div", { style: "display:flex;gap:8px;justify-content:flex-end;margin-top:12px" });
       foot.appendChild(D.el("button", { type: "button", style: "padding:6px 16px;border:1px solid #d1d5db;border-radius:5px;background:#fff;cursor:pointer",
@@ -1359,8 +1387,8 @@ import "./dialog_shell.js";
     }
     else if (fieldId === "week") {
       body.appendChild(D.el("label", { style: "font-size:13px;margin-bottom:6px;display:block" }, "Set week pattern:"));
-      const weekPatterns = (window.EntityWeeks && window.EntityWeeks.ensure() || s.weeks || []);
-      const sel = makeSelect(weekPatterns, "", w => w.name + (w.short ? ` (${w.short})` : ""), () => {}, true);
+      const weekPatterns = (window.EntityWeeks && window.EntityWeeks.ensure() || s.weeksDefs || s.weeks || []);
+      const sel = makeSelect(weekPatterns, "", w => D.formatOptionLabel(w), () => {}, true);
       body.appendChild(sel);
       const foot = D.el("div", { style: "display:flex;gap:8px;justify-content:flex-end;margin-top:12px" });
       foot.appendChild(D.el("button", { type: "button", style: "padding:6px 16px;border:1px solid #d1d5db;border-radius:5px;background:#fff;cursor:pointer",
@@ -1372,8 +1400,8 @@ import "./dialog_shell.js";
     }
     else if (fieldId === "day") {
       body.appendChild(D.el("label", { style: "font-size:13px;margin-bottom:6px;display:block" }, "Set day pattern:"));
-      const dayPatterns = (window.EntityDays && window.EntityDays.ensure() || s.days || []);
-      const sel = makeSelect(dayPatterns, "", d => d.name + (d.short ? ` (${d.short})` : ""), () => {}, true);
+      const dayPatterns = (window.EntityDays && window.EntityDays.ensure() || s.daysDefs || s.days || []);
+      const sel = makeSelect(dayPatterns, "", d => D.formatOptionLabel(d), () => {}, true);
       body.appendChild(sel);
       const foot = D.el("div", { style: "display:flex;gap:8px;justify-content:flex-end;margin-top:12px" });
       foot.appendChild(D.el("button", { type: "button", style: "padding:6px 16px;border:1px solid #d1d5db;border-radius:5px;background:#fff;cursor:pointer",

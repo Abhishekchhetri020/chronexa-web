@@ -14,9 +14,27 @@ import "../components/time_off_matrix.js";
     const nP = (s && s.bell && s.bell.periods && s.bell.periods.length) || 8;
     const nD = ((s && s._idx && s._idx.days) || ["Mon","Tue","Wed","Thu","Fri","Sat"]).length;
     const idxS = window.APP.school?._idx?.subjectById || {};
+    const lessons = (s && s.lessons) || [];
+    const roomCountMap = Object.create(null);
+    for (const l of lessons) {
+      const roomIds = new Set();
+      if (l.preferredRoomId) roomIds.add(l.preferredRoomId);
+      if (Array.isArray(l._lessonRoomIds)) l._lessonRoomIds.forEach(id => roomIds.add(id));
+      if (Array.isArray(l.classroomIds)) l.classroomIds.forEach(id => roomIds.add(id));
+      if (Array.isArray(l.classroomIdsExpanded)) l.classroomIdsExpanded.forEach(id => roomIds.add(id));
+      if (Array.isArray(l.classroomIdsByCard)) {
+        l.classroomIdsByCard.forEach(arr => {
+          if (Array.isArray(arr)) arr.forEach(id => roomIds.add(id));
+        });
+      }
+      for (const rid of roomIds) {
+        roomCountMap[rid] = (roomCountMap[rid] || 0) + 1;
+      }
+    }
     return ((window.APP.school?.classrooms) || []).map(rm => ({
       id: rm.id, name: rm.name || "", short: rm.abbr || rm.short || "",
       building: rm.building || "", capacity: rm.capacity != null ? rm.capacity : "",
+      count: roomCountMap[rm.id] || 0,
       color: rm.color || "",
       needsSupervision: rm.needsSupervision ? "Yes" : "",
       isShared: rm.isShared ? "Yes" : "",
@@ -33,6 +51,7 @@ import "../components/time_off_matrix.js";
     { key:"short", label:"Short" },
     { key:"building", label:"Building" },
     { key:"capacity", label:"Capacity" },
+    { key:"count", label:"Count" },
     { key:"color", label:"Color", sortable:false,
       render:(r)=>D.el("span", { class:"chrx-ent-swatch-dot",
         style:`background:${r.color || "transparent"}` }) },
@@ -96,7 +115,7 @@ import "../components/time_off_matrix.js";
     // Subjects this room is intended for (Lab → Science, Music Room → Music, etc.)
     const fSubjects = D.el("select", { multiple:"multiple", size:"4" });
     ((window.APP.school?.subjects) || []).forEach(sub => {
-      const opt = D.el("option", { value:sub.id }, sub.name + (sub.abbr ? ` (${sub.abbr})` : ""));
+      const opt = D.el("option", { value:sub.id }, D.formatOptionLabel(sub));
       if (draft.allowedSubjectIds.includes(sub.id)) opt.selected = true;
       fSubjects.appendChild(opt);
     });

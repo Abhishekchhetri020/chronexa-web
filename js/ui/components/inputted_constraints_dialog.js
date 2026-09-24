@@ -75,11 +75,33 @@ import "../state.js";
     const relations = school.relations || [];
     const cards = school.cards || [];
     const lessons = school.lessons || [];
+    const weeksDefs = school.weeksDefs || school.weeks || [];
+    const termsDefs = school.termsDefs || school.terms || [];
     const lessonById = _idx.lessonById || Object.fromEntries(lessons.map(l => [l.id, l]));
     const teacherById = _idx.teacherById || Object.fromEntries(teachers.map(t => [t.id, t]));
     const classById = _idx.classById || Object.fromEntries(classes.map(c => [c.id, c]));
     const roomById = _idx.classroomById || Object.fromEntries(rooms.map(r => [r.id, r]));
     const subjectById = _idx.subjectById || Object.fromEntries(subjects.map(s => [s.id, s]));
+    const weekById = Object.fromEntries(weeksDefs.map(w => [w.id, w]));
+    const termById = Object.fromEntries(termsDefs.map(t => [t.id, t]));
+
+    function isDefaultWeek(id) {
+      if (!id) return true;
+      const w = weekById[id];
+      if (!w) return false;
+      const name = (w.name || "").toLowerCase().trim();
+      const short = (w.short || "").toLowerCase().trim();
+      return name === "all weeks" || name === "all" || short === "all" || w.weeks === "1" || w.weeks === "111111";
+    }
+
+    function isDefaultTerm(id) {
+      if (!id) return true;
+      const t = termById[id];
+      if (!t) return false;
+      const name = (t.name || "").toLowerCase().trim();
+      const short = (t.short || "").toLowerCase().trim();
+      return name === "whole year" || name === "all terms" || name === "all" || short === "all" || short === "yr" || t.terms === "1" || t.terms === "111111";
+    }
     const openEntity = (kind, detail) => () => window.dispatchEvent(new CustomEvent("app:open-entity", {
       detail: Object.assign({ kind }, detail || {}),
     }));
@@ -167,13 +189,15 @@ import "../state.js";
         items.push({ kind: "Room", type: "lesson-room", target: lessonName,
           details: roomRules.join(" · "), badge: "Room", action });
       }
-      if (lesson.weeksDefId) {
+      if (lesson.weeksDefId && !isDefaultWeek(lesson.weeksDefId)) {
+        const wName = weekById[lesson.weeksDefId]?.name || weekById[lesson.weeksDefId]?.short || lesson.weeksDefId;
         items.push({ kind: "Calendar", type: "lesson-weeks", target: lessonName,
-          details: `Week definition: ${lesson.weeksDefId}`, badge: "Weeks", action });
+          details: `Week: ${wName}`, badge: "Weeks", action });
       }
-      if (lesson.termsDefId) {
+      if (lesson.termsDefId && !isDefaultTerm(lesson.termsDefId)) {
+        const tName = termById[lesson.termsDefId]?.name || termById[lesson.termsDefId]?.short || lesson.termsDefId;
         items.push({ kind: "Calendar", type: "lesson-terms", target: lessonName,
-          details: `Term definition: ${lesson.termsDefId}`, badge: "Terms", action });
+          details: `Term: ${tName}`, badge: "Terms", action });
       }
     }
 
