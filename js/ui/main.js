@@ -545,6 +545,31 @@ import "./start_screen.js";
 
   // ----- Boot --------------------------------------------------------------
   function boot() {
+    // W2-2 published-viewer mode: ?view=published boots a read-only viewer
+    // instead of the editor. Early return keeps every editing code path
+    // (steps, search, upload, toolbars) unreachable in this mode.
+    try {
+      if (new URLSearchParams(window.location.search).get("view") === "published") {
+        // Skip the landing synchronously (its class is baked into index.html's
+        // <body>); the viewer boot also removes it, but this covers the
+        // chunk-load-failure path below.
+        document.body.classList.remove("chrx-landing-active");
+        import("../viewer/boot.js").then(
+          (m) => m.bootPublishedViewer(),
+          () => {
+            document.body.classList.add("chrx-viewer-active");
+            const mount = document.createElement("div");
+            mount.id = "viewer-root";
+            mount.innerHTML =
+              '<div class="chrx-pub chrx-pub-error" role="alert">' +
+              "<h1>Could not open this published timetable</h1>" +
+              "<ul><li>The viewer code failed to load. Check your connection and reload.</li></ul></div>";
+            document.body.appendChild(mount);
+          }
+        );
+        return;
+      }
+    } catch (e) { /* fall through to the normal editor boot */ }
     console.log("--> [main.js] boot() is executing!");
     const demoBtnCheck = document.getElementById("cta-load-demo");
     const buildBtnCheck = document.getElementById("cta-build-new");

@@ -1,0 +1,287 @@
+{
+  "breaks": [
+    {
+      "afterPeriod": 2,
+      "end": "10:00",
+      "label": "Recess",
+      "start": "09:40"
+    }
+  ],
+  "changes": [
+    {
+      "absentTeacherId": "t2",
+      "cardId": "card_c1_fri_p2",
+      "date": "2026-09-25",
+      "day": 4,
+      "id": "sub_1",
+      "note": "Cover for leave",
+      "period": 2,
+      "substituteTeacherId": "t1"
+    },
+    {
+      "absentTeacherId": "t1",
+      "cardId": "card_c2_thu_p3",
+      "date": "2026-09-25",
+      "day": 3,
+      "id": "sub_2",
+      "note": "No substitute available",
+      "period": 3,
+      "substituteTeacherId": null
+    }
+  ],
+  "classes": [
+    {
+      "id": "c1",
+      "name": "VI A"
+    },
+    {
+      "id": "c2",
+      "name": "VI B"
+    }
+  ],
+  "classrooms": [
+    {
+      "id": "r1",
+      "name": "Room 101"
+    },
+    {
+      "id": "r2",
+      "name": "Science Lab"
+    }
+  ],
+  "days": [
+    {
+      "index": 0,
+      "name": "Monday",
+      "short": "Mon"
+    },
+    {
+      "index": 1,
+      "name": "Tuesday",
+      "short": "Tue"
+    },
+    {
+      "index": 2,
+      "name": "Wednesday",
+      "short": "Wed"
+    },
+    {
+      "index": 3,
+      "name": "Thursday",
+      "short": "Thu"
+    },
+    {
+      "index": 4,
+      "name": "Friday",
+      "short": "Fri"
+    }
+  ],
+  "edition": "staff",
+  "format": "chronexa-published",
+  "lessons": [
+    {
+      "classIds": [
+        "c1"
+      ],
+      "classroomIds": [
+        "r1"
+      ],
+      "day": 0,
+      "period": 1,
+      "span": 1,
+      "subjectId": "s1",
+      "teacherIds": [
+        "t1"
+      ]
+    },
+    {
+      "classIds": [
+        "c1"
+      ],
+      "classroomIds": [
+        "r1"
+      ],
+      "day": 0,
+      "period": 2,
+      "span": 1,
+      "subjectId": "s2",
+      "teacherIds": [
+        "t2"
+      ]
+    },
+    {
+      "classIds": [
+        "c1"
+      ],
+      "classroomIds": [
+        "r2"
+      ],
+      "day": 0,
+      "period": 3,
+      "span": 1,
+      "subjectId": "s3",
+      "teacherIds": [
+        "t1"
+      ]
+    },
+    {
+      "classIds": [
+        "c1"
+      ],
+      "classroomIds": [
+        "r1"
+      ],
+      "day": 1,
+      "period": 1,
+      "span": 1,
+      "subjectId": "s2",
+      "teacherIds": [
+        "t2"
+      ]
+    },
+    {
+      "classIds": [
+        "c1"
+      ],
+      "classroomIds": [
+        "r1"
+      ],
+      "day": 4,
+      "period": 2,
+      "span": 1,
+      "subjectId": "s2",
+      "teacherIds": [
+        "t2"
+      ]
+    },
+    {
+      "classIds": [
+        "c2"
+      ],
+      "classroomIds": [
+        "r2"
+      ],
+      "day": 0,
+      "period": 1,
+      "span": 1,
+      "subjectId": "s3",
+      "teacherIds": [
+        "t2"
+      ]
+    },
+    {
+      "classIds": [
+        "c2"
+      ],
+      "classroomIds": [
+        "r1"
+      ],
+      "day": 0,
+      "period": 2,
+      "span": 1,
+      "subjectId": "s1",
+      "teacherIds": [
+        "t1"
+      ]
+    },
+    {
+      "classIds": [
+        "c2"
+      ],
+      "classroomIds": [
+        "r2"
+      ],
+      "day": 3,
+      "period": 3,
+      "span": 1,
+      "subjectId": "s3",
+      "teacherIds": [
+        "t1"
+      ]
+    },
+    {
+      "day": 2,
+      "period": 3,
+      "span": 2,
+      "subjectId": "s4",
+      "classIds": [
+        "c1"
+      ],
+      "teacherIds": [
+        "t1"
+      ],
+      "classroomIds": [
+        "r1"
+      ]
+    }
+  ],
+  "periods": [
+    {
+      "end": "08:40",
+      "index": 1,
+      "label": "1st",
+      "start": "07:55"
+    },
+    {
+      "end": "09:25",
+      "index": 2,
+      "label": "2nd",
+      "start": "08:40"
+    },
+    {
+      "end": "10:45",
+      "index": 3,
+      "label": "3rd",
+      "start": "10:00"
+    },
+    {
+      "end": "11:30",
+      "index": 4,
+      "label": "4th",
+      "start": "10:45"
+    }
+  ],
+  "school": {
+    "appVer": "test",
+    "generatedAt": "2026-09-24T10:00:00+05:30",
+    "name": "Demo High School",
+    "year": "2026-27"
+  },
+  "subjects": [
+    {
+      "color": "#2563eb",
+      "id": "s1",
+      "name": "Mathematics",
+      "short": "MAT"
+    },
+    {
+      "color": "#16a34a",
+      "id": "s2",
+      "name": "English",
+      "short": "ENG"
+    },
+    {
+      "color": "#ea580c",
+      "id": "s3",
+      "name": "Science",
+      "short": "SCI"
+    },
+    {
+      "id": "s4",
+      "name": "Sports Meet Practice",
+      "short": "SMP",
+      "color": "#0d9488"
+    }
+  ],
+  "teachers": [
+    {
+      "id": "t1",
+      "name": "Ms. Sushmita"
+    },
+    {
+      "id": "t2",
+      "name": "Mr. Ravi"
+    }
+  ],
+  "version": 1
+}
