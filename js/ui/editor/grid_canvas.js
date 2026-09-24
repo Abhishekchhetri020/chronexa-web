@@ -400,12 +400,51 @@ window.Editor = (function () {
   }
 
   let _prevUnplaced = null;
+  let _chipConflictTimer = null; // B1: debounced hard-conflict recount
+  let _chipConflicts = 0; // B1: cached hard-conflict count for the chip
   function syncUnplacedCount(S) {
     const elc = document.getElementById("editor-unplaced-count");
     const n = pendingCount(S);
     if (elc) {
-      elc.textContent = n === 0 ? "All placed" : n + " unplaced";
-      elc.classList.toggle("is-pending", n > 0);
+      // B1 — the chip is truthful and opens Verification on click.
+      // Wired once; copy comes from VerificationPro.statusChipText so the
+      // chip can never look "all good" while hard conflicts exist.
+      if (!elc.dataset.vconfWired) {
+        elc.dataset.vconfWired = "1";
+        elc.style.cursor = "pointer";
+        elc.setAttribute("role", "button");
+        elc.setAttribute("tabindex", "0");
+        const openVerification = () => window.dispatchEvent(new CustomEvent("app:verification-pro"));
+        elc.addEventListener("click", openVerification);
+        elc.addEventListener("keydown", e => {
+          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openVerification(); }
+        });
+      }
+      const paintChip = () => {
+        const fmt = window.VerificationPro && window.VerificationPro.statusChipText;
+        if (typeof fmt === "function") {
+          const s = fmt(n, _chipConflicts);
+          elc.textContent = s.text;
+          elc.classList.toggle("is-pending", s.warn);
+          elc.classList.toggle("is-conflict", s.conflict);
+          elc.title = s.hint;
+        } else {
+          elc.textContent = n === 0 ? "All placed" : n + " unplaced";
+          elc.classList.toggle("is-pending", n > 0);
+        }
+      };
+      paintChip();
+      // B1 — cheap: reuse the panel's verifier, debounced, on the same
+      // events that update the count (render / patchCells call here).
+      if (_chipConflictTimer) clearTimeout(_chipConflictTimer);
+      _chipConflictTimer = setTimeout(() => {
+        try {
+          const c = window.VerificationPro && window.VerificationPro.countHardConflicts
+            ? window.VerificationPro.countHardConflicts(S) : 0;
+          _chipConflicts = typeof c === "number" ? c : 0;
+        } catch (_) { _chipConflicts = 0; }
+        paintChip();
+      }, 300);
     }
     // Plan D: celebrate the moment everything first lands (a real >0 → 0
     // transition, not an already-complete load).
