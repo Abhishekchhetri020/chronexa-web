@@ -624,6 +624,10 @@ import "./placement_suggestions.js";
     // exit, even though cancel() already knows how to restore the card.
     if (!inHand) return;
     if (e.key === "Escape") { e.preventDefault(); return cancel(); }
+    if (e.key === "Delete" || e.key === "Backspace") {
+      e.preventDefault();
+      return unplaceToPending();
+    }
     if (!ghost) return;
     if (e.key === "Tab") { e.preventDefault(); return moveFocus(e.shiftKey ? -1 : 1); }
     if (e.key === "Enter") {
@@ -919,6 +923,16 @@ import "./placement_suggestions.js";
   function cancel() {
     if (!inHand) return;
     const sourceWasRetained = !!inHand.sourceRetained;
+    const restoredDetail = !sourceWasRetained && !inHand.fromPending &&
+      Number.isFinite(inHand.originDay) && Number.isFinite(inHand.originPeriod)
+      ? {
+          cardId: inHand.cardId,
+          lessonId: inHand.lessonId,
+          day: inHand.originDay,
+          period: inHand.originPeriod,
+          restored: true,
+        }
+      : null;
     const before = pickupSnap; pickupSnap = null;
     if (!inHand.fromPending && Number.isFinite(inHand.originDay) && Number.isFinite(inHand.originPeriod)) {
       const S = window.APP && window.APP.school;
@@ -952,7 +966,15 @@ import "./placement_suggestions.js";
     function finalise() {
       if (window.APP.editor) window.APP.editor.cardInHand = null;
       cleanup();
-      if (!sourceWasRetained) rerender(null, before);
+      if (!sourceWasRetained) {
+        rerender(null, before);
+        // The editor render refreshes its own count, but the shell/curtain
+        // count is event-driven. A cancelled click pickup must publish the
+        // restoration just like a normal placement so both counters agree.
+        if (restoredDetail) {
+          document.dispatchEvent(new CustomEvent("editor:place", { detail: restoredDetail }));
+        }
+      }
     }
   }
 
@@ -1566,6 +1588,11 @@ import "./placement_suggestions.js";
     // Displace the specific card the user dropped on; fall back to the first.
     let cardB = targetLessonId ? occupants.find(o => o.lessonId === targetLessonId) : null;
     if (!cardB) cardB = occupants[0];
+
+    // Two occurrences of one lesson are indistinguishable to the legacy
+    // lessonId/day/period mutators below. Treat this as a no-op so a same-
+    // lesson drop cannot remove both instances or strand one in hand.
+    if (cardA.lessonId === cardB.lessonId) return cancel();
 
     const classroomIdB = classroomForSlot(cardA.lessonId, slotB);
 
