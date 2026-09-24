@@ -113,6 +113,9 @@ import "../ribbon/topbar.js";
         fresh._meta = school._meta;
         // Restore custom mutations (e.g. cards changed since import)
         if (school.cards) fresh.cards = school.cards;
+        if (school.absences) fresh.absences = school.absences;
+        if (school.substitutions) fresh.substitutions = school.substitutions;
+        if (school.relations) fresh.relations = school.relations;
         APP.io.applySchool(fresh);
       } else {
         APP.io.applySchool(school);
@@ -237,13 +240,43 @@ import "../ribbon/topbar.js";
     }
   }
 
+  // ─── JSON export / import ───────────────────────────────────────────────
+  function exportJson(school) {
+    const s = school || APP.school;
+    if (!s) return "{}";
+    return JSON.stringify(makeSerializable(s), null, 2);
+  }
+
+  function importJson(raw) {
+    const data = typeof raw === "string" ? JSON.parse(raw) : raw;
+    let target = data;
+    if (data._meta && data._meta.sourceText && window.parseTimetableXml) {
+      target = window.parseTimetableXml.parseText(data._meta.sourceText, data._meta.sourceFilename);
+      target._meta = data._meta;
+      if (data.cards) target.cards = data.cards;
+      if (data.absences) target.absences = data.absences;
+      if (data.substitutions) target.substitutions = data.substitutions;
+      if (data.relations) target.relations = data.relations;
+    }
+    if (APP.io && typeof APP.io.applySchool === "function") {
+      APP.io.applySchool(target);
+    } else {
+      APP.school = target;
+    }
+    return target;
+  }
+
   // ─── Wire events ─────────────────────────────────────────────────────────
   window.addEventListener("app:save",          save);
   window.addEventListener("app:save-as",       saveAs);
   window.addEventListener("app:open-snapshot", openVersionHistory);
   window.addEventListener("app:compare-last",  compareWithLast);
 
-  APP.snapshot = { save, saveAs, open, listSnapshots, openVersionHistory, compareWithLast, diffSummary };
+  APP.io = APP.io || {};
+  APP.io.exportJson = exportJson;
+  APP.io.importJson = importJson;
+
+  APP.snapshot = { save, saveAs, open, listSnapshots, openVersionHistory, compareWithLast, diffSummary, exportJson, importJson };
 })();
 
 // Chronexa Web

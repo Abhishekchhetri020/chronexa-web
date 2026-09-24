@@ -43,15 +43,19 @@ import "./main.js";
       const tCards = idx.cardsByTeacher[tid] || [];
       for (const c of tCards) {
         if (c.day !== day) continue;
+        const cardId = c.cardId || c.id || `placed_${c.lessonId}_${c.day}_${c.period}`;
         slots.push({
           teacherId: tid,
           teacherName: (idx.teacherById[tid]?.name) || tid,
           period: c.period,
+          day: c.day,
+          cardId,
           classId: (c.classIds || [])[0] || "",
           classSection: (c.classes || [])[0] || "",
           subjectId: c.subjectId || "",
           subject: c.subject || "",
           lessonId: c.lessonId,
+          classroomId: c.classroomId || undefined,
         });
       }
     }
@@ -133,6 +137,10 @@ import "./main.js";
 
       assignments.push({
         slotKey,
+        cardId: slot.cardId,
+        day: slot.day,
+        lessonId: slot.lessonId,
+        classroomId: slot.classroomId,
         classSection: slot.classSection,
         classId: slot.classId,
         period: slot.period,
@@ -144,6 +152,7 @@ import "./main.js";
         allCandidates: candidates, // kept for "change substitute" UI
         chosen,
         uncovered: !chosen,
+        cancelled: false,
       });
     }
 
@@ -156,12 +165,19 @@ import "./main.js";
    * the new choice. (Used by classwise_output.)
    */
   function reassign(assignments, slotKey, newTeacherId) {
-    const a = assignments.find(x => x.slotKey === slotKey);
+    const a = assignments.find(x => x.slotKey === slotKey || x.cardId === slotKey);
     if (!a) return;
+    if (newTeacherId === null) {
+      a.chosen = null;
+      a.uncovered = false;
+      a.cancelled = true;
+      return;
+    }
     const pick = (a.allCandidates || a.candidates).find(c => c.teacherId === newTeacherId);
     if (!pick) return;
     a.chosen = pick;
     a.uncovered = false;
+    a.cancelled = false;
   }
 
   window.SubstitutionRanker = { rankAll, reassign };

@@ -21,6 +21,38 @@ import "./main.js";
   function render(host, state) {
     host.innerHTML = "";
 
+    // If state.assignments is empty, rehydrate from APP.school.substitutions if available
+    if (!state.assignments.length && APP.school?.substitutions?.length) {
+      const subsForDate = APP.school.substitutions.filter(s => s.date === state.date);
+      if (subsForDate.length) {
+        const absentTids = Array.from(new Set(subsForDate.map(s => s.absentTeacherId).filter(Boolean)));
+        const d = S.ymdToDay(state.date);
+        const ranker = window.SubstitutionRanker;
+        if (ranker && absentTids.length) {
+          state.assignments = ranker.rankAll(APP.school, absentTids, d);
+          subsForDate.forEach(sub => {
+            const a = state.assignments.find(x => x.cardId === sub.cardId || (x.period === sub.period && x.originalTeacherId === sub.absentTeacherId));
+            if (a) {
+              if (sub.substituteTeacherId === null) {
+                a.chosen = null;
+                a.cancelled = true;
+                a.uncovered = false;
+              } else {
+                const cand = (a.allCandidates || a.candidates || []).find(c => c.teacherId === sub.substituteTeacherId);
+                if (cand) a.chosen = cand;
+                else {
+                  const t = APP.school._idx?.teacherById?.[sub.substituteTeacherId];
+                  a.chosen = { teacherId: sub.substituteTeacherId, teacher: t?.name || sub.substituteTeacherId, score: 0 };
+                }
+                a.uncovered = false;
+                a.cancelled = false;
+              }
+            }
+          });
+        }
+      }
+    }
+
     if (!state.assignments.length) {
       host.appendChild(el("div", { class: "chrx-sub-empty" },
         el("p", null, "No substitutions generated yet."),
@@ -33,7 +65,9 @@ import "./main.js";
     // Group by chosen teacher.
     const pivot = Object.create(null);
     let uncovered = 0;
+    let cancelled = 0;
     for (const a of state.assignments) {
+      if (a.cancelled) { cancelled++; continue; }
       if (!a.chosen) { uncovered++; continue; }
       const tid = a.chosen.teacherId;
       if (!pivot[tid]) {
@@ -54,7 +88,8 @@ import "./main.js";
       a.teacher.localeCompare(b.teacher));
 
     host.appendChild(el("div", { class: "chrx-sub-banner" },
-      el("b", null, `${list.length} substitute${list.length === 1 ? "" : "s"} carry ${state.assignments.length - uncovered} extra period(s)`),
+      el("b", null, `${list.length} substitute${list.length === 1 ? "" : "s"} carry ${state.assignments.length - uncovered - cancelled} extra period(s)`),
+      cancelled ? el("span", { class: "chrx-sub-pill", style: "background:#fee2e2;color:#b91c1c;" }, `${cancelled} cancelled`) : null,
       uncovered ? el("span", { class: "chrx-sub-pill is-red" },
         `${uncovered} uncovered`) : null,
     ));
