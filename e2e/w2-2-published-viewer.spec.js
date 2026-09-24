@@ -233,3 +233,10 @@ test.describe("desktop week grid", () => {
     expect(await grid.locator('.chrx-pub-grid-slot[data-day="2"]').count()).toBe(3);
   });
 });
+
+test("viewer mode never shows the editor's install / local-compute banner", async ({ page }) => {
+  await gotoWithInline(page, students);
+  await expect(page.locator("#viewer-root")).toBeVisible();
+  await page.waitForTimeout(4000); // the banner is scheduled 3 s after boot in the editor
+  await expect(page.locator("#chrx-pwa-banner")).toHaveCount(0);
+});

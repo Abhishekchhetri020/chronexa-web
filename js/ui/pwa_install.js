@@ -24,6 +24,8 @@ import "./state.js";
     if (document.getElementById("chrx-pwa-banner")) return;
     const isStandalone = window.matchMedia("(display-mode: standalone)").matches;
     if (isStandalone) return; // already installed
+    // The published read-only viewer is for teachers/parents, not an app to install.
+    if (new URLSearchParams(window.location.search).get("view") === "published") return;
 
     const banner = document.createElement("div");
     banner.id = "chrx-pwa-banner";
