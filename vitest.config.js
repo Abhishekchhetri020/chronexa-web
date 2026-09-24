@@ -5,6 +5,8 @@ export default defineConfig({
     include: [
       "js/solver/__tests__/**/*.test.js",
       "js/ui/editor/__tests__/**/*.test.js",
+      // W2-2 published-viewer unit tests (lane owns js/viewer/).
+      "js/viewer/__tests__/**/*.test.js",
     ],
     exclude: [
       "**/node_modules/**",
