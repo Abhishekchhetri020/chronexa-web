@@ -14,15 +14,28 @@ import "./card_in_hand.js";
 (function () {
   "use strict";
   document.addEventListener("dblclick", (e) => {
-    if (!e.target.closest) return;
-    const vk = e.target.closest(".chrx-vkarta");
+    // grid_canvas captures the pointer on the editor root while deciding
+    // whether the gesture is a click or a drag, so the native dblclick target
+    // can be the root rather than the card. Resolve the card at the pointer
+    // location as a fallback while the deferred click still leaves it mounted.
+    const fromTarget = e.target && e.target.closest ? e.target.closest(".chrx-vkarta") : null;
+    const fromPoint = document.elementFromPoint &&
+      document.elementFromPoint(e.clientX, e.clientY);
+    const vk = fromTarget || (fromPoint && fromPoint.closest ? fromPoint.closest(".chrx-vkarta") : null);
     if (!vk) return;
     if (vk.classList.contains("locked")) return;
     const lessonId = vk.dataset.lessonId;
     if (!lessonId) return;
     e.preventDefault();
-    // Drop the in-hand pickup so the dialog opens cleanly.
-    if (window.CardInHand && typeof window.CardInHand._cleanup === "function") {
+    if (window.Editor && typeof window.Editor.cancelPendingCardClick === "function") {
+      window.Editor.cancelPendingCardClick();
+    }
+    // Drop the in-hand pickup so the dialog opens cleanly. `cancel()` restores
+    // a click-picked card to S.cards; raw cleanup would strand that card.
+    if (window.CardInHand && typeof window.CardInHand.cancel === "function" &&
+        window.APP && window.APP.editor && window.APP.editor.cardInHand) {
+      try { window.CardInHand.cancel(); } catch {}
+    } else if (window.CardInHand && typeof window.CardInHand._cleanup === "function") {
       try { window.CardInHand._cleanup(); } catch {}
     }
     if (window.APP && window.APP.editor) window.APP.editor.cardInHand = null;
