@@ -2,6 +2,7 @@
 import "../state.js";
 import "../wizard/create_new.js";
 import "../io/snapshots.js";
+import "./version_history.js";
 
 /* Auto-save — silent localStorage snapshots every 60 seconds.
  *
@@ -14,6 +15,11 @@ import "../io/snapshots.js";
  *
  * Storage key: `chronexa.autosave.v1` — separate from the manual
  * Snapshots feature (`chronexa.snapshots.v1`). Keeps ONE latest only.
+ *
+ * W3-1: the same triggers also feed the rolling 20-version backup ring in
+ * IndexedDB (`components/version_history.js`) — `VersionHistory.record()`.
+ * The ring is size-capped and evicts the oldest; it is fire-and-forget, so a
+ * blocked/failed backup can never block editing or lose the localStorage copy.
  */
 (function () {
   "use strict";
@@ -23,6 +29,25 @@ import "../io/snapshots.js";
 
   let saveTimer = null;
   let lastSaveTs = 0;
+
+  // ─── Rolling versions (W3-1) ──────────────────────────────────────────
+  // Label = the last undo label (contract C1's APP.history.peek()), which is
+  // exactly what makes the history list readable ("Move card", "Swap cards", …).
+  function lastUndoLabel() {
+    const APP = window.APP;
+    const entry = APP && APP.history && typeof APP.history.peek === "function" ? APP.history.peek() : null;
+    return (entry && entry.label) || "Auto-save";
+  }
+
+  function recordBackup(label) {
+    const APP = window.APP;
+    const VH = window.VersionHistory;
+    if (!APP || !APP.school || !VH || typeof VH.record !== "function") return;
+    try {
+      const pending = VH.record(APP.school, { label: label || lastUndoLabel() });
+      if (pending && typeof pending.catch === "function") pending.catch(() => {});
+    } catch (e) { /* a failed backup must never interrupt editing */ }
+  }
 
   function save() {
     const APP = window.APP;
@@ -43,6 +68,8 @@ import "../io/snapshots.js";
       flashIndicator("⚠", "warn");
       console.warn("[autosave] failed:", e);
     }
+    // Independent of the localStorage copy: one more version in the ring.
+    recordBackup();
   }
 
   function restore() {
@@ -61,11 +88,15 @@ import "../io/snapshots.js";
   function schedulePeriodic() {
     if (saveTimer) clearInterval(saveTimer);
     saveTimer = setInterval(() => {
-      // Only save if something changed in the last period
+      // Only save if something changed in the last period. Editor card moves
+      // go through APP.mutate (audit.commit) and never touch audit._log, so
+      // the last transaction's timestamp counts as a change too — otherwise a
+      // move made just after a backup waited a full extra minute.
       const APP = window.APP;
       if (!APP || !APP.school) return;
-      const lastChange = APP.audit?._log?.[APP.audit._log.length - 1]?.ts || 0;
-      if (lastChange > lastSaveTs) save();
+      const lastLog = APP.audit?._log?.[APP.audit._log.length - 1]?.ts || 0;
+      const lastMutate = APP.history?.peek?.()?.timestamp || 0;
+      if (Math.max(lastLog, lastMutate) > lastSaveTs) save();
     }, PERIOD_MS);
   }
 
@@ -73,6 +104,15 @@ import "../io/snapshots.js";
   function onEntityChange() {
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(save, DEBOUNCE_MS);
+  }
+
+  // A meaningful change (contract C1: any APP.mutate, undo or redo). Faster
+  // than the entity:changed debounce because it is the backup trigger, not the
+  // localStorage one.
+  let changeTimer = null;
+  function onSchoolChanged() {
+    clearTimeout(changeTimer);
+    changeTimer = setTimeout(save, window.VersionHistory?.CHANGE_DEBOUNCE_MS || 800);
   }
 
   // ─── Indicator pill (bottom-right) ────────────────────────────────────
@@ -145,22 +185,30 @@ import "../io/snapshots.js";
   }
 
   // ─── Boot ─────────────────────────────────────────────────────────────
+  function onSchoolLoaded() { lastSaveTs = 0; save(); }
+
   function boot() {
     schedulePeriodic();
     window.addEventListener("entity:changed", onEntityChange);
     document.addEventListener("entity:changed", onEntityChange);
-    window.addEventListener("app:school-loaded", () => { lastSaveTs = 0; save(); });
+    document.addEventListener("app:school-changed", onSchoolChanged);
+    // Both targets: io/import_timetable_xml.js applySchool() dispatches on
+    // window, the bundled-demo loader in ui/main.js on document, and a
+    // CustomEvent without bubbles does not cross between them. Listening on
+    // window alone meant the demo load was never autosaved at all.
+    window.addEventListener("app:school-loaded", onSchoolLoaded);
+    document.addEventListener("app:school-loaded", onSchoolLoaded);
     // A freshly generated/solved timetable is the most expensive-to-recreate
     // state in the app — snapshot it immediately rather than waiting up to
     // 60s for the periodic timer (a refresh in that window lost the result).
-    window.addEventListener("app:solve-applied", () => { lastSaveTs = 0; save(); });
+    window.addEventListener("app:solve-applied", onSchoolLoaded);
     setTimeout(maybeOfferRecovery, 1500);
   }
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", boot);
   } else { boot(); }
 
-  window.AutoSave = { save, restore, discard: discardSaved };
+  window.AutoSave = { save, restore, discard: discardSaved, recordBackup, lastUndoLabel };
 })();
 
 // Chronexa Web
