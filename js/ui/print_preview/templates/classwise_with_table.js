@@ -26,7 +26,8 @@ import "../../state.js";
 
       // Grid — honour per-template structure override (Item 5).
       const structure = (U.structureFor && U.structureFor("classwise_with_table")) || "rows-days";
-      const tbl = el("table", { style: U.tableCSS() });
+      const tbl = el("table", { style: U.gridCSS() });
+      tbl.appendChild(U.gridCols(structure === "columns-days" ? DAYS : periods, 62));
       const head = el("tr");
       head.appendChild(el("th", { style: U.thCSS() }, ""));
       if (structure === "columns-days") {

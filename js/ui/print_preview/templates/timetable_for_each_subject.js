@@ -47,7 +47,8 @@ import "../../state.js";
         s.name + (s.abbr ? "  (" + s.abbr + ")" : "") + " — subject timetable",
         (school.schoolName || "") + " · " + list.length + " sessions/week"));
 
-      const tbl = el("table", { style: U.tableCSS() });
+      const tbl = el("table", { style: U.gridCSS() });
+      tbl.appendChild(U.gridCols(periods, 62));
       const tr0 = el("tr");
       tr0.appendChild(el("th", { style: U.thCSS() }, "Day"));
       periods.forEach(per => tr0.appendChild(el("th", { style: U.thCSS() },

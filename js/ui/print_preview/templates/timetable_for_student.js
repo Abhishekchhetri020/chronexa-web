@@ -28,7 +28,8 @@ import "../../state.js";
           sec.name + " — Student timetable",
           (school.schoolName || "") + " · " + DAYS.length + " days × " + periods.length + " periods"));
 
-        const tbl = el("table", { style: U.tableCSS() });
+        const tbl = el("table", { style: U.gridCSS() });
+        tbl.appendChild(U.gridCols(periods, 62));
         const thead = el("thead");
         const tr0 = el("tr");
         tr0.appendChild(el("th", { style: U.thCSS() }, "Day"));

@@ -25,7 +25,8 @@ import "../../state.js";
         (school.schoolName || "") + (t.abbr ? "  (" + t.abbr + ")" : "")));
 
       // Grid
-      const tbl = el("table", { style: U.tableCSS() });
+      const tbl = el("table", { style: U.gridCSS() });
+      tbl.appendChild(U.gridCols(periods, 62));
       const head = el("tr");
       head.appendChild(el("th", { style: U.thCSS() }, ""));
       periods.forEach(per => head.appendChild(el("th", { style: U.thCSS() }, "P" + per.index)));
