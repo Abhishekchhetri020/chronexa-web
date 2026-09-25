@@ -297,6 +297,7 @@ window.Editor = (function () {
   }
 
   function bulkMoveByDay(delta) {
+    if (isReadOnlyPerspective()) return;
     const S = window.APP && window.APP.school;
     if (!S) return;
     const selected = selectedCardsWithBlocks(S);
@@ -406,6 +407,7 @@ window.Editor = (function () {
   }
 
   function bulkSelectionAction(action) {
+    if (isReadOnlyPerspective()) return;
     const S = window.APP && window.APP.school;
     if (!S) return;
     const selected = selectedCardsWithBlocks(S);
@@ -463,6 +465,7 @@ window.Editor = (function () {
   }
 
   function pasteSelection() {
+    if (isReadOnlyPerspective()) return;
     const S = window.APP && window.APP.school;
     const clipboard = window.APP?.editor?.cardClipboard;
     const anchor = pasteAnchorFromUi();
@@ -522,7 +525,7 @@ window.Editor = (function () {
     ensureEditorState();
     const S = window.APP && window.APP.school;
     const liveIds = new Set((S?.cards || []).map(CardSelection.cardKey));
-    window.APP.editor.selectedCardIds = window.APP.editor.selectedCardIds
+    window.APP.editor.selectedCardIds = isReadOnlyPerspective() ? [] : window.APP.editor.selectedCardIds
       .filter(id => liveIds.has(id));
 
     const selected = new Set(window.APP.editor.selectedCardIds);
@@ -551,7 +554,15 @@ window.Editor = (function () {
     });
   }
 
+  // Student and Supervision perspectives are read-only views: no selection, bulk action or paste
+  // may change the timetable from them.
+  function isReadOnlyPerspective() {
+    const persp = window.APP && window.APP.editor && window.APP.editor.perspective;
+    return persp === "student" || persp === "supervision";
+  }
+
   function selectCardElement(card, options = {}) {
+    if (isReadOnlyPerspective()) return;
     const rootEl = card && card.closest(".chrx-editor");
     if (!rootEl || !card.dataset.cardId) return;
     ensureEditorState();
@@ -624,6 +635,7 @@ window.Editor = (function () {
   }
 
   function marqueeSelection(rootEl, startEvent, startSlot) {
+    if (isReadOnlyPerspective()) return;
     if (!rootEl || !startSlot || startSlot.classList.contains("out-of-bell")) return;
     const pointerId = startEvent.pointerId;
     const startX = startEvent.clientX;

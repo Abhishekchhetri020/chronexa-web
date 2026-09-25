@@ -216,3 +216,17 @@ test.describe("W2-6 card multi-select and clipboard", () => {
     fixture.lessonId)).toBe(2);
   });
 });
+
+test("read-only perspectives (student, supervision) cannot select, bulk-edit or paste", async ({ page }) => {
+  await loadDemoSchool(page);
+  const count = () => page.evaluate(() => window.APP.school.cards.length);
+  const n0 = await count();
+  await page.evaluate(() => { window.APP.editor.perspective = "student"; window.Editor.render(document.querySelector(".chrx-editor")); });
+  const cards = page.locator("#editor-root .chrx-vkarta");
+  await cards.nth(0).click({ modifiers: ["ControlOrMeta"] });
+  await cards.nth(1).click({ modifiers: ["ControlOrMeta"] });
+  expect(await page.evaluate(() => window.APP.editor.selectedCardIds.length)).toBe(0);
+  await expect(page.locator("[data-selection-bar]")).toBeHidden();
+  await page.keyboard.press("ControlOrMeta+v");
+  expect(await count()).toBe(n0);
+});
