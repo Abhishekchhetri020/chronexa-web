@@ -224,7 +224,7 @@
     let cancelled = false;
     let stage2 = null;
     const budget = Math.max(15, options.timeLimitSec || 60);
-    const isColdGenerate = options.mode === "generate" && !options.warmStart && !options.improve;
+    const isColdGenerate = options.mode === "generate" && !options.warmStart && !options.improve && options.generatorMode !== "add_unplaced";
     const hasWarmCards = !isColdGenerate && Array.isArray(school.cards) && school.cards.some((c) => c && c.day != null && c.period != null);
     // Adaptive draft budget: the JS solver reaches a good draft in seconds,
     // so give it clamp(totalCards/500, 1, 5)s and leave the rest to the
@@ -276,10 +276,11 @@
           .filter((c) => c && c.locked)
           .map((c) => `${String(c.lessonId).replace(/#\d+$/, "")}|${c.day}|${c.period}`)
       );
+      const isAddUnplaced = options.generatorMode === "add_unplaced" || options.addUnplacedOnly;
       const cards = (draft && draft.assignment)
         ? draft.assignment.map((a) => {
             const baseId = String(a.lessonId).replace(/#\d+$/, "");
-            const isLocked = !!a.locked || origLocked.has(`${baseId}|${a.day}|${a.period}`) || origLocked.has(`${a.lessonId}|${a.day}|${a.period}`);
+            const isLocked = isAddUnplaced || !!a.locked || origLocked.has(`${baseId}|${a.day}|${a.period}`) || origLocked.has(`${a.lessonId}|${a.day}|${a.period}`);
             return {
               lessonId: a.lessonId,
               day: a.day,
@@ -309,7 +310,16 @@
           const polished = ev2.result;
           const dp = (draft && draft.stats && draft.stats.placed) || 0;
           const pp = (polished && polished.stats && polished.stats.placed) || 0;
-          sub.emit({ type: "done", result: pp >= dp ? polished : draft });
+          const ds = (draft && draft.stats && draft.stats.softScore) || 0;
+          const ps = (polished && polished.stats && polished.stats.softScore) || 0;
+          const isImproveOnly = options.generatorMode === "improve_only" || options.improveOnly;
+          if (isImproveOnly) {
+            // Keep draft if polish unplaced any card or made soft score worse
+            const safe = pp >= dp && ps <= ds;
+            sub.emit({ type: "done", result: safe ? polished : draft });
+          } else {
+            sub.emit({ type: "done", result: pp >= dp ? polished : draft });
+          }
         }
         else if (ev2.type === "error") {
           // Stage 2 unavailable (e.g. no JSPI) — the draft is still a valid timetable.
@@ -567,9 +577,39 @@
     return src;
   }
 
+  function prepareSchoolForMode(school, options) {
+    if (!school || !Array.isArray(school.cards)) return school;
+    const isAddUnplaced = options.generatorMode === "add_unplaced" ||
+                          options.mode === "add_unplaced" ||
+                          options.addUnplacedOnly === true;
+    if (isAddUnplaced) {
+      const lockedCards = school.cards
+        .filter((c) => c && c.day != null && c.period != null)
+        .map((c) => ({
+          ...c,
+          locked: true,
+          _mppLockRoom: true,
+          _mppHardLock: true,
+        }));
+      return { ...school, cards: lockedCards };
+    }
+    return school;
+  }
+
   function run(spec) {
-    const school = spec.school;
-    const options = spec.options || {};
+    let school = spec.school;
+    const options = { ...(spec.options || {}) };
+    if (spec.generatorMode && !options.generatorMode) options.generatorMode = spec.generatorMode;
+    if (options.generatorMode === "add_unplaced") {
+      school = prepareSchoolForMode(school, options);
+      options.warmStart = true;
+    } else if (options.generatorMode === "improve_only") {
+      options.improve = true;
+      options.improveOnly = true;
+      options.warmStart = true;
+      options.useLNS = true;
+    }
+
     const algo = spec.algorithm || "browser";
     if (algo === "auto" || spec.mode === "best") return runTwoStage(school, options);
 

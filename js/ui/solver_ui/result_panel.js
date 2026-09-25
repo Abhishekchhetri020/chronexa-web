@@ -70,7 +70,7 @@ import "./progress_modal.js";  // provides SolverUI.expectedCardCount
     const apply = el("button", { type: "button", class: "chrx-btn chrx-btn--primary", onclick: doApply, id: "csu-result-apply" }, "Keep this timetable");
     const view  = el("button", { type: "button", class: "chrx-btn", onclick: doView },  "See issues");
     const disc  = el("button", { type: "button", class: "chrx-btn chrx-btn--danger", onclick: doDiscard, id: "csu-result-discard" }, "Discard");
-    const close = el("button", { type: "button", class: "chrx-btn", onclick: doClose }, "Close");
+    const close = el("button", { type: "button", class: "chrx-btn", id: "csu-result-close", onclick: doClose }, "Close");
     const actions = el("div", { class: "csu-dialog__actions" }, disc, view, close, apply);
 
     // Phase 4 / Phase 5: diagnostics + weight suggestions container.
@@ -310,7 +310,10 @@ import "./progress_modal.js";  // provides SolverUI.expectedCardCount
     if (state.school && !state.snapshot) {
       state.snapshot = cloneCards(Array.isArray(state.school.cards) ? state.school.cards : []);
     }
-    mutateResultCards("Apply solver timetable", state.school, newCards);
+    // Apply targets the LIVE school (one undo step) even when this preview holds a derived copy
+    // (e.g. "Add unplaced only" solves on a temporarily locked copy).
+    mutateResultCards("Apply solver timetable", global.APP?.school || state.school, newCards);
+    if (state.school && state.school !== global.APP?.school) state.school.cards = cloneCards(newCards);
     state.applied = true;
     state.discarded = false;
     refs.apply.disabled = true;
@@ -371,7 +374,8 @@ import "./progress_modal.js";  // provides SolverUI.expectedCardCount
   function doDiscard() {
     if (!state) return;
     if (state.school && state.snapshot != null) {
-      mutateResultCards("Discard solver timetable", state.school, state.snapshot);
+      mutateResultCards("Discard solver timetable", global.APP?.school || state.school, state.snapshot);
+      if (state.school && state.school !== global.APP?.school) state.school.cards = cloneCards(state.snapshot);
       state.snapshot = null;
     }
     state.discarded = true;
@@ -379,6 +383,13 @@ import "./progress_modal.js";  // provides SolverUI.expectedCardCount
     refs.disc.disabled = true;
     refs.status.textContent = "Discarded — your previous timetable is restored.";
     refs.status.style.color = "var(--chrx-orange)";
+    try {
+      const editorRoot = document.querySelector(".chrx-editor");
+      if (editorRoot && global.Editor && global.Editor.render) global.Editor.render(editorRoot);
+      const pendRoot = document.querySelector(".chrx-pending-strip");
+      if (pendRoot && global.PendingStrip && global.PendingStrip.render) global.PendingStrip.render(pendRoot);
+      if (global.EditorActivator && global.EditorActivator.updatePendingCount) global.EditorActivator.updatePendingCount();
+    } catch (_) {}
     if (state.onDiscard) try { state.onDiscard(); } catch (e) { console.error(e); }
   }
   function doView() {
@@ -496,4 +507,19 @@ import "./progress_modal.js";  // provides SolverUI.expectedCardCount
 
   global.SolverUI = global.SolverUI || {};
   global.SolverUI.Result = { open, close };
+
+  if (typeof document !== "undefined") {
+    document.addEventListener("app:school-changed", (e) => {
+      const source = e && e.detail && e.detail.source;
+      if (source === "undo" || source === "redo") {
+        try {
+          const editorRoot = document.querySelector(".chrx-editor");
+          if (editorRoot && global.Editor && global.Editor.render) global.Editor.render(editorRoot);
+          const pendRoot = document.querySelector(".chrx-pending-strip");
+          if (pendRoot && global.PendingStrip && global.PendingStrip.render) global.PendingStrip.render(pendRoot);
+          if (global.EditorActivator && global.EditorActivator.updatePendingCount) global.EditorActivator.updatePendingCount();
+        } catch (_) {}
+      }
+    });
+  }
 })(typeof window !== "undefined" ? window : globalThis);

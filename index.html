@@ -454,14 +454,16 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
             //                ~200 ms and returning FEASIBLE without doing a
             //                real search — the "fake generation" symptom.
             //   "improve"  = warmStart + LNS (set by prelaunch_dialog.js:220).
-            var isImprove = cfg.mode === "improve";
+            var isImprove = cfg.mode === "improve" || cfg.generatorMode === "improve_only";
+            var isAddUnplaced = cfg.generatorMode === "add_unplaced";
             var source = window.SolverUI.run({
               school: window.APP.school,
               options: {
                 timeLimitSec: cfg.timeLimitSec,
                 verbose: false,
                 mode: cfg.mode,
-                warmStart: !!cfg.warmStart || isImprove,
+                generatorMode: cfg.generatorMode,
+                warmStart: !!cfg.warmStart || isImprove || isAddUnplaced,
                 useLNS:    !!cfg.useLNS    || isImprove,
               },
               algorithm: cfg.algorithm,
@@ -501,6 +503,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         if (!window.APP || !window.APP.school) return;
         window.SolverUI.Test.open({ school: window.APP.school });
       });
+      window.addEventListener("app:generate", function () { if (gen) gen.click(); });
     }
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bind);
     else bind();
