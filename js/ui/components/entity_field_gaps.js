@@ -14,9 +14,9 @@ import "../state.js";
  *              `gender` (enum), `fontColorsScreen / fontColorPrint / fontColorPrint2`
  *   Class:     `grade` (FK to grades entity), `printSubjectPictures` (bool)
  *
- * Each field persists on the underlying entity row; audit.append fires
- * on save. Hooks the existing Save button rather than building a custom
- * one — guarantees compat with future entity-dialog refactors.
+ * Each field stays in a local draft while the sheet is open.  The existing
+ * Save submit is decorated so all gap fields are applied together in one
+ * APP.mutate transaction; cancelling a sheet therefore cannot leak edits.
  */
 (function (global) {
   "use strict";
@@ -61,20 +61,32 @@ import "../state.js";
     return null;
   }
 
-  function findCurrentRow(kind) {
+  function findCurrentRow(kind, sheetEl) {
     const APP = global.APP;
     if (!APP?.school) return null;
     const pool = APP.school[kind + "s"] || APP.school[kind + "rooms"];
     if (!pool) return null;
-    // Pick the row whose name matches the dialog title (best-effort)
+    // A new sheet can be opened while another collection row remains selected.
+    // Resolve the sheet kind/title before consulting that selection so a new
+    // save never decorates the previously selected entity.
+    const titleText = (sheetEl?.querySelector(".chrx-ent-sheet__head h3, header h2, header h3")?.textContent || "").trim().toLowerCase();
+    if (titleText.startsWith("new ")) return null;
+    // The collection dialog keeps the edited row selected. Prefer that stable
+    // id; matching the collection title ("Teachers") would otherwise fall
+    // through to an unrelated last row.
     const dlg = document.querySelector(".chrx-ent-dialog");
-    if (!dlg) return null;
-    const titleText = (dlg.querySelector("h2")?.textContent || "").toLowerCase();
+    const selectedId = dlg?.querySelector(".chrx-ent-tr.is-selected")?.dataset.id;
+    if (selectedId) {
+      const selected = pool.find(r => String(r.id) === String(selectedId));
+      if (selected) return selected;
+    }
+    // For standalone/new sheets there may be no selected table row. Match the
+    // actual sheet title (for example, "Edit teacher — Ms. Rao").
     for (const r of pool) {
       const nm = (r.name || "").toLowerCase();
       if (nm && titleText.includes(nm)) return r;
     }
-    return pool[pool.length - 1]; // fallback: last-added (likely the new one)
+    return null;
   }
 
   function decorate(sheetEl) {
@@ -89,35 +101,49 @@ import "../state.js";
     if (!kind) return;
     sheetEl.dataset.chrxFieldGapsDone = "1";
 
-    const row = findCurrentRow(kind);
-    if (!row) return;
+    // New-row sheets do not have a backing entity until the host dialog's
+    // Save handler runs.  Keep the draft independent of that row and resolve
+    // the newly-created entity from its collection at submit time.
+    const row = findCurrentRow(kind, sheetEl) || {};
     const APP = global.APP;
     const school = APP.school;
+    const draft = {
+      title: row.title || row.nameprefix || "",
+      nameSuffix: row.nameSuffix || row.namesuffix || "",
+      gender: row.gender || "",
+      fontColorScreen: row.fontColorScreen || "#000000",
+      fontColorPrint: row.fontColorPrint || "#000000",
+      fontColorPrint2: row.fontColorPrint2 || "#000000",
+      bellId: row.bellId || "",
+      nearbyClassroomIds: Array.isArray(row.nearbyClassroomIds) ? row.nearbyClassroomIds.slice() : [],
+      gradeId: row.gradeId || "",
+      printSubjectPictures: !!row.printSubjectPictures,
+    };
 
     if (kind === "teacher") {
       // Title (nameprefix)
       const fTitle = el("input", { type: "text", maxlength: "12",
-        value: row.title || row.nameprefix || "",
+        value: draft.title,
         placeholder: "Mr. / Mrs. / Dr.",
-        oninput: e => row.title = e.target.value.trim() || undefined,
+        oninput: e => draft.title = e.target.value.trim(),
         style: "padding:5px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:13px;flex:1" });
       addFieldRow(sheetEl, "Title", fTitle);
 
       // Name suffix
       const fSuf = el("input", { type: "text", maxlength: "12",
-        value: row.nameSuffix || row.namesuffix || "",
+        value: draft.nameSuffix,
         placeholder: "Jr. / Sr.",
-        oninput: e => row.nameSuffix = e.target.value.trim() || undefined,
+        oninput: e => draft.nameSuffix = e.target.value.trim(),
         style: "padding:5px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:13px;flex:1" });
       addFieldRow(sheetEl, "Name suffix", fSuf);
 
       // Gender
       const fGender = el("select", {
-        onchange: e => row.gender = e.target.value || undefined,
+        onchange: e => draft.gender = e.target.value,
         style: "padding:5px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:13px;flex:1" });
       ["", "m", "f", "x"].forEach(v => {
         const o = el("option", { value: v }, v === "" ? "—" : v === "m" ? "Male" : v === "f" ? "Female" : "Other");
-        if (row.gender === v) o.setAttribute("selected", "selected");
+        if (draft.gender === v) o.setAttribute("selected", "selected");
         fGender.appendChild(o);
       });
       addFieldRow(sheetEl, "Gender", fGender);
@@ -125,8 +151,8 @@ import "../state.js";
       // 3 print colors (Specify font colors)
       ["fontColorScreen", "fontColorPrint", "fontColorPrint2"].forEach((key, i) => {
         const fc = el("input", { type: "color",
-          value: row[key] || "#000000",
-          oninput: e => row[key] = e.target.value,
+          value: draft[key],
+          oninput: e => draft[key] = e.target.value,
           style: "width:60px;height:24px;border:1px solid #cbd5e1;border-radius:5px" });
         addFieldRow(sheetEl, ["Screen color", "Print color 1", "Print color 2"][i], fc);
       });
@@ -134,18 +160,18 @@ import "../state.js";
     else if (kind === "classroom") {
       // Bells (FK to bells)
       const fBell = el("select", {
-        onchange: e => row.bellId = e.target.value || undefined,
+        onchange: e => draft.bellId = e.target.value,
         style: "padding:5px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:13px;flex:1" });
       fBell.appendChild(el("option", { value: "" }, "Use school default"));
       (school.bells || []).forEach(b => {
         const o = el("option", { value: b.id }, b.name || b.id);
-        if (row.bellId === b.id) o.setAttribute("selected", "selected");
+        if (draft.bellId === b.id) o.setAttribute("selected", "selected");
         fBell.appendChild(o);
       });
       addFieldRow(sheetEl, "Bell schedule", fBell);
 
       // Nearby classrooms (multi-select via checkbox list)
-      const nearby = new Set(row.nearbyClassroomIds || []);
+      const nearby = new Set(draft.nearbyClassroomIds);
       const fNearbyWrap = el("div", { style: "flex:1;max-height:120px;overflow-y:auto;border:1px solid #cbd5e1;border-radius:5px;padding:4px 8px;font-size:12px" });
       (school.classrooms || []).forEach(c => {
         if (c.id === row.id) return; // skip self
@@ -153,7 +179,7 @@ import "../state.js";
           checked: nearby.has(c.id) ? "checked" : null,
           onchange: e => {
             if (e.target.checked) nearby.add(c.id); else nearby.delete(c.id);
-            row.nearbyClassroomIds = Array.from(nearby);
+            draft.nearbyClassroomIds = Array.from(nearby);
           } });
         const label = el("label", { style: "display:flex;align-items:center;gap:6px;padding:2px 0;cursor:pointer" }, cb, c.name);
         fNearbyWrap.appendChild(label);
@@ -163,35 +189,57 @@ import "../state.js";
     else if (kind === "class") {
       // Grade dropdown
       const fGrade = el("select", {
-        onchange: e => row.gradeId = e.target.value || undefined,
+        onchange: e => draft.gradeId = e.target.value,
         style: "padding:5px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:13px;flex:1" });
       fGrade.appendChild(el("option", { value: "" }, "—"));
       (school.grades || []).forEach(g => {
         const o = el("option", { value: g.id }, g.name || g.id);
-        if (row.gradeId === g.id) o.setAttribute("selected", "selected");
+        if (draft.gradeId === g.id) o.setAttribute("selected", "selected");
         fGrade.appendChild(o);
       });
       addFieldRow(sheetEl, "Grade", fGrade);
 
       // Print subject pictures toggle
       const fPSP = el("input", { type: "checkbox",
-        checked: row.printSubjectPictures ? "checked" : null,
-        onchange: e => row.printSubjectPictures = e.target.checked });
+        checked: draft.printSubjectPictures ? "checked" : null,
+        onchange: e => draft.printSubjectPictures = e.target.checked });
       addFieldRow(sheetEl, "Print subject pictures", fPSP);
     }
 
-    // Hook the Save button to audit-append the field-gap edits
-    const saveBtn = Array.from(sheetEl.querySelectorAll("button"))
-      .find(b => /save|ok/i.test(b.textContent));
-    if (saveBtn && !saveBtn.dataset.chrxFieldgapHooked) {
-      saveBtn.dataset.chrxFieldgapHooked = "1";
-      const origClick = saveBtn.onclick;
-      saveBtn.addEventListener("click", () => {
+    // Ask the dialog shell to wrap the host save and this post-save application
+    // in one transaction. The host save runs first so a new row exists before
+    // we resolve it; nested APP.mutate calls fold into the outer step.
+    const form = sheetEl.querySelector("form");
+    if (form && !form.dataset.chrxFieldgapHooked) {
+      form.dataset.chrxFieldgapHooked = "1";
+      form.__chrxSaveTransaction = "Save entity fields";
+      form.__chrxAfterSave = () => {
+        const currentSchool = APP.school;
+        const pool = currentSchool?.[kind + "s"] || currentSchool?.[kind + "rooms"] || [];
+        const current = row.id
+          ? (pool.find(item => item.id === row.id) || null)
+          : pool[pool.length - 1];
+        if (!current) return;
+        const empty = (value) => value ? value : undefined;
+        if (kind === "teacher") {
+          current.title = empty(draft.title);
+          current.nameSuffix = empty(draft.nameSuffix);
+          current.gender = empty(draft.gender);
+          current.fontColorScreen = empty(draft.fontColorScreen);
+          current.fontColorPrint = empty(draft.fontColorPrint);
+          current.fontColorPrint2 = empty(draft.fontColorPrint2);
+        } else if (kind === "classroom") {
+          current.bellId = empty(draft.bellId);
+          current.nearbyClassroomIds = draft.nearbyClassroomIds.length ? draft.nearbyClassroomIds.slice() : undefined;
+        } else if (kind === "class") {
+          current.gradeId = empty(draft.gradeId);
+          current.printSubjectPictures = !!draft.printSubjectPictures;
+        }
         APP.audit?.append?.({
-          entity: kind + "s", op: "field-gap-save",
-          id: row.id, fields: Object.keys(row),
+          entity: kind + "s", op: "field-gap-save", id: current.id,
+          fields: Object.keys(draft),
         });
-      });
+      };
     }
   }
 

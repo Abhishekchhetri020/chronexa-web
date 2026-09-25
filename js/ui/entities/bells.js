@@ -79,16 +79,21 @@ import "./dialog_shell.js";
         if (!draft.name.trim()) { fName.focus(); return; }
         const all = ensure();
         if (!isNew) {
-          const ref = r._ref; const before = { ...ref };
-          ref.name = draft.name.trim();
-          ref.short = draft.short.trim() || undefined;
-          window.APP.audit.append({ entity:"bells", op:"update", before, after:{...ref} });
+          const ref = r._ref;
+          window.APP.mutate("Edit bell schedule", () => {
+            const before = { ...ref };
+            ref.name = draft.name.trim();
+            ref.short = draft.short.trim() || undefined;
+            window.APP.audit.append({ entity:"bells", op:"update", before, after:{...ref} });
+          });
         } else {
           const nb = { id:D.uid("bell"), name:draft.name.trim(),
             short:draft.short.trim() || undefined, periods:[] };
           if (all.some(x => x.name === nb.name)) { fName.focus(); return; }
-          all.push(nb);
-          window.APP.audit.append({ entity:"bells", op:"add", after:{...nb} });
+          window.APP.mutate("Add bell schedule", (school) => {
+            school.bells.push(nb);
+            window.APP.audit.append({ entity:"bells", op:"add", after:{...nb} });
+          });
         }
         D.closeSheet(); D.refresh(rows());
       },
@@ -140,7 +145,9 @@ import "./dialog_shell.js";
       D.el("div", { class:"chrx-ent-form__foot" },
         D.el("button", { type:"button", class:"chrx-btn chrx-btn--primary",
           onclick:()=>{
-            window.APP.audit.append({ entity:"bells", op:"periods", id:ref.id, after: ref.periods.slice() });
+            window.APP.mutate("Edit bell periods", () => {
+              window.APP.audit.append({ entity:"bells", op:"periods", id:ref.id, after: ref.periods.slice() });
+            });
             D.closeSheet(); D.refresh(rows());
           } }, "Done"),
       ),
@@ -160,8 +167,10 @@ import "./dialog_shell.js";
           const all = ensure();
           const i = all.findIndex(x => x.id === row._ref.id);
           if (i >= 0) {
-            const removed = all.splice(i,1)[0];
-            window.APP.audit.append({ entity:"bells", op:"remove", before:{...removed} });
+            window.APP.mutate("Delete bell schedule", () => {
+              const removed = all.splice(i,1)[0];
+              window.APP.audit.append({ entity:"bells", op:"remove", before:{...removed} });
+            });
             D.refresh(rows());
           }
           return;

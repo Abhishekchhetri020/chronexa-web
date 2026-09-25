@@ -88,15 +88,19 @@ import "./dialog_shell.js";
           classids: draft.classids.slice(),
         };
         if (!isNew) {
-          const before = { ...ref };
-          Object.assign(ref, payload);
-          window.APP.audit.append({ entity:"grades", op:"update",
-            before, after:{...ref} });
+          window.APP.mutate("Edit grade", () => {
+            const before = { ...ref };
+            Object.assign(ref, payload);
+            window.APP.audit.append({ entity:"grades", op:"update",
+              before, after:{...ref} });
+          });
         } else {
           if (all.some(x => x.name === payload.name)) { fName.focus(); return; }
           payload.id = D.uid("gr");
-          all.push(payload);
-          window.APP.audit.append({ entity:"grades", op:"add", after:{...payload} });
+          window.APP.mutate("Add grade", (school) => {
+            school.grades.push(payload);
+            window.APP.audit.append({ entity:"grades", op:"add", after:{...payload} });
+          });
         }
         D.closeSheet(); D.refresh(rows());
       },
@@ -115,9 +119,11 @@ import "./dialog_shell.js";
           const all = ensure();
           const i = all.findIndex(x => x.id === row._ref.id);
           if (i >= 0) {
-            const removed = all.splice(i,1)[0];
-            window.APP.audit.append({ entity:"grades", op:"remove",
-              before:{...removed} });
+            window.APP.mutate("Delete grade", () => {
+              const removed = all.splice(i,1)[0];
+              window.APP.audit.append({ entity:"grades", op:"remove",
+                before:{...removed} });
+            });
             D.refresh(rows());
           }
         }

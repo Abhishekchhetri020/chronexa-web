@@ -180,18 +180,20 @@ import "../components/teacher_constraints_dialog.js";
       const fullName = `${draft.firstName.trim()} ${draft.lastName.trim()}`.trim();
       if (!isNew) {
         const t = r._ref;
-        const before = { ...t };
-        t.firstName = draft.firstName.trim() || undefined;
-        t.lastName  = draft.lastName.trim() || undefined;
-        t.name = fullName;
-        t.abbr = draft.abbr.trim() || undefined;
-        t.color = draft.color || undefined;
-        t.maxGapsPerDay = draft.maxGapsPerDay !== "" ? parseInt(draft.maxGapsPerDay, 10) : undefined;
-        t.maxConsecutivePeriods = draft.maxConsecutivePeriods !== "" ? parseInt(draft.maxConsecutivePeriods, 10) : undefined;
-        t.bellId = draft.bellId || undefined;
-        t.classroomIds = draft.classroomIds.length ? draft.classroomIds.slice() : undefined;
-        t.printColor = draft.printColor || undefined;
-        window.APP.audit.append({ entity:"teachers", op:"update", before, after:{...t} });
+        window.APP.mutate("Edit teacher", () => {
+          const before = { ...t };
+          t.firstName = draft.firstName.trim() || undefined;
+          t.lastName  = draft.lastName.trim() || undefined;
+          t.name = fullName;
+          t.abbr = draft.abbr.trim() || undefined;
+          t.color = draft.color || undefined;
+          t.maxGapsPerDay = draft.maxGapsPerDay !== "" ? parseInt(draft.maxGapsPerDay, 10) : undefined;
+          t.maxConsecutivePeriods = draft.maxConsecutivePeriods !== "" ? parseInt(draft.maxConsecutivePeriods, 10) : undefined;
+          t.bellId = draft.bellId || undefined;
+          t.classroomIds = draft.classroomIds.length ? draft.classroomIds.slice() : undefined;
+          t.printColor = draft.printColor || undefined;
+          window.APP.audit.append({ entity:"teachers", op:"update", before, after:{...t} });
+        });
       } else {
         const nt = { id:D.uid("t"),
           firstName:draft.firstName.trim() || undefined,
@@ -205,9 +207,10 @@ import "../components/teacher_constraints_dialog.js";
           classroomIds: draft.classroomIds.length ? draft.classroomIds.slice() : undefined,
           printColor: draft.printColor || undefined };
         if (all.some(x => x.name === nt.name)) { fLast.focus(); return false; }
-        all.push(nt);
-        if (window.APP.school._idx) window.APP.school._idx.teacherById[nt.id] = nt;
-        window.APP.audit.append({ entity:"teachers", op:"add", after:{...nt} });
+        window.APP.mutate("Add teacher", (school) => {
+          school.teachers.push(nt);
+          window.APP.audit.append({ entity:"teachers", op:"add", after:{...nt} });
+        });
       }
       D.closeSheet(); D.refresh(rows());
       return true;
@@ -248,11 +251,13 @@ import "../components/teacher_constraints_dialog.js";
     const srcRef = r._ref;
     const srcSnapshot = { ...srcRef };
     function applySettings(targetRef) {
-      const before = { ...targetRef };
-      COPYABLE_KEYS.forEach(k => {
-        if (srcSnapshot[k] !== undefined) targetRef[k] = deepClone(srcSnapshot[k]);
+      window.APP.mutate("Copy teacher settings", () => {
+        const before = { ...targetRef };
+        COPYABLE_KEYS.forEach(k => {
+          if (srcSnapshot[k] !== undefined) targetRef[k] = deepClone(srcSnapshot[k]);
+        });
+        window.APP.audit.append({ entity:"teachers", op:"copy", id:targetRef.id, before, after:{...targetRef} });
       });
-      window.APP.audit.append({ entity:"teachers", op:"copy", id:targetRef.id, before, after:{...targetRef} });
     }
     const all = rows();
     const others = all.filter(x => x.id !== r.id).map(x => ({
@@ -268,13 +273,17 @@ import "../components/teacher_constraints_dialog.js";
           lastName: (srcRef.lastName || "") + " (copy)" };
         if (srcRef.timeOff != null)    copy.timeOff = deepClone(srcRef.timeOff);
         if (srcRef.constraints)         copy.constraints = deepClone(srcRef.constraints);
-        list.push(copy);
-        if (window.APP.school._idx) window.APP.school._idx.teacherById[copy.id] = copy;
-        window.APP.audit.append({ entity:"teachers", op:"add", after:{...copy} });
+        window.APP.mutate("Duplicate teacher", (school) => {
+          school.teachers.push(copy);
+          window.APP.audit.append({ entity:"teachers", op:"add", after:{...copy} });
+        });
         D.refresh(rows());
       },
       onCopyToOne: (targetRef) => { applySettings(targetRef); D.refresh(rows()); },
-      onCopyToMany: (targetRefs) => { targetRefs.forEach(applySettings); D.refresh(rows()); },
+      onCopyToMany: (targetRefs) => {
+        window.APP.mutate("Copy teacher settings", () => targetRefs.forEach(applySettings));
+        D.refresh(rows());
+      },
     });
   }
 
@@ -298,14 +307,14 @@ import "../components/teacher_constraints_dialog.js";
       ],
       onApply: (fieldId, value, ids) => {
         const byId = {}; all.forEach(r => byId[r.id] = r._ref);
-        ids.forEach(id => {
+        window.APP.mutate("Batch edit teachers", () => ids.forEach(id => {
           const ref = byId[id]; if (!ref) return;
           const before = { ...ref };
           if (fieldId === "color") ref.color = value || undefined;
           else if (fieldId === "maxGapsPerDay") ref.maxGapsPerDay = value;
           else if (fieldId === "maxConsecutivePeriods") ref.maxConsecutivePeriods = value;
           window.APP.audit.append({ entity:"teachers", op:"batch", field:fieldId, id, before, after:{...ref} });
-        });
+        }));
         D.refresh(rows());
       },
     });
@@ -315,9 +324,11 @@ import "../components/teacher_constraints_dialog.js";
     const ref = r._ref;
     if (!window.TeacherConstraintsDialog) return;
     window.TeacherConstraintsDialog.open(ref, (next) => {
-      const before = ref.constraints;
-      ref.constraints = next;
-      window.APP.audit.append({ entity:"teachers", op:"constraints", id:ref.id, before, after:next });
+      window.APP.mutate("Edit teacher constraints", () => {
+        const before = ref.constraints;
+        ref.constraints = next;
+        window.APP.audit.append({ entity:"teachers", op:"constraints", id:ref.id, before, after:next });
+      });
       D.refresh(rows());
     });
   }
@@ -326,9 +337,11 @@ import "../components/teacher_constraints_dialog.js";
     const ref = r._ref;
     if (!window.TimeOffMatrix) return;
     window.TimeOffMatrix.open(ref, "teachers", (newTimeOff) => {
-      const before = ref.timeOff;
-      ref.timeOff = newTimeOff;
-      window.APP.audit.append({ entity:"teachers", op:"timeoff", id:ref.id, before, after:newTimeOff });
+      window.APP.mutate("Edit teacher time off", () => {
+        const before = ref.timeOff;
+        ref.timeOff = newTimeOff;
+        window.APP.audit.append({ entity:"teachers", op:"timeoff", id:ref.id, before, after:newTimeOff });
+      });
       D.refresh(rows());
     });
   }
@@ -370,8 +383,10 @@ import "../components/teacher_constraints_dialog.js";
           const all = window.APP.school.teachers;
           const i = all.findIndex(x => x.id === row._ref.id);
           if (i >= 0) {
-            const removed = all.splice(i, 1)[0];
-            window.APP.audit.append({ entity:"teachers", op:"remove", before:{...removed} });
+            window.APP.mutate("Delete teacher", () => {
+              const removed = all.splice(i, 1)[0];
+              window.APP.audit.append({ entity:"teachers", op:"remove", before:{...removed} });
+            });
             D.refresh(rows());
           }
           return;

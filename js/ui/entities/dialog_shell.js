@@ -424,8 +424,25 @@ import "../components/help_tooltip.js";
   }
 
   function buildEditSheet(opts) {
-    const form = el("form", { class:"chrx-ent-form",
-      onsubmit:(e)=>{ e.preventDefault(); opts.onSave && opts.onSave(); } });
+    let form;
+    function saveForm() {
+      const run = () => {
+        const result = opts.onSave && opts.onSave();
+        // Decorators such as EntityFieldGaps can apply fields after the host
+        // save creates/resolves the row, while still staying in this same
+        // transaction. A false result means validation rejected the save.
+        if (result !== false && typeof form.__chrxAfterSave === "function") {
+          form.__chrxAfterSave();
+        }
+        return result;
+      };
+      if (form.__chrxSaveTransaction && window.APP && typeof window.APP.mutate === "function") {
+        return window.APP.mutate(form.__chrxSaveTransaction, run);
+      }
+      return run();
+    }
+    form = el("form", { class:"chrx-ent-form",
+      onsubmit:(e)=>{ e.preventDefault(); saveForm(); } });
     (opts.fields || []).forEach(f => {
       form.appendChild(f.label === null ? f.control : buildField(f.label, f.control, f.helpText));
     });
@@ -447,7 +464,7 @@ import "../components/help_tooltip.js";
         if (typeof opts.onSave === "function") {
           // Implicit auto-save the current draft. onSave may return false on
           // validation failure to abort navigation.
-          const ok = opts.onSave();
+          const ok = saveForm();
           if (ok === false) return;
         }
         const target = siblings[i + delta];
@@ -767,8 +784,10 @@ import "../components/help_tooltip.js";
       el("div", { class:"chrx-ent-form__foot" },
         el("button", { type:"button", class:"chrx-btn", onclick:closeSheet }, "Cancel"),
         el("button", { type:"button", class:"chrx-btn chrx-btn--primary", onclick:()=>{
-          const before = ref.timeOff; ref.timeOff = s;
-          window.APP.audit.append({ entity, op:"timeoff", id:ref.id, before, after:s });
+          window.APP.mutate("Edit " + entity + " time off", () => {
+            const before = ref.timeOff; ref.timeOff = s;
+            window.APP.audit.append({ entity, op:"timeoff", id:ref.id, before, after:s });
+          });
           closeSheet(); if (onSave) onSave();
         } }, "Save"),
       ),

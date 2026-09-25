@@ -126,8 +126,15 @@ import "../ribbon/topbar.js";
   }
 
   function applyFix(card, target) {
-    card.day = target.d;
-    card.period = target.p;
+    const apply = () => {
+      card.day = target.d;
+      card.period = target.p;
+    };
+    // APP.mutate records the live application school. Keep the helper usable
+    // for the panel's detached/unit-test school objects too.
+    if (window.APP?.school && window.APP.school.cards?.includes(card) && typeof window.APP.mutate === "function") {
+      window.APP.mutate("Apply verification fix", apply);
+    } else apply();
     if (window.APP?.audit?.append) {
       window.APP.audit.append({ entity: "cards", op: "auto-fix",
         lessonId: card.lessonId, to: { d: target.d, p: target.p } });

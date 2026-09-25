@@ -84,8 +84,18 @@ import "../entities/holidays.js";
   function settings() {
     const s = school();
     if (!s) return {};
-    s.settings = s.settings || {};
-    return s.settings;
+    return s.settings || {};
+  }
+  function mutate(label, fn) {
+    const APP = window.APP;
+    if (APP && typeof APP.mutate === "function") return APP.mutate(label, fn);
+    return fn(school());
+  }
+  function setSetting(label, key, value) {
+    mutate(label, (S) => {
+      S.settings = S.settings || {};
+      S.settings[key] = value;
+    });
   }
   function commit(label) {
     flashPill("Saving…", "saving");
@@ -191,23 +201,25 @@ import "../entities/holidays.js";
     wrap.appendChild(section("School identity",
       row("School name",
         textInput(S.schoolName || "", v => {
-          const before = { schoolName: S.schoolName };
-          S.schoolName = (v || "").trim();
-          audit("rename", before, { schoolName: S.schoolName });
+          mutate("Rename school", (currentSchool) => {
+            const before = { schoolName: currentSchool.schoolName };
+            currentSchool.schoolName = (v || "").trim();
+            audit("rename", before, { schoolName: currentSchool.schoolName });
+          });
           commit("Name saved");
           const title = document.querySelector("#school-title, [data-school-name]");
-          if (title) title.textContent = S.schoolName;
+          if (title) title.textContent = school().schoolName;
         }, { maxlength: 120, placeholder: "e.g. GD Goenka Public School, Darbhanga" })),
       row("Academic year",
         textInput(s.year || `${new Date().getFullYear()}/${(new Date().getFullYear() + 1) % 100}`,
-          v => { s.year = v; commit(); }, { maxlength: 12, placeholder: "2026/27" })),
+          v => { setSetting("Save academic year", "year", v); commit(); }, { maxlength: 12, placeholder: "2026/27" })),
       row("Country",
-        selectInput(s.country || "India", COUNTRIES, v => { s.country = v; commit(); })),
+        selectInput(s.country || "India", COUNTRIES, v => { setSetting("Save country", "country", v); commit(); })),
       row("Region / state",
-        textInput(s.region || "", v => { s.region = v; commit(); },
+        textInput(s.region || "", v => { setSetting("Save region", "region", v); commit(); },
           { maxlength: 80, placeholder: "e.g. Bihar" })),
       row("Time zone",
-        selectInput(s.timezone || "Asia/Kolkata", TIMEZONES, v => { s.timezone = v; commit(); })),
+        selectInput(s.timezone || "Asia/Kolkata", TIMEZONES, v => { setSetting("Save time zone", "timezone", v); commit(); })),
     ));
 
     // Logo upload (data URL, optional)
@@ -227,14 +239,23 @@ import "../entities/holidays.js";
       }
       const r = new FileReader();
       r.onload = () => {
-        s.logoDataUrl = r.result;
+        mutate("Save school logo", (currentSchool) => {
+          currentSchool.settings = currentSchool.settings || {};
+          currentSchool.settings.logoDataUrl = r.result;
+        });
         logoImg.src = r.result;
         commit("Logo saved");
       };
       r.readAsDataURL(f);
     });
     const clearBtn = el("button", { class: "chrx-hub-btn", type: "button",
-      onclick: () => { delete s.logoDataUrl; logoImg.src = "assets/icon-192.png"; commit("Logo cleared"); } },
+      onclick: () => {
+        mutate("Clear school logo", (currentSchool) => {
+          if (currentSchool.settings) delete currentSchool.settings.logoDataUrl;
+        });
+        logoImg.src = "assets/icon-192.png";
+        commit("Logo cleared");
+      } },
       "Clear");
     logoBox.appendChild(logoImg);
     logoBox.appendChild(el("div", { class: "chrx-hub-logo__controls" },
@@ -257,19 +278,19 @@ import "../entities/holidays.js";
     const wrap = el("div", { class: "chrx-hub-pane" });
 
     const days = parseInt(s.daysPerWeek, 10) || 6;
-    s.daysPerWeek = days;
-    s.weekendMask = s.weekendMask || ((days === 5) ? [false, false, false, false, false, true, true]
-                                                  : [false, false, false, false, false, false, true]);
+    const weekendMask = Array.isArray(s.weekendMask) ? s.weekendMask :
+      ((days === 5) ? [false, false, false, false, false, true, true]
+                    : [false, false, false, false, false, false, true]);
 
     wrap.appendChild(section("Working days",
       row("Days per week",
         numInput(s.daysPerWeek, 1, 7, 1, v => {
-          s.daysPerWeek = v;
+          setSetting("Save days per week", "daysPerWeek", v);
           commit("Days per week saved");
           renderPane(); // toggle strip count
         })),
       row("Period start time",
-        textInput(s.periodStartTime || "07:30", v => { s.periodStartTime = v; commit(); },
+        textInput(s.periodStartTime || "07:30", v => { setSetting("Save period start time", "periodStartTime", v); commit(); },
           { type: "time" }),
         "Time of the first bell (used when generating defaults)"),
     ));
@@ -277,13 +298,18 @@ import "../entities/holidays.js";
     // Visual day strip
     const strip = el("div", { class: "chrx-hub-daystrip" });
     DAY_LABELS.forEach((label, i) => {
-      const off = s.weekendMask[i] === true;
+      const off = weekendMask[i] === true;
       const cell = el("button", {
         type: "button",
         class: "chrx-hub-daycell" + (off ? " is-off" : " is-on"),
         "aria-pressed": off ? "false" : "true",
         onclick: () => {
-          s.weekendMask[i] = !s.weekendMask[i];
+          mutate("Update weekend pattern", (S) => {
+            S.settings = S.settings || {};
+            const mask = Array.isArray(S.settings.weekendMask) ? S.settings.weekendMask.slice() : weekendMask.slice();
+            mask[i] = !mask[i];
+            S.settings.weekendMask = mask;
+          });
           commit("Weekend updated");
           renderPane();
         },
@@ -301,13 +327,13 @@ import "../entities/holidays.js";
 
     wrap.appendChild(section("Display options",
       row("Show day numbers instead of names",
-        toggle(!!s.showDayNumbers, v => { s.showDayNumbers = v; commit(); }),
+        toggle(!!s.showDayNumbers, v => { setSetting("Save day-number display", "showDayNumbers", v); commit(); }),
         "Useful for multi-week timetables (Day 1 / Day 2)"),
       row("Multi-week timetable",
-        toggle(!!s.multiWeek, v => { s.multiWeek = v; commit(); }),
+        toggle(!!s.multiWeek, v => { setSetting("Save multi-week setting", "multiWeek", v); commit(); }),
         "A / B / C week rotations (manage weeks via the Specification menu)"),
       row("Multi-term timetable",
-        toggle(!!s.multiTerm, v => { s.multiTerm = v; commit(); }),
+        toggle(!!s.multiTerm, v => { setSetting("Save multi-term setting", "multiTerm", v); commit(); }),
         "Different lesson sets per semester / term"),
     ));
 
@@ -327,10 +353,10 @@ import "../entities/holidays.js";
 
     wrap.appendChild(section("Quick toggles",
       row("Different bells on some days",
-        toggle(!!s.bellPerDay, v => { s.bellPerDay = v; commit(); }),
+        toggle(!!s.bellPerDay, v => { setSetting("Save per-day bell setting", "bellPerDay", v); commit(); }),
         "Reveals per-weekday overrides for individual periods"),
       row("Different bell schedules for different classes",
-        toggle(!!s.bellPerClass, v => { s.bellPerClass = v; commit(); }),
+        toggle(!!s.bellPerClass, v => { setSetting("Save per-class bell setting", "bellPerClass", v); commit(); }),
         `Multi-bell mode (${bells.length} schedule${bells.length === 1 ? "" : "s"} defined)`),
     ));
 
@@ -521,7 +547,7 @@ import "../entities/holidays.js";
 
     wrap.appendChild(section("Building-aware solving",
       row("Buildings affect solver",
-        toggle(!!s.buildingsAffectSolver, v => { s.buildingsAffectSolver = v; commit(); }),
+        toggle(!!s.buildingsAffectSolver, v => { setSetting("Save building solver setting", "buildingsAffectSolver", v); commit(); }),
         "When ON, transfer-time + class-in-one-building rules apply"),
     ));
 
@@ -572,29 +598,29 @@ import "../entities/holidays.js";
 
     wrap.appendChild(section("Print headers & footers",
       row("Header text",
-        textInput(s.printHeader || "", v => { s.printHeader = v; commit(); },
+        textInput(s.printHeader || "", v => { setSetting("Save print header", "printHeader", v); commit(); },
           { maxlength: 120, placeholder: "e.g. School name — Class timetable" })),
       row("Footer text",
-        textInput(s.printFooter || "", v => { s.printFooter = v; commit(); },
+        textInput(s.printFooter || "", v => { setSetting("Save print footer", "printFooter", v); commit(); },
           { maxlength: 120, placeholder: "e.g. Issued 19 May 2026 — Principal’s office" })),
       row("Default print font",
         selectInput(s.printFont || "Inter",
           ["Inter", "Helvetica", "Arial", "Times New Roman", "Georgia", "Courier"],
-          v => { s.printFont = v; commit(); })),
+          v => { setSetting("Save print font", "printFont", v); commit(); })),
       row("Print in colour",
-        toggle(s.printColor !== false, v => { s.printColor = v; commit(); }),
+        toggle(s.printColor !== false, v => { setSetting("Save print color", "printColor", v); commit(); }),
         "OFF = monochrome (smaller PDFs, no toner-hungry backgrounds)"),
     ));
 
     wrap.appendChild(section("What to show in printouts",
       row("Show bell times",
-        toggle(s.printShowBellTimes !== false, v => { s.printShowBellTimes = v; commit(); })),
+        toggle(s.printShowBellTimes !== false, v => { setSetting("Save printed bell visibility", "printShowBellTimes", v); commit(); })),
       row("Show teacher names",
-        toggle(s.printShowTeacherNames !== false, v => { s.printShowTeacherNames = v; commit(); })),
+        toggle(s.printShowTeacherNames !== false, v => { setSetting("Save printed teacher visibility", "printShowTeacherNames", v); commit(); })),
       row("Show classroom names",
-        toggle(s.printShowClassroomNames !== false, v => { s.printShowClassroomNames = v; commit(); })),
+        toggle(s.printShowClassroomNames !== false, v => { setSetting("Save printed classroom visibility", "printShowClassroomNames", v); commit(); })),
       row("Show subject short codes",
-        toggle(!!s.printShowSubjectShorts, v => { s.printShowSubjectShorts = v; commit(); })),
+        toggle(!!s.printShowSubjectShorts, v => { setSetting("Save printed subject codes", "printShowSubjectShorts", v); commit(); })),
     ));
 
     return wrap;
@@ -610,35 +636,35 @@ import "../entities/holidays.js";
     wrap.appendChild(section("Lesson basics",
       row("Default lesson duration (min)",
         numInput(s.defaultLessonDuration || 40, 20, 90, 5, v => {
-          s.defaultLessonDuration = v; commit(); }),
+          setSetting("Save lesson duration", "defaultLessonDuration", v); commit(); }),
         "Used when adding new lessons without an explicit duration"),
       row("Max cards per slot",
         numInput(s.maxCardsPerCell || 1, 1, 10, 1, v => {
-          s.maxCardsPerCell = v; commit(); }),
+          setSetting("Save max cards per slot", "maxCardsPerCell", v); commit(); }),
         "How many cards can share the same class-period cell (group teaching, splits)"),
       row("Periods per day",
         numInput(s.periodsPerDay || 8, 1, 20, 1, v => {
-          s.periodsPerDay = v; commit(); })),
+          setSetting("Save periods per day", "periodsPerDay", v); commit(); })),
     ));
 
     wrap.appendChild(section("Building transitions",
       row("Building transfer periods",
         numInput(s.transferTimePeriods || 0, 0, 5, 1, v => {
-          s.transferTimePeriods = v; commit(); }),
+          setSetting("Save building transfer periods", "transferTimePeriods", v); commit(); }),
         "Periods to leave free when a teacher switches buildings (0 = no penalty)"),
       row("Class in one building per day",
         toggle(!!s.classInOneBuildingPerDay, v => {
-          s.classInOneBuildingPerDay = v; commit(); }),
+          setSetting("Save single-building setting", "classInOneBuildingPerDay", v); commit(); }),
         "Prevents a section from ping-ponging between buildings on the same day"),
     ));
 
     wrap.appendChild(section("Verification thresholds",
       row("Max teaching periods per teacher per day",
         numInput(s.maxPeriodsPerTeacherPerDay || 7, 1, 12, 1, v => {
-          s.maxPeriodsPerTeacherPerDay = v; commit(); })),
+          setSetting("Save teacher daily limit", "maxPeriodsPerTeacherPerDay", v); commit(); })),
       row("Max consecutive periods per teacher",
         numInput(s.maxConsecutivePerTeacher || 4, 1, 8, 1, v => {
-          s.maxConsecutivePerTeacher = v; commit(); }),
+          setSetting("Save teacher consecutive limit", "maxConsecutivePerTeacher", v); commit(); }),
         "Triggers a soft-warning when a teacher has more than N back-to-back lessons"),
     ));
 
@@ -680,52 +706,55 @@ import "../entities/holidays.js";
     if (!S) return;
     if (!confirm("Load India / CBSE defaults? This sets working days, bell timing, and 3 standard breaks. Existing fields aren't overwritten unless empty.")) return;
 
-    const before = { settings: { ...s }, breaks: (S.breaks || []).slice(), bell: S.bell };
+    mutate("Load India defaults", (currentSchool) => {
+      currentSchool.settings = currentSchool.settings || {};
+      const current = currentSchool.settings;
+      const before = { settings: { ...current }, breaks: (currentSchool.breaks || []).slice(), bell: currentSchool.bell };
 
-    s.country = s.country || "India";
-    s.region = s.region || s.region;
-    s.timezone = s.timezone || "Asia/Kolkata";
-    s.daysPerWeek = s.daysPerWeek || 6;
-    s.weekendMask = s.weekendMask || [false, false, false, false, false, false, true];
-    s.periodStartTime = s.periodStartTime || "07:30";
-    s.defaultLessonDuration = s.defaultLessonDuration || 40;
-    s.periodsPerDay = s.periodsPerDay || 8;
-    s.maxCardsPerCell = s.maxCardsPerCell || 1;
+      current.country = current.country || "India";
+      current.region = current.region || current.region;
+      current.timezone = current.timezone || "Asia/Kolkata";
+      current.daysPerWeek = current.daysPerWeek || 6;
+      current.weekendMask = current.weekendMask || [false, false, false, false, false, false, true];
+      current.periodStartTime = current.periodStartTime || "07:30";
+      current.defaultLessonDuration = current.defaultLessonDuration || 40;
+      current.periodsPerDay = current.periodsPerDay || 8;
+      current.maxCardsPerCell = current.maxCardsPerCell || 1;
 
-    if (!S.bell || !Array.isArray(S.bell.periods) || !S.bell.periods.length) {
-      // CBSE-style 8 periods, 40 min each, with breaks accounted for
-      const startM = 7 * 60 + 30;
-      const periods = [];
-      let cur = startM;
-      for (let i = 1; i <= 8; i++) {
-        // After period 3, insert a 20-min recess gap; after period 5, 10-min fruit break
-        if (i === 4) cur += 20;
-        if (i === 6) cur += 10;
-        periods.push({
-          index: i, label: String(i),
-          startMin: cur, endMin: cur + 40,
-          isTeaching: true,
-          printinbells: true, printinclasses: true,
-          printinteachers: true, printinclassrooms: true,
-        });
-        cur += 40;
+      if (!currentSchool.bell || !Array.isArray(currentSchool.bell.periods) || !currentSchool.bell.periods.length) {
+        // CBSE-style 8 periods, 40 min each, with breaks accounted for
+        const startM = 7 * 60 + 30;
+        const periods = [];
+        let cur = startM;
+        for (let i = 1; i <= 8; i++) {
+          if (i === 4) cur += 20;
+          if (i === 6) cur += 10;
+          periods.push({
+            index: i, label: String(i),
+            startMin: cur, endMin: cur + 40,
+            isTeaching: true,
+            printinbells: true, printinclasses: true,
+            printinteachers: true, printinclassrooms: true,
+          });
+          cur += 40;
+        }
+        currentSchool.bell = { periods };
       }
-      S.bell = { periods };
-    }
 
-    if (!Array.isArray(S.breaks) || !S.breaks.length) {
-      S.breaks = [
-        { id: "br_recess",  name: "Recess",      short: "REC",  starttime: "09:30", endtime: "09:50",
-          doubleNotSpan: true,  transitionOk: true,  printtext: "Recess" },
-        { id: "br_fruit",   name: "Fruit Break", short: "FRT",  starttime: "11:00", endtime: "11:10",
-          doubleNotSpan: false, transitionOk: false, printtext: "Fruit break" },
-        { id: "br_lunch",   name: "Lunch",       short: "LUN",  starttime: "12:30", endtime: "13:00",
-          doubleNotSpan: true,  transitionOk: true,  printtext: "Lunch" },
-      ];
-    }
+      if (!Array.isArray(currentSchool.breaks) || !currentSchool.breaks.length) {
+        currentSchool.breaks = [
+          { id: "br_recess",  name: "Recess",      short: "REC",  starttime: "09:30", endtime: "09:50",
+            doubleNotSpan: true,  transitionOk: true,  printtext: "Recess" },
+          { id: "br_fruit",   name: "Fruit Break", short: "FRT",  starttime: "11:00", endtime: "11:10",
+            doubleNotSpan: false, transitionOk: false, printtext: "Fruit break" },
+          { id: "br_lunch",   name: "Lunch",       short: "LUN",  starttime: "12:30", endtime: "13:00",
+            doubleNotSpan: true,  transitionOk: true,  printtext: "Lunch" },
+        ];
+      }
 
-    audit("apply-defaults", before, {
-      settings: { ...s }, breaks: S.breaks.slice(), bell: S.bell,
+      audit("apply-defaults", before, {
+        settings: { ...current }, breaks: currentSchool.breaks.slice(), bell: currentSchool.bell,
+      });
     });
     commit("India defaults loaded");
     renderPane();

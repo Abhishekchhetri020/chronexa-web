@@ -98,15 +98,19 @@ import "./dialog_shell.js";
           hideempty: Object.assign({}, draft.hideempty),
         };
         if (!isNew) {
-          const before = { ...ref };
-          Object.assign(ref, payload);
-          window.APP.audit.append({ entity:"ttreports", op:"update",
-            before, after:{...ref} });
+          window.APP.mutate("Edit print report", () => {
+            const before = { ...ref };
+            Object.assign(ref, payload);
+            window.APP.audit.append({ entity:"ttreports", op:"update",
+              before, after:{...ref} });
+          });
         } else {
           if (all.some(x => x.name === payload.name)) { fName.focus(); return; }
           payload.id = D.uid("rep");
-          all.push(payload);
-          window.APP.audit.append({ entity:"ttreports", op:"add", after:{...payload} });
+          window.APP.mutate("Add print report", (school) => {
+            school.ttreports.push(payload);
+            window.APP.audit.append({ entity:"ttreports", op:"add", after:{...payload} });
+          });
         }
         D.closeSheet(); D.refresh(rows());
       },
@@ -125,9 +129,11 @@ import "./dialog_shell.js";
           const all = ensure();
           const i = all.findIndex(x => x.id === row._ref.id);
           if (i >= 0) {
-            const removed = all.splice(i,1)[0];
-            window.APP.audit.append({ entity:"ttreports", op:"remove",
-              before:{...removed} });
+            window.APP.mutate("Delete print report", () => {
+              const removed = all.splice(i,1)[0];
+              window.APP.audit.append({ entity:"ttreports", op:"remove",
+                before:{...removed} });
+            });
             D.refresh(rows());
           }
         }

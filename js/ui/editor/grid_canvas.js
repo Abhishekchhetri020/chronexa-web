@@ -1629,14 +1629,14 @@ window.Editor = (function () {
       window.CardInHand.cancel();
     }
     
+    // Keep the picked card in the model until the user completes an action.
+    // This makes pickup itself non-mutating: Delete, place, move, and swap can
+    // each be recorded as exactly one APP.mutate transaction, while Escape is
+    // a true no-op. CardInHand filters this retained source from drop targets.
     const cardsBefore = snapshotCards();
-    removeCardFromSchool(lessonId, day, period);
-    window.APP.editor.cardInHand = { cardId, lessonId, originDay: day, originPeriod: period, originClassroomId, rowKey, mode: "click" };
+    window.APP.editor.cardInHand = { cardId, lessonId, originDay: day, originPeriod: period, originClassroomId, rowKey, sourceRetained: true, mode: "click" };
     syncCardInHandClass();
-    dispatch("editor:pickup", { cardId, lessonId, day, period, originClassroomId, rowKey, mode: "click", cardsBefore });
-    
-    const host = vk.closest(".chrx-editor");
-    if (host) render(host);
+    dispatch("editor:pickup", { cardId, lessonId, day, period, originClassroomId, rowKey, sourceRetained: true, mode: "click", cardsBefore });
   }
 
   function startDragPickup(vk, startX, startY, pointerId, grabRatioX, grabRatioY) {

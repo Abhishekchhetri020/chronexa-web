@@ -562,16 +562,24 @@ import "./placement_suggestions.js";
     const S = window.APP && window.APP.school;
     const before = pickupSnap; pickupSnap = null;
     let detail = null;
-   if (S && inHand && !inHand.fromPending &&
-       Number.isFinite(inHand.originDay) && Number.isFinite(inHand.originPeriod)) {
-     const bLen = inHand.blockLen || 1;
-     for (let k = 0; k < bLen; k++) {
-       const i = S.cards.findIndex(c =>
-         c.lessonId === inHand.lessonId && c.day === inHand.originDay && c.period === inHand.originPeriod + k);
-       if (i !== -1) S.cards.splice(i, 1);
-     }
-     detail = { cardId: inHand.cardId, lessonId: inHand.lessonId, unplaced: true };
-   }
+    if (S && inHand && !inHand.fromPending &&
+        Number.isFinite(inHand.originDay) && Number.isFinite(inHand.originPeriod)) {
+      const hand = inHand;
+      const remove = (school) => {
+        const bLen = hand.blockLen || 1;
+        for (let k = 0; k < bLen; k++) {
+          const i = school.cards.findIndex(c =>
+            c.lessonId === hand.lessonId && c.day === hand.originDay && c.period === hand.originPeriod + k);
+          if (i !== -1) school.cards.splice(i, 1);
+        }
+      };
+      if (window.APP && typeof window.APP.mutate === "function") {
+        window.APP.mutate("Unplace card", remove);
+      } else {
+        remove(S);
+      }
+      detail = { cardId: hand.cardId, lessonId: hand.lessonId, unplaced: true };
+    }
     if (window.APP.editor) window.APP.editor.cardInHand = null;
     cleanup();
     rerender(null, before);
@@ -762,24 +770,17 @@ import "./placement_suggestions.js";
       }
     }
 
-    // Push onto undo stack so AI → Cleanup last card move can revert it.
-    // Skip the stack for same-slot drops (round-trip is a no-op for the user).
-    const auditCommit = window.APP && window.APP.audit && typeof window.APP.audit.commit === "function";
-    if (auditCommit && !isSameSlot) {
+    // Pickup is deliberately non-mutating, so the completed placement/move is
+    // recorded directly as one structural transaction. Avoid the legacy
+    // replay adapter here: its callback-based undo restores by semantic lookup
+    // and can change cards-array ordering, whereas C1 patches restore it exactly.
+    if (window.APP && typeof window.APP.mutate === "function" && !isSameSlot) {
       const label = fromPending ? "Place card" : "Move card";
-      window.APP.audit.commit({
-        label,
-        do() {
-          applyPlacement();
-          rerender({ lessonId, day, period }, before);
-          // Dispatch after the DOM update so halo/focus listeners see fresh nodes.
-          document.dispatchEvent(new CustomEvent("editor:place", { detail: { cardId, lessonId, day, period, forced } }));
-        },
-        undo() {
-          revertPlacement();
-          document.dispatchEvent(new CustomEvent("editor:unplace", { detail: { cardId, lessonId, day, period, originDay, originPeriod, fromPending } }));
-          rerender();
-        },
+      window.APP.mutate(label, () => {
+        applyPlacement();
+        rerender({ lessonId, day, period }, before);
+        // Dispatch after the DOM update so halo/focus listeners see fresh nodes.
+        document.dispatchEvent(new CustomEvent("editor:place", { detail: { cardId, lessonId, day, period, forced } }));
       });
     } else {
       applyPlacement();
@@ -1487,13 +1488,16 @@ import "./placement_suggestions.js";
       }
     }
     
-    if (!rowKey) return;
-
     // Same row-scoping as drag mode: rows this card can never land in recede.
     dimNonTargetRows(dropRowKeySet(lesson, perspective));
 
     const S2 = window.APP && window.APP.school;
-    const slots = document.querySelectorAll(`.chrx-editor .chrx-row[data-row="${rowKey}"] .chrx-slot:not(.out-of-bell)`);
+    // Focus view renders one already-selected row without a `.chrx-row` data
+    // key. Its board is still scoped to the selected lesson row, so inspect
+    // all of its slots when the row key is absent.
+    const slots = rowKey
+      ? document.querySelectorAll(`.chrx-editor .chrx-row[data-row="${rowKey}"] .chrx-slot:not(.out-of-bell)`)
+      : document.querySelectorAll(".chrx-editor .chrx-slot:not(.out-of-bell)");
     for (const slot of slots) {
       const d = parseInt(slot.dataset.day, 10);
       const p = parseInt(slot.dataset.period, 10);
@@ -1673,31 +1677,16 @@ import "./placement_suggestions.js";
     // Diff baseline from the original pickup — pickUpDisplaced() → pickup()
     // re-baselines pickupSnap for the displaced card's own journey.
     const before = pickupSnap;
-    const auditCommit = window.APP && window.APP.audit && typeof window.APP.audit.commit === "function";
-    if (auditCommit) {
-      window.APP.audit.commit({
-        label: "Swap cards",
-        do() {
-          applyDisplacement();
-          rerender(null, before);
-          document.dispatchEvent(new CustomEvent("editor:place", { detail: { lessonId: lessonIdA, day: dayB, period: periodB, forced } }));
-          pickUpDisplaced();
-        },
-        undo() {
-          window.CardInHand._cleanup();
-          revertDisplacement();
-          document.dispatchEvent(new CustomEvent("editor:unplace", { detail: { lessonId: lessonIdA, day: dayA, period: periodA } }));
-          rerender();
-          if (cardA) {
-            window.CardInHand.pickup(cardA);
-          }
-        }
-      });
-    } else {
+    const apply = () => {
       applyDisplacement();
       rerender(null, before);
       document.dispatchEvent(new CustomEvent("editor:place", { detail: { lessonId: lessonIdA, day: dayB, period: periodB, forced } }));
       pickUpDisplaced();
+    };
+    if (window.APP && typeof window.APP.mutate === "function") {
+      window.APP.mutate("Swap cards", apply);
+    } else {
+      apply();
     }
   }
 

@@ -113,16 +113,18 @@ import "../ribbon/topbar.js";
       `Found ${rows.length} cardrelationships in HAR. Import will merge with existing ${existing} relations. Continue?`
     )) return;
 
-    APP.school.relations = APP.school.relations || [];
     const mapped = rows.map(mapRowToRelation);
-    // Skip rows with duplicate IDs (already present)
-    const ids = new Set(APP.school.relations.map(r => r.id));
     let added = 0;
-    for (const r of mapped) {
-      if (ids.has(r.id)) continue;
-      APP.school.relations.push(r);
-      ids.add(r.id); added++;
-    }
+    APP.mutate("Import card relationships", (school) => {
+      school.relations = school.relations || [];
+      // Skip rows with duplicate IDs (already present)
+      const ids = new Set(school.relations.map(r => r.id));
+      for (const r of mapped) {
+        if (ids.has(r.id)) continue;
+        school.relations.push(r);
+        ids.add(r.id); added++;
+      }
+    });
     if (window.APP.audit?.append) {
       APP.audit.append({ entity: "relations", op: "har-import", added, total: APP.school.relations.length });
     }

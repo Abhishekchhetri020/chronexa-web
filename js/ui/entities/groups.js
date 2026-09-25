@@ -90,16 +90,20 @@ import "./dialog_shell.js";
           divisionTag: parseInt(draft.divisionTag, 10) || 0,
         };
         if (!isNew) {
-          const before = { ...ref };
-          Object.assign(ref, payload);
-          delete ref.classid;
-          delete ref.entireclass;
-          window.APP.audit.append({ entity:"groups", op:"update",
-            before, after:{...ref} });
+          window.APP.mutate("Edit group", () => {
+            const before = { ...ref };
+            Object.assign(ref, payload);
+            delete ref.classid;
+            delete ref.entireclass;
+            window.APP.audit.append({ entity:"groups", op:"update",
+              before, after:{...ref} });
+          });
         } else {
           payload.id = D.uid("g");
-          all.push(payload);
-          window.APP.audit.append({ entity:"groups", op:"add", after:{...payload} });
+          window.APP.mutate("Add group", (school) => {
+            school.groups.push(payload);
+            window.APP.audit.append({ entity:"groups", op:"add", after:{...payload} });
+          });
         }
         D.closeSheet(); D.refresh(rows());
         document.dispatchEvent(new CustomEvent("entity:changed", { detail: { entity:"groups" } }));
@@ -119,9 +123,11 @@ import "./dialog_shell.js";
           const all = ensure();
           const i = all.findIndex(x => x.id === row._ref.id);
           if (i >= 0) {
-            const removed = all.splice(i,1)[0];
-            window.APP.audit.append({ entity:"groups", op:"remove",
-              before:{...removed} });
+            window.APP.mutate("Delete group", () => {
+              const removed = all.splice(i,1)[0];
+              window.APP.audit.append({ entity:"groups", op:"remove",
+                before:{...removed} });
+            });
             D.refresh(rows());
             document.dispatchEvent(new CustomEvent("entity:changed", { detail: { entity:"groups" } }));
           }

@@ -3,28 +3,19 @@ import "../state.js";
 import "../wizard/create_new.js";
 import "./topbar.js";
 
-/* Client-side undo / redo command stack.
+/* Ribbon adapter for the C1 transaction core.
  *
- * Consumers (Agent E grid, Agent F entity dialogs) call:
- *   APP.audit.commit({ label, do() {...}, undo() {...} })
- * The first call invokes do() and pushes onto undoStack.
- *
- * Keyboard: ⌘Z = undo, ⇧⌘Z / ⌘Y = redo (dispatched by topbar.js).
- * Menus check APP.audit.undoStack.length / redoStack.length to gate buttons.
- *
- * Listens for legacy 'app:editor-commit' events as a courtesy hook so existing
- * code can opt in without modification:
- *   window.dispatchEvent(new CustomEvent("app:editor-commit", { detail: cmd }))
+ * New code calls APP.mutate(label, fn). The historical command shape remains
+ * available to the editor while it is migrated: its `do()` callback runs
+ * inside APP.mutate, so the patch recorder owns the undo/redo operation and
+ * the old `undo()` callback is intentionally no longer replayed.
  */
 (function () {
   "use strict";
   const APP = window.APP;
   const notify = window._chrxNotify || console.log;
 
-  const MAX = 100;
   const audit = APP.audit = APP.audit || {};
-  audit.undoStack = [];
-  audit.redoStack = [];
   audit._log = audit._log || [];
 
   /* append(record) — used by entity dialogs to log changes.
@@ -48,11 +39,14 @@ import "./topbar.js";
 
   audit.commit = function (cmd) {
     if (!cmd || typeof cmd.do !== "function" || typeof cmd.undo !== "function") return;
-    try { cmd.do(); } catch (e) { console.error("[audit] do() failed:", e); return; }
-    audit.undoStack.push(cmd);
-    if (audit.undoStack.length > MAX) audit.undoStack.shift();
-    audit.redoStack.length = 0;
-    notify(cmd.label ? "Done: " + cmd.label : "Done", "info");
+    try {
+      // The transaction core records exact patches.  The legacy undo callback
+      // is retained in the command contract for callers, but must not replay
+      // semantic operations: those can drift after a later edit and can also
+      // bypass the exact array/object shape captured by APP.mutate.
+      APP.mutate(cmd.label || "Change", () => cmd.do());
+      notify(cmd.label ? "Done: " + cmd.label : "Done", "info");
+    } catch (e) { console.error("[audit] do() failed:", e); return; }
   };
   // Plan D: brief grid flash so the user sees an undo/redo took effect. Runs
   // after the command's re-render (.chrx-grid-scroll is freshly rebuilt).
@@ -64,21 +58,19 @@ import "./topbar.js";
     setTimeout(() => g.classList.remove("chrx-grid-flash"), 480);
   }
   audit.undo = function () {
-    const cmd = audit.undoStack.pop();
-    if (!cmd) { notify("Nothing to undo"); return; }
-    try { cmd.undo(); audit.redoStack.push(cmd); flashGrid(); notify("Undo · " + (cmd.label || "")); }
+    if (!APP.history.canUndo) { notify("Nothing to undo"); return; }
+    const entry = APP.history.peek();
+    try { APP.undo(); flashGrid(); notify("Undo · " + (entry?.label || "")); }
     catch (e) { console.error(e); notify("Undo failed: " + e.message, "error"); }
   };
   audit.redo = function () {
-    const cmd = audit.redoStack.pop();
-    if (!cmd) { notify("Nothing to redo"); return; }
-    try { cmd.do(); audit.undoStack.push(cmd); flashGrid(); notify("Redo · " + (cmd.label || "")); }
+    if (!APP.history.canRedo) { notify("Nothing to redo"); return; }
+    try { APP.redo(); flashGrid(); notify("Redo"); }
     catch (e) { console.error(e); notify("Redo failed: " + e.message, "error"); }
   };
-  audit.clear = function () { audit.undoStack.length = 0; audit.redoStack.length = 0; };
+  audit.clear = function () { APP.history.clear(); };
 
   window.addEventListener("app:undo",          audit.undo);
   window.addEventListener("app:redo",          audit.redo);
   window.addEventListener("app:editor-commit", (e) => audit.commit(e.detail));
-  window.addEventListener("app:school-loaded", () => audit.clear());
 })();

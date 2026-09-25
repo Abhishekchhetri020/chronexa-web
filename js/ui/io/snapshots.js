@@ -62,9 +62,14 @@ import "../ribbon/topbar.js";
     const s = list.find(x => x.id === id);
     if (!s) { notify("Snapshot not found.", "error"); return; }
     if (!confirm(`Restore '${s.note}' from ${new Date(s.ts).toLocaleString()}? Current state will be lost.`)) return;
-    APP.school = structuredClone ? structuredClone(s.payload) : JSON.parse(JSON.stringify(s.payload));
-    if (window.CreateNew?.refreshIndex) window.CreateNew.refreshIndex();
-    window.dispatchEvent(new CustomEvent("app:school-loaded", { detail: { source: "snapshot", id } }));
+    const restored = structuredClone ? structuredClone(s.payload) : JSON.parse(JSON.stringify(s.payload));
+    APP.mutate("Restore snapshot", (school) => {
+      for (const key of Object.keys(school)) {
+        if (key !== "_idx" && !Object.prototype.hasOwnProperty.call(restored, key)) delete school[key];
+      }
+      for (const key of Object.keys(restored)) school[key] = restored[key];
+    });
+    window.dispatchEvent(new CustomEvent("entity:changed", { detail: { entity: "school", source: "snapshot", id } }));
     if (window.APP.audit?.append) APP.audit.append({ entity: "school", op: "restore-snapshot", id });
     notify(`↶ Restored from snapshot '${s.note}'.`);
   }

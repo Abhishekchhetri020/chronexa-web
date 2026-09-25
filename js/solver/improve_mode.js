@@ -98,9 +98,10 @@
     // Sort by descending per-card penalty
     cards.sort((a, b) => cardScore(school, b) - cardScore(school, a));
 
-    for (let i = 0; i < cards.length && performance.now() < deadline; i++) {
-      if (attempts >= opts.maxSwapsTried) break;
-      const a = cards[i];
+    const applySearch = () => {
+      for (let i = 0; i < cards.length && performance.now() < deadline; i++) {
+        if (attempts >= opts.maxSwapsTried) break;
+        const a = cards[i];
       // Candidate partners sampled across the WHOLE penalty spectrum — the
       // old "next 20 in the sorted list" paired high-penalty cards only with
       // other high-penalty cards, which rarely yields an accepted swap.
@@ -110,24 +111,31 @@
       for (let j = i + 1; j < cards.length && candidates.length < 20; j += step) {
         candidates.push(cards[j]);
       }
-      for (const b of candidates) {
-        attempts++;
-        if (!compatibleForSwap(school, a, b)) continue;
-        if (trySwap(school, a, b)) {
-          swapsMade++;
-          if (opts.onSwap) try { opts.onSwap({ a, b, swapsMade }); } catch {}
-          break;
+        for (const b of candidates) {
+          attempts++;
+          if (!compatibleForSwap(school, a, b)) continue;
+          if (trySwap(school, a, b)) {
+            swapsMade++;
+            if (opts.onSwap) try { opts.onSwap({ a, b, swapsMade }); } catch {}
+            break;
+          }
         }
       }
-    }
-
-    let endScore = totalScore(school);
-    if (endScore > startScore) {
-      // Locally-improving swaps made the GLOBAL score worse — roll back.
-      for (const s of snapshot) { s.c.day = s.day; s.c.period = s.period; }
-      endScore = startScore;
-      swapsMade = 0;
-    }
+    };
+    let endScore = startScore;
+    const improve = () => {
+      applySearch();
+      endScore = totalScore(school);
+      if (endScore > startScore) {
+        // Locally-improving swaps made the GLOBAL score worse — roll back in
+        // the same user transaction, so Improve is never two history steps.
+        for (const s of snapshot) { s.c.day = s.day; s.c.period = s.period; }
+        endScore = startScore;
+        swapsMade = 0;
+      }
+    };
+    if (window.APP?.mutate && school === window.APP.school) window.APP.mutate("Improve timetable", improve);
+    else improve();
     const improved = startScore - endScore;
     if (window.APP?.audit?.append) {
       window.APP.audit.append({ entity: "cards", op: "improve",

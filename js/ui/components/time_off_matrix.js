@@ -247,13 +247,13 @@ import "../entities/dialog_shell.js";
         onConfirm: (ids) => {
           if (!ids.length) return;
           const snapshot = state.map(row => row.slice());
-          ids.forEach(id => {
+          window.APP.mutate(`Set ${noun} time off for multiple`, () => ids.forEach(id => {
             const target = others.find(e => e.id === id);
             if (!target) return;
             const before = target.timeOff;
             target.timeOff = snapshot.map(row => row.slice());
             window.APP.audit.append({ entity: kind, op:"timeoff", id, before, after:target.timeOff });
-          });
+          }));
         },
       });
     }

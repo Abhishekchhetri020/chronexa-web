@@ -42,7 +42,8 @@ import "../entities/dialog_shell.js";
     if (!APP.school) {
       (window._chrxNotify || console.log)("Open a timetable first.", "error"); return;
     }
-    const caps = load();
+    // Keep dialog edits local until Save so cancelling does not mutate school.
+    const caps = load().map(c => ({ ...c }));
     const body = el("div");
 
     const intro = el("p", { style: "font-size:11px;color:#64748b;margin:0 0 10px" },
@@ -101,10 +102,14 @@ import "../entities/dialog_shell.js";
       onclick: () => D.closeSheet() }, "Close");
     const saveBtn = el("button", { type: "button", class: "chrx-btn chrx-btn--primary",
       onclick: () => {
-        APP.school.settings.tagDailyCaps = caps.filter(c => c.tag && c.tag.trim());
+        const next = caps.filter(c => c.tag && c.tag.trim()).map(c => ({ ...c }));
+        APP.mutate("Edit tag daily caps", (school) => {
+          school.settings = school.settings || {};
+          school.settings.tagDailyCaps = next;
+        });
         if (APP.audit && APP.audit.append) {
           APP.audit.append({ entity: "settings", op: "tagDailyCaps",
-            after: APP.school.settings.tagDailyCaps.slice() });
+            after: next.slice() });
         }
         D.closeSheet();
         (window._chrxNotify || function () {})("Tag caps saved", "info");

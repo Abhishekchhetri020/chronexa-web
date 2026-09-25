@@ -1,3 +1,5 @@
+import "./core/mutate.js";
+
 /**
  * Global app state — single shared object so other modules don't have to import.
  *
@@ -10,14 +12,13 @@
  *
  * Modules read/write APP directly. main.js owns navigation + listeners.
  */
-window.APP = window.APP || {
-  lang: "en",
-  step: 1,
-  school: null,
-  filter: "",
-  day: 0,                 // Monday default
-  dirty: new Set(),
-};
+window.APP = window.APP || {};
+if (window.APP.lang == null) window.APP.lang = "en";
+if (window.APP.step == null) window.APP.step = 1;
+if (!Object.prototype.hasOwnProperty.call(window.APP, "school")) window.APP.school = null;
+if (window.APP.filter == null) window.APP.filter = "";
+if (window.APP.day == null) window.APP.day = 0;                 // Monday default
+if (!(window.APP.dirty instanceof Set)) window.APP.dirty = new Set();
 
 // Chronexa Web
 

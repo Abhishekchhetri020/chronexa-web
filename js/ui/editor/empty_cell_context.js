@@ -98,11 +98,9 @@ import "./placement_validator.js";
         { detail: { lessonId, day, period } }));
       rerender();
     }
-    if (window.APP && window.APP.audit && typeof window.APP.audit.commit === "function") {
-      window.APP.audit.commit({ label: "Place card", do: doIt, undo: undoIt });
-    } else {
-      doIt();
-    }
+    if (window.APP && typeof window.APP.mutate === "function") {
+      window.APP.mutate("Place card", doIt);
+    } else doIt();
   }
   function rerender() {
     const host = document.querySelector(".chrx-editor");

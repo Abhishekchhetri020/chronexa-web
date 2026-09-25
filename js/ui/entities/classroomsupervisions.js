@@ -134,15 +134,20 @@ import "./dialog_shell.js";
           fTeach.focus(); return;
         }
         if (!isNew) {
-          const ref = r._ref; const before = { ...ref };
-          Object.assign(ref, payload);
-          window.APP.audit.append({ entity:"classroomsupervisions", op:"update",
-            before, after:{...ref} });
+          const ref = r._ref;
+          window.APP.mutate("Edit supervision", () => {
+            const before = { ...ref };
+            Object.assign(ref, payload);
+            window.APP.audit.append({ entity:"classroomsupervisions", op:"update",
+              before, after:{...ref} });
+          });
         } else {
           payload.id = D.uid("sup");
-          all.push(payload);
-          window.APP.audit.append({ entity:"classroomsupervisions", op:"add",
-            after:{...payload} });
+          window.APP.mutate("Add supervision", (school) => {
+            school.classroomsupervisions.push(payload);
+            window.APP.audit.append({ entity:"classroomsupervisions", op:"add",
+              after:{...payload} });
+          });
         }
         D.closeSheet(); D.refresh(rows());
       },
@@ -161,9 +166,11 @@ import "./dialog_shell.js";
           const all = ensure();
           const i = all.findIndex(x => x.id === row._ref.id);
           if (i >= 0) {
-            const removed = all.splice(i,1)[0];
-            window.APP.audit.append({ entity:"classroomsupervisions", op:"remove",
-              before:{...removed} });
+            window.APP.mutate("Delete supervision", () => {
+              const removed = all.splice(i,1)[0];
+              window.APP.audit.append({ entity:"classroomsupervisions", op:"remove",
+                before:{...removed} });
+            });
             D.refresh(rows());
           }
         }

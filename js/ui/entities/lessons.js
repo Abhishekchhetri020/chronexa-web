@@ -898,28 +898,30 @@ import "./dialog_shell.js";
 
         if (!isNew) {
           const l = r._ref;
-          const before = { ...l };
-          l.subjectId = draft.subjectId;
-          l.classIds = draft.classIds.slice();
-          l.teacherIds = draft.teacherIds.slice();
-          l.periodsPerWeek = draft.periodsPerWeek;
-          l.lessonLength = draft.lessonLength;
-          l.isLabDouble = draft.lessonLength >= 2 || undefined;
-          l.classGroupMap = Object.keys(cleanGroupMap).length ? cleanGroupMap : undefined;
-          l.preferredRoomId = roomFields.preferredRoomId;
-          l.classroomIdsByCard = roomFields.classroomIdsByCard;
-          l.classroomIdsExpansion = roomFields.classroomIdsExpansion;
-          l.classroomIdsExpanded = roomFields.classroomIdsExpanded;
-          l.wildcardTeacher = draft.wildcardTeacher ? true : undefined;
-          l.wildcardRoom = draft.wildcardRoom ? true : undefined;
-          l.daysDefId = draft.daysDefId || undefined;
-          l.weeksDefId = draft.weeksDefId || undefined;
-          l.termsDefId = draft.termsDefId || undefined;
-          l.fixedDay = draft.fixedDay !== "" ? parseInt(draft.fixedDay, 10) : undefined;
-          l.fixedPeriod = draft.fixedPeriod !== "" ? parseInt(draft.fixedPeriod, 10) : undefined;
-          l.maxstudents = draft.maxstudents !== "" ? parseInt(draft.maxstudents, 10) : undefined;
-          l.tags = parseTags(draft.tags);
-          window.APP.audit.append({ entity:"lessons", op:"update", before, after:{...l} });
+          window.APP.mutate("Edit lesson", () => {
+            const before = { ...l };
+            l.subjectId = draft.subjectId;
+            l.classIds = draft.classIds.slice();
+            l.teacherIds = draft.teacherIds.slice();
+            l.periodsPerWeek = draft.periodsPerWeek;
+            l.lessonLength = draft.lessonLength;
+            l.isLabDouble = draft.lessonLength >= 2 || undefined;
+            l.classGroupMap = Object.keys(cleanGroupMap).length ? cleanGroupMap : undefined;
+            l.preferredRoomId = roomFields.preferredRoomId;
+            l.classroomIdsByCard = roomFields.classroomIdsByCard;
+            l.classroomIdsExpansion = roomFields.classroomIdsExpansion;
+            l.classroomIdsExpanded = roomFields.classroomIdsExpanded;
+            l.wildcardTeacher = draft.wildcardTeacher ? true : undefined;
+            l.wildcardRoom = draft.wildcardRoom ? true : undefined;
+            l.daysDefId = draft.daysDefId || undefined;
+            l.weeksDefId = draft.weeksDefId || undefined;
+            l.termsDefId = draft.termsDefId || undefined;
+            l.fixedDay = draft.fixedDay !== "" ? parseInt(draft.fixedDay, 10) : undefined;
+            l.fixedPeriod = draft.fixedPeriod !== "" ? parseInt(draft.fixedPeriod, 10) : undefined;
+            l.maxstudents = draft.maxstudents !== "" ? parseInt(draft.maxstudents, 10) : undefined;
+            l.tags = parseTags(draft.tags);
+            window.APP.audit.append({ entity:"lessons", op:"update", before, after:{...l} });
+          });
         } else {
           const nl = { id:D.uid("l"),
             subjectId:draft.subjectId, classIds:draft.classIds.slice(),
@@ -941,9 +943,10 @@ import "./dialog_shell.js";
             fixedPeriod: draft.fixedPeriod !== "" ? parseInt(draft.fixedPeriod, 10) : undefined,
             maxstudents: draft.maxstudents !== "" ? parseInt(draft.maxstudents, 10) : undefined,
             tags: parseTags(draft.tags) };
-          all.push(nl);
-          if (s._idx) s._idx.lessonById[nl.id] = nl;
-          window.APP.audit.append({ entity:"lessons", op:"add", after:{...nl} });
+          window.APP.mutate("Add lesson", (school) => {
+            school.lessons.push(nl);
+            window.APP.audit.append({ entity:"lessons", op:"add", after:{...nl} });
+          });
         }
         D.closeSheet(); D.refresh(rows());
         // Notify editor / autosave / index consumers that a lesson
@@ -974,12 +977,14 @@ import "./dialog_shell.js";
         if (cmd === "delete" && allRows && allRows.length) {
           const all = s.lessons;
           const idsToRemove = new Set(allRows.map(r => r._ref.id));
-          for (let i = all.length - 1; i >= 0; i--) {
-            if (idsToRemove.has(all[i].id)) {
-              const removed = all.splice(i, 1)[0];
-              window.APP.audit.append({ entity:"lessons", op:"remove", before:{...removed} });
+          window.APP.mutate("Delete lessons", () => {
+            for (let i = all.length - 1; i >= 0; i--) {
+              if (idsToRemove.has(all[i].id)) {
+                const removed = all.splice(i, 1)[0];
+                window.APP.audit.append({ entity:"lessons", op:"remove", before:{...removed} });
+              }
             }
-          }
+          });
           D.refresh(rows());
           window.dispatchEvent(new CustomEvent("entity:changed", { detail: { entity: "lessons" } }));
           return;
@@ -1047,14 +1052,15 @@ import "./dialog_shell.js";
 
   function doDuplicate(selectedRows) {
     const s = window.APP.school;
-    for (const r of selectedRows) {
-      const src = r._ref;
-      const dup = { ...src, id: D.uid("l"),
-        classIds: src.classIds.slice(), teacherIds: src.teacherIds.slice() };
-      s.lessons.push(dup);
-      if (s._idx) s._idx.lessonById[dup.id] = dup;
-      window.APP.audit.append({ entity:"lessons", op:"copy", after:{...dup} });
-    }
+    window.APP.mutate("Duplicate lessons", (school) => {
+      for (const r of selectedRows) {
+        const src = r._ref;
+        const dup = { ...src, id: D.uid("l"),
+          classIds: src.classIds.slice(), teacherIds: src.teacherIds.slice() };
+        school.lessons.push(dup);
+        window.APP.audit.append({ entity:"lessons", op:"copy", after:{...dup} });
+      }
+    });
     D.refresh(rows());
     window.dispatchEvent(new CustomEvent("entity:changed", { detail: { entity: "lessons" } }));
   }
@@ -1122,17 +1128,18 @@ import "./dialog_shell.js";
     btns.appendChild(D.el("button", { type: "button", style: "padding:6px 16px;border:none;border-radius:5px;background:#16a34a;color:#fff;cursor:pointer;font-weight:600",
       onclick: () => {
         if (!tempSet.size) return;
-        for (const r of selectedRows) {
-          const src = r._ref;
-          tempSet.forEach(tid => {
-            const dup = { ...src, id: D.uid("l"),
-              classIds: src.classIds.slice(),
-              teacherIds: [tid] };
-            s.lessons.push(dup);
-            if (s._idx) s._idx.lessonById[dup.id] = dup;
-            window.APP.audit.append({ entity:"lessons", op:"copy-to-teacher", after:{...dup} });
-          });
-        }
+        window.APP.mutate("Copy lessons to teachers", (school) => {
+          for (const r of selectedRows) {
+            const src = r._ref;
+            tempSet.forEach(tid => {
+              const dup = { ...src, id: D.uid("l"),
+                classIds: src.classIds.slice(),
+                teacherIds: [tid] };
+              school.lessons.push(dup);
+              window.APP.audit.append({ entity:"lessons", op:"copy-to-teacher", after:{...dup} });
+            });
+          }
+        });
         D.closeSubSheet();
         D.refresh(rows());
         window.dispatchEvent(new CustomEvent("entity:changed", { detail: { entity: "lessons" } }));
@@ -1205,17 +1212,18 @@ import "./dialog_shell.js";
     btns.appendChild(D.el("button", { type: "button", style: "padding:6px 16px;border:none;border-radius:5px;background:#16a34a;color:#fff;cursor:pointer;font-weight:600",
       onclick: () => {
         if (!tempSet.size) return;
-        for (const r of selectedRows) {
-          const src = r._ref;
-          tempSet.forEach(cid => {
-            const dup = { ...src, id: D.uid("l"),
-              classIds: [cid],
-              teacherIds: src.teacherIds.slice() };
-            s.lessons.push(dup);
-            if (s._idx) s._idx.lessonById[dup.id] = dup;
-            window.APP.audit.append({ entity:"lessons", op:"copy-to-class", after:{...dup} });
-          });
-        }
+        window.APP.mutate("Copy lessons to classes", (school) => {
+          for (const r of selectedRows) {
+            const src = r._ref;
+            tempSet.forEach(cid => {
+              const dup = { ...src, id: D.uid("l"),
+                classIds: [cid],
+                teacherIds: src.teacherIds.slice() };
+              school.lessons.push(dup);
+              window.APP.audit.append({ entity:"lessons", op:"copy-to-class", after:{...dup} });
+            });
+          }
+        });
         D.closeSubSheet();
         D.refresh(rows());
         window.dispatchEvent(new CustomEvent("entity:changed", { detail: { entity: "lessons" } }));

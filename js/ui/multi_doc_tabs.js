@@ -95,9 +95,11 @@ import "./state.js";
     if (!school) { (global._chrxNotify || console.log)("Tab missing or corrupt", "error"); return; }
     APP.school = school;
     activeId = id;
-    restoreAuditState(tabUndoStacks[id]);
     global.dispatchEvent(new CustomEvent("app:school-loaded",
       { detail: { school, source: "multi-doc-tab" } }));
+    // The shared school-loaded hook clears the active history. Restore the
+    // saved per-tab stack after synchronous listeners have finished.
+    restoreAuditState(tabUndoStacks[id]);
     render();
   }
 

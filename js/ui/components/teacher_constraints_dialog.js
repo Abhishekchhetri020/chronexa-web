@@ -112,7 +112,7 @@ import "../entities/dialog_shell.js";
       onConfirm: (ids) => {
         if (!ids.length) return;
         const val = getValueNow();
-        ids.forEach(id => {
+        window.APP.mutate("Set teacher constraint for multiple", () => ids.forEach(id => {
           const target = others.find(t => t.id === id);
           if (!target) return;
           const before = target.constraints ? { ...target.constraints } : undefined;
@@ -123,7 +123,7 @@ import "../entities/dialog_shell.js";
             entity:"teachers", op:"constraints-setformore", field: fieldKey,
             id, before, after: { ...next },
           });
-        });
+        }));
       },
     });
   }

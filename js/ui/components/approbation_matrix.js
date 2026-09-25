@@ -125,12 +125,12 @@ import "../ribbon/topbar.js";
     }
     function save() {
       let changed = 0;
-      teachers.forEach(t => {
+      window.APP.mutate("Save teacher qualifications", () => teachers.forEach(t => {
         const newQual = subjects.filter(s => cellMap.get(t.id + "_" + s.id).checked).map(s => s.id);
         const before = (t.qualifiedSubjectIds || []).slice().sort().join();
         const after = newQual.slice().sort().join();
         if (before !== after) { t.qualifiedSubjectIds = newQual; changed++; }
-      });
+      }));
       if (window.APP?.audit?.append) {
         window.APP.audit.append({ entity: "teachers", op: "approbation-save", changed });
       }

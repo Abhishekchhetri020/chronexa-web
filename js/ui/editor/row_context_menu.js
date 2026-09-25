@@ -94,19 +94,21 @@ import "./grid_canvas.js";
                   : "subjects";
     const list = APP.school[listKey] || [];
     const i = list.findIndex(x => x.id === rowId);
-    if (i >= 0) list.splice(i, 1);
-    // Also drop any cards / lessons referencing this id
-    if (APP.school.cards) {
-      APP.school.cards = APP.school.cards.filter(c => {
-        const l = APP.school._idx?.lessonById?.[c.lessonId];
-        if (!l) return true;
-        if (perspective === "class")   return !(l.classIds || []).includes(rowId);
-        if (perspective === "teacher") return !(l.teacherIds || []).includes(rowId);
-        if (perspective === "room")    return c.classroomId !== rowId;
-        if (perspective === "subject") return l.subjectId !== rowId;
-        return true;
-      });
-    }
+    APP.mutate("Delete " + perspective + " row", (school) => {
+      if (i >= 0) list.splice(i, 1);
+      // Also drop any cards / lessons referencing this id
+      if (school.cards) {
+        school.cards = school.cards.filter(c => {
+          const l = school._idx?.lessonById?.[c.lessonId];
+          if (!l) return true;
+          if (perspective === "class")   return !(l.classIds || []).includes(rowId);
+          if (perspective === "teacher") return !(l.teacherIds || []).includes(rowId);
+          if (perspective === "room")    return c.classroomId !== rowId;
+          if (perspective === "subject") return l.subjectId !== rowId;
+          return true;
+        });
+      }
+    });
     if (window.EditorActivator) window.EditorActivator.activate();
     notify("Deleted: " + rowLabel);
   }
@@ -156,7 +158,7 @@ import "./grid_canvas.js";
 
     // Find all cards belonging to this row
     let count = 0;
-    for (const card of S.cards) {
+    APP.mutate((lock ? "Lock " : "Unlock ") + perspective + " row", () => { for (const card of S.cards) {
       const lesson = S._idx.lessonById && S._idx.lessonById[card.lessonId];
       if (!lesson) continue;
       let matches = false;
@@ -173,6 +175,7 @@ import "./grid_canvas.js";
       }
       count++;
     }
+    });
 
     // Also track in lockedRows for cosmetic state
     APP.editor = APP.editor || {};
