@@ -257,6 +257,15 @@ import "../ribbon/topbar.js";
       if (data.absences) target.absences = data.absences;
       if (data.substitutions) target.substitutions = data.substitutions;
       if (data.relations) target.relations = data.relations;
+      if (data.customFields) target.customFields = data.customFields;
+      ["teachers", "classes", "subjects", "classrooms", "students"].forEach(ent => {
+        if (Array.isArray(data[ent]) && Array.isArray(target[ent])) {
+          const map = new Map(data[ent].map(r => [r.id, r.customValues]));
+          target[ent].forEach(r => {
+            if (map.has(r.id) && map.get(r.id)) r.customValues = map.get(r.id);
+          });
+        }
+      });
     }
     if (APP.io && typeof APP.io.applySchool === "function") {
       APP.io.applySchool(target);

@@ -20,6 +20,7 @@ import "./entities/ttreports.js";
 import "./entities/ttviews.js";
 import "./entities/grades.js";
 import "./entities/holidays.js";
+import "./entities/custom_fields.js";
 
 /**
  * Single global listener for `app:open-entity` events fired by the ribbon menus.
@@ -40,6 +41,8 @@ import "./entities/holidays.js";
     "terms":     () => window.EntityTerms     && window.EntityTerms.open(),
     "buildings": () => window.EntityBuildings && window.EntityBuildings.open(),
     "holidays":  () => window.EntityHolidays && window.EntityHolidays.open(),
+    "custom-fields": (detail) => window.CustomFields && window.CustomFields.open(detail),
+    "customfields":  (detail) => window.CustomFields && window.CustomFields.open(detail),
     "school":    () => {
       // EntityDialog.openSheet now creates a standalone position:fixed host
       // when no full dialog is open, so SchoolSettings.open() works standalone
@@ -110,6 +113,9 @@ import "./entities/holidays.js";
 
   function boot() {
     window.addEventListener("app:open-entity", handle);
+    window.addEventListener("app:open-custom-fields", (e) => {
+      if (window.CustomFields) window.CustomFields.open(e.detail);
+    });
   }
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", boot);

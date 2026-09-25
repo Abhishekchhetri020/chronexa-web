@@ -67,6 +67,12 @@ import "../components/help_tooltip.js";
   }
   function uid(p) { return p + "_" + Math.random().toString(36).slice(2,9); }
 
+  function onSchoolChanged() {
+    if (cfg && typeof cfg.getRows === "function") {
+      refresh(cfg.getRows(), typeof cfg.getColumns === "function" ? cfg.getColumns() : null);
+    }
+  }
+
   // ---- open / close -------------------------------------------------------
   function open(c) {
     cfg = c;
@@ -81,6 +87,8 @@ import "../components/help_tooltip.js";
     host = buildShell();
     document.body.appendChild(host);
     document.addEventListener("keydown", onKey, true);
+    document.addEventListener("app:school-changed", onSchoolChanged);
+    document.addEventListener("customfields:changed", onSchoolChanged);
     renderRows();
     setTimeout(() => {
       if (!host) return;
@@ -98,13 +106,20 @@ import "../components/help_tooltip.js";
   }
   function close() {
     document.removeEventListener("keydown", onKey, true);
+    document.removeEventListener("app:school-changed", onSchoolChanged);
+    document.removeEventListener("customfields:changed", onSchoolChanged);
     closeSubSheet();
     closeSheet();
     if (host) { host.remove(); host = null; }
     cfg = null;
     if (lastFocused) try { lastFocused.focus(); } catch(e) {}
   }
-  function refresh(rows) { if (!cfg) return; if (rows) cfg.rows = rows; renderRows(); }
+  function refresh(rows, cols) {
+    if (!cfg) return;
+    if (cols) cfg.columns = cols;
+    if (rows) cfg.rows = rows;
+    renderRows();
+  }
   let standaloneHost = null;
   function openSheet(node, opts) {
     closeSubSheet();
@@ -155,7 +170,8 @@ import "../components/help_tooltip.js";
         el("div", { class:"chrx-ent-sheet__body" }, node),
       ),
     );
-    host.appendChild(subSheet);
+    const targetHost = host || standaloneHost || document.body;
+    targetHost.appendChild(subSheet);
   }
   function closeSubSheet() { if (subSheet) { subSheet.remove(); subSheet = null; } }
 
@@ -376,6 +392,28 @@ import "../components/help_tooltip.js";
       const label = count === 1 ? (currentRow()?.name || currentRow()?.id || "this row") : `${count} items`;
       if (!confirm(`Delete ${label}?`)) return;
     }
+    if (cmd === "undo") {
+      let handled = false;
+      if (cfg.onAction) handled = cfg.onAction("undo", currentRow(), currentRows()) === true;
+      if (!handled && window.APP && typeof window.APP.undo === "function") {
+        window.APP.undo();
+        if (typeof cfg.getRows === "function") {
+          refresh(cfg.getRows(), typeof cfg.getColumns === "function" ? cfg.getColumns() : null);
+        }
+      }
+      return;
+    }
+    if (cmd === "redo") {
+      let handled = false;
+      if (cfg.onAction) handled = cfg.onAction("redo", currentRow(), currentRows()) === true;
+      if (!handled && window.APP && typeof window.APP.redo === "function") {
+        window.APP.redo();
+        if (typeof cfg.getRows === "function") {
+          refresh(cfg.getRows(), typeof cfg.getColumns === "function" ? cfg.getColumns() : null);
+        }
+      }
+      return;
+    }
     if (cfg.onAction) cfg.onAction(cmd, currentRow(), currentRows());
   }
 
@@ -390,7 +428,9 @@ import "../components/help_tooltip.js";
       e.preventDefault(); fireAction("new"); return;
     }
     if ((e.metaKey || e.ctrlKey) && (e.key === "z" || e.key === "Z")) {
-      e.preventDefault(); fireAction(e.shiftKey ? "redo" : "undo");
+      e.preventDefault();
+      e.stopPropagation();
+      fireAction(e.shiftKey ? "redo" : "undo");
     }
   }
 

@@ -59,6 +59,8 @@ import "../../state.js";
           run: () => fire("app:open-entity", { kind: "buildings" }) },
         { icon: "🏖", label: "Holidays…",              disabled: !has(),
           run: () => fire("app:open-entity", { kind: "holidays" }) },
+        { icon: "🏷", label: "Custom fields…",         disabled: !has(),
+          run: () => fire("app:open-entity", { kind: "custom-fields" }) },
         { sep: true },
         { icon: "⚙︎", label: "School settings…",       disabled: !has(),
           run: () => fire("app:open-entity", { kind: "school" }) },
