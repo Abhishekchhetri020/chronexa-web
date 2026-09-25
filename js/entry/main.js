@@ -58,6 +58,7 @@ import "../ui/components/time_off_matrix.js";
 import "../ui/components/class_constraints_dialog.js";
 import "../ui/components/teacher_constraints_dialog.js";
 import "../ui/components/divisions_tree.js";
+import "../ui/entities/custom_fields.js";
 import "../ui/entities/subjects.js";
 import "../ui/entities/classes.js";
 import "../ui/entities/classrooms.js";
