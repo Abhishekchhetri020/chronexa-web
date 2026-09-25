@@ -124,4 +124,25 @@ describe("APP.mutate transaction history", () => {
     // shape assertions above are the actual performance invariant.
     expect(performance.now() - start).toBeLessThan(15000);
   });
+
+  it("records index-level patch under 2 KB when deleting one card on the demo and round-trips exactly", () => {
+    window.APP.school = window.APP["__chronexaMutateCore"].cloneValue(loadSampleSchool());
+    window.APP.history.clear();
+    const original = window.APP["__chronexaMutateCore"].cloneValue(window.APP.school);
+
+    window.APP.mutate("Delete card", (school) => {
+      school.cards.splice(5, 1);
+    });
+
+    const entry = window.APP.history.peek();
+    const patchBytes = JSON.stringify(entry.patches).length;
+    expect(patchBytes).toBeLessThan(2048);
+
+    window.APP.undo();
+    expect(window.APP.school).toEqual(original);
+
+    window.APP.redo();
+    expect(window.APP.school.cards).toHaveLength(original.cards.length - 1);
+    expect(window.APP.school.cards[5]).toEqual(original.cards[6]);
+  });
 });

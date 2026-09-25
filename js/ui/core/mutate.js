@@ -85,6 +85,97 @@
     };
   }
 
+  function diffArrays(before, after, path, patches) {
+    let prefix = 0;
+    while (prefix < before.length && prefix < after.length && valuesEqual(before[prefix], after[prefix])) {
+      prefix++;
+    }
+
+    let suffix = 0;
+    while (
+      suffix < before.length - prefix &&
+      suffix < after.length - prefix &&
+      valuesEqual(before[before.length - 1 - suffix], after[after.length - 1 - suffix])
+    ) {
+      suffix++;
+    }
+
+    const bLen = before.length - prefix - suffix;
+    const aLen = after.length - prefix - suffix;
+
+    if (bLen > 0 && aLen === 0) {
+      for (let i = before.length - 1 - suffix; i >= prefix; i--) {
+        patches.push(makePatch(path.concat(i), before[i], undefined, true, false));
+      }
+      return;
+    }
+
+    if (bLen === 0 && aLen > 0) {
+      for (let i = 0; i < aLen; i++) {
+        patches.push(makePatch(path.concat(prefix + i), undefined, after[prefix + i], false, true));
+      }
+      return;
+    }
+
+    if (bLen === aLen) {
+      for (let i = 0; i < bLen; i++) {
+        const idx = prefix + i;
+        if (before[idx] === after[idx]) continue;
+        if (path.length <= 1 && valuesEqual(before[idx], after[idx])) continue;
+        diffValues(before[idx], after[idx], path.concat(idx), patches, true, true);
+      }
+      return;
+    }
+
+    if (bLen * aLen > 250000) {
+      patches.push(makePatch(path, before, after, true, true));
+      return;
+    }
+
+    const bSlice = before.slice(prefix, before.length - suffix);
+    const aSlice = after.slice(prefix, after.length - suffix);
+
+    const dp = Array.from({ length: bLen + 1 }, () => new Uint16Array(aLen + 1));
+    for (let i = 0; i < bLen; i++) {
+      for (let j = 0; j < aLen; j++) {
+        if (valuesEqual(bSlice[i], aSlice[j])) {
+          dp[i + 1][j + 1] = dp[i][j] + 1;
+        } else {
+          dp[i + 1][j + 1] = Math.max(dp[i + 1][j], dp[i][j + 1]);
+        }
+      }
+    }
+
+    const edits = [];
+    let i = bLen, j = aLen;
+    while (i > 0 || j > 0) {
+      if (i > 0 && j > 0 && valuesEqual(bSlice[i - 1], aSlice[j - 1])) {
+        edits.push({ type: "keep", item: bSlice[i - 1] });
+        i--;
+        j--;
+      } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+        edits.push({ type: "insert", item: aSlice[j - 1] });
+        j--;
+      } else {
+        edits.push({ type: "delete", item: bSlice[i - 1] });
+        i--;
+      }
+    }
+    edits.reverse();
+
+    let simIndex = prefix;
+    for (const edit of edits) {
+      if (edit.type === "keep") {
+        simIndex++;
+      } else if (edit.type === "delete") {
+        patches.push(makePatch(path.concat(simIndex), edit.item, undefined, true, false));
+      } else if (edit.type === "insert") {
+        patches.push(makePatch(path.concat(simIndex), undefined, edit.item, false, true));
+        simIndex++;
+      }
+    }
+  }
+
   function diffValues(before, after, path, patches, beforeExists = true, afterExists = true) {
     if (!beforeExists || !afterExists) {
       if (beforeExists !== afterExists || !valuesEqual(before, after)) {
@@ -96,32 +187,18 @@
     if (before === after) return;
     const beforeObject = before !== null && typeof before === "object";
     const afterObject = after !== null && typeof after === "object";
-    if (!beforeObject || !afterObject || isArray(before) !== isArray(after) ||
-        before instanceof Date || after instanceof Date) {
-      if (!valuesEqual(before, after)) patches.push(makePatch(path, before, after, true, true));
-      return;
-    }
+   if (!beforeObject || !afterObject || isArray(before) !== isArray(after) ||
+       before instanceof Date || after instanceof Date) {
+     if (!valuesEqual(before, after)) patches.push(makePatch(path, before, after, true, true));
+     return;
+   }
 
-    if (isArray(before) && isArray(after)) {
-      // An insertion/removal changes array indexes. Recording the complete
-      // array at that path keeps replay deterministic and avoids sparse arrays.
-      if (before.length !== after.length) {
-        patches.push(makePatch(path, before, after, true, true));
-        return;
-      }
-      for (let i = 0; i < before.length; i++) {
-        if (before[i] === after[i]) continue;
-        // Array elements are commonly small records (cards/entities). Avoid
-        // allocating two JSON strings for every unchanged element on every
-        // transaction; the recursive structural comparison short-circuits
-        // on the first differing primitive and is substantially cheaper.
-        if (path.length <= 1 && valuesEqual(before[i], after[i])) continue;
-        diffValues(before[i], after[i], path.concat(i), patches, true, true);
-      }
-      return;
-    }
+   if (isArray(before) && isArray(after)) {
+      diffArrays(before, after, path, patches);
+     return;
+   }
 
-    if (isRecord(before) && isRecord(after)) {
+   if (isRecord(before) && isRecord(after)) {
       const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
       for (const key of keys) {
         // `_idx` is a derived viewer cache. It is rebuilt after replay and is
@@ -180,12 +257,24 @@
       replaceSchoolContents(school, value || {});
       return;
     }
-    const parent = resolveParent(school, patch.path);
-    const key = patch.path[patch.path.length - 1];
+   const parent = resolveParent(school, patch.path);
+   const key = patch.path[patch.path.length - 1];
+    if (Array.isArray(parent) && Number.isInteger(key)) {
+      if (patch.oldExists && !patch.newExists) {
+        if (direction === "new") parent.splice(key, 1);
+        else parent.splice(key, 0, cloneValue(patch.oldValue));
+      } else if (!patch.oldExists && patch.newExists) {
+        if (direction === "new") parent.splice(key, 0, cloneValue(patch.newValue));
+        else parent.splice(key, 1);
+      } else {
+        if (exists) parent[key] = cloneValue(value);
+        else parent.splice(key, 1);
+      }
+      return;
+    }
     if (exists) parent[key] = cloneValue(value);
-    else if (Array.isArray(parent) && Number.isInteger(key)) parent.splice(key, 1);
-    else delete parent[key];
-  }
+   else delete parent[key];
+ }
 
   function applyPatches(school, patches, direction) {
     const ordered = direction === "old" ? patches.slice().reverse() : patches;
