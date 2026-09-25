@@ -3,163 +3,829 @@ import "../state.js";
 import "../editor/placement_validator.js";
 import "../ribbon/topbar.js";
 import "./approbation_matrix.js";
-import "./verification_panel_pro.js";
 import "./color_taxonomy.js";
 import "./master_solver_wizard.js";
 
-/* Advisor — analyses the current timetable + surfaces improvement opportunities.
+/* Advisor — analyses the timetable model & surfaces improvement opportunities.
  *
- * Mirrors Classic's `runTTAdvisor` RPC (W15 finding #16 — present in
- * Timetable ribbon's group of Test/Generate/Improve/Advisor).
+ * Provides two distinct analytical sections:
+ *   1. Model check findings: runs before/without generating:
+ *      - Teacher weekly load > available periods (after time-off)
+ *      - Class weekly lessons > slots (accounts for parallel division groups)
+ *      - Subject daily caps that make placement impossible
+ *      - Room demand > supply per period
+ *      - Lessons with no teacher / special room
+ *      - Relations that contradict each other
+ *      (with "Show lessons" filtering drawer and persistent reversible "Ignore")
  *
- * Inputs: school + the constraint engine (RelationEnforcer +
- * SolverConstraints.checkPlacement + ImproveMode). Output: ranked list
- * of suggestions the user can click to apply or learn-more.
- *
- * Each suggestion has:
- *   - severity (high / med / low)
- *   - kind (conflict / soft / improvement)
- *   - text (plain English)
- *   - apply()? optional one-click fix
- *
- * Triggered by app:advisor event.
+ *   2. Suggestions & 1-click apply actions:
+ *      - Per-card placement conflicts (open Verification)
+ *      - Unplaced card summary (Master Solver Wizard)
+ *      - Configuration gaps (open Lessons/Teachers entities)
+ *      - Improvement opportunities (ImproveMode.run)
+ *      - Quality-of-life suggestions (ColorTaxonomy.autoColor, ApprobationMatrix.open)
  */
 (function () {
   "use strict";
 
   function el(tag, attrs, ...kids) {
     const n = document.createElement(tag);
-    if (attrs) for (const k in attrs) {
-      const v = attrs[k]; if (v == null) continue;
-      if (k === "class") n.className = v;
-      else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
-      else n.setAttribute(k, v);
+    if (attrs) {
+      for (const k in attrs) {
+        const v = attrs[k];
+        if (v == null) continue;
+        if (k === "class") n.className = v;
+        else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
+        else n.setAttribute(k, v);
+      }
     }
-    for (const c of kids) if (c != null && c !== false)
-      n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    for (const c of kids) {
+      if (c != null && c !== false) {
+        n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+      }
+    }
     return n;
   }
 
-  function collectSuggestions(school) {
-    const out = [];
-    const lessonById = (school._idx?.lessonById) ||
-      Object.fromEntries((school.lessons || []).map(l => [l.id, l]));
-    const subjectById = (school._idx?.subjectById) ||
-      Object.fromEntries((school.subjects || []).map(s => [s.id, s]));
-
-    // 1. Per-card violations
-    for (const card of (school.cards || [])) {
-      const lesson = lessonById[card.lessonId];
-      if (!lesson) continue;
-      if (window.SolverConstraints?.checkPlacement) {
-        const r = window.SolverConstraints.checkPlacement(school, lesson.id, card.day, card.period, card.classroomId || null);
-        for (const msg of (r.hard || [])) {
-          out.push({ severity: "high", kind: "conflict",
-            text: msg, card, lesson,
-            apply: () => window.VerificationPro?.open?.() });
-        }
-      }
-      if (window.RelationEnforcer?.check) {
-        const r = window.RelationEnforcer.check(school, lesson.id, card.day, card.period);
-        for (const msg of r.hard) out.push({ severity: "high", kind: "relation", text: msg, card, lesson });
-        for (const msg of r.soft) out.push({ severity: "med", kind: "relation-soft", text: msg, card, lesson });
-      }
-    }
-
-    // 2. Placement summary
-    const totalNeeded = (school.lessons || []).reduce((s, l) => s + (l.periodsPerWeek || 0), 0);
-    const placed = (school.cards || []).length;
-    const pct = totalNeeded ? Math.round(100 * placed / totalNeeded) : 0;
-    if (pct < 100 && pct >= 1) {
-      out.push({ severity: pct < 80 ? "high" : "med", kind: "placement",
-        text: `${placed} / ${totalNeeded} cards placed (${pct}%). Run Master Solve for the missing ${totalNeeded - placed}.`,
-        apply: () => window.MasterSolverWizard?.open?.() });
-    } else if (pct === 0) {
-      out.push({ severity: "high", kind: "placement",
-        text: "No cards placed yet. Open Timetable → Master Solve to generate.",
-        apply: () => window.MasterSolverWizard?.open?.() });
-    }
-
-    // 3. Configuration gaps
-    if (!(school.lessons || []).length) {
-      out.push({ severity: "high", kind: "config",
-        text: "No lessons defined. Open Specification → Lessons to add at least one lesson per (class, subject).",
-        apply: () => window.dispatchEvent(new CustomEvent("app:open-entity", { detail: { kind: "lessons" } })) });
-    }
-    if (!(school.teachers || []).length) {
-      out.push({ severity: "high", kind: "config",
-        text: "No teachers defined. Open Specification → Teachers.",
-        apply: () => window.dispatchEvent(new CustomEvent("app:open-entity", { detail: { kind: "teachers" } })) });
-    }
-
-    // 4. Improvement opportunities (offer Improve mode if there's something to improve)
-    if (pct === 100 && (out.filter(s => s.severity === "high").length === 0)) {
-      out.push({ severity: "low", kind: "improvement",
-        text: "All cards placed and no hard conflicts. Run Improve mode to lower soft penalties further.",
-        apply: () => window.ImproveMode?.run?.(school, { timeLimitSec: 30 }) });
-    }
-
-    // 5. Quality-of-life suggestions
-    const subjectsWithoutColor = (school.subjects || []).filter(s => !s.color).length;
-    if (subjectsWithoutColor > 0) {
-      out.push({ severity: "low", kind: "polish",
-        text: `${subjectsWithoutColor} subject(s) have no color. Run Color taxonomy to auto-assign.`,
-        apply: () => window.ColorTaxonomy?.autoColor?.(school) });
-    }
-    const teachersWithoutQualification = (school.teachers || []).filter(t => !(t.qualifiedSubjectIds?.length)).length;
-    if (teachersWithoutQualification > 0 && (school.subjects?.length || 0) > 0) {
-      out.push({ severity: "low", kind: "polish",
-        text: `${teachersWithoutQualification} teacher(s) have no qualifications set. Open Approbation matrix to fix.`,
-        apply: () => window.ApprobationMatrix?.open?.() });
-    }
-
-    return out;
+  function getDaysAndPeriods(school) {
+    const days = Math.max(1, Math.min(7,
+      (typeof school.daysPerWeek === "number" ? school.daysPerWeek : null) ??
+      (typeof school.settings?.daysPerWeek === "number" ? school.settings.daysPerWeek : null) ??
+      (school.daysDefs && school.daysDefs.length ? school.daysDefs.length : 0) ??
+      (school.bell && school.bell.periods ? 6 : 5)
+    ));
+    const periods = Math.max(1,
+      (school.periodsPerDay | 0) ||
+      (school.bell && school.bell.periods ? school.bell.periods.length : 0) ||
+      8
+    );
+    return { days, periods, totalSlots: days * periods };
   }
 
-  function open() {
-    const school = window.APP?.school;
-    if (!school) { (window._chrxNotify || console.log)("Open a timetable first.", "error"); return; }
-    ensureStyles();
-    const suggestions = collectSuggestions(school);
+  function countBlockedSlots(timeOff, days, periods) {
+    if (!timeOff) return 0;
+    let count = 0;
+    const is2D = Array.isArray(timeOff);
+    for (let d = 0; d < days; d++) {
+      for (let p = 0; p < periods; p++) {
+        if (is2D) {
+          const v = timeOff[d] && timeOff[d][p];
+          if (v === 2 || v === "unavailable" || v === "blocked" || v === false) count++;
+        } else if (typeof timeOff === "object") {
+          const v = timeOff[`${d}_${p + 1}`] ?? timeOff[`${d}_${p}`];
+          if (v === "unavailable" || v === "blocked" || v === 2) count++;
+        }
+      }
+    }
+    return count;
+  }
 
-    const root = el("div", { class: "chrx-adv-root", onclick: e => { if (e.target === root) root.remove(); } });
+  function lessonPeriods(l) {
+    return Number(l.periodsPerWeek || l.periodsPerCard || 1);
+  }
+
+  /**
+   * Computes a class's occupied periods accounting for parallel division groups.
+   * Lessons for different groups of the same division run in parallel (share a period),
+   * so for each division we count max over its groups, plus whole-class lessons.
+   */
+  function computeClassOccupiedPeriods(school, classId, cLessons) {
+    const groups = school.groups || [];
+    const groupById = (school._idx && school._idx.groupById) ||
+      Object.fromEntries(groups.map(g => [g.id, g]));
+
+    let wholeClassPeriods = 0;
+    const divisionGroupPeriods = new Map(); // divKey -> Map(groupId, totalPeriods)
+
+    for (const l of cLessons) {
+      const p = lessonPeriods(l);
+      const gids = (l.groupIds || []).filter(gid => groupById[gid]);
+
+      let isEntire = true;
+      if (gids.length > 0) {
+        const nonEntire = gids.filter(gid => {
+          const g = groupById[gid];
+          return !g.entireClass && !/^(entire|whole|all)\s*(class)?$/i.test(g.name || "");
+        });
+        if (nonEntire.length > 0) isEntire = false;
+      }
+
+      if (isEntire) {
+        wholeClassPeriods += p;
+      } else {
+        for (const gid of gids) {
+          const g = groupById[gid];
+          if (!g || g.entireClass) continue;
+          const divKey = String(g.divisionTag != null && g.divisionTag !== 0 ? g.divisionTag : ("div_" + (g.classId || classId)));
+          if (!divisionGroupPeriods.has(divKey)) {
+            divisionGroupPeriods.set(divKey, new Map());
+          }
+          const groupMap = divisionGroupPeriods.get(divKey);
+          groupMap.set(gid, (groupMap.get(gid) || 0) + p);
+        }
+      }
+    }
+
+    let divisionPeriods = 0;
+    for (const groupMap of divisionGroupPeriods.values()) {
+      let maxGroupDuration = 0;
+      for (const duration of groupMap.values()) {
+        if (duration > maxGroupDuration) maxGroupDuration = duration;
+      }
+      divisionPeriods += maxGroupDuration;
+    }
+
+    return wholeClassPeriods + divisionPeriods;
+  }
+
+  /**
+   * Describes a lesson in human-readable terms without showing internal 16-hex IDs.
+   * e.g. "Chemistry · X A · 2/week"
+   */
+  function describeLesson(l, school) {
+    const subjectById = (school._idx && school._idx.subjectById) ||
+      Object.fromEntries((school.subjects || []).map(s => [s.id, s]));
+    const classById = (school._idx && school._idx.classById) ||
+      Object.fromEntries((school.classes || []).map(c => [c.id, c]));
+    const teacherById = (school._idx && school._idx.teacherById) ||
+      Object.fromEntries((school.teachers || []).map(t => [t.id, t]));
+
+    const subj = subjectById[l.subjectId];
+    const sName = subj?.name || subj?.abbr || "Subject";
+    const cNames = (l.classIds || []).map(cid => classById[cid]?.name || classById[cid]?.short || "Class").join(", ") || "Class";
+    const tNames = (l.teacherIds || []).map(tid => teacherById[tid]?.name || teacherById[tid]?.short || "Teacher").join(", ");
+    const pCount = lessonPeriods(l);
+
+    const parts = [sName, cNames];
+    if (tNames) parts.push(tNames);
+    parts.push(`${pCount}/week`);
+    return parts.join(" · ");
+  }
+
+  function displayName(entity, fallback = "Entity") {
+    if (!entity) return fallback;
+    const name = entity.name || entity.short || entity.abbr || entity.lastName;
+    // Guard against 16-hex internal IDs being displayed as names
+    if (name && /^[0-9A-Fa-f]{16}$/.test(name.trim())) {
+      return fallback;
+    }
+    return name || fallback;
+  }
+
+  function collectSuggestions(school, options = {}) {
+    school = school || (window.APP && window.APP.school);
+    if (!school) return [];
+
+    const modelFindings = [];
+    const suggestions = [];
+
+    const { days, periods, totalSlots } = getDaysAndPeriods(school);
+
+    const lessons = school.lessons || [];
+    const teachers = school.teachers || [];
+    const classes = school.classes || [];
+    const classrooms = school.classrooms || [];
+    const subjects = school.subjects || [];
+    const relations = school.relations || [];
+    const cards = school.cards || [];
+
+    const subjectById = (school._idx && school._idx.subjectById) ||
+      Object.fromEntries(subjects.map(s => [s.id, s]));
+    const teacherById = (school._idx && school._idx.teacherById) ||
+      Object.fromEntries(teachers.map(t => [t.id, t]));
+    const classById = (school._idx && school._idx.classById) ||
+      Object.fromEntries(classes.map(c => [c.id, c]));
+
+    // ═════════════════════════════════════════════════════════════════
+    // SECTION 1: MODEL CHECKS (pre-generation structural validation)
+    // ═════════════════════════════════════════════════════════════════
+
+    // 1. Teacher weekly load > available periods (after time-off)
+    for (const t of teachers) {
+      const tLessons = lessons.filter(l => (l.teacherIds || []).includes(t.id));
+      const load = tLessons.reduce((sum, l) => sum + lessonPeriods(l), 0);
+      const blocked = countBlockedSlots(t.timeOff, days, periods);
+      const available = Math.max(0, totalSlots - blocked);
+      if (load > available) {
+        const tName = displayName(t, "Teacher");
+        modelFindings.push({
+          id: `teacher-overload-${t.id}`,
+          section: "model",
+          severity: "high",
+          kind: "teacher-overload",
+          teacherId: t.id,
+          lessonIds: tLessons.map(l => l.id),
+          text: `Teacher ${tName}: weekly load of ${load} periods exceeds ${available} available periods (${totalSlots} slots − ${blocked} time-off)`,
+          details: { load, available, totalSlots, blocked },
+        });
+      }
+    }
+
+    // 2. Class weekly lessons > slots (accounting for parallel division groups)
+    for (const c of classes) {
+      const cLessons = lessons.filter(l => (l.classIds || []).includes(c.id));
+      const occupiedPeriods = computeClassOccupiedPeriods(school, c.id, cLessons);
+      const blocked = countBlockedSlots(c.timeOff, days, periods);
+      const available = Math.max(0, totalSlots - blocked);
+      if (occupiedPeriods > available) {
+        const cName = displayName(c, "Class");
+        const text = blocked > 0
+          ? `Class ${cName}: weekly load of ${occupiedPeriods} lessons exceeds ${available} available slots (${totalSlots} total − ${blocked} blocked)`
+          : `Class ${cName}: weekly load of ${occupiedPeriods} lessons exceeds ${available} available slots (${totalSlots} slots)`;
+        modelFindings.push({
+          id: `class-overload-${c.id}`,
+          section: "model",
+          severity: "high",
+          kind: "class-overload",
+          classId: c.id,
+          lessonIds: cLessons.map(l => l.id),
+          text,
+          details: { load: occupiedPeriods, available, totalSlots, blocked },
+        });
+      }
+    }
+
+    // 3. Subject daily caps that make placement impossible
+    for (const s of subjects) {
+      const rawCap = s.constraints?.maxPerDay ?? s.maxPerDay;
+      const maxPerDay = rawCap != null && rawCap !== "" ? Number(rawCap) : null;
+      if (maxPerDay != null && !isNaN(maxPerDay) && maxPerDay > 0) {
+        for (const c of classes) {
+          const csLessons = lessons.filter(l => (l.classIds || []).includes(c.id) && l.subjectId === s.id);
+          const req = csLessons.reduce((sum, l) => sum + lessonPeriods(l), 0);
+          const maxPossible = maxPerDay * days;
+          if (req > maxPossible) {
+            const sName = displayName(s, "Subject");
+            const cName = displayName(c, "Class");
+            modelFindings.push({
+              id: `daily-cap-${c.id}-${s.id}`,
+              section: "model",
+              severity: "high",
+              kind: "daily-cap",
+              classId: c.id,
+              subjectId: s.id,
+              lessonIds: csLessons.map(l => l.id),
+              text: `Subject "${sName}" in Class ${cName}: requires ${req} periods/week, but daily cap of ${maxPerDay} allows at most ${maxPossible} periods across ${days} days`,
+              details: { required: req, maxPerDay, maxPossible, days },
+            });
+          }
+        }
+      }
+    }
+
+    // 4. Room demand > supply per period
+    for (const rm of classrooms) {
+      const rLessons = lessons.filter(l =>
+        (l.classroomIds && l.classroomIds.includes(rm.id)) ||
+        (l.preferredRoomId === rm.id) ||
+        (l.classroomIdsExpanded && l.classroomIdsExpanded.includes(rm.id)) ||
+        (l._lessonRoomIds && l._lessonRoomIds.includes(rm.id))
+      );
+      const demand = rLessons.reduce((sum, l) => sum + lessonPeriods(l), 0);
+      const blocked = countBlockedSlots(rm.timeOff, days, periods);
+      const available = Math.max(0, totalSlots - blocked);
+      if (demand > available) {
+        const rmName = displayName(rm, "Classroom");
+        modelFindings.push({
+          id: `room-overload-${rm.id}`,
+          section: "model",
+          severity: "high",
+          kind: "room-demand",
+          roomId: rm.id,
+          lessonIds: rLessons.map(l => l.id),
+          text: `Classroom "${rmName}": demand of ${demand} periods/week exceeds ${available} available periods (${totalSlots} slots − ${blocked} blocked)`,
+          details: { demand, available, totalSlots, blocked },
+        });
+      }
+    }
+
+    if (classrooms.length > 0) {
+      const lessonsWithRoom = lessons.filter(l =>
+        (l.classroomIds && l.classroomIds.length > 0) ||
+        l.preferredRoomId ||
+        (l.classroomIdsExpanded && l.classroomIdsExpanded.length > 0) ||
+        (l._lessonRoomIds && l._lessonRoomIds.length > 0)
+      );
+      const totalDemand = lessonsWithRoom.reduce((sum, l) => sum + lessonPeriods(l), 0);
+      const totalSupply = classrooms.length * totalSlots;
+      if (totalDemand > totalSupply) {
+        const avgDemand = (totalDemand / totalSlots).toFixed(2);
+        modelFindings.push({
+          id: "room-overall-demand",
+          section: "model",
+          severity: "high",
+          kind: "room-demand",
+          lessonIds: lessonsWithRoom.map(l => l.id),
+          text: `Total room demand: ${totalDemand} room-periods needed across ${totalSlots} periods (avg ${avgDemand}/period) exceeds total supply of ${classrooms.length} classrooms (${totalSupply} room-periods)`,
+          details: { totalDemand, totalSlots, avgDemand, roomCount: classrooms.length, totalSupply },
+        });
+      }
+    }
+
+    // 5. Lessons with no teacher / room (grouped into single high-level rows to avoid noise)
+    const unassignedTeacherLessons = [];
+    const missingSpecialRoomLessons = [];
+
+    for (const l of lessons) {
+      const subj = subjectById[l.subjectId];
+
+      // Missing teacher
+      if (!l.teacherIds || l.teacherIds.length === 0) {
+        unassignedTeacherLessons.push(l);
+      }
+
+      // Missing classroom: only flag when the lesson or subject requires a special room type (lab, etc.)
+      // and has no room assigned. Regular lessons without special room needs are not flagged as errors.
+      const requiresSpecialRoom = Boolean(
+        l.requiresLab ||
+        l.requiredRoomType ||
+        subj?.requiresLab ||
+        subj?.constraints?.requiresLab
+      );
+      if (requiresSpecialRoom) {
+        const hasRoom = (l.classroomIds && l.classroomIds.length > 0) ||
+          l.preferredRoomId ||
+          (l.classroomIdsExpanded && l.classroomIdsExpanded.length > 0) ||
+          (l._lessonRoomIds && l._lessonRoomIds.length > 0);
+        if (!hasRoom) {
+          missingSpecialRoomLessons.push(l);
+        }
+      }
+    }
+
+    if (unassignedTeacherLessons.length > 0) {
+      const text = unassignedTeacherLessons.length === 1
+        ? `1 lesson (${describeLesson(unassignedTeacherLessons[0], school)}) has no teacher assigned`
+        : `${unassignedTeacherLessons.length} lessons have no teacher assigned`;
+      modelFindings.push({
+        id: "missing-teacher-group",
+        section: "model",
+        severity: "med",
+        kind: "missing-teacher",
+        lessonIds: unassignedTeacherLessons.map(l => l.id),
+        text,
+        details: { count: unassignedTeacherLessons.length },
+      });
+    }
+
+    if (missingSpecialRoomLessons.length > 0) {
+      const text = missingSpecialRoomLessons.length === 1
+        ? `1 lesson (${describeLesson(missingSpecialRoomLessons[0], school)}) requiring a special room has no classroom assigned`
+        : `${missingSpecialRoomLessons.length} lessons requiring special rooms have no classroom assigned`;
+      modelFindings.push({
+        id: "missing-room-group",
+        section: "model",
+        severity: "med",
+        kind: "missing-room",
+        lessonIds: missingSpecialRoomLessons.map(l => l.id),
+        text,
+        details: { count: missingSpecialRoomLessons.length },
+      });
+    }
+
+    // 6. Relations that contradict each other
+    const getRelSubjects = (r) => [...(r.subjectids || []), ...(r.subject2ids || [])];
+    const getRelClasses = (r) => r.classids || [];
+
+    const OPPOSITES = [
+      {
+        typesA: ["n_1"], // cannot be the same day
+        typesB: ["n_8", "n_9", "n_10"], // must be on the same day
+        labelA: "cannot be the same day",
+        labelB: "must be on the same day",
+      },
+      {
+        typesA: ["n_2"], // must not be at the same time
+        typesB: ["n_12", "n_13"], // must be at the same time
+        labelA: "must not be at the same time",
+        labelB: "must be at the same time",
+      },
+      {
+        typesA: ["n_0"], // cannot follow
+        typesB: ["n_5", "n_6"], // must follow
+        labelA: "cannot follow",
+        labelB: "must follow",
+      },
+    ];
+
+    for (let i = 0; i < relations.length; i++) {
+      for (let j = i + 1; j < relations.length; j++) {
+        const r1 = relations[i];
+        const r2 = relations[j];
+        if (!r1 || !r2) continue;
+
+        const subs1 = getRelSubjects(r1);
+        const subs2 = getRelSubjects(r2);
+        const sharedSubs = subs1.filter(s => subs2.includes(s));
+        if (subs1.length && subs2.length && !sharedSubs.length) continue;
+
+        const cls1 = getRelClasses(r1);
+        const cls2 = getRelClasses(r2);
+        if (cls1.length && cls2.length) {
+          const sharedCls = cls1.filter(c => cls2.includes(c));
+          if (!sharedCls.length) continue;
+        }
+
+        for (const opp of OPPOSITES) {
+          const matchA1B2 = opp.typesA.includes(r1.typ) && opp.typesB.includes(r2.typ);
+          const matchB1A2 = opp.typesB.includes(r1.typ) && opp.typesA.includes(r2.typ);
+          if (matchA1B2 || matchB1A2) {
+            const relLessons = lessons.filter(l => sharedSubs.includes(l.subjectId));
+            const subNames = sharedSubs.map(sid => displayName(subjectById[sid], sid)).join(", ");
+            const r1Name = displayName(r1, opp.labelA);
+            const r2Name = displayName(r2, opp.labelB);
+            modelFindings.push({
+              id: `relation-contradiction-${r1.id || i}-${r2.id || j}`,
+              section: "model",
+              severity: "high",
+              kind: "relation-contradiction",
+              relationIds: [r1.id || i, r2.id || j],
+              lessonIds: relLessons.map(l => l.id),
+              text: `Contradicting relations: Relation "${r1Name}" (${opp.labelA}) contradicts Relation "${r2Name}" (${opp.labelB})${subNames ? ` for ${subNames}` : ""}`,
+              details: { r1, r2, sharedSubs },
+            });
+            break;
+          }
+        }
+
+        if (r1.typ === "n_16" && r2.typ === "n_16" && r1.positions && r2.positions && r1.positions !== r2.positions) {
+          const relLessons = lessons.filter(l => sharedSubs.includes(l.subjectId));
+          const subNames = sharedSubs.map(sid => displayName(subjectById[sid], sid)).join(", ");
+          const r1Name = displayName(r1, "Position constraint");
+          const r2Name = displayName(r2, "Position constraint");
+          modelFindings.push({
+            id: `relation-contradiction-${r1.id || i}-${r2.id || j}`,
+            section: "model",
+            severity: "high",
+            kind: "relation-contradiction",
+            relationIds: [r1.id || i, r2.id || j],
+            lessonIds: relLessons.map(l => l.id),
+            text: `Contradicting relations: Relation "${r1Name}" (must be ${r1.positions}) contradicts Relation "${r2Name}" (must be ${r2.positions})${subNames ? ` for ${subNames}` : ""}`,
+            details: { r1, r2, sharedSubs },
+          });
+        }
+      }
+    }
+
+    // Mark ignored on model findings
+    const ignoredSet = new Set(school.ignoredAdvisorFindings || []);
+    modelFindings.forEach(f => {
+      f.ignored = ignoredSet.has(f.id);
+    });
+
+    const filteredModelFindings = options.includeIgnored
+      ? modelFindings
+      : modelFindings.filter(f => !f.ignored);
+
+    // ═════════════════════════════════════════════════════════════════
+    // SECTION 2: SUGGESTIONS (with 1-click apply actions)
+    // ═════════════════════════════════════════════════════════════════
+
+    // 1. Placement summary
+    const totalNeeded = lessons.reduce((s, l) => s + (l.periodsPerWeek || 0), 0);
+    const placed = cards.length;
+    const pct = totalNeeded ? Math.round(100 * placed / totalNeeded) : 0;
+    if (pct < 100 && pct >= 1) {
+      suggestions.push({
+        id: "placement-partial",
+        section: "suggestions",
+        severity: pct < 80 ? "high" : "med",
+        kind: "placement",
+        text: `${placed} / ${totalNeeded} cards placed (${pct}%). Run Master Solve for the missing ${totalNeeded - placed}.`,
+        apply: () => window.MasterSolverWizard?.open?.(),
+        applyLabel: "Solve",
+      });
+    } else if (pct === 0 && totalNeeded > 0) {
+      suggestions.push({
+        id: "placement-none",
+        section: "suggestions",
+        severity: "high",
+        kind: "placement",
+        text: "No cards placed yet. Open Timetable → Master Solve to generate.",
+        apply: () => window.MasterSolverWizard?.open?.(),
+        applyLabel: "Solve",
+      });
+    }
+
+    // 2. Configuration gaps
+    if (!lessons.length) {
+      suggestions.push({
+        id: "config-empty-lessons",
+        section: "suggestions",
+        severity: "high",
+        kind: "config",
+        text: "No lessons defined. Open Specification → Lessons to add lessons.",
+        apply: () => window.dispatchEvent(new CustomEvent("app:open-entity", { detail: { kind: "lessons" } })),
+        applyLabel: "Open Lessons",
+      });
+    }
+    if (!teachers.length) {
+      suggestions.push({
+        id: "config-empty-teachers",
+        section: "suggestions",
+        severity: "high",
+        kind: "config",
+        text: "No teachers defined. Open Specification → Teachers.",
+        apply: () => window.dispatchEvent(new CustomEvent("app:open-entity", { detail: { kind: "teachers" } })),
+        applyLabel: "Open Teachers",
+      });
+    }
+
+    // 3. Improvement opportunities (offer Improve mode when timetable is placed)
+    if (placed > 0 && (pct === 100 || pct >= 90)) {
+      suggestions.push({
+        id: "improvement-opportunity",
+        section: "suggestions",
+        severity: "low",
+        kind: "improvement",
+        text: "Cards are placed. Run Improve mode to lower soft penalties and optimize card distribution.",
+        apply: () => window.ImproveMode?.run?.(school, { timeLimitSec: 30 }),
+        applyLabel: "Run Improve",
+      });
+    }
+
+    // 4. Quality-of-life suggestions (Auto-color, Approbation matrix)
+    const subjectsWithoutColor = subjects.filter(s => !s.color).length;
+    if (subjectsWithoutColor > 0) {
+      suggestions.push({
+        id: "polish-subject-colors",
+        section: "suggestions",
+        severity: "low",
+        kind: "polish",
+        text: `${subjectsWithoutColor} subject(s) have no color. Run Color taxonomy to auto-assign.`,
+        apply: () => window.ColorTaxonomy?.autoColor?.(school),
+        applyLabel: "Auto-color",
+      });
+    }
+
+    const teachersWithoutQualification = teachers.filter(t => !(t.qualifiedSubjectIds?.length)).length;
+    if (teachersWithoutQualification > 0 && subjects.length > 0) {
+      suggestions.push({
+        id: "polish-teacher-approbations",
+        section: "suggestions",
+        severity: "low",
+        kind: "polish",
+        text: `${teachersWithoutQualification} teacher(s) have no qualifications set. Open Approbation matrix to fix.`,
+        apply: () => window.ApprobationMatrix?.open?.(),
+        applyLabel: "Open Approbation",
+      });
+    }
+
+    return [...filteredModelFindings, ...suggestions];
+  }
+
+  function toggleIgnore(school, findingId) {
+    school = school || (window.APP && window.APP.school);
+    if (!school) return false;
+    if (!Array.isArray(school.ignoredAdvisorFindings)) {
+      school.ignoredAdvisorFindings = [];
+    }
+    const list = school.ignoredAdvisorFindings;
+    const idx = list.indexOf(findingId);
+    let nowIgnored = false;
+
+    const perform = () => {
+      if (idx >= 0) {
+        list.splice(idx, 1);
+        nowIgnored = false;
+      } else {
+        list.push(findingId);
+        nowIgnored = true;
+      }
+    };
+
+    if (window.APP && typeof window.APP.mutate === "function") {
+      window.APP.mutate(idx >= 0 ? "Unignore advisor finding" : "Ignore advisor finding", perform);
+    } else {
+      perform();
+    }
+    return nowIgnored;
+  }
+
+  function open(school) {
+    school = school || (window.APP && window.APP.school);
+    if (!school) {
+      (window._chrxNotify || console.log)("Open a timetable first.", "error");
+      return;
+    }
+    ensureStyles();
+
+    let showIgnored = false;
+    const expandedLessons = new Set();
+
+    const root = el("div", {
+      class: "chrx-adv-root",
+      role: "dialog",
+      "aria-modal": "true",
+      onclick: e => { if (e.target === root) close(); },
+    });
     const panel = el("div", { class: "chrx-adv-panel" });
 
-    panel.appendChild(el("header", null,
-      el("h2", null, "💡 Advisor — improvements for your timetable"),
-      el("button", { class: "chrx-adv-close", "aria-label": "Close", onclick: () => root.remove() }, "×"),
-    ));
-    const total = suggestions.length;
-    const high = suggestions.filter(s => s.severity === "high").length;
-    const med  = suggestions.filter(s => s.severity === "med").length;
-    const low  = suggestions.filter(s => s.severity === "low").length;
-    panel.appendChild(el("div", { class: "chrx-adv-summary" },
-      `${total} suggestion${total === 1 ? "" : "s"} · `,
-      el("span", { style: "color:#ef4444;font-weight:600" }, `${high} high`),
-      " · ",
-      el("span", { style: "color:#f59e0b;font-weight:600" }, `${med} medium`),
-      " · ",
-      el("span", { style: "color:#10b981;font-weight:600" }, `${low} low`)));
-
-    const list = el("div", { class: "chrx-adv-list" });
-    if (!suggestions.length) {
-      list.appendChild(el("div", { class: "chrx-adv-empty" },
-        "🎉 No suggestions — your timetable is healthy. Keep up the good work."));
+    function close() {
+      root.remove();
+      document.removeEventListener("keydown", onKey, true);
     }
-    suggestions.forEach((s, i) => {
-      const row = el("div", { class: `chrx-adv-row chrx-adv-row--${s.severity}` });
-      row.appendChild(el("span", { class: `chrx-adv-badge chrx-adv-badge--${s.severity}` },
-        s.severity === "high" ? "Hard" : s.severity === "med" ? "Soft" : "Tip"));
-      row.appendChild(el("span", { class: "chrx-adv-text" }, s.text));
-      if (s.apply) {
-        row.appendChild(el("button", { class: "chrx-adv-action",
-          onclick: () => { try { s.apply(); root.remove(); } catch (e) { console.error(e); } } },
-          s.kind === "improvement" ? "Run Improve" : s.kind === "placement" ? "Solve" : "Open"));
-      }
-      list.appendChild(row);
-    });
-    panel.appendChild(list);
+    function onKey(e) {
+      if (e.key === "Escape") { e.preventDefault(); close(); }
+    }
+    document.addEventListener("keydown", onKey, true);
 
+    function renderContent() {
+      panel.innerHTML = "";
+
+      // Header
+      panel.appendChild(el("header", { class: "chrx-adv-head" },
+        el("div", null,
+          el("h2", null, "💡 Timetable Advisor"),
+          el("small", { style: "color:#64748b;font-size:12px" },
+            "Model validation & 1-click improvement suggestions"),
+        ),
+        el("button", { class: "chrx-adv-close", "aria-label": "Close", onclick: close }, "×"),
+      ));
+
+      const allItems = collectSuggestions(school, { includeIgnored: true });
+      const modelItems = allItems.filter(f => f.section === "model");
+      const activeModelItems = modelItems.filter(f => !f.ignored);
+      const ignoredModelItems = modelItems.filter(f => f.ignored);
+      const suggestionItems = allItems.filter(f => f.section === "suggestions");
+
+      const displayedModel = showIgnored ? modelItems : activeModelItems;
+
+      const totalModel = activeModelItems.length;
+      const totalSugg = suggestionItems.length;
+
+      // Summary bar
+      const summary = el("div", { class: "chrx-adv-summary" },
+        el("div", { class: "chrx-adv-counts" },
+          el("strong", null, `${totalModel} model check issue${totalModel === 1 ? "" : "s"}`),
+          ignoredModelItems.length > 0 ? el("span", { style: "color:#64748b;margin-left:4px" }, `(${ignoredModelItems.length} ignored)`) : null,
+          " · ",
+          el("strong", null, `${totalSugg} suggestion${totalSugg === 1 ? "" : "s"}`),
+        ),
+        el("label", { class: "chrx-adv-toggle-ignored" },
+          el("input", {
+            type: "checkbox",
+            checked: showIgnored ? "checked" : null,
+            onchange: (e) => { showIgnored = e.target.checked; renderContent(); },
+          }),
+          " Show ignored checks",
+        ),
+      );
+      panel.appendChild(summary);
+
+      const list = el("div", { class: "chrx-adv-list" });
+
+      const lessonById = (school._idx && school._idx.lessonById) ||
+        Object.fromEntries((school.lessons || []).map(l => [l.id, l]));
+      const subjectById = (school._idx && school._idx.subjectById) ||
+        Object.fromEntries((school.subjects || []).map(s => [s.id, s]));
+      const teacherById = (school._idx && school._idx.teacherById) ||
+        Object.fromEntries((school.teachers || []).map(t => [t.id, t]));
+      const classById = (school._idx && school._idx.classById) ||
+        Object.fromEntries((school.classes || []).map(c => [c.id, c]));
+
+      // ─────────────────────────────────────────────────────────────
+      // SECTION 1: MODEL CHECKS
+      // ─────────────────────────────────────────────────────────────
+      list.appendChild(el("h3", { class: "chrx-adv-sec-title" },
+        "🔍 Model Checks (Pre-generation Validation)"));
+
+      if (!displayedModel.length) {
+        list.appendChild(el("div", { class: "chrx-adv-empty" },
+          "🎉 No model faults detected — timetable structure is sound."));
+      } else {
+        displayedModel.forEach(f => {
+          const isExp = expandedLessons.has(f.id);
+          const card = el("div", {
+            class: `chrx-adv-card chrx-adv-card--${f.severity} ${f.ignored ? "is-ignored" : ""}`,
+          });
+
+          const mainRow = el("div", { class: "chrx-adv-main-row" });
+          const badgeText = f.ignored ? "Ignored" : f.severity === "high" ? "High" : f.severity === "med" ? "Medium" : "Tip";
+          mainRow.appendChild(el("span", {
+            class: `chrx-adv-badge chrx-adv-badge--${f.ignored ? "ignored" : f.severity}`,
+          }, badgeText));
+
+          mainRow.appendChild(el("div", { class: "chrx-adv-text" }, f.text));
+
+          const actions = el("div", { class: "chrx-adv-actions" });
+
+          if (f.lessonIds && f.lessonIds.length > 0) {
+            actions.appendChild(el("button", {
+              class: "chrx-adv-btn chrx-adv-btn--subtle",
+              onclick: () => {
+                if (isExp) expandedLessons.delete(f.id);
+                else expandedLessons.add(f.id);
+                window.dispatchEvent(new CustomEvent("app:filter-lessons", {
+                  detail: { lessonIds: f.lessonIds, findingId: f.id },
+                }));
+                renderContent();
+              },
+            }, isExp ? "Hide lessons" : `Show lessons (${f.lessonIds.length})`));
+          }
+
+          actions.appendChild(el("button", {
+            class: `chrx-adv-btn ${f.ignored ? "chrx-adv-btn--primary" : "chrx-adv-btn--ghost"}`,
+            onclick: () => {
+              toggleIgnore(school, f.id);
+              renderContent();
+            },
+          }, f.ignored ? "Unignore" : "Ignore"));
+
+          mainRow.appendChild(actions);
+          card.appendChild(mainRow);
+
+          if (isExp && f.lessonIds && f.lessonIds.length > 0) {
+            const drawer = el("div", { class: "chrx-adv-lesson-drawer" });
+            drawer.appendChild(el("div", { class: "chrx-adv-drawer-title" },
+              "Offending lessons:"
+            ));
+            const tbl = el("table", { class: "chrx-adv-lesson-tbl" });
+            tbl.innerHTML = `<thead><tr><th>Lesson</th><th>Subject</th><th>Class</th><th>Teacher</th><th>Per wk</th></tr></thead>`;
+            const tbody = el("tbody");
+            f.lessonIds.forEach(lid => {
+              const l = lessonById[lid] || {};
+              const sName = displayName(subjectById[l.subjectId], "Subject");
+              const cNames = (l.classIds || []).map(cid => displayName(classById[cid], "Class")).join(", ") || "—";
+              const tNames = (l.teacherIds || []).map(tid => displayName(teacherById[tid], "Teacher")).join(", ") || "None";
+              const pCount = lessonPeriods(l);
+              const tr = el("tr");
+              tr.innerHTML = `<td><strong>${sName} · ${cNames} · ${pCount}/wk</strong></td><td>${sName}</td><td>${cNames}</td><td>${tNames}</td><td>${pCount}</td>`;
+              tbody.appendChild(tr);
+            });
+            tbl.appendChild(tbody);
+            drawer.appendChild(tbl);
+
+            const openLink = el("button", {
+              class: "chrx-adv-btn chrx-adv-btn--subtle",
+              style: "margin-top:6px;font-size:11px",
+              onclick: () => {
+                window.dispatchEvent(new CustomEvent("app:open-entity", {
+                  detail: { kind: "lessons", filterLessonIds: f.lessonIds },
+                }));
+                close();
+              },
+            }, "Open Lessons Dialog →");
+            drawer.appendChild(openLink);
+
+            card.appendChild(drawer);
+          }
+
+          list.appendChild(card);
+        });
+      }
+
+      // ─────────────────────────────────────────────────────────────
+      // SECTION 2: SUGGESTIONS (1-Click Apply Actions)
+      // ─────────────────────────────────────────────────────────────
+      list.appendChild(el("h3", { class: "chrx-adv-sec-title", style: "margin-top:20px" },
+        "⚡ Suggestions (1-Click Actions)"));
+
+      if (!suggestionItems.length) {
+        list.appendChild(el("div", { class: "chrx-adv-empty" },
+          "🎉 No suggestions at this time."));
+      } else {
+        suggestionItems.forEach(s => {
+          const card = el("div", {
+            class: `chrx-adv-card chrx-adv-card--${s.severity}`,
+          });
+
+          const mainRow = el("div", { class: "chrx-adv-main-row" });
+          const badgeText = s.severity === "high" ? "Hard" : s.severity === "med" ? "Soft" : "Tip";
+          mainRow.appendChild(el("span", {
+            class: `chrx-adv-badge chrx-adv-badge--${s.severity}`,
+          }, badgeText));
+
+          mainRow.appendChild(el("div", { class: "chrx-adv-text" }, s.text));
+
+          if (s.apply) {
+            const btnLabel = s.applyLabel ||
+              (s.kind === "improvement" ? "Run Improve" :
+               s.kind === "placement" ? "Solve" :
+               s.kind === "polish" ? "Auto-color" : "Apply");
+            const actBtn = el("button", {
+              class: "chrx-adv-btn chrx-adv-btn--primary",
+              onclick: () => {
+                try {
+                  s.apply();
+                  close();
+                } catch (err) {
+                  console.error(err);
+                }
+              },
+            }, btnLabel);
+            mainRow.appendChild(actBtn);
+          }
+
+          card.appendChild(mainRow);
+          list.appendChild(card);
+        });
+      }
+
+      panel.appendChild(list);
+    }
+
+    renderContent();
     root.appendChild(panel);
     document.body.appendChild(root);
   }
@@ -170,30 +836,47 @@ import "./master_solver_wizard.js";
     s.id = "chrx-adv-styles";
     s.textContent = `
 .chrx-adv-root{position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:flex-start;justify-content:center;padding:24px;z-index:1100;overflow:auto}
-.chrx-adv-panel{background:#fff;border-radius:14px;width:min(720px,95vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3);font-family:-apple-system,sans-serif}
-.chrx-adv-panel header{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid #e2e8f0}
-.chrx-adv-panel h2{margin:0;font-size:16px;color:#1e3a8a}
-.chrx-adv-close{background:none;border:0;font-size:22px;cursor:pointer;color:#64748b}
-.chrx-adv-summary{padding:10px 18px;background:#f8fafc;font-size:12px;color:#475569;border-bottom:1px solid #e2e8f0}
-.chrx-adv-list{flex:1;overflow-y:auto;padding:10px 18px}
-.chrx-adv-empty{padding:32px;text-align:center;color:#10b981;font-size:14px}
-.chrx-adv-row{display:flex;align-items:center;gap:10px;padding:10px 6px;border-bottom:1px solid #f1f5f9;font-size:13px;color:#0f172a}
-.chrx-adv-row--high{border-left:3px solid #ef4444;padding-left:10px}
-.chrx-adv-row--med{border-left:3px solid #f59e0b;padding-left:10px}
-.chrx-adv-row--low{border-left:3px solid #10b981;padding-left:10px}
-.chrx-adv-badge{font-size:10px;font-weight:700;text-transform:uppercase;padding:2px 6px;border-radius:4px;letter-spacing:.04em;color:#fff;flex-shrink:0}
+.chrx-adv-panel{background:#fff;border-radius:14px;width:min(820px,96vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,.3);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#0f172a}
+.chrx-adv-head{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid #e2e8f0}
+.chrx-adv-head h2{margin:0;font-size:18px;color:#1e3a8a}
+.chrx-adv-close{background:none;border:0;font-size:24px;cursor:pointer;color:#64748b;line-height:1}
+.chrx-adv-close:hover{color:#0f172a}
+.chrx-adv-summary{display:flex;justify-content:space-between;align-items:center;padding:10px 20px;background:#f8fafc;font-size:13px;color:#475569;border-bottom:1px solid #e2e8f0}
+.chrx-adv-toggle-ignored{display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;user-select:none}
+.chrx-adv-sec-title{margin:14px 0 6px;font-size:13px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:.04em}
+.chrx-adv-list{flex:1;overflow-y:auto;padding:14px 20px;display:flex;flex-direction:column;gap:8px}
+.chrx-adv-empty{padding:20px;text-align:center;color:#10b981;font-size:13px;font-weight:500;background:#f0fdf4;border-radius:8px;border:1px dashed #86efac}
+.chrx-adv-card{border:1px solid #e2e8f0;border-radius:8px;padding:11px 14px;background:#fff;transition:border-color .15s}
+.chrx-adv-card--high{border-left:4px solid #ef4444}
+.chrx-adv-card--med{border-left:4px solid #f59e0b}
+.chrx-adv-card--low{border-left:4px solid #10b981}
+.chrx-adv-card.is-ignored{opacity:.55;border-left:4px solid #94a3b8}
+.chrx-adv-main-row{display:flex;align-items:center;gap:12px}
+.chrx-adv-badge{font-size:10px;font-weight:700;text-transform:uppercase;padding:2px 7px;border-radius:4px;letter-spacing:.04em;color:#fff;flex-shrink:0}
 .chrx-adv-badge--high{background:#ef4444}
 .chrx-adv-badge--med{background:#f59e0b}
 .chrx-adv-badge--low{background:#10b981}
-.chrx-adv-text{flex:1;line-height:1.4}
-.chrx-adv-action{background:#4f46e5;color:#fff;border:0;padding:5px 12px;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;flex-shrink:0}
-.chrx-adv-action:hover{background:#4338ca}
+.chrx-adv-badge--ignored{background:#94a3b8}
+.chrx-adv-text{flex:1;line-height:1.45;font-size:13px;color:#1e293b}
+.chrx-adv-actions{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.chrx-adv-btn{border:0;padding:5px 12px;border-radius:5px;font-size:12px;font-weight:600;cursor:pointer;line-height:1.2;flex-shrink:0}
+.chrx-adv-btn--subtle{background:#f1f5f9;color:#334155;font-weight:500}
+.chrx-adv-btn--subtle:hover{background:#e2e8f0}
+.chrx-adv-btn--ghost{background:transparent;color:#64748b;font-weight:500}
+.chrx-adv-btn--ghost:hover{background:#f1f5f9;color:#0f172a}
+.chrx-adv-btn--primary{background:#2563eb;color:#fff}
+.chrx-adv-btn--primary:hover{background:#1d4ed8}
+.chrx-adv-lesson-drawer{margin-top:10px;padding:10px;background:#f8fafc;border-radius:6px;border:1px solid #e2e8f0}
+.chrx-adv-drawer-title{font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:6px}
+.chrx-adv-lesson-tbl{width:100%;border-collapse:collapse;font-size:12px}
+.chrx-adv-lesson-tbl th{text-align:left;padding:4px 6px;color:#64748b;font-weight:600;border-bottom:1px solid #cbd5e1}
+.chrx-adv-lesson-tbl td{padding:4px 6px;border-bottom:1px solid #f1f5f9}
     `;
     document.head.appendChild(s);
   }
 
   window.addEventListener("app:advisor", () => open());
-  window.Advisor = { open, collectSuggestions };
+  window.Advisor = { open, collectSuggestions, toggleIgnore };
 })();
 
 // Chronexa Web
