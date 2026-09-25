@@ -73,3 +73,24 @@ test.describe("W3b-2 Generator Modes E2E", () => {
     }
   });
 });
+
+test("Add unplaced only: applying never leaks the temporary locks; user locks are kept", async ({ page }) => {
+  await loadDemoSchool(page);
+  const countLocked = () => page.evaluate(() => window.APP.school.cards.filter((c) => c.locked || c._mppHardLock).length);
+  await page.evaluate(() => window.APP.mutate("test prep", (s) => { s.cards.splice(0, 3); s.cards[10].locked = true; s.cards[20].locked = true; }));
+  expect(await countLocked()).toBe(2);
+
+  await page.locator("button.chrx-btn--primary", { hasText: "Generate" }).first().click();
+  await page.locator(".chrx-genmode-card[data-gen-mode='add_unplaced']").click();
+  await page.evaluate(() => { const dlg = document.querySelector(".csu-prelaunch"); if (dlg) dlg.dataset.timeLimitSec = "2"; });
+  await page.locator("#csu-prelaunch-start").click();
+  await expect(page.locator(".csu-result")).toBeVisible({ timeout: 120_000 });
+  const applyBtn = page.locator("#csu-result-apply");
+  if (await applyBtn.isVisible()) {
+    await applyBtn.click();
+    const confirmBtn = page.locator("#chrx-apply-confirm [data-confirm]");
+    if (await confirmBtn.isVisible()) await confirmBtn.click();
+  }
+  await expect.poll(() => page.evaluate(() => window.APP.school.cards.length), { timeout: 10_000 }).toBeGreaterThan(948);
+  expect(await countLocked()).toBe(2);
+});

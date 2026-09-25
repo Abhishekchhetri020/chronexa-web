@@ -263,7 +263,10 @@ import "./progress_modal.js";  // provides SolverUI.expectedCardCount
 
   function assignmentToCards(assignment) {
     if (!Array.isArray(assignment)) return [];
-    const origCards = (state && state.school && state.school.cards) || [];
+    // Lock state comes from the LIVE timetable: "Add unplaced only" solves on a copy whose placed
+    // cards are temporarily hard-locked, and those locks must never reach the applied cards.
+    const liveCards = global.APP && global.APP.school && Array.isArray(global.APP.school.cards) ? global.APP.school.cards : null;
+    const origCards = liveCards || (state && state.school && state.school.cards) || [];
     const origLocked = new Set(
       origCards
         .filter((c) => c && c.locked)
@@ -272,8 +275,9 @@ import "./progress_modal.js";  // provides SolverUI.expectedCardCount
     const out = [];
     for (const a of assignment) {
       const baseId = String(a.lessonId).replace(/#\d+$/, "");
-      const isLocked = !!a.locked
-        || origLocked.has(`${baseId}|${a.day}|${a.period}`)
+      // Solver output may echo locks it added internally (stage 2 of "Add unplaced only" hard-locks
+      // every draft card), so a.locked is NOT user intent: lock state comes from the live school only.
+      const isLocked = origLocked.has(`${baseId}|${a.day}|${a.period}`)
         || origLocked.has(`${a.lessonId}|${a.day}|${a.period}`);
       out.push({
         lessonId: a.lessonId,
