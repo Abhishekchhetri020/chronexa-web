@@ -685,20 +685,39 @@ import "./print_settings_dialog.js";
     return null;
   }
 
+  // W3b-1 — equal period columns. Day column and break columns are pinned;
+  // every period column is left width-less so `table-layout:fixed` gives them
+  // an IDENTICAL share of the remaining width. Verified against the demo
+  // school: P4/P5 used to measure ~150px against P1-P3/P6/P7 at ~56px because
+  // one slot held "Sports Meet Practice" + 17 teacher names and auto layout
+  // widens a column to fit its longest cell.
+  const DAY_COL_PX = 62;
+  const BREAK_COL_PX = 28;
+  const CELL_WRAP = "overflow-wrap:anywhere;word-break:break-word;white-space:normal";
+
   function gridTable(periods, daysIn, cellFn) {
     const s = APP.school;
     const sortedPeriods = periods.slice().sort((a, b) => (a.startMin || 0) - (b.startMin || 0));
-    const tbl = el("table", { class: "chrx-print-table" });
+    const tbl = el("table", { class: "chrx-print-table", style: "table-layout:fixed" });
+    // The <colgroup> must mirror the header row column-for-column, breaks
+    // included, or the fixed layout pins the wrong widths.
+    const cols = el("colgroup");
+    cols.appendChild(el("col", { style: "width:" + DAY_COL_PX + "px" }));
+    const breakAfter = [];
+    sortedPeriods.forEach((p, idx) => {
+      cols.appendChild(el("col"));
+      const brk = idx < sortedPeriods.length - 1 ? getBreakBetween(s, p, sortedPeriods[idx + 1]) : null;
+      breakAfter.push(!!brk);
+      if (brk) cols.appendChild(el("col", { style: "width:" + BREAK_COL_PX + "px" }));
+    });
+    tbl.appendChild(cols);
     const tr0 = el("tr");
     tr0.appendChild(el("th", { class: "chrx-print-th-corner" }, ""));
     
     sortedPeriods.forEach((p, idx) => {
       tr0.appendChild(el("th", { class: "chrx-print-th-period" }, "P" + p.index + " " + p.label));
-      if (idx < sortedPeriods.length - 1) {
-        const brk = getBreakBetween(s, p, sortedPeriods[idx + 1]);
-        if (brk) {
-          tr0.appendChild(el("th", { class: "chrx-print-th-break" }, ""));
-        }
+      if (breakAfter[idx]) {
+        tr0.appendChild(el("th", { class: "chrx-print-th-break" }, ""));
       }
     });
     tbl.appendChild(el("thead", null, tr0));
@@ -710,21 +729,19 @@ import "./print_settings_dialog.js";
       
       sortedPeriods.forEach((p, idx) => {
         tr.appendChild(cellFn(di, p));
-        if (idx < sortedPeriods.length - 1) {
-          const brk = getBreakBetween(s, p, sortedPeriods[idx + 1]);
-          if (brk) {
-            if (di === 0) {
-              const breakCell = el("td", {
-                class: "chrx-print-td-break",
-                rowspan: String(daysIn.length),
-                style: "vertical-align:middle; text-align:center; background:var(--paper-2); font-weight:600; text-transform:uppercase; color:var(--ink-3); font-size:10px; padding:4px;"
-              });
-              const textDiv = el("div", {
-                style: "writing-mode: vertical-lr; transform: rotate(180deg); margin: 0 auto; letter-spacing: 0.15em;"
-              }, brk.printtext || brk.name);
-              breakCell.appendChild(textDiv);
-              tr.appendChild(breakCell);
-            }
+        if (breakAfter[idx]) {
+          if (di === 0) {
+            const brk = getBreakBetween(s, p, sortedPeriods[idx + 1]);
+            const breakCell = el("td", {
+              class: "chrx-print-td-break",
+              rowspan: String(daysIn.length),
+              style: "vertical-align:middle; text-align:center; background:var(--paper-2); font-weight:600; text-transform:uppercase; color:var(--ink-3); font-size:10px; padding:4px; overflow:hidden;"
+            });
+            const textDiv = el("div", {
+              style: "writing-mode: vertical-lr; transform: rotate(180deg); margin: 0 auto; letter-spacing: 0.15em;"
+            }, brk.printtext || brk.name);
+            breakCell.appendChild(textDiv);
+            tr.appendChild(breakCell);
           }
         }
       });
@@ -756,7 +773,7 @@ import "./print_settings_dialog.js";
     if (!card) {
       return el("td", {
         class: "pp-cell-empty",
-        style: `padding:${tuning.padding}px; font-size:${tuning.fontSize}px; border-width:${tuning.borderWidth}px; border-style:solid; border-color:var(--line); color:var(--ink-3); text-align:center; vertical-align:middle;`
+        style: `padding:${tuning.padding}px; font-size:${tuning.fontSize}px; border-width:${tuning.borderWidth}px; border-style:solid; border-color:var(--line); color:var(--ink-3); text-align:center; vertical-align:middle; ${CELL_WRAP}`
       }, "—");
     }
 
@@ -785,7 +802,7 @@ import "./print_settings_dialog.js";
     }
 
     const td = el("td", {
-      style: `background:${bg}; color:${fg}; border:${border}; padding:${tuning.padding}px; font-size:${tuning.fontSize}px; vertical-align:middle;`
+      style: `background:${bg}; color:${fg}; border:${border}; padding:${tuning.padding}px; font-size:${tuning.fontSize}px; vertical-align:middle; ${CELL_WRAP}`
     });
 
     const box = el("div", {

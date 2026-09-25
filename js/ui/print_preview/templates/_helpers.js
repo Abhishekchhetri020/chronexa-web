@@ -71,11 +71,33 @@ import "../../state.js";
   function tableCSS() {
     return "border-collapse:collapse;width:100%;font-size:9.5px";
   }
+  // W3b-1 — equal period columns. Under the default `table-layout:auto` the
+  // browser sizes a column to its widest cell, so one slot holding "Sports
+  // Meet Practice" plus 17 teacher names stretched its P4/P5 columns to ~3x
+  // the width of P1-P3. `fixed` makes the declared (or, for width-less
+  // <col>s, the equal-share) widths authoritative and wraps the content
+  // inside its cell instead.
+  function gridCSS() {
+    return tableCSS() + ";table-layout:fixed";
+  }
+  // One <col> per column: the label column pinned to `labelWidth`, every
+  // other column left width-less so table-layout:fixed hands them an
+  // identical share of the remaining width. Pass the SAME sequence the
+  // header row builds (periods, or days for the transposed structure).
+  function gridCols(columns, labelWidth) {
+    const cg = el("colgroup");
+    cg.appendChild(el("col", { style: "width:" + (labelWidth || 62) + "px" }));
+    (columns || []).forEach(() => cg.appendChild(el("col")));
+    return cg;
+  }
+  // `overflow-wrap:anywhere` inherits into the cell's <div>s, so a long
+  // teacher list breaks into the pinned column instead of widening it.
+  const WRAP = ";overflow-wrap:anywhere;word-break:break-word;white-space:normal";
   function thCSS() {
-    return "border:1px solid #888;background:#f0f0f0;padding:3px 5px;font-weight:600;text-align:left";
+    return "border:1px solid #888;background:#f0f0f0;padding:3px 5px;font-weight:600;text-align:left" + WRAP;
   }
   function tdCSS() {
-    return "border:1px solid #bbb;padding:3px 5px;vertical-align:top";
+    return "border:1px solid #bbb;padding:3px 5px;vertical-align:top" + WRAP;
   }
 
   // Item 5 — per-template structure resolver. Templates that want to
@@ -94,7 +116,7 @@ import "../../state.js";
   APP.printTemplateUtils = {
     DAYS, el, page, header, footer, emptyPage,
     cardAtFor, subjectLabel, teacherList,
-    tableCSS, thCSS, tdCSS,
+    tableCSS, gridCSS, gridCols, thCSS, tdCSS,
     structureFor,
   };
 })();

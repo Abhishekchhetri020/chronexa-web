@@ -38,12 +38,20 @@ const PREVIEW_CSS = `
     border-collapse: collapse;
     margin-top: 10px;
     flex: 1;
+    /* W3b-1 — the PNG path serializes the live page into an SVG
+       foreignObject, so the column rules have to be repeated here: fixed
+       layout plus the table's own column group keep every period column
+       equal and wrap long cells inside their column.
+       NOTE: this CSS is injected into XML, so no angle brackets in comments. */
+    table-layout: fixed;
   }
   th, td {
     border: 1px solid #cbd5e1;
     padding: 6px;
     vertical-align: middle;
     text-align: center;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
   th {
     background: #f1f5f9;

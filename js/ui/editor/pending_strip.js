@@ -93,19 +93,257 @@ window.PendingStrip = (function () {
     // Store all card IDs so the click handler can pick them off one by one.
     const allIds = cards.map(c => c.cardId).join(",");
     return `
-      <div class="chrx-vkarta chrx-vk-pending${stackClass}"
-           data-card-id="${esc(top.cardId)}"
-           data-lesson-id="${esc(top.lessonId)}"
-           data-stack-ids="${esc(allIds)}"
-           data-stack-depth="${depth}"
-           style="--chrx-card-hue:${top.hue};--chrx-stack-depth:${depth}"
-           title="${esc(top.title)}">
-        <div class="chrx-vk-line1">${esc(top.subjShort)}</div>
-        <div class="chrx-vk-line2">${esc(top.classShort)}</div>
-        <div class="chrx-vk-line3">${esc(top.teacherShort)}</div>
-        ${badge}
+      <div class="chrx-pending-item">
+        <div class="chrx-vkarta chrx-vk-pending${stackClass}"
+             data-card-id="${esc(top.cardId)}"
+             data-lesson-id="${esc(top.lessonId)}"
+             data-stack-ids="${esc(allIds)}"
+             data-stack-depth="${depth}"
+             style="--chrx-card-hue:${top.hue};--chrx-stack-depth:${depth}"
+             title="${esc(top.title)}">
+          <div class="chrx-vk-line1">${esc(top.subjShort)}</div>
+          <div class="chrx-vk-line2">${esc(top.classShort)}</div>
+          <div class="chrx-vk-line3">${esc(top.teacherShort)}</div>
+          ${badge}
+        </div>
+        ${whyHtml(top.why)}
       </div>
     `;
+  }
+
+  /* ── "Why is this unplaced?" ───────────────────────────────────────────
+   * Every pending card gets a one-line explanation built by sweeping the
+   * card's OWN lesson over all candidate (day, period) slots and counting
+   * how many slots each hard reason blocks. The per-slot verdict comes from
+   * the existing classifier (window.Placement.classify) so the tray can
+   * never disagree with the drag hover/commit guard.
+   *
+   * Two reasons the classifier does not model are added here rather than by
+   * editing placement_validator.js: teacher/class daily caps (same
+   * `maxPerDay` + globals fallback semantics as csp_solver's
+   * TEACHER_MAX_PER_DAY / CLASS_MAX_PER_DAY) and card relations (the same
+   * window.RelationEnforcer.check the constraint explainer uses). Both
+   * degrade silently to "not reported" when their module has not loaded.
+   */
+
+  // Canonical reason buckets, in the order a planner wants to read them.
+  const REASONS = [
+    { key: "teacher",  label: "teacher busy" },
+    { key: "class",    label: "class busy" },
+    { key: "room",     label: "room busy" },
+    { key: "timeoff",  label: "time-off" },
+    { key: "dailycap", label: "daily cap" },
+    { key: "relation", label: "relation" },
+    { key: "roomtype", label: "room type" },
+    { key: "bell",     label: "bell period" },
+    { key: "fixed",    label: "fixed slot" },
+    { key: "lab",      label: "needs P+1" },
+  ];
+  const REASON_INDEX = Object.create(null);
+  REASONS.forEach((r, i) => { REASON_INDEX[r.key] = i; });
+
+  /** Map a classify()/supplementary message onto a REASONS bucket. */
+  function bucketOf(msg) {
+    let m = String(msg == null ? "" : msg);
+    // "lab P+1: class busy" is still a class conflict — fold it into the
+    // class/teacher/room bucket so the tray does not report a second
+    // "lab" reason for the same blocker.
+    const lab = m.match(/^lab P\+1: (.*)$/);
+    if (lab) m = lab[1];
+    if (/^teacher .+ busy$/.test(m))   return "teacher";
+    if (/^class .+ busy$/.test(m))     return "class";
+    if (/^room .+ busy$/.test(m))      return "room";
+    if (/^teacher .+ unavailable$/.test(m)) return "timeoff";
+    if (/^room type .+ required$/.test(m)) return "roomtype";
+    if (/bell has no period/.test(m))  return "bell";
+    if (/^fixed /.test(m))             return "fixed";
+    if (/^lab /.test(m))               return "lab";
+    if (/^daily cap/.test(m))          return "dailycap";
+    if (/^relation/.test(m))           return "relation";
+    return null;
+  }
+
+  function candidateSlots(S) {
+    const days = Math.max(1, Math.min(6, (S.daysPerWeek | 0) || 6));
+    const periods = ((S.bell && S.bell.periods) || [])
+      .filter(p => p && p.isTeaching !== false)
+      .slice()
+      .sort((a, b) => (a.index | 0) - (b.index | 0));
+    const out = [];
+    for (let d = 0; d < days; d++) for (const p of periods) out.push({ day: d, period: p.index | 0 });
+    return out;
+  }
+
+  function slotIndex(S) {
+    const map = new Map();
+    for (const c of (S.cards || [])) {
+      const k = (c.day | 0) + "_" + (c.period | 0);
+      let arr = map.get(k);
+      if (!arr) { arr = []; map.set(k, arr); }
+      arr.push(c);
+    }
+    return map;
+  }
+
+  /** One pass over the placed cards → per-day teacher/class teaching counts. */
+  function dayLoads(S, days) {
+    const teacher = [], cls = [];
+    for (let d = 0; d < days; d++) { teacher.push(Object.create(null)); cls.push(Object.create(null)); }
+    for (const c of (S.cards || [])) {
+      const d = c.day | 0;
+      if (d < 0 || d >= days) continue;
+      const L = S._idx && S._idx.lessonById ? S._idx.lessonById[c.lessonId] : null;
+      if (!L) continue;
+      for (const t of (L.teacherIds || [])) teacher[d][t] = (teacher[d][t] || 0) + 1;
+      for (const k of (L.classIds || [])) cls[d][k] = (cls[d][k] || 0) + 1;
+    }
+    return { teacher, cls };
+  }
+
+  /** Mirrors csp_solver gFallback: per-entity value wins, then globals. */
+  function capOf(entity, ownKey, globalKey, S) {
+    const g = (S.globals && S.globals.constraints) || {};
+    const own = entity ? entity[ownKey] : null;
+    if (own != null && own !== "*" && own !== "i") return own | 0;
+    const fb = g[globalKey];
+    if (fb != null && fb !== "*" && fb !== "i") return fb | 0;
+    return -1;
+  }
+
+  function capReasons(S, lesson, day, loads) {
+    const out = [];
+    for (const tid of (lesson.teacherIds || [])) {
+      const t = S._idx.teacherById[tid];
+      const cap = capOf(t, "maxPerDay", "teacherMaxPerDay", S);
+      if (cap >= 0 && (loads.teacher[day][tid] || 0) >= cap) {
+        out.push("daily cap (teacher " + ((t && (t.abbr || t.name)) || tid) + ")");
+      }
+    }
+    for (const cid of (lesson.classIds || [])) {
+      const c = S._idx.classById[cid];
+      const cap = capOf(c, "maxPerDay", "classMaxPerDay", S);
+      if (cap >= 0 && (loads.cls[day][cid] || 0) >= cap) {
+        out.push("daily cap (class " + ((c && c.name) || cid) + ")");
+      }
+    }
+    return out;
+  }
+
+  function relationReasons(S, lessonId, day, period) {
+    const RE = window.RelationEnforcer;
+    if (!RE || typeof RE.check !== "function") return [];
+    try {
+      const res = RE.check(S, lessonId, day, period);
+      const hard = (res && res.hard) || [];
+      return hard.length ? ["relation: " + hard[0]] : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  /** Per-slot sweep for one lesson → counts per reason bucket. */
+  function explainLesson(S, lessonId) {
+    const out = {
+      total: 0, free: 0, amber: 0, blocked: 0,
+      counts: Object.create(null), reasons: [], summary: "",
+    };
+    const lesson = S._idx && S._idx.lessonById ? S._idx.lessonById[lessonId] : null;
+    const slots = candidateSlots(S);
+    out.total = slots.length;
+    if (!lesson || !slots.length) return out;
+    const idx = slotIndex(S);
+    const loads = dayLoads(S, Math.max(1, Math.min(6, (S.daysPerWeek | 0) || 6)));
+    const classify = window.Placement && window.Placement.classify;
+
+    for (const slot of slots) {
+      let msgs = [];
+      let red = false;
+      if (classify) {
+        const r = classify(lessonId, slot.day, slot.period, null,
+          idx.get(slot.day + "_" + slot.period) || []);
+        msgs = (r && r.reasons) || [];
+        red = !!(r && r.validity === "red");
+        if (!red && r && r.validity === "amber") out.amber++;
+      }
+      // Daily caps and relations are NOT modelled by placement_validator, so
+      // they are always evaluated — a slot can be blocked by a class conflict
+      // AND a daily cap at the same time, and both are worth reporting.
+      const extra = capReasons(S, lesson, slot.day, loads)
+        .concat(relationReasons(S, lessonId, slot.day, slot.period));
+      if (extra.length) { msgs = msgs.concat(extra); red = true; }
+      if (!red) { out.free++; continue; }
+      out.blocked++;
+      const seen = Object.create(null);
+      for (const m of msgs) {
+        const k = bucketOf(m);
+        if (!k || seen[k]) continue;   // one slot counts once per bucket
+        seen[k] = 1;
+        out.counts[k] = (out.counts[k] || 0) + 1;
+      }
+    }
+
+    out.reasons = REASONS
+      .filter(r => out.counts[r.key] > 0)
+      .map(r => ({ key: r.key, label: r.label, count: out.counts[r.key] }))
+      .sort((a, b) => b.count - a.count || REASON_INDEX[a.key] - REASON_INDEX[b.key]);
+    out.summary = whySummary(out);
+    return out;
+  }
+
+  /** "No free slot: teacher busy in 31, class busy in 9" (top 3 reasons). */
+  function whySummary(why) {
+    if (!why || !why.total) return "";
+    const top = why.reasons.slice(0, 3).map(r => r.label + " in " + r.count).join(", ");
+    if (!why.free) return top ? "No free slot: " + top : "No free slot";
+    const head = "Free in " + why.free + " of " + why.total;
+    return top ? head + " · blocked: " + top : head;
+  }
+
+  function whyTitle(why) {
+    if (!why || !why.total) return "";
+    const all = why.reasons.map(r => r.label + ": " + r.count + " slots").join("\n");
+    return why.free + " of " + why.total + " slots free" +
+      (why.amber ? " (" + why.amber + " soft)" : "") +
+      (all ? "\n" + all : "");
+  }
+
+  function whyHtml(why) {
+    if (!why || !why.total) return "";
+    const counts = why.reasons.map(r => r.label + ":" + r.count).join(",");
+    return `
+      <div class="chrx-pending-why ${why.free ? "is-free" : "is-blocked"}"
+           data-why-free="${why.free}"
+           data-why-blocked="${why.blocked}"
+           data-why-reasons="${esc(counts)}">
+        <span class="chrx-pending-why-text" title="${esc(whyTitle(why))}">${esc(why.summary)}</span>
+        <button type="button" class="chrx-pending-why-link">Show in Verification</button>
+      </div>
+    `;
+  }
+
+  /* ── reason cache ──────────────────────────────────────────────────────
+   * A search keystroke re-renders the whole tray; without this the 48-slot
+   * sweep would re-run for every lesson on every keystroke. The signature
+   * covers every input explainLesson reads, so a move/add/remove invalidates
+   * it and nothing else does.
+   */
+  let _why = { sig: null, map: Object.create(null) };
+
+  function gridSignature(S) {
+    let s = (S.lessons || []).length + "#" + (S.relations || []).length + "#" + (S.daysPerWeek | 0) + "#";
+    for (const c of (S.cards || [])) s += (c.lessonId || "") + (c.day | 0) + "." + (c.period | 0) + "|";
+    return s;
+  }
+
+  function whyMapFor(S) {
+    const sig = gridSignature(S);
+    if (_why.sig !== sig) _why = { sig, map: Object.create(null) };
+    return _why.map;
+  }
+
+  function whyFor(S, lessonId, cache) {
+    if (!(lessonId in cache)) cache[lessonId] = explainLesson(S, lessonId);
+    return cache[lessonId];
   }
 
   function wire(rootEl) {
@@ -129,6 +367,15 @@ window.PendingStrip = (function () {
       render(rootEl);
       const editor = document.querySelector(".chrx-editor");
       if (editor && window.Editor && window.Editor.render) window.Editor.render(editor);
+    });
+    // "Show in Verification" jumps to the existing Verification Pro panel
+    // (never a second implementation of it — we only dispatch its event).
+    rootEl.querySelectorAll(".chrx-pending-why-link").forEach(btn => {
+      btn.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        window.dispatchEvent(new CustomEvent("app:verification-pro"));
+      });
     });
     rootEl.querySelector(".chrx-pending-resize")?.addEventListener("pointerdown", (ev) => {
       // Lane-curtain: once the curtain is mounted it owns vertical sizing,
@@ -249,6 +496,7 @@ window.PendingStrip = (function () {
     const f = (_state.filter || "").trim();
     const groups = Object.create(null);
     const classFilterId = window.APP && window.APP.editor && window.APP.editor.selectedClassId;
+    const whyCache = whyMapFor(S);
 
    for (const L of (S.lessons || [])) {
      if (classFilterId && !(L.classIds || []).includes(classFilterId)) continue;
@@ -272,6 +520,10 @@ window.PendingStrip = (function () {
       const hay = `${subjShort} ${classShort} ${teacherShort}`.toLowerCase();
       if (f && !hay.includes(f)) continue;
 
+      // Why this card cannot be placed — computed once per lesson, not once
+      // per card in the pile, and only for lessons that actually render.
+      const why = whyFor(S, L.id, whyCache);
+
       const gKey = groupKeyFn(S, L) || "—";
       groups[gKey] = groups[gKey] || { label: gKey, cards: [] };
 
@@ -279,7 +531,7 @@ window.PendingStrip = (function () {
         groups[gKey].cards.push({
           cardId: `pending_${L.id}_${i}`,
           lessonId: L.id,
-          subjShort, teacherShort, classShort, title, hue,
+          subjShort, teacherShort, classShort, title, hue, why,
         });
       }
     }
@@ -401,7 +653,7 @@ window.PendingStrip = (function () {
       c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
   }
 
-  return { render };
+  return { render, explainLesson, whySummary, bucketOf };
 })();
 
 // [vite-esm] exports auto-generated by the 2026-07 Vite migration.

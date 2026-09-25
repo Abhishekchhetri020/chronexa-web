@@ -162,6 +162,16 @@ body.chrx-card-in-hand .chrx-slot.empty.out-of-bell{outline:1px solid var(--chrx
 .chrx-pending-cards{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start}
 .chrx-pending-empty{color:var(--chrx-fg-tertiary);font-size:var(--chrx-font-small);padding:var(--chrx-space-3)}
 .chrx-vk-pending{position:static;width:56px;height:40px;inset:auto;flex:0 0 56px}
+/* W3b-1 — "why is this unplaced": the card with its one-line reason summary
+   BESIDE it (not below), so the line fits inside the tray's default height
+   instead of being clipped by the strip's short scroll viewport. */
+.chrx-pending-item{display:flex;flex-direction:row;align-items:flex-start;gap:6px;min-width:0;white-space:normal}
+.chrx-pending-why{flex:0 1 auto;min-width:0;max-width:168px;display:flex;flex-direction:column;gap:2px;font-size:10px;line-height:1.3;color:var(--chrx-fg-secondary);white-space:normal}
+.chrx-pending-why-text{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;word-break:break-word}
+.chrx-pending-why.is-blocked .chrx-pending-why-text{color:var(--chrx-amber);font-weight:600}
+.chrx-pending-why-link{align-self:flex-start;background:none;border:0;padding:0;margin:0;font:inherit;font-size:10px;line-height:1.2;color:var(--chrx-accent);cursor:pointer;text-decoration:underline;text-underline-offset:2px;white-space:nowrap}
+.chrx-pending-why-link:hover{color:var(--chrx-fg)}
+.chrx-pending-why-link:focus-visible{outline:2px solid var(--chrx-accent);outline-offset:1px;border-radius:2px}
 /* Stacked cards: same-lesson cards rendered as a single pile with depth shadows */
 .chrx-vk-stack{position:relative;margin-bottom:calc(var(--chrx-stack-depth, 0) * 2px)}
 .chrx-vk-stack::before,.chrx-vk-stack::after{content:"";position:absolute;left:2px;right:-2px;bottom:-2px;height:100%;border-radius:inherit;background:hsl(var(--chrx-card-hue,210) 30% 80% / .55);z-index:-1;pointer-events:none}

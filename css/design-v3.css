@@ -809,10 +809,16 @@ input:focus,select:focus,textarea:focus{
   border-collapse: collapse;
   width: 100%;
   margin: 12px 0;
+  /* W3b-1 — fixed layout + the width-less <col> per period make every period
+     column the same width; a long cell now wraps inside its column instead
+     of widening it (auto layout gave P4/P5 ~3x the width of P1–P3). */
+  table-layout: fixed;
 }
 .chrx-print-table th, .chrx-print-table td {
   border: 1px solid var(--line);
   padding: 6px 8px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   transition: padding 0.15s ease, font-size 0.15s ease, border-width 0.15s ease;
 }
 .chrx-print-th-corner, .chrx-print-th-day {
