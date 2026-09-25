@@ -7,6 +7,7 @@ import "../wizard/create_new.js";
 // tray and overlays the grid. Imported for its side effects (it swaps
 // #editor-lower for a fixed curtain and ships its own stylesheet).
 import "./curtain.js";
+import { lessonMatchesFilter } from "./view_filter.js";
 
 /**
  * Editor activator — turns on the editor + pending strip when the user enters Step 6.
@@ -220,7 +221,11 @@ import "./curtain.js";
     for (const c of (APP.school.cards || [])) {
       placedByLesson[c.lessonId] = (placedByLesson[c.lessonId] || 0) + 1;
     }
+    // Week/term view filter (lane W3b-7): this label sits on the tray, so it
+    // must count what the tray can actually show.
+    const viewFilter = global.ViewFilter ? global.ViewFilter.currentFilter() : { week: "all", term: "all" };
    for (const l of APP.school.lessons) {
+     if (!lessonMatchesFilter(l, viewFilter, APP.school)) continue;
      const len = l.lessonLength || (l.isLabDouble ? 2 : 1);
      const ppw = Math.ceil(l.periodsPerWeek || 0);
      const needed = ppw > 0 ? Math.max(1, Math.round(ppw / len)) : 0;

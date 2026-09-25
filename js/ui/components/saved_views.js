@@ -11,6 +11,7 @@ import "../entities/dialog_shell.js";
  *   3. Zoom level (far / mid / near) + ribbon zoom
  *   4. Colour mode (subject / teacher / class / room)
  *   5. Selected class / teacher / entity
+ *   6. Week / term view filter ("All weeks" or a specific pattern, lane W3b-7)
  *
  * Persisted in APP.school.savedViews via APP.mutate so changes travel with
  * the school file, are undoable, and survive file save/publish.
@@ -40,6 +41,10 @@ import "../entities/dialog_shell.js";
     const selectedClassId = ed.selectedClassId !== undefined ? ed.selectedClassId : null;
     const focusRowByPerspective = ed.focusRowByPerspective ? Object.assign({}, ed.focusRowByPerspective) : {};
     const selectedEntityId = (focusRowByPerspective && focusRowByPerspective[perspective]) || selectedClassId || null;
+    // View filters are captured too, so a "Week B" view really comes back as
+    // Week B. Defaults keep a view saved before this field existed working.
+    const weekFilter = ed.weekFilter || "all";
+    const termFilter = ed.termFilter || "all";
 
     return {
       perspective,
@@ -48,6 +53,8 @@ import "../entities/dialog_shell.js";
       ribbonZoom,
       density,
       colorBy,
+      weekFilter,
+      termFilter,
       selectedClassId,
       selectedEntityId,
       focusRowByPerspective,
@@ -160,6 +167,16 @@ import "../entities/dialog_shell.js";
       APP.editor.focusRowByPerspective = Object.assign({}, APP.editor.focusRowByPerspective || {}, target.focusRowByPerspective);
     }
 
+    // Week / term filter (lane W3b-7). A view saved before the field existed has
+    // neither key, and must still restore to a known state — "All weeks", not
+    // "whatever was on screen" — so both axes are always written.
+    if (global.ViewFilter && typeof global.ViewFilter.setFromView === "function") {
+      global.ViewFilter.setFromView(target);
+    } else {
+      APP.editor.weekFilter = target.weekFilter || "all";
+      APP.editor.termFilter = target.termFilter || "all";
+    }
+
     if (target.selectedClassId !== undefined) {
       APP.editor.selectedClassId = target.selectedClassId;
     }
@@ -186,6 +203,20 @@ import "../entities/dialog_shell.js";
 
     notify(`Applied view '${target.name || "custom"}'`);
     return true;
+  }
+
+  /** "All weeks & terms" or the active patterns — shown in the manager list. */
+  function viewFilterLabel(v) {
+    const VF = global.ViewFilter;
+    const school = getApp().school || {};
+    const out = [];
+    for (const [axis, key] of [["week", "weekFilter"], ["term", "termFilter"]]) {
+      const id = (v || {})[key];
+      if (!id || id === "all") continue;
+      const def = (VF ? VF.defsFor(school, axis) : []).find((d) => d.id === id);
+      out.push(def ? VF.defLabel(def) : id + " (missing)");
+    }
+    return out.length ? out.join(" · ") : "All weeks & terms";
   }
 
   function syncToolLabels() {
@@ -344,6 +375,7 @@ import "../entities/dialog_shell.js";
               <span><b>Mode:</b> ${v.viewMode || "focus"}</span>
               <span><b>Zoom:</b> ${v.zoom || "mid"}</span>
               <span><b>Color:</b> ${v.colorBy || "subject"}</span>
+              <span><b>Filter:</b> ${viewFilterLabel(v)}</span>
             </div>
           `;
           li.appendChild(info);

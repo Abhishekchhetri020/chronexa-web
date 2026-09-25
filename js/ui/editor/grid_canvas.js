@@ -2,6 +2,7 @@
 import "../state.js";
 import "../components/bell_resolver.js";
 import { computeUnplacedCountsByClass } from "./unplaced_counts.js";
+import { lessonMatchesFilter, hiddenCardCount, visibleCardCount } from "./view_filter.js";
 import { buildStudentCardLookup, rowsFor as studentRowsFor } from "./student_view.js";
 import { buildSupervisionLookup, rowsFor as supervisionRowsFor, supervisionChipHtml, supervisionSummary } from "./supervision_view.js";
 import "./card_selection.js";
@@ -144,8 +145,9 @@ window.Editor = (function () {
   }
 
   function buildCardLookup(S, perspective, visiblePeriodSet) {
+    const filter = currentViewFilter();
     if (perspective === "student") {
-      return buildStudentCardLookup(S, visiblePeriodSet, dayCount(S));
+      return buildStudentCardLookup(S, visiblePeriodSet, dayCount(S), filter);
     }
     if (perspective === "supervision") {
       return buildSupervisionLookup(S, visiblePeriodSet, dayCount(S));
@@ -158,6 +160,9 @@ window.Editor = (function () {
       if (!visiblePeriodSet.has(period | 0)) continue;
       const lesson = S._idx.lessonById[c.lessonId];
       if (!lesson) continue;
+      // Week/term view filter (lane W3b-7): a card whose lesson does not run in
+      // the selected week/term is not drawn at all — see js/ui/editor/view_filter.js.
+      if (!lessonMatchesFilter(lesson, filter, S)) continue;
       const key = day + "_" + period;
       const keysForCard = rowKeysForCard(lesson, perspective, c);
       for (const rowKey of keysForCard) {
@@ -167,6 +172,13 @@ window.Editor = (function () {
       }
     }
     return lookup;
+  }
+
+  /** The editor's live week/term view filter (lane W3b-7); "all" when unset. */
+  function currentViewFilter() {
+    return window.ViewFilter && typeof window.ViewFilter.currentFilter === "function"
+      ? window.ViewFilter.currentFilter()
+      : { week: "all", term: "all" };
   }
 
   function rowKeysForCard(lesson, perspective, card) {
@@ -198,6 +210,8 @@ window.Editor = (function () {
     if (!Array.isArray(A.editor.selectedCardIds)) A.editor.selectedCardIds = [];
     if (A.editor.selectionAnchorCardId === undefined) A.editor.selectionAnchorCardId = null;
     if (!A.editor.cardClipboard) A.editor.cardClipboard = null;
+    if (!A.editor.weekFilter) A.editor.weekFilter = "all";
+    if (!A.editor.termFilter) A.editor.termFilter = "all";
   }
 
   function selectionBarHtml() {
@@ -859,7 +873,10 @@ window.Editor = (function () {
 
     let classRailHtml = "";
     if (perspective === "class") {
-      const unplacedCounts = computeUnplacedCountsByClass(S);
+      const focusFilter = currentViewFilter();
+      const unplacedCounts = computeUnplacedCountsByClass(S, {
+        lessonFilter: (L) => lessonMatchesFilter(L, focusFilter, S),
+      });
       const railItems = allRows.map(row => {
         const isSelected = row.key === focusRow.key;
         const count = unplacedCounts[row.key] || 0;
@@ -973,8 +990,12 @@ window.Editor = (function () {
   function fillOverviewStats(rootEl, S, rows, perspective) {
     const host = rootEl.querySelector("#chrx-ob-stats");
     if (!host) return;
+    const filter = currentViewFilter();
+    const hidden = hiddenCardCount(S, filter);
     const unplaced = pendingCount(S);
-    const placed   = (S.cards || []).length;
+    // "placed" counts what the grid is actually showing: with a week/term filter
+    // on, quoting all 951 cards while drawing 40 would be a lie.
+    const placed = visibleCardCount(S, filter);
     const days     = dayCount(S);
     const periodCount = (displayPeriods(S) || []).length;
     // Supervision counts its own plan, not the lesson grid: areas, duties,
@@ -999,6 +1020,8 @@ window.Editor = (function () {
         stat(placed, "placed"),
         stat(unplaced, "unplaced", unplaced > 0)
       ];
+      // Say out loud how much the filter is holding back (lane W3b-7).
+      if (hidden > 0) els.push(stat(hidden, "hidden by filter", true));
     }
     host.innerHTML = els.map((e, i) => (i > 0 ? '<div class="chrx-ob-divider"></div>' : "") + e).join("");
     function stat(v, label, warn) {
@@ -1064,16 +1087,27 @@ window.Editor = (function () {
       }
       const paintChip = () => {
         const fmt = window.VerificationPro && window.VerificationPro.statusChipText;
+        let text;
         if (typeof fmt === "function") {
           const s = fmt(n, _chipConflicts);
-          elc.textContent = s.text;
+          text = s.text;
           elc.classList.toggle("is-pending", s.warn);
           elc.classList.toggle("is-conflict", s.conflict);
           elc.title = s.hint;
         } else {
-          elc.textContent = n === 0 ? "All placed" : n + " unplaced";
+          text = n === 0 ? "All placed" : n + " unplaced";
           elc.classList.toggle("is-pending", n > 0);
         }
+        // This count is the FILTERED count (lane W3b-7): say so on the chip and
+        // say how much the week/term filter is holding back, so a small number
+        // cannot be misread as "the whole school is placed". (paintChip runs
+        // twice — once now, once after the conflict recount — so the text is
+        // always rebuilt from `text`, never appended to.)
+        const filter = currentViewFilter();
+        const filtered = filter.week !== "all" || filter.term !== "all";
+        const hid = hiddenCardCount(S, filter);
+        elc.textContent = filtered ? text + " · filtered" : text;
+        if (hid > 0) elc.title = `${elc.title || ""} — ${hid} card(s) hidden by the week/term filter`.trim();
       };
       paintChip();
       // B1 — cheap: reuse the panel's verifier, debounced, on the same
@@ -1089,8 +1123,12 @@ window.Editor = (function () {
       }, 300);
     }
     // Plan D: celebrate the moment everything first lands (a real >0 → 0
-    // transition, not an already-complete load).
-    if (_prevUnplaced != null && _prevUnplaced > 0 && n === 0) celebrateAllPlaced();
+    // transition, not an already-complete load). Never while a week/term filter
+    // is on: that count is the filtered count, so filtering the view would fire
+    // a ticker-tape for work that is still unplaced in the school.
+    const viewFilter = currentViewFilter();
+    const filtered = viewFilter.week !== "all" || viewFilter.term !== "all";
+    if (!filtered && _prevUnplaced != null && _prevUnplaced > 0 && n === 0) celebrateAllPlaced();
     _prevUnplaced = n;
   }
 
@@ -1142,10 +1180,14 @@ window.Editor = (function () {
   }
 
  function pendingCount(S) {
+   const filter = currentViewFilter();
    const placed = Object.create(null);
    for (const c of (S.cards || [])) placed[c.lessonId] = (placed[c.lessonId] || 0) + 1;
    let total = 0;
    for (const L of (S.lessons || [])) {
+     // Work the week/term filter hides is not "unplaced" in the view you asked
+     // for — the tray, the chip and the class rail all follow the filter.
+     if (!lessonMatchesFilter(L, filter, S)) continue;
      const len = L.lessonLength || (L.isLabDouble ? 2 : 1);
      const ppw = Math.ceil(L.periodsPerWeek || 0);
      const needed = ppw > 0 ? Math.max(1, Math.round(ppw / len)) : 0;
@@ -2288,8 +2330,10 @@ window.Editor = (function () {
   function classStats(S, classId) {
     let pending = 0, placed = 0, conflicts = 0;
     const teacherNames = new Set();
+    const filter = currentViewFilter();
    for (const L of (S.lessons || [])) {
      if (!(L.classIds || []).includes(classId)) continue;
+     if (!lessonMatchesFilter(L, filter, S)) continue;
      const len = L.lessonLength || (L.isLabDouble ? 2 : 1);
      const ppw = Math.ceil(L.periodsPerWeek || 0);
      const need = ppw > 0 ? Math.max(1, Math.round(ppw / len)) : 0;
@@ -2305,6 +2349,7 @@ window.Editor = (function () {
     for (const c of (S.cards || [])) {
       const L = S._idx.lessonById[c.lessonId];
       if (!L || !(L.classIds || []).includes(classId)) continue;
+      if (!lessonMatchesFilter(L, filter, S)) continue;
       const key = c.day + "_" + c.period;
       bySlot[key] = (bySlot[key] || 0) + 1;
     }

@@ -341,6 +341,11 @@ import "./state.js";
       const p = document.getElementById("chrx-palette");
       if (p && p.classList.contains("is-open")) {
         closePalette();
+      } else if (document.querySelector(".chrx-view-filter-panel")) {
+        // Week/term filter popover (lane W3b-7): the topmost surface swallows
+        // Escape, exactly like the palette above — it must not ALSO drop the
+        // shell out of fullscreen (which hides every toolbar label).
+        if (window.ViewFilter) window.ViewFilter.closePanel();
       } else {
         const sh = document.getElementById("chrx-shell");
         if (sh?.classList.contains("is-fullscreen")) togglePanel("fs");
