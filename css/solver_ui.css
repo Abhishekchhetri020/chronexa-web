@@ -648,6 +648,33 @@
 .csu-modebtn--quiet { opacity: 0.75; }
 .csu-modebtn--quiet.is-selected { opacity: 1; }
 
+/* ---- Ask: generator modes (Rebuild / Improve only / Add unplaced only) ---- */
+.csu-dialog .chrx-genmode-strip {
+  margin: 12px 0 0; padding: 12px 14px;
+  background: var(--chrx-bg-tile, rgba(255,255,255,0.85));
+  border: 1px solid var(--chrx-line, rgba(0,0,0,0.10));
+  border-radius: var(--chrx-radius-lg, 8px);
+}
+.csu-dialog .chrx-genmode-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+}
+.csu-dialog .chrx-genmode-card {
+  background: var(--chrx-bg-input, #fff);
+  border: 1.5px solid var(--chrx-line, rgba(0,0,0,0.10));
+  color: var(--chrx-fg, #111);
+  padding: 10px 12px; border-radius: var(--chrx-radius-md, 6px);
+  text-align: left; cursor: pointer; position: relative;
+  transition: border-color 120ms, background 120ms, transform 120ms;
+  font: inherit;
+}
+.csu-dialog .chrx-genmode-card:hover { transform: translateY(-1px); border-color: var(--chrx-accent, #007AFF); }
+.csu-dialog .chrx-genmode-card.is-selected {
+  border-color: var(--chrx-accent, #007AFF);
+  background: var(--chrx-accent-bg, rgba(0,100,224,0.16));
+}
+.csu-dialog .chrx-genmode-label { font-weight: 600; font-size: 13px; margin-bottom: 2px; }
+.csu-dialog .chrx-genmode-sub { font-size: 11px; color: var(--chrx-fg-secondary, rgba(0,0,0,0.55)); line-height: 1.35; }
+
 /* ---- Ask: native speed presets (same class names the legacy
    observer injected, so its guard skips + e2e locators still match) ---- */
 .csu-dialog .chrx-preset-strip {

@@ -4904,6 +4904,57 @@ function attachMppStatsAndWarnings(result, school, mppContext) {
 }
 
 export function solve(school, options = {}) {
+  // Record input-level locked cards so temporary locks NEVER leak into result.assignment:
+  const inputLockedKeys = new Set();
+  if (Array.isArray(school.cards)) {
+    for (const c of school.cards) {
+      if (c && c.locked) {
+        inputLockedKeys.add(`${c.lessonId}|${c.day}|${c.period}`);
+        inputLockedKeys.add(`${String(c.lessonId).replace(/#\d+$/, "")}|${c.day}|${c.period}`);
+      }
+    }
+  }
+
+  // Wave 3b (Lane W3b-2) — Generator modes with exact guarantees:
+  // - "Rebuild": current behaviour (may move anything not locked).
+  // - "Improve only": keep every placed card on the timetable (no card becomes unplaced); only reduce soft penalties.
+  // - "Add unplaced only": never move an already-placed card; try to place unplaced cards into free slots only.
+  const isAddUnplaced = options.mode === "add_unplaced" ||
+                        options.mode === "add_unplaced_only" ||
+                        options.generatorMode === "add_unplaced" ||
+                        options.generatorMode === "add_unplaced_only" ||
+                        options.addUnplacedOnly === true;
+  let addUnplacedInitialCards = null;
+  if (isAddUnplaced && Array.isArray(school.cards)) {
+    addUnplacedInitialCards = school.cards
+      .filter((c) => c && c.day != null && c.period != null)
+      .map((c) => ({ ...c }));
+    const lockedCards = school.cards.map((c) => {
+      if (c && c.day != null && c.period != null) {
+        return {
+          ...c,
+          locked: true,
+          _mppLockRoom: true,
+          _mppHardLock: true,
+        };
+      }
+      return c;
+    });
+    school = { ...school, cards: lockedCards };
+    options = { ...options, warmStart: true };
+  }
+
+  const isImproveOnly = options.mode === "improve_only" ||
+                        options.generatorMode === "improve_only" ||
+                        options.improveOnly === true;
+  let improveOnlyInitialCards = null;
+  if (isImproveOnly && Array.isArray(school.cards)) {
+    improveOnlyInitialCards = school.cards
+      .filter((c) => c && c.day != null && c.period != null)
+      .map((c) => ({ ...c }));
+    options = { ...options, warmStart: true, useLNS: true };
+  }
+
   // Top 30 #16 — Improve solver mode. Alias for "warm-start the current
   // schedule + use LNS to search outward for improvements". Locked lessons
   // (fixedDay/fixedPeriod set) stay put through LNS because randomEvictPlaced
@@ -5091,6 +5142,23 @@ export function solve(school, options = {}) {
     }
   }
 
+  // Baseline initial soft score for "Improve only" mode:
+  // Score the INITIAL placement (cards passed in) before searching.
+  // Direction: In csp_solver, softScore(model, state) computes the non-negative penalty sum (line 2470).
+  // The solver reports stats.softScore as -softScore(model, state) (see line 5849 / line 5220),
+  // which is <= 0 (e.g. -487270). Higher (closer to 0) is better; lower is worse.
+  let baselineSoftScore = null;
+  if (warmStartMoves.length > 0) {
+    const baseState = makeState(model);
+    for (const m of warmStartMoves) {
+      if (baseState.lessonAssigned[m.lessonIdx]) continue;
+      if (canPlace(model, baseState, m.lessonIdx, m.slot, m.roomIdx) === null) {
+        applyPlacement(model, baseState, m.lessonIdx, m.slot, m.roomIdx, null);
+      }
+    }
+    baselineSoftScore = -softScore(model, baseState);
+  }
+
   // The driver: Luby restart sequence — adaptive restarts with increasing budgets.
   // Replaces fixed branch count; early runs are short explorations, later runs
   // get exponentially more nodes. Escapes heavy-tailed dead-ends efficiently.
@@ -5177,7 +5245,8 @@ export function solve(school, options = {}) {
       }
       // Snapshot warm state as initial best so even a 0-iteration branch reports it.
       if (warmStarted > 0) {
-        state.bestSoftScore = -softScore(model, state);
+        const warmScore = -softScore(model, state);
+        state.bestSoftScore = warmScore;
         state.bestAssignedEntries = state.assignedLessonCount;
         state.bestHardCount = unassignedCount0 - state.assignedLessonCount;
         snapshotBest(state);
@@ -5805,7 +5874,8 @@ export function solve(school, options = {}) {
       placed,
       unplaced,
       hardConflicts,
-      softScore: globalBest.softScore,
+      softScore: globalBest ? globalBest.softScore : (baselineSoftScore || 0),
+      baselineSoftScore,
       durationMs: Math.round(performance.now() - t0),
       scrubbedConflicts,
     },
@@ -5816,8 +5886,169 @@ export function solve(school, options = {}) {
     diagnostics,
     weightSuggestions,
   };
+
+  // Enforcement of guarantees for "Add unplaced only":
+  // Every card that was placed before the solve MUST retain its exact day and period.
+  if (isAddUnplaced && addUnplacedInitialCards && addUnplacedInitialCards.length) {
+    const origMap = new Map();
+    for (const c of addUnplacedInitialCards) {
+      const baseId = String(c.lessonId).replace(/#\d+$/, "");
+      origMap.set(`${baseId}|${c.day}|${c.period}`, c);
+    }
+    const finalAssignment = [];
+    const matchedOrigKeys = new Set();
+    for (const a of assignment) {
+      const baseId = String(a.lessonId).replace(/#\d+$/, "");
+      const aKey = `${baseId}|${a.day}|${a.period}`;
+      if (origMap.has(aKey)) {
+        matchedOrigKeys.add(aKey);
+      }
+      finalAssignment.push(a);
+    }
+    for (const [key, c] of origMap.entries()) {
+      if (!matchedOrigKeys.has(key)) {
+        finalAssignment.push({
+          lessonId: c.lessonId,
+          day: c.day,
+          period: c.period,
+          classroomId: c.classroomId || null,
+        });
+      }
+    }
+    result.assignment = finalAssignment;
+    result.stats.placed = finalAssignment.length;
+    result.stats.unplaced = Math.max(0, model.lessonCount - finalAssignment.length);
+    result.stats.hardConflicts = result.stats.unplaced;
+  }
+
+  // Enforcement of guarantees for "Improve only":
+  // Keep every placed card on the timetable (no card becomes unplaced); only reduce soft penalties.
+  // Reject/rollback any result that unplaces a card or makes soft score worse.
+  if (isImproveOnly && improveOnlyInitialCards && improveOnlyInitialCards.length) {
+    const initialCount = improveOnlyInitialCards.length;
+
+    // Testing hook: allow tests to force a worse result during search to prove the rollback guarantee
+    if (options._forceWorsePlacement && globalBest) {
+      globalBest.softScore = (baselineSoftScore != null ? baselineSoftScore : 0) - 100000;
+      result.stats.softScore = globalBest.softScore;
+    }
+    if (options._forceUnplacedPlacement) {
+      result.assignment = result.assignment.slice(0, Math.max(0, result.assignment.length - 10));
+      result.stats.placed = result.assignment.length;
+    }
+
+    const currentPlaced = result.assignment.length;
+    const currentSoft = result.stats.softScore != null ? result.stats.softScore : 0;
+    const baseSoft = baselineSoftScore != null ? baselineSoftScore : currentSoft;
+
+    // Direction check: In csp_solver, softScore(model, state) computes the non-negative penalty sum (line 2470).
+    // The solver reports stats.softScore as -softScore(model, state) (lines 3404, 5220, 5849), which is <= 0.
+    // Higher is better (closer to 0); lower is worse (higher penalty).
+    // A score is worse if currentSoft < baseSoft.
+    const unplacedOccurred = currentPlaced < initialCount;
+    const scoreGotWorse = currentSoft < baseSoft;
+
+    if (unplacedOccurred || scoreGotWorse) {
+      result.assignment = improveOnlyInitialCards.map((c) => ({
+        lessonId: c.lessonId,
+        day: c.day,
+        period: c.period,
+        classroomId: c.classroomId || null,
+        ...(c.locked ? { locked: true } : {}),
+      }));
+      result.stats.placed = initialCount;
+      result.stats.unplaced = Math.max(0, model.lessonCount - initialCount);
+      result.stats.hardConflicts = result.stats.unplaced;
+      result.stats.softScore = baseSoft;
+      result.status = "NO_IMPROVEMENT";
+    }
+
+    // Try improve_mode swap pass if available on window/globalThis
+    const improveModeObj = (typeof window !== "undefined" && window.ImproveMode) ||
+                           (typeof globalThis !== "undefined" && globalThis.ImproveMode);
+    if (improveModeObj && typeof improveModeObj.run === "function") {
+      try {
+        const tempSchool = {
+          ...school,
+          cards: result.assignment.map((a) => ({
+            lessonId: a.lessonId,
+            day: a.day,
+            period: a.period,
+            classroomId: a.classroomId || null,
+          })),
+        };
+        const impRes = improveModeObj.run(tempSchool, { timeLimitSec: Math.min(5, timeLimitSec) });
+        if (impRes && impRes.status === "IMPROVED" && tempSchool.cards.length >= initialCount) {
+          result.assignment = tempSchool.cards.map((c) => ({
+            lessonId: c.lessonId,
+            day: c.day,
+            period: c.period,
+            classroomId: c.classroomId || null,
+          }));
+          result.stats.placed = tempSchool.cards.length;
+          result.stats.softScore = impRes.after;
+          result.status = "IMPROVED";
+        }
+      } catch (_) {}
+    }
+  }
+
+  // Ensure temporary locks (e.g. from Add unplaced or MPP) NEVER leak into result.assignment:
+  // A card in result.assignment retains locked: true IF AND ONLY IF it was locked in input school.cards.
+  for (const a of result.assignment) {
+    const aKey = `${a.lessonId}|${a.day}|${a.period}`;
+    const baseKey = `${String(a.lessonId).replace(/#\d+$/, "")}|${a.day}|${a.period}`;
+    if (inputLockedKeys.has(aKey) || inputLockedKeys.has(baseKey)) {
+      a.locked = true;
+    } else {
+      delete a.locked;
+    }
+  }
+
   if (mppContext) attachMppStatsAndWarnings(result, school, mppContext);
   return result;
+}
+
+function scorePlacement(model, school) {
+  const roomIdxById = new Map(model.roomIds.map((id, r) => [id, r]));
+  const cardsBySrc = Object.create(null);
+  for (const c of school.cards || []) {
+    if (!c || !c.lessonId || c.day == null || c.period == null) continue;
+    (cardsBySrc[c.lessonId] = cardsBySrc[c.lessonId] || []).push(c);
+  }
+  for (const sid in cardsBySrc) {
+    cardsBySrc[sid].sort((a, b) => (a.day - b.day) || (a.period - b.period));
+  }
+  const cursor = Object.create(null);
+  const state = makeState(model);
+  let placedCount = 0;
+  for (let i = 0; i < model.lessonCount; i++) {
+    const l = model.lessons[i];
+    const cards = cardsBySrc[l.srcId];
+    if (!cards) continue;
+    const ci = (cursor[l.srcId] || 0);
+    if (ci >= cards.length) continue;
+    const card = cards[ci];
+    cursor[l.srcId] = ci + 1;
+    const day = card.day | 0;
+    const period = ((card.period | 0) - 1);
+    if (day < 0 || day >= model.days || period < 0 || period >= model.periodsPerDay) continue;
+    const slot = day * model.periodsPerDay + period;
+    let roomIdx = -1;
+    if (card.classroomId) {
+      const rx = roomIdxById.get(card.classroomId);
+      if (rx != null) roomIdx = rx;
+    }
+    if (canPlace(model, state, i, slot, roomIdx) === null) {
+      applyPlacement(model, state, i, slot, roomIdx, null);
+      placedCount++;
+    }
+  }
+  return {
+    placedCount,
+    penalty: softScore(model, state),
+    score: -softScore(model, state),
+  };
 }
 
 function maxCandidatesPerLesson(model) {
@@ -5832,7 +6063,7 @@ function maxCandidatesPerLesson(model) {
 // production code. Keeps `tools/test_*.mjs` from having to vm-load the
 // whole module to reach private functions.
 export const __test_internals = {
-  buildModel, makeState, applySingle, removeSingle, canPlace, wasmSyncState,
+  buildModel, makeState, applySingle, removeSingle, canPlace, wasmSyncState, softScore, applyPlacement, scorePlacement,
 };
 
 // In Web Worker context, setInterval is global; in unusual hosts it might not

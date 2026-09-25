@@ -32,6 +32,13 @@ import "./backend_client.js";
 
   const TIME_LIMIT_BY_COMPLEXITY = { normal: 30, large: 60, huge: 120 };
 
+  // Generator modes (guaranteed-safe generation modes)
+  const GEN_MODES = [
+    { id: "rebuild",      label: "Rebuild",           sub: "May move anything not locked", icon: "↺" },
+    { id: "improve_only", label: "Improve only",      sub: "Keep placed cards; reduce soft penalties", icon: "⚡" },
+    { id: "add_unplaced", label: "Add unplaced only", sub: "Never move placed cards; fill free slots", icon: "＋" },
+  ];
+
   // Preset → underlying solver knobs. Conditions values must match the
   // Advanced radio values (draft / relax / strict).
   const PRESETS = [
@@ -112,6 +119,27 @@ import "./backend_client.js";
     modeBtnTest.classList.add("csu-modebtn--quiet");
     const modeRow = el("div", { class: "csu-mode-row" }, modeBtnBest, modeBtnGen, modeBtnImp, modeBtnTest);
 
+    // --- Generator Modes (guaranteed safe modes) ----------------------------
+    const genModeGrid = el("div", { class: "chrx-genmode-grid", role: "radiogroup", "aria-label": "Generation mode" });
+    for (const m of GEN_MODES) {
+      const card = el("button", {
+        type: "button",
+        class: "chrx-genmode-card" + (m.id === "rebuild" ? " is-selected" : ""),
+        "data-gen-mode": m.id,
+        role: "radio",
+        "aria-checked": m.id === "rebuild" ? "true" : "false",
+        onclick: () => selectGeneratorMode(m.id),
+      },
+        el("div", { class: "chrx-genmode-label" }, (m.icon ? m.icon + " " : "") + m.label),
+        el("div", { class: "chrx-genmode-sub" }, m.sub),
+      );
+      genModeGrid.appendChild(card);
+    }
+    const genModeStrip = el("div", { class: "chrx-genmode-strip", "data-native": "true" },
+      el("p", { class: "chrx-preset-title" }, "Mode"),
+      genModeGrid,
+    );
+
     // --- Preset picker (native; same class names the old observer injected
     // so e2e locators and the observer guard keep working) ------------------
     const presetGrid = el("div", { class: "chrx-preset-grid", role: "radiogroup", "aria-label": "Speed" });
@@ -175,8 +203,9 @@ import "./backend_client.js";
     const footNote = el("p", { class: "csu-dialog__foot" }, "Offline by default · cloud only if you pick it.");
     const actions = el("div", { class: "csu-dialog__actions" }, cancelBtn, startBtn);
 
-    dialog.append(titleEl, sub, summary, modeRow, presetStrip, advanced, reportLabel, actions, footNote);
+    dialog.append(titleEl, sub, summary, modeRow, genModeStrip, presetStrip, advanced, reportLabel, actions, footNote);
     dialog.dataset.preset = "balanced";
+    dialog.dataset.generatorMode = "rebuild";
     host.appendChild(dialog);
     document.body.appendChild(host);
 
@@ -212,23 +241,55 @@ import "./backend_client.js";
     }
   }
 
+  function selectGeneratorMode(id) {
+    if (!dialog) return;
+    const mode = GEN_MODES.find(m => m.id === id) || GEN_MODES[0];
+    dialog.dataset.generatorMode = mode.id;
+    dialog.querySelectorAll(".chrx-genmode-card").forEach(c => {
+      const on = c.dataset.genMode === mode.id;
+      c.classList.toggle("is-selected", on);
+      c.setAttribute("aria-checked", on ? "true" : "false");
+    });
+    updateStartButton();
+  }
+
+  function updateStartButton() {
+    if (!dialog) return;
+    const startBtn = dialog.querySelector("#csu-prelaunch-start");
+    if (!startBtn) return;
+    const mode = dialog.dataset.mode || "best";
+    const genMode = dialog.dataset.generatorMode || "rebuild";
+    if (mode === "test") {
+      startBtn.textContent = "Run test";
+    } else if (genMode === "improve_only") {
+      startBtn.textContent = "Improve";
+    } else if (genMode === "add_unplaced") {
+      startBtn.textContent = "Add unplaced cards";
+    } else if (mode === "best") {
+      startBtn.textContent = "Build best timetable";
+    } else {
+      startBtn.textContent = "Start generation";
+    }
+  }
+
   function setMode(mode) {
     if (!dialog) return;
     dialog.querySelectorAll(".csu-modebtn").forEach(b => {
       b.classList.toggle("is-selected", b.dataset.mode === mode);
     });
-    const startBtn = dialog.querySelector("#csu-prelaunch-start");
-    if (startBtn) startBtn.textContent =
-      mode === "test" ? "Run test" :
-      mode === "best" ? "Build best timetable" :
-      mode === "improve" ? "Improve" : "Start generation";
+    // Test is validate-only: speed presets and mode strip don't apply.
+    const genStrip = dialog.querySelector(".chrx-genmode-strip");
+    if (genStrip) genStrip.style.display = mode === "test" ? "none" : "";
+    const strip = dialog.querySelector(".chrx-preset-strip");
+    if (strip) strip.style.display = mode === "test" ? "none" : "";
     // Algorithm/backend choice only applies to Generate and Improve.
     const algoSec = dialog.querySelector("#csu-algo-section");
     if (algoSec) algoSec.style.display = (mode === "generate" || mode === "improve") ? "" : "none";
-    // Test is validate-only: speed presets don't apply.
-    const strip = dialog.querySelector(".chrx-preset-strip");
-    if (strip) strip.style.display = mode === "test" ? "none" : "";
     dialog.dataset.mode = mode;
+    if (mode === "improve") {
+      selectGeneratorMode("improve_only");
+    }
+    updateStartButton();
   }
 
   function setSummary(school) {
@@ -265,24 +326,31 @@ import "./backend_client.js";
 
   function doStart() {
     const mode = dialog.dataset.mode || "best";
+    const generatorMode = dialog.dataset.generatorMode || "rebuild";
     const preset = PRESETS.find(p => p.id === dialog.dataset.preset);
     const cfg = {
       mode,
+      generatorMode,
       complexity: selectedRadio(dialog, "complexity") || "large",
       conditions: selectedRadio(dialog, "conditions") || "relax",
       algorithm:  selectedRadio(dialog, "algorithm")  || "browser",
       showReport: !!dialog.querySelector("#csu-show-report").checked,
     };
-    // Preset time wins; Custom (or no preset) falls back to complexity tiers.
-    cfg.timeLimitSec = (preset && preset.timeLimitSec)
-      || Number(dialog.dataset.timeLimitSec)
+    // Explicit dataset timeLimitSec wins (for capped test runs); preset/complexity fallbacks.
+    cfg.timeLimitSec = Number(dialog.dataset.timeLimitSec)
+      || (preset && preset.timeLimitSec)
       || TIME_LIMIT_BY_COMPLEXITY[cfg.complexity]
       || 60;
     if (mode === "best") cfg.algorithm = "auto";
-    if (mode === "improve") cfg.improve = true;
-    if (mode === "improve") {
+    if (mode === "improve" || generatorMode === "improve_only") {
+      cfg.improve = true;
+      cfg.improveOnly = true;
       cfg.warmStart = true;
       cfg.useLNS    = true;
+    }
+    if (generatorMode === "add_unplaced") {
+      cfg.addUnplacedOnly = true;
+      cfg.warmStart = true;
     }
     const cb = current && current.onConfirm;
     close();
@@ -315,6 +383,7 @@ import "./backend_client.js";
     current = opts || {};
     if (!host) build();
     setMode(current.defaultMode || "best");
+    selectGeneratorMode(current.generatorMode || current.defaultGeneratorMode || (current.defaultMode === "improve" ? "improve_only" : "rebuild"));
     const targetSchool = current.school || (global.APP && global.APP.school) || null;
     setSummary(targetSchool);
     applySuggestedComplexity(targetSchool);
