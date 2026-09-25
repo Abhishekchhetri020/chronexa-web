@@ -5,11 +5,9 @@ import "../ribbon/topbar.js";
 /* Excel exports — Contracts / Available teachers / Room supervision / Timetable.
  * Uses SheetJS (window.XLSX). Index.html loads SheetJS via CDN.
  */
-(function () {
-  "use strict";
-  const APP = window.APP;
-  const notify = window._chrxNotify || console.log;
-  const DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat"];
+const APP = (typeof window !== "undefined" ? window.APP : null) || {};
+const notify = (typeof window !== "undefined" && window._chrxNotify) || console.log;
+const DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat"];
 
   function need(name) {
     if (typeof window.XLSX === "undefined") {
@@ -115,27 +113,51 @@ import "../ribbon/topbar.js";
   //   3. Room Schedule     rooms × days × periods
   //   4. Lessons           flat lesson list with subject/teacher/class/etc.
   //   5. Statistics        per-teacher load + per-room utilisation + gaps
-  function exportTimetable() {
-    if (!need("Timetable")) return;
-    const s = APP.school;
-    const periods = s.bell?.periods || [];
-    const wb = window.XLSX.utils.book_new();
-    const totalSlots = DAYS.length * periods.length;
+  const XLSX_FALLBACK = {
+    utils: {
+      book_new: () => ({ SheetNames: [], Sheets: {} }),
+      book_append_sheet: (wb, sh, name) => { wb.SheetNames.push(name); wb.Sheets[name] = sh; },
+      aoa_to_sheet: (rows) => ({ "!ref": "A1", rows }),
+    },
+    writeFile: () => {},
+  };
 
-    // Resolver maps — used across multiple sheets.
+  export function buildExcelWorkbook(s, scope = { type: "all" }) {
+    if (!s) return null;
+    const periods = s.bell?.periods || [];
+    const xlsx = (typeof window !== "undefined" && window.XLSX) || XLSX_FALLBACK;
+    const wb = xlsx.utils.book_new();
+    const totalSlots = DAYS.length * periods.length;
+    const append = xlsx.utils.book_append_sheet;
+    const toSheet = xlsx.utils.aoa_to_sheet;
+
     const tById = Object.fromEntries((s.teachers   || []).map(t => [t.id, t]));
     const sById = Object.fromEntries((s.subjects   || []).map(x => [x.id, x]));
     const cById = Object.fromEntries((s.classes    || []).map(c => [c.id, c]));
     const rById = Object.fromEntries((s.classrooms || []).map(r => [r.id, r]));
 
+    const scopeType = typeof scope === "string" ? scope : (scope && scope.type) || "all";
+    const scopeId = typeof scope === "object" ? scope.id : null;
+
+    let targetClasses = s.classes || [];
+    let targetTeachers = s.teachers || [];
+    let targetRooms = s.classrooms || [];
+
+    if (scopeType === "class" && scopeId) targetClasses = targetClasses.filter(c => c.id === scopeId);
+    else if (scopeType === "teacher" && scopeId) targetTeachers = targetTeachers.filter(t => t.id === scopeId);
+    else if (scopeType === "room" && scopeId) targetRooms = targetRooms.filter(r => r.id === scopeId);
+
     // ── Sheet 1 — Class Schedule ───────────────────────────────────────────
-    {
+    if (scopeType === "all" || scopeType === "class") {
       const head = ["Class", "Day"];
       periods.forEach(p => head.push("P" + p.index + (p.label ? " " + p.label : "")));
       const rows = [head];
       const byClass = s._idx?.cardsByClass || {};
-      for (const c of (s.classes || [])) {
-        const list = byClass[c.id] || [];
+      for (const c of targetClasses) {
+        const list = byClass[c.id] || (s.cards || []).filter(cd => {
+          const l = (s.lessons || []).find(x => x.id === cd.lessonId);
+          return (l?.classIds || []).includes(c.id);
+        });
         for (let d = 0; d < DAYS.length; d++) {
           const row = [c.name, DAYS[d]];
           for (const p of periods) {
@@ -147,17 +169,20 @@ import "../ribbon/topbar.js";
           rows.push(row);
         }
       }
-      window.XLSX.utils.book_append_sheet(wb, sheet(rows), "Class Schedule");
+      append(wb, toSheet(rows), "Class Schedule");
     }
 
     // ── Sheet 2 — Teacher Schedule ─────────────────────────────────────────
-    {
+    if (scopeType === "all" || scopeType === "teacher") {
       const head = ["Teacher", "Day"];
       periods.forEach(p => head.push("P" + p.index));
       const rows = [head];
       const byTeacher = s._idx?.cardsByTeacher || {};
-      for (const t of (s.teachers || [])) {
-        const list = byTeacher[t.id] || [];
+      for (const t of targetTeachers) {
+        const list = byTeacher[t.id] || (s.cards || []).filter(cd => {
+          const l = (s.lessons || []).find(x => x.id === cd.lessonId);
+          return (l?.teacherIds || []).includes(t.id);
+        });
         for (let d = 0; d < DAYS.length; d++) {
           const row = [t.name + (t.abbr ? " (" + t.abbr + ")" : ""), DAYS[d]];
           for (const p of periods) {
@@ -169,17 +194,17 @@ import "../ribbon/topbar.js";
           rows.push(row);
         }
       }
-      window.XLSX.utils.book_append_sheet(wb, sheet(rows), "Teacher Schedule");
+      append(wb, toSheet(rows), "Teacher Schedule");
     }
 
     // ── Sheet 3 — Room Schedule ────────────────────────────────────────────
-    {
+    if (scopeType === "all" || scopeType === "room") {
       const head = ["Room", "Day"];
       periods.forEach(p => head.push("P" + p.index));
       const rows = [head];
       const byRoom = s._idx?.cardsByRoom || {};
-      for (const r of (s.classrooms || [])) {
-        const list = byRoom[r.id] || [];
+      for (const r of targetRooms) {
+        const list = byRoom[r.id] || (s.cards || []).filter(cd => cd.classroomId === r.id);
         for (let d = 0; d < DAYS.length; d++) {
           const row = [r.name, DAYS[d]];
           for (const p of periods) {
@@ -191,11 +216,11 @@ import "../ribbon/topbar.js";
           rows.push(row);
         }
       }
-      window.XLSX.utils.book_append_sheet(wb, sheet(rows), "Room Schedule");
+      append(wb, toSheet(rows), "Room Schedule");
     }
 
     // ── Sheet 4 — Lessons (flat) ───────────────────────────────────────────
-    {
+    if (scopeType === "all") {
       const rows = [["#", "Subject", "Class(es)", "Teacher(s)", "Room pref.",
         "Per/wk", "Card count", "Lab×2", "Pinned"]];
       const cardCountByLesson = {};
@@ -221,11 +246,11 @@ import "../ribbon/topbar.js";
           (l.fixedDay != null && l.fixedPeriod != null) ? ("D" + l.fixedDay + " P" + l.fixedPeriod) : "",
         ]);
       });
-      window.XLSX.utils.book_append_sheet(wb, sheet(rows), "Lessons");
+      append(wb, toSheet(rows), "Lessons");
     }
 
     // ── Sheet 5 — Statistics ───────────────────────────────────────────────
-    {
+    if (scopeType === "all") {
       const rows = [];
       rows.push(["Chronexa — Statistics", "", "", "", ""]);
       rows.push(["School", s.schoolName || "(unnamed)", "", "", ""]);
@@ -270,10 +295,30 @@ import "../ribbon/topbar.js";
       rows.push(["Lessons",    (s.lessons    || []).length, "", "", ""]);
       rows.push(["Cards",      (s.cards      || []).length, "", "", ""]);
 
-      window.XLSX.utils.book_append_sheet(wb, sheet(rows), "Statistics");
+      append(wb, toSheet(rows), "Statistics");
     }
 
-    save(wb, fileName(s, "timetable"));
+    return wb;
+  }
+
+  export function exportTimetable(scope = { type: "all" }) {
+    if (!need("Timetable")) return;
+    const s = APP.school;
+    const wb = buildExcelWorkbook(s, scope);
+    const scopeType = typeof scope === "string" ? scope : (scope && scope.type) || "all";
+    const scopeId = typeof scope === "object" ? scope.id : null;
+    let suffix = "timetable";
+    if (scopeType === "class" && scopeId) {
+      const c = (s.classes || []).find(x => x.id === scopeId);
+      suffix = "timetable-" + (c?.short || c?.name || scopeId).replace(/[^\w.-]+/g, "-");
+    } else if (scopeType === "teacher" && scopeId) {
+      const t = (s.teachers || []).find(x => x.id === scopeId);
+      suffix = "timetable-" + (t?.short || t?.name || scopeId).replace(/[^\w.-]+/g, "-");
+    } else if (scopeType === "room" && scopeId) {
+      const r = (s.classrooms || []).find(x => x.id === scopeId);
+      suffix = "timetable-" + (r?.short || r?.name || scopeId).replace(/[^\w.-]+/g, "-");
+    }
+    save(wb, fileName(s, suffix));
   }
 
   function fileName(s, kind) {
@@ -286,14 +331,17 @@ import "../ribbon/topbar.js";
       case "contracts":   return exportContracts();
       case "available":   return exportAvailable();
       case "supervision": return exportSupervision();
-      case "timetable":   return exportTimetable();
+      case "timetable":   return exportTimetable(e.detail?.scope);
       default:            notify("Unknown export: " + e.detail?.kind, "error");
     }
   });
 
-  APP.io = APP.io || {};
-  APP.io.exportContracts   = exportContracts;
-  APP.io.exportAvailable   = exportAvailable;
-  APP.io.exportSupervision = exportSupervision;
-  APP.io.exportTimetable   = exportTimetable;
-})();
+  if (typeof window !== "undefined") {
+    window.APP = window.APP || {};
+    window.APP.io = window.APP.io || {};
+    window.APP.io.exportContracts    = exportContracts;
+    window.APP.io.exportAvailable    = exportAvailable;
+    window.APP.io.exportSupervision  = exportSupervision;
+    window.APP.io.exportTimetable    = exportTimetable;
+    window.APP.io.buildExcelWorkbook = buildExcelWorkbook;
+  }
