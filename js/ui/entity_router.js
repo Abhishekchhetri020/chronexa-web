@@ -67,12 +67,10 @@ import "./entities/holidays.js";
     "ttreports":   () => window.EntityTTReports   && window.EntityTTReports.open(),
     "ttviews":     () => window.EntityTTViews     && window.EntityTTViews.open(),
 
-    // Options menu (currently stubbed — these aren't entity-shaped)
-    "settings":             () => openStub("Settings", "App settings live under the View menu (Theme, Density, Zoom)."),
+    // Options menu
+    "settings":             () => ROUTE["school"](),
     "constraints":          () => window.ConstraintsLibrary && window.ConstraintsLibrary.open(),
-    "preferences":          () => openStub("Account preferences", "No account needed — Chronexa is local-first."),
-    "display-settings":     () => openStub("Display settings", "Open the View menu for Density/Theme/Zoom toggles."),
-    "print-defaults":       () => openStub("Print defaults", "Use Files → Print preview… to set defaults per-report."),
+    "print-defaults":       () => window.PrintSettingsDialog && window.PrintSettingsDialog.open("globals"),
     "supervision-criteria": () => window.SupervisionCriteria && window.SupervisionCriteria.open(),
     "students":         () => window.EntityStudents        && window.EntityStudents.open(),
     "studentsubjects":  () => window.EntityStudentSubjects && window.EntityStudentSubjects.open(),
@@ -101,7 +99,6 @@ import "./entities/holidays.js";
     const fn = ROUTE[kind];
     if (typeof fn !== "function") {
       console.warn("[entity_router] no handler for kind:", kind);
-      openStub("Coming soon", `Action “${kind}” is not wired yet. File an issue if you need it.`);
       return;
     }
     try { fn(e.detail || {}); }

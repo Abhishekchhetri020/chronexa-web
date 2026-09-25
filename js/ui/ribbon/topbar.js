@@ -47,9 +47,10 @@ import "../state.js";
     const panel = el("div", { class: "chrx-menu-panel", role: "menu" });
     for (const e of entries) {
       if (!e) continue;
+      if (e.soon) continue;
       if (e.sep)     { panel.appendChild(el("div", { class: "chrx-menu-sep" })); continue; }
       if (e.section) { panel.appendChild(el("div", { class: "chrx-menu-section" }, e.section)); continue; }
-      const cls = "chrx-menu-item" + (e.soon ? " chrx-menu-item--soon" : "");
+      const cls = "chrx-menu-item";
       const item = el("div", { class: cls, role: "menuitem", "aria-disabled": e.disabled ? "true" : null });
       if (e.icon != null) item.appendChild(el("span", { class: "chrx-menu-item__icon" }, e.icon));
       item.appendChild(el("span", { class: "chrx-menu-item__label" }, e.label));
@@ -73,14 +74,20 @@ import "../state.js";
           ev.stopPropagation(); closeAllMenus();
           try { e.run(); } catch (err) { console.error(err); notify("Action failed: " + err.message, "error"); }
         });
-      } else if (e.soon || e.disabled) {
-        item.addEventListener("click", (ev) => { ev.stopPropagation(); if (e.soon) notify("Coming soon: " + e.label); });
       }
       panel.appendChild(item);
     }
     return panel;
   }
   window.ChrxMenu = { buildPanel: buildMenuPanel };
+
+  window.addEventListener("app:test", () => {
+    if (window.SolverUI && window.SolverUI.Test && typeof window.SolverUI.Test.open === "function") {
+      if (window.APP && window.APP.school) {
+        window.SolverUI.Test.open({ school: window.APP.school });
+      }
+    }
+  });
 
   const MENUS = []; let activeMenu = null, activePanel = null;
   function registerMenu(m) { MENUS.push(m); renderMenubar(); }
