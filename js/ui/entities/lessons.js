@@ -1254,7 +1254,6 @@ import "./dialog_shell.js";
       { id: "count",      label: "Count" },
       { id: "length",     label: "Length" },
       { id: "capacity",   label: "Capacity" },
-      { id: "group",      label: "Group" },
     ];
 
     fields.forEach(f => {
@@ -1434,19 +1433,9 @@ import "./dialog_shell.js";
       }, "OK"));
       body.appendChild(foot);
     }
-    else if (fieldId === "group") {
-      body.appendChild(D.el("div", { style: "padding:10px;color:#8e8e93;font-size:13px" }, "Group assignment is managed per lesson via the class division picker in the Edit dialog."));
-      const foot = D.el("div", { style: "display:flex;justify-content:flex-end;margin-top:12px" });
-      foot.appendChild(D.el("button", { type: "button", style: "padding:6px 16px;border:1px solid #d1d5db;border-radius:5px;background:#fff;cursor:pointer",
-        onclick: () => D.closeSubSheet() }, "OK"));
-      body.appendChild(foot);
-    }
     else {
-      body.appendChild(D.el("div", { style: "padding:10px;color:#8e8e93;font-size:13px" }, `"${fieldId}" bulk change coming soon.`));
-      const foot = D.el("div", { style: "display:flex;justify-content:flex-end;margin-top:12px" });
-      foot.appendChild(D.el("button", { type: "button", style: "padding:6px 16px;border:1px solid #d1d5db;border-radius:5px;background:#fff;cursor:pointer",
-        onclick: () => D.closeSubSheet() }, "OK"));
-      body.appendChild(foot);
+      console.warn(`[lessons] unknown change field: ${fieldId}`);
+      return;
     }
     D.openSubSheet(body, { title: "Change" });
   }

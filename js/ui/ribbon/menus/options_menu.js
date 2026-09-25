@@ -12,16 +12,11 @@ import "../../state.js";
     key: "options", label: "Options",
     build() {
       return [
-        { icon: "⚙︎", label: "Settings…",            disabled: !has(),
-          run: () => fire("app:open-entity", { kind: "settings" }) },
+        { icon: "⚙︎", label: "School settings…",            disabled: !has(),
+          run: () => fire("app:open-entity", { kind: "school" }) },
         { icon: "📜", label: "Constraints library…", disabled: !has(),
           run: () => fire("app:open-entity", { kind: "constraints" }) },
         { sep: true },
-        { icon: "👤", label: "Preferences (account)…",
-          run: () => fire("app:open-entity", { kind: "preferences" }) },
-        { sep: true },
-        { icon: "🎨", label: "Display settings…",    disabled: !has(),
-          run: () => fire("app:open-entity", { kind: "display-settings" }) },
         { icon: "🖨", label: "Print defaults…",      disabled: !has(),
           run: () => fire("app:open-entity", { kind: "print-defaults" }) },
         { icon: "👮", label: "Supervision criteria…", disabled: !has(),

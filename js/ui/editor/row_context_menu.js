@@ -12,9 +12,7 @@ import "./grid_canvas.js";
  * floating menu that mirrors the legacy desktop scheduler — Edit, Lessons,
  * Time off, Verification, Delete row, Lock / Unlock, Quick changes.
  *
- * Items that have a real handler dispatch their entity-router event.
- * Items not yet wired are present for parity but show "Coming soon"
- * via the existing toast notifier.
+ * Items dispatch their entity-router or app event handler.
  */
 (function () {
   "use strict";
@@ -38,7 +36,13 @@ import "./grid_canvas.js";
     // Common across all perspectives.
     const base = [
       { id: "edit",    label: "Edit",                 icon: "✎", run: () => fireEntity(perspective) },
-      { id: "test",    label: "Test",                 icon: "🧪", run: () => fireWindow("app:test", { perspective, rowId }) },
+      { id: "test",    label: "Test",                 icon: "🧪", run: () => {
+        if (window.SolverUI && window.SolverUI.Test && typeof window.SolverUI.Test.open === "function") {
+          window.SolverUI.Test.open({ school: window.APP && window.APP.school });
+        } else {
+          fireWindow("app:test", { perspective, rowId });
+        }
+      }},
       { id: "timeoff", label: "Time off",             icon: "🚫", run: () => fireEntity(perspective, { focusTimeoff: rowId }) },
       { id: "lessons", label: "Lessons",              icon: "📝", run: () => fireWindow("app:open-entity", { kind: "lessons", filterId: rowId }) },
     ];
@@ -61,20 +65,15 @@ import "./grid_canvas.js";
     return base.concat(perspective === "class" ? classOnly : []).concat(tailCommon);
   }
 
-  function fireEntity(perspective) {
+  function fireEntity(perspective, extra) {
     const kind = perspective === "class" ? "classes"
               : perspective === "teacher" ? "teachers"
               : perspective === "room" ? "classrooms"
               : "subjects";
-    window.dispatchEvent(new CustomEvent("app:open-entity", { detail: { kind } }));
+    window.dispatchEvent(new CustomEvent("app:open-entity", { detail: { kind, ...(extra || {}) } }));
   }
   function fireWindow(event, detail) {
     window.dispatchEvent(new CustomEvent(event, { detail }));
-    // Many of these events have no listener yet — give the user feedback.
-    setTimeout(() => {
-      // If nothing visibly happened, hint that the action is on the roadmap.
-      // (Heuristic: no new dialog appeared in 250ms.)
-    }, 0);
   }
   function switchToPerspective(perspective, rowId) {
     const APP = window.APP;
@@ -113,13 +112,7 @@ import "./grid_canvas.js";
     notify("Deleted: " + rowLabel);
   }
   function doPrintPreview(perspective, rowId) {
-    // The HTML exporter draws a full timetable per class/teacher/room. It's
-    // the closest thing to a print preview we have today.
-    if (window.APP && window.APP.io && typeof window.APP.io.exportHTML === "function") {
-      try { window.APP.io.exportHTML(); return; } catch (e) { console.error(e); }
-    }
-    window.dispatchEvent(new CustomEvent("app:export-timetable-xml"));
-    notify("Exported timetable — use your browser's print dialog (⌘P).");
+    window.dispatchEvent(new CustomEvent("app:print-preview", { detail: { perspective, rowId } }));
   }
   function doVerify(perspective, rowId) {
     // Use the constraint verification panel if it's loaded; otherwise hint.
@@ -234,9 +227,10 @@ import "./grid_canvas.js";
   document.addEventListener("contextmenu", (e) => {
     const label = e.target.closest && e.target.closest(".chrx-rowlabel");
     if (!label) return;
-    e.preventDefault();
     const rowEl = label.closest(".chrx-row");
     const rowKey = rowEl?.getAttribute("data-row");
+    if (!rowKey || rowKey === "head") return;
+    e.preventDefault();
     const perspective = (window.APP && window.APP.editor && window.APP.editor.perspective) || "class";
     const rowLabelText = label.querySelector(".chrx-rowlabel-main")?.textContent || label.textContent || "";
     open(perspective, rowKey, rowLabelText.trim(), e.clientX, e.clientY);
