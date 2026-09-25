@@ -1429,13 +1429,19 @@ body.chrx-card-in-hand .chrx-shell .chrx-card-panel { display: none; }
 .chrx-shell .chrx-crumbs > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chrx-shell .chrx-action-row { flex: 0 0 auto; }
 .chrx-shell #editor-quick-tools #editor-date-input {
-  max-width: 105px;
+  width: 125px;
+  max-width: 130px;
   font-size: 11px;
   padding: 1px 3px;
 }
 @media (max-width: 1440px) {
   .chrx-shell #editor-quick-tools .chrx-tool__label { display: none; }
   .chrx-shell #editor-quick-tools button { padding: 0 8px; }
+}
+/* 1441-1536px (e.g. a 1470px MacBook): keep the button labels, drop only the small "Date:" caption
+   so the date field shows its full value; the input keeps its title/aria name. */
+@media (max-width: 1536px) {
+  .chrx-shell #editor-quick-tools label[for="editor-date-input"] { display: none; }
 }
 @media (max-width: 1320px) {
   .chrx-shell .chrx-kbd-search { display: none; }
