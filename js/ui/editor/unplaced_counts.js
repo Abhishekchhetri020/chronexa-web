@@ -8,10 +8,17 @@
  *  - Joint lessons: each participating class receives the full missing count once
  *    (e.g., a missing joint lesson with classIds ['c1', 'c2'] counts once for c1 and once for c2).
  *  - Returns a plain dictionary mapping classId -> count (> 0). Classes with 0 unplaced are omitted.
+ *
+ * `options.lessonFilter` (optional) narrows the sweep to the lessons the editor
+ * is currently showing — the week/term view filter (lane W3b-7) must be able to
+ * answer "what is still unplaced in Week A?", so a lesson off the grid cannot
+ * keep counting towards "unplaced". Callers pass a predicate; this module stays
+ * free of view state.
  */
 
-export function computeUnplacedCountsByClass(school) {
+export function computeUnplacedCountsByClass(school, options) {
   if (!school || !Array.isArray(school.lessons)) return {};
+  const lessonFilter = options && typeof options.lessonFilter === "function" ? options.lessonFilter : null;
 
   const placedCounts = Object.create(null);
   for (const card of (school.cards || [])) {
@@ -24,6 +31,7 @@ export function computeUnplacedCountsByClass(school) {
 
   for (const lesson of school.lessons) {
     if (!lesson) continue;
+    if (lessonFilter && !lessonFilter(lesson)) continue;
     const len = lesson.lessonLength || (lesson.isLabDouble ? 2 : 1) || 1;
     const ppw = Math.ceil(lesson.periodsPerWeek || 0);
     const needed = ppw > 0 ? Math.max(1, Math.round(ppw / len)) : 0;

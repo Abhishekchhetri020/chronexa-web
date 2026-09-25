@@ -1,5 +1,6 @@
 // [vite-esm] student_view.js — Student timetable resolution logic for Chronexa editor.
 import "../state.js";
+import { lessonMatchesFilter } from "./view_filter.js";
 
 /**
  * Normalizes and returns the student list for a school.
@@ -160,7 +161,7 @@ export function getCardsForStudent(school, student) {
  * Builds the per-render index { studentId -> { "d_p" -> [card] } } for the editor grid.
  * Only includes cards that apply to each student, leaving gaps where their group is elsewhere.
  */
-export function buildStudentCardLookup(school, visiblePeriodSet, numDays) {
+export function buildStudentCardLookup(school, visiblePeriodSet, numDays, filter) {
   const lookup = Object.create(null);
   if (!school) return lookup;
 
@@ -198,6 +199,9 @@ export function buildStudentCardLookup(school, visiblePeriodSet, numDays) {
 
     const lesson = lessonById[c.lessonId];
     if (!lesson) continue;
+    // Week/term view filter (lane W3b-7) — a student's own timetable is still a
+    // timetable: a Week-B lesson is not on screen while Week A is selected.
+    if (filter && !lessonMatchesFilter(lesson, filter, school)) continue;
 
     const key = day + "_" + period;
     const candidates = new Set();
