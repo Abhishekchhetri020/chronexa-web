@@ -19,6 +19,7 @@ import "../../state.js";
         { sep: true },
         { icon: "💾", label: "Save",        hint: "⌘S",  disabled: !has(), run: () => fire("app:save") },
         { icon: "📋", label: "Save as…",    hint: "⇧⌘S", disabled: !has(), run: () => fire("app:save-as") },
+        { icon: "🕘", label: "Version history…",             disabled: !has(), run: () => fire("app:open-version-history") },
         { icon: "🎬", label: "Show demo file",            run: () => fire("app:open-demo") },
         { sep: true },
         { icon: "⬇",  label: "Import", sub: [
