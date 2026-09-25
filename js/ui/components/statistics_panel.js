@@ -3,25 +3,55 @@ import "../state.js";
 
 /* Statistics panel — full teacher/class/room load breakdown.
  *
- * Ports Swift's StatisticsPanel.swift + TimetableStatistics struct. Exposes
- *   window.StatisticsPanel = { open(school?) }
+ * Ports Swift's StatisticsPanel.swift + TimetableStatistics struct. Exposes:
+ *   window.StatisticsPanel = { open(school?), compute(school?), sortExhaustion(rows, col, dir) }
  *
- * Surfaces per-entity metrics Classic/Classic admins rely on:
- *   • Teacher daily detail: teaching periods, gaps, free periods, max consec.
- *   • Class daily detail: occupancy, gap count, subject distribution.
- *   • Room utilization: % full, peak load period.
- *   • School-wide: placed vs unplaced, conflict count, soft penalty totals.
- *
- * All math runs locally on the user's device (no server). Re-runs in O(cards).
+ * Surfaces:
+ *   • Teacher daily detail: teaching periods, gap windows (idle periods between
+ *     first and last lesson per day and per week), max consec, last period days.
+ *   • Exhaustion table: per teacher and per class (used / available periods, %), sortable.
+ *   • Class daily detail: occupancy, empty cells, available slots, utilization.
+ *   • Room utilization: used slots, % full.
+ *   • Period load balance: school-wide distribution across periods.
  */
 (function (global) {
   "use strict";
 
+  function countBlockedSlots(timeOff, days, periods) {
+    if (!timeOff) return 0;
+    let count = 0;
+    const is2D = Array.isArray(timeOff);
+    for (let d = 0; d < days; d++) {
+      for (let p = 0; p < periods; p++) {
+        if (is2D) {
+          const v = timeOff[d] && timeOff[d][p];
+          if (v === 2 || v === "unavailable" || v === "blocked" || v === false) count++;
+        } else if (typeof timeOff === "object") {
+          const v = timeOff[`${d}_${p + 1}`] ?? timeOff[`${d}_${p}`];
+          if (v === "unavailable" || v === "blocked" || v === 2) count++;
+        }
+      }
+    }
+    return count;
+  }
+
   function compute(school) {
     school = school || (window.APP && window.APP.school);
     if (!school) return null;
-    const days = (school.bell && school.bell.periods ? 6 : 6); // standard 6-day weeks
-    const periods = (school.bell && school.bell.periods ? school.bell.periods.length : 8);
+
+    const days = Math.max(1, Math.min(7,
+      (typeof school.daysPerWeek === "number" ? school.daysPerWeek : null) ??
+      (typeof school.settings?.daysPerWeek === "number" ? school.settings.daysPerWeek : null) ??
+      (school.daysDefs && school.daysDefs.length ? school.daysDefs.length : 0) ??
+      (school.bell && school.bell.periods ? 6 : 5)
+    ));
+    const periods = Math.max(1,
+      (school.periodsPerDay | 0) ||
+      (school.bell && school.bell.periods ? school.bell.periods.length : 0) ||
+      8
+    );
+    const totalPossibleSlots = days * periods;
+
     const cards = school.cards || [];
     const lessons = school.lessons || [];
     const teachers = school.teachers || [];
@@ -30,10 +60,11 @@ import "../state.js";
     const _idx = school._idx || {};
     const lessonById = _idx.lessonById || Object.fromEntries(lessons.map(l => [l.id, l]));
 
-    // Cards by (teacherId, day, period)
+    // Cards mapped by (teacherId, day, period), (classId, day, period), (roomId, day, period)
     const teacherDayPeriods = new Map();
     const classDayPeriods = new Map();
     const roomDayPeriods = new Map();
+
     for (const c of cards) {
       const lesson = lessonById[c.lessonId];
       if (!lesson) continue;
@@ -53,7 +84,7 @@ import "../state.js";
       }
     }
 
-    // Per-teacher daily detail
+    // Per-teacher statistics & gap window counting
     const teacherStats = teachers.map(t => {
       const slots = teacherDayPeriods.get(t.id) || new Set();
       const perDay = new Array(days).fill(0).map(() => []);
@@ -61,84 +92,178 @@ import "../state.js";
         const [d, p] = s.split(":").map(Number);
         if (d >= 0 && d < days) perDay[d].push(p);
       }
-      let totalTeaching = 0, totalGaps = 0, maxConsec = 0, maxLast = 0;
-      perDay.forEach(periodsArr => {
-        if (!periodsArr.length) return;
+
+      let totalTeaching = 0;
+      let totalWindows = 0;
+      let maxConsec = 0;
+      let maxLast = 0;
+      const windowsPerDay = new Array(days).fill(0);
+
+      for (let d = 0; d < days; d++) {
+        const periodsArr = perDay[d];
+        if (!periodsArr.length) continue;
+
         const sorted = periodsArr.slice().sort((a, b) => a - b);
         totalTeaching += sorted.length;
-        // gaps = (sorted[last] - sorted[0] + 1) - count
-        const span = sorted[sorted.length - 1] - sorted[0] + 1;
-        const gaps = span - sorted.length;
-        totalGaps += Math.max(0, gaps);
+
+        // Gap "windows" = idle periods between teacher's first and last lesson of the day
+        if (sorted.length >= 2) {
+          const span = sorted[sorted.length - 1] - sorted[0] + 1;
+          const dayWindows = Math.max(0, span - sorted.length);
+          windowsPerDay[d] = dayWindows;
+          totalWindows += dayWindows;
+        } else {
+          windowsPerDay[d] = 0;
+        }
+
+        // Consecutive run
         let run = 1;
         for (let i = 1; i < sorted.length; i++) {
           if (sorted[i] === sorted[i - 1] + 1) run++;
-          else { maxConsec = Math.max(maxConsec, run); run = 1; }
+          else {
+            maxConsec = Math.max(maxConsec, run);
+            run = 1;
+          }
         }
         maxConsec = Math.max(maxConsec, run);
+
         if (sorted[sorted.length - 1] === periods - 1) maxLast++;
-      });
-      const maxPossible = days * periods;
-      const exhaustionPct = maxPossible ? Math.round(100 * totalTeaching / maxPossible) : 0;
+      }
+
+      const blocked = countBlockedSlots(t.timeOff, days, periods);
+      const available = Math.max(0, totalPossibleSlots - blocked);
+      const exhaustionPct = available > 0 ? Math.round(100 * totalTeaching / available) : 0;
+      const maxDailyWindow = Math.max(0, ...windowsPerDay);
+
       return {
-        id: t.id, name: t.name || t.lastName || "—",
+        id: t.id,
+        name: t.name || t.lastName || "—",
         color: t.color || "#94a3b8",
-        teaching: totalTeaching, gaps: totalGaps, maxConsec, lastPeriodDays: maxLast,
+        teaching: totalTeaching,
+        available,
         exhaustion: exhaustionPct,
+        gaps: totalWindows, // legacy alias
+        windows: totalWindows,
+        windowsPerDay,
+        maxDailyWindow,
+        maxConsec,
+        lastPeriodDays: maxLast,
       };
     });
 
-    // Per-class daily detail
+    // Per-class statistics
     const classStats = classes.map(c => {
       const slots = classDayPeriods.get(c.id) || new Set();
+      const blocked = countBlockedSlots(c.timeOff, days, periods);
+      const available = Math.max(0, totalPossibleSlots - blocked);
+      const occupied = slots.size;
+      const empty = Math.max(0, available - occupied);
+      const utilization = available > 0 ? Math.round(100 * occupied / available) : 0;
+
       return {
-        id: c.id, name: c.name || c.short || "—",
+        id: c.id,
+        name: c.name || c.short || "—",
         color: c.color || "#94a3b8",
-        occupied: slots.size,
-        empty: (days * periods) - slots.size,
-        utilization: Math.round(100 * slots.size / (days * periods)),
+        occupied,
+        available,
+        empty,
+        utilization,
+        exhaustion: utilization,
       };
     });
 
     // Per-room utilization
     const roomStats = rooms.map(r => {
       const slots = roomDayPeriods.get(r.id) || new Set();
+      const blocked = countBlockedSlots(r.timeOff, days, periods);
+      const available = Math.max(0, totalPossibleSlots - blocked);
+      const used = slots.size;
+      const utilization = available > 0 ? Math.round(100 * used / available) : 0;
+
       return {
-        id: r.id, name: r.name || "—",
-        used: slots.size,
-        utilization: Math.round(100 * slots.size / (days * periods)),
+        id: r.id,
+        name: r.name || "—",
+        used,
+        available,
+        utilization,
       };
     });
 
-    // Period load balance (cards per period across school)
+    // Exhaustion table (per teacher and per class: used / available periods, %), sortable
+    const exhaustionTable = [
+      ...teacherStats.map(t => ({
+        id: t.id,
+        name: t.name,
+        type: "Teacher",
+        color: t.color,
+        used: t.teaching,
+        available: t.available,
+        percentage: t.exhaustion,
+      })),
+      ...classStats.map(c => ({
+        id: c.id,
+        name: c.name,
+        type: "Class",
+        color: c.color,
+        used: c.occupied,
+        available: c.available,
+        percentage: c.exhaustion,
+      })),
+    ].sort((a, b) => b.percentage - a.percentage);
+
+    // Period load balance
     const periodLoad = new Array(periods).fill(0);
-    for (const c of cards) periodLoad[c.period] = (periodLoad[c.period] || 0) + 1;
+    for (const c of cards) {
+      if (c.period >= 0 && c.period < periods) {
+        periodLoad[c.period] = (periodLoad[c.period] || 0) + 1;
+      }
+    }
 
     const totalLessons = lessons.length || 0;
     const totalCards = cards.length || 0;
-    const expected = lessons.reduce((s, l) => s + (l.periodsPerWeek || 0), 0);
+    const expected = lessons.reduce((s, l) => s + (l.periodsPerWeek || l.periodsPerCard || 1), 0);
 
     return {
       school: {
         name: school.schoolName,
-        totalLessons, totalCards, expectedCards: expected,
+        days,
+        periods,
+        totalSlots: totalPossibleSlots,
+        totalLessons,
+        totalCards,
+        expectedCards: expected,
         completionPct: expected > 0 ? Math.round(100 * totalCards / expected) : 0,
       },
       teachers: teacherStats.sort((a, b) => b.teaching - a.teaching),
       classes:  classStats.sort((a, b) => b.utilization - a.utilization),
       rooms:    roomStats.sort((a, b) => b.utilization - a.utilization),
+      exhaustionTable,
       periodLoad,
     };
   }
 
+  function sortExhaustion(rows, column, direction = "desc") {
+    const mult = direction === "asc" ? 1 : -1;
+    return rows.slice().sort((a, b) => {
+      const va = a[column];
+      const vb = b[column];
+      if (typeof va === "string" && typeof vb === "string") {
+        return mult * va.localeCompare(vb);
+      }
+      return mult * ((va ?? 0) - (vb ?? 0));
+    });
+  }
+
   function el(tag, attrs, ...kids) {
     const n = document.createElement(tag);
-    if (attrs) for (const k in attrs) {
-      const v = attrs[k];
-      if (v == null) continue;
-      if (k === "class") n.className = v;
-      else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
-      else n.setAttribute(k, v);
+    if (attrs) {
+      for (const k in attrs) {
+        const v = attrs[k];
+        if (v == null) continue;
+        if (k === "class") n.className = v;
+        else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
+        else n.setAttribute(k, v);
+      }
     }
     for (const c of kids) {
       if (c == null || c === false) continue;
@@ -147,82 +272,207 @@ import "../state.js";
     return n;
   }
 
-  function renderTable(rows, columns) {
+  function renderSortableTable(initialRows, columns, defaultSort = { key: "percentage", dir: "desc" }) {
+    let rows = initialRows.slice();
+    let sortKey = defaultSort.key;
+    let sortDir = defaultSort.dir;
+
+    const wrapper = el("div", { class: "chrx-stats-table-wrap" });
     const tbl = el("table", { class: "chrx-stats-table" });
     const thead = el("thead");
-    const tr = el("tr");
-    columns.forEach(c => tr.appendChild(el("th", null, c.label)));
-    thead.appendChild(tr);
-    tbl.appendChild(thead);
     const tbody = el("tbody");
-    rows.forEach(r => {
+    tbl.appendChild(thead);
+    tbl.appendChild(tbody);
+    wrapper.appendChild(tbl);
+
+    function sortRows() {
+      const colDef = columns.find(c => c.key === sortKey);
+      const mult = sortDir === "asc" ? 1 : -1;
+      rows.sort((a, b) => {
+        let va = colDef && colDef.sortValue ? colDef.sortValue(a) : a[sortKey];
+        let vb = colDef && colDef.sortValue ? colDef.sortValue(b) : b[sortKey];
+        if (typeof va === "string" && typeof vb === "string") {
+          return mult * va.localeCompare(vb);
+        }
+        return mult * ((va ?? 0) - (vb ?? 0));
+      });
+    }
+
+    function renderBody() {
+      tbody.innerHTML = "";
+      rows.forEach(r => {
+        const tr = el("tr");
+        columns.forEach(c => {
+          const v = c.render ? c.render(r) : r[c.key];
+          const td = el("td", { class: c.align ? `align-${c.align}` : null });
+          if (v instanceof Node) td.appendChild(v);
+          else td.textContent = (v == null ? "" : String(v));
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+    }
+
+    function renderHeader() {
+      thead.innerHTML = "";
       const tr = el("tr");
       columns.forEach(c => {
-        const v = c.render ? c.render(r) : r[c.key];
-        const td = el("td", { class: c.align ? `align-${c.align}` : null });
-        if (v instanceof Node) td.appendChild(v);
-        else td.textContent = (v == null ? "" : String(v));
-        tr.appendChild(td);
+        const isCurrent = sortKey === c.key;
+        const arrow = isCurrent ? (sortDir === "asc" ? " ▲" : " ▼") : "";
+        const th = el("th", {
+          class: `chrx-stats-th-sortable ${c.align ? `align-${c.align}` : ""}`,
+          onclick: () => {
+            if (sortKey === c.key) {
+              sortDir = sortDir === "asc" ? "desc" : "asc";
+            } else {
+              sortKey = c.key;
+              sortDir = c.defaultDir || "asc";
+            }
+            sortRows();
+            renderHeader();
+            renderBody();
+          },
+        }, c.label + arrow);
+        tr.appendChild(th);
       });
-      tbody.appendChild(tr);
-    });
-    tbl.appendChild(tbody);
-    return tbl;
+      thead.appendChild(tr);
+    }
+
+    sortRows();
+    renderHeader();
+    renderBody();
+    return wrapper;
   }
 
   function open(school) {
     const data = compute(school);
     if (!data) { alert("Open a timetable first."); return; }
-    const root = el("div", { class: "chrx-stats-root", role: "dialog", "aria-modal": "true",
-      onclick: e => { if (e.target === root) close(); } });
+    ensureStyles();
+
+    const root = el("div", {
+      class: "chrx-stats-root",
+      role: "dialog",
+      "aria-modal": "true",
+      onclick: e => { if (e.target === root) close(); },
+    });
     const panel = el("div", { class: "chrx-stats-panel" });
 
     panel.appendChild(el("header", { class: "chrx-stats-head" },
-      el("h2", null, "📊 Statistics — " + (data.school.name || "—")),
+      el("div", null,
+        el("h2", null, "📊 Statistics — " + (data.school.name || "School")),
+        el("small", { style: "color:#64748b;font-size:12px" },
+          `${data.school.days} days · ${data.school.periods} periods/day (${data.school.totalSlots} weekly slots)`),
+      ),
       el("button", { class: "chrx-stats-close", "aria-label": "Close", onclick: close }, "×"),
     ));
 
     panel.appendChild(el("div", { class: "chrx-stats-summary" },
       el("div", null, el("strong", null, "Cards placed: "), `${data.school.totalCards} / ${data.school.expectedCards} (${data.school.completionPct}%)`),
       el("div", null, el("strong", null, "Lessons: "), String(data.school.totalLessons)),
-      el("div", null, el("strong", null, "Teachers / Classes / Rooms: "),
-        `${data.teachers.length} / ${data.classes.length} / ${data.rooms.length}`),
+      el("div", null, el("strong", null, "Entities: "),
+        `${data.teachers.length} Teachers · ${data.classes.length} Classes · ${data.rooms.length} Rooms`),
     ));
 
-    panel.appendChild(el("h3", null, "Teachers — sorted by load"));
-    panel.appendChild(renderTable(data.teachers, [
-      { key: "name", label: "Teacher", render: r => el("span", null,
+    // ─────────────────────────────────────────────────────────────
+    // 1. Exhaustion Table (sortable)
+    // ─────────────────────────────────────────────────────────────
+    panel.appendChild(el("h3", null, "⚡ Exhaustion Table — Teachers & Classes"));
+    panel.appendChild(renderSortableTable(data.exhaustionTable, [
+      {
+        key: "name", label: "Entity", defaultDir: "asc",
+        render: r => el("span", null,
           el("span", { class: "chrx-stats-dot", style: `background:${r.color}` }),
-          " " + r.name) },
-      { key: "teaching", label: "Periods", align: "right" },
-      { key: "exhaustion", label: "Exhaustion %",
+          " " + r.name),
+      },
+      {
+        key: "type", label: "Type", defaultDir: "asc",
+        render: r => el("span", { class: `chrx-stats-badge chrx-stats-badge--${r.type.toLowerCase()}` }, r.type),
+      },
+      { key: "used", label: "Used Periods", align: "right", defaultDir: "desc" },
+      { key: "available", label: "Available Periods", align: "right", defaultDir: "desc" },
+      {
+        key: "percentage", label: "Exhaustion %", align: "right", defaultDir: "desc",
         render: r => {
-          const c = r.exhaustion > 75 ? "#ef4444" : r.exhaustion > 50 ? "#f59e0b" : "#10b981";
-          return el("span", { style: `color:${c};font-weight:600` }, r.exhaustion + "%");
-        }, align: "right" },
-      { key: "gaps", label: "Gaps", align: "right" },
-      { key: "maxConsec", label: "Max consec.", align: "right" },
-      { key: "lastPeriodDays", label: "Last-period days", align: "right" },
-    ]));
+          const color = r.percentage > 75 ? "#ef4444" : r.percentage > 50 ? "#f59e0b" : "#10b981";
+          return el("div", { style: "display:flex;align-items:center;justify-content:flex-end;gap:6px" },
+            el("span", { style: `color:${color};font-weight:700` }, `${r.percentage}%`),
+            el("div", { class: "chrx-stats-bar-mini" },
+              el("div", { style: `width:${Math.min(100, r.percentage)}%;background:${color}` })
+            ),
+          );
+        },
+      },
+    ], { key: "percentage", dir: "desc" }));
 
-    panel.appendChild(el("h3", null, "Classes — sorted by utilization"));
-    panel.appendChild(renderTable(data.classes, [
-      { key: "name", label: "Class", render: r => el("span", null,
+    // ─────────────────────────────────────────────────────────────
+    // 2. Teachers Table (with gap windows)
+    // ─────────────────────────────────────────────────────────────
+    panel.appendChild(el("h3", null, "👨🏫 Teachers — Load & Gap Windows"));
+    panel.appendChild(renderSortableTable(data.teachers, [
+      {
+        key: "name", label: "Teacher", defaultDir: "asc",
+        render: r => el("span", null,
           el("span", { class: "chrx-stats-dot", style: `background:${r.color}` }),
-          " " + r.name) },
-      { key: "occupied", label: "Cells filled", align: "right" },
-      { key: "empty", label: "Empty", align: "right" },
-      { key: "utilization", label: "%", render: r => `${r.utilization}%`, align: "right" },
-    ]));
+          " " + r.name),
+      },
+      { key: "teaching", label: "Periods", align: "right", defaultDir: "desc" },
+      {
+        key: "windows", label: "Windows (Wk)", align: "right", defaultDir: "desc",
+        render: r => el("span", { style: r.windows > 0 ? "font-weight:600;color:#d97706" : "color:#64748b" }, String(r.windows)),
+      },
+      {
+        key: "maxDailyWindow", label: "Max Window/Day", align: "right", defaultDir: "desc",
+        render: r => el("span", { style: r.maxDailyWindow > 0 ? "font-weight:600;color:#d97706" : "color:#64748b" }, String(r.maxDailyWindow)),
+      },
+      { key: "maxConsec", label: "Max Consec.", align: "right", defaultDir: "desc" },
+      { key: "lastPeriodDays", label: "Last Period Days", align: "right", defaultDir: "desc" },
+      {
+        key: "exhaustion", label: "Exhaustion %", align: "right", defaultDir: "desc",
+        render: r => {
+          const color = r.exhaustion > 75 ? "#ef4444" : r.exhaustion > 50 ? "#f59e0b" : "#10b981";
+          return el("span", { style: `color:${color};font-weight:600` }, `${r.exhaustion}%`);
+        },
+      },
+    ], { key: "teaching", dir: "desc" }));
 
-    panel.appendChild(el("h3", null, "Rooms — sorted by utilization"));
-    panel.appendChild(renderTable(data.rooms, [
-      { key: "name", label: "Room" },
-      { key: "used", label: "Used slots", align: "right" },
-      { key: "utilization", label: "%", render: r => `${r.utilization}%`, align: "right" },
-    ]));
+    // ─────────────────────────────────────────────────────────────
+    // 3. Classes Table
+    // ─────────────────────────────────────────────────────────────
+    panel.appendChild(el("h3", null, "🏫 Classes — Utilization"));
+    panel.appendChild(renderSortableTable(data.classes, [
+      {
+        key: "name", label: "Class", defaultDir: "asc",
+        render: r => el("span", null,
+          el("span", { class: "chrx-stats-dot", style: `background:${r.color}` }),
+          " " + r.name),
+      },
+      { key: "occupied", label: "Cells Filled", align: "right", defaultDir: "desc" },
+      { key: "available", label: "Available", align: "right", defaultDir: "desc" },
+      { key: "empty", label: "Empty", align: "right", defaultDir: "desc" },
+      {
+        key: "utilization", label: "Utilization %", align: "right", defaultDir: "desc",
+        render: r => `${r.utilization}%`,
+      },
+    ], { key: "utilization", dir: "desc" }));
 
-    panel.appendChild(el("h3", null, "Period-load balance"));
+    // ─────────────────────────────────────────────────────────────
+    // 4. Rooms Table
+    // ─────────────────────────────────────────────────────────────
+    panel.appendChild(el("h3", null, "🚪 Rooms — Utilization"));
+    panel.appendChild(renderSortableTable(data.rooms, [
+      { key: "name", label: "Room", defaultDir: "asc" },
+      { key: "used", label: "Used Slots", align: "right", defaultDir: "desc" },
+      { key: "available", label: "Available", align: "right", defaultDir: "desc" },
+      {
+        key: "utilization", label: "%", align: "right", defaultDir: "desc",
+        render: r => `${r.utilization}%`,
+      },
+    ], { key: "utilization", dir: "desc" }));
+
+    // ─────────────────────────────────────────────────────────────
+    // 5. Period-load balance
+    // ─────────────────────────────────────────────────────────────
+    panel.appendChild(el("h3", null, "📈 Period-Load Balance"));
     const bars = el("div", { class: "chrx-stats-bars" });
     const max = Math.max(1, ...data.periodLoad);
     data.periodLoad.forEach((load, i) => {
@@ -235,42 +485,56 @@ import "../state.js";
 
     root.appendChild(panel);
     document.body.appendChild(root);
-    function close() { root.remove(); document.removeEventListener("keydown", onKey, true); }
-    function onKey(e) { if (e.key === "Escape") { e.preventDefault(); close(); } }
+
+    function close() {
+      root.remove();
+      document.removeEventListener("keydown", onKey, true);
+    }
+    function onKey(e) {
+      if (e.key === "Escape") { e.preventDefault(); close(); }
+    }
     document.addEventListener("keydown", onKey, true);
   }
 
-  // Inject minimal styles (idempotent) for the panel
   function ensureStyles() {
     if (document.getElementById("chrx-stats-styles")) return;
     const s = document.createElement("style");
     s.id = "chrx-stats-styles";
     s.textContent = `
 .chrx-stats-root{position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:flex-start;justify-content:center;padding:24px;z-index:1000;overflow:auto}
-.chrx-stats-panel{background:#fff;border-radius:12px;max-width:900px;width:100%;padding:18px 22px;box-shadow:0 20px 60px rgba(0,0,0,.25);font-family:-apple-system,BlinkMacSystemFont,sans-serif;color:#0f172a}
-.chrx-stats-head{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e2e8f0;margin:-4px 0 12px;padding-bottom:8px}
+.chrx-stats-panel{background:#fff;border-radius:12px;max-width:940px;width:100%;padding:18px 24px;box-shadow:0 24px 64px rgba(0,0,0,.25);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#0f172a;max-height:92vh;display:flex;flex-direction:column;overflow-y:auto}
+.chrx-stats-head{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e2e8f0;margin:-4px 0 12px;padding-bottom:10px}
 .chrx-stats-head h2{margin:0;font-size:18px;color:#1e3a8a}
-.chrx-stats-close{background:none;border:0;font-size:22px;cursor:pointer;color:#64748b}
-.chrx-stats-summary{display:flex;gap:24px;flex-wrap:wrap;font-size:13px;background:#f1f5f9;padding:8px 12px;border-radius:8px;margin-bottom:12px}
-.chrx-stats-panel h3{margin:14px 0 6px;font-size:14px;color:#334155;text-transform:uppercase;letter-spacing:.04em}
-.chrx-stats-table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:8px}
-.chrx-stats-table th{background:#f8fafc;color:#475569;font-weight:600;text-align:left;padding:6px 8px;border-bottom:2px solid #e2e8f0}
-.chrx-stats-table td{padding:5px 8px;border-bottom:1px solid #f1f5f9}
+.chrx-stats-close{background:none;border:0;font-size:24px;cursor:pointer;color:#64748b;line-height:1}
+.chrx-stats-close:hover{color:#0f172a}
+.chrx-stats-summary{display:flex;gap:24px;flex-wrap:wrap;font-size:13px;background:#f1f5f9;padding:10px 14px;border-radius:8px;margin-bottom:14px}
+.chrx-stats-panel h3{margin:18px 0 8px;font-size:13px;color:#334155;text-transform:uppercase;letter-spacing:.04em;font-weight:700}
+.chrx-stats-table-wrap{overflow-x:auto;margin-bottom:12px}
+.chrx-stats-table{width:100%;border-collapse:collapse;font-size:13px}
+.chrx-stats-table th{background:#f8fafc;color:#475569;font-weight:600;text-align:left;padding:7px 10px;border-bottom:2px solid #e2e8f0;user-select:none}
+.chrx-stats-th-sortable{cursor:pointer}
+.chrx-stats-th-sortable:hover{background:#e2e8f0;color:#0f172a}
+.chrx-stats-table td{padding:6px 10px;border-bottom:1px solid #f1f5f9}
 .chrx-stats-table td.align-right{text-align:right;font-variant-numeric:tabular-nums}
-.chrx-stats-dot{display:inline-block;width:10px;height:10px;border-radius:50%;vertical-align:middle;margin-right:2px}
-.chrx-stats-bars{display:flex;gap:6px;align-items:flex-end;height:80px;padding:8px;background:#f8fafc;border-radius:6px;margin-top:4px}
-.chrx-stats-bar{display:flex;flex-direction:column;align-items:center;gap:2px;flex:1}
-.chrx-stats-bar span{display:block;width:24px;background:linear-gradient(180deg,#3b82f6,#1e40af);border-radius:4px 4px 0 0;min-height:2px}
+.chrx-stats-table th.align-right{text-align:right}
+.chrx-stats-dot{display:inline-block;width:10px;height:10px;border-radius:50%;vertical-align:middle;margin-right:4px}
+.chrx-stats-badge{font-size:10px;font-weight:600;padding:2px 6px;border-radius:4px;text-transform:uppercase;letter-spacing:.03em}
+.chrx-stats-badge--teacher{background:#e0e7ff;color:#3730a3}
+.chrx-stats-badge--class{background:#dcfce7;color:#166534}
+.chrx-stats-bar-mini{width:48px;height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden;display:inline-block}
+.chrx-stats-bar-mini div{height:100%;border-radius:3px}
+.chrx-stats-bars{display:flex;gap:6px;align-items:flex-end;height:80px;padding:10px;background:#f8fafc;border-radius:8px;margin-top:6px}
+.chrx-stats-bar{display:flex;flex-direction:column;align-items:center;gap:3px;flex:1}
+.chrx-stats-bar span{display:block;width:22px;background:linear-gradient(180deg,#3b82f6,#1e40af);border-radius:4px 4px 0 0;min-height:2px}
 .chrx-stats-bar small{font-size:10px;color:#64748b}
     `;
     document.head.appendChild(s);
   }
   ensureStyles();
 
-  // Wire into the Timetable menu (Statistics… already exists; route via the existing event)
   window.addEventListener("app:statistics", () => open());
 
-  global.StatisticsPanel = { open, compute };
+  global.StatisticsPanel = { open, compute, sortExhaustion };
 })(window);
 
 // Chronexa Web
