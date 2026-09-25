@@ -107,6 +107,7 @@ import "../ui/wizard/create_new.js";
 import "../ui/wizard/wizard_walkthrough.js";
 import "../ui/editor/activator.js";
 import "../ui/pwa_install.js";
+import "../ui/editor/student_view.js";
 import "../ui/editor/grid_canvas.js";
 import "../ui/editor/canvas_geometry.js";
 import "../ui/editor/pending_strip.js";
