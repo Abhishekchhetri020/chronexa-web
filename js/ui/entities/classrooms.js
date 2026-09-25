@@ -130,20 +130,22 @@ import "../components/time_off_matrix.js";
       const all = window.APP.school.classrooms;
       if (!isNew) {
         const rm = r._ref;
-        const before = { ...rm };
-        rm.name = draft.name.trim();
-        rm.abbr = draft.short.trim() || undefined;
-        rm.building = draft.building.trim() || undefined;
-        rm.buildingId = draft.buildingId || undefined;
-        rm.allowedTags = (draft.allowedTags || "").split(/[,\s]+/).map(s => s.trim()).filter(Boolean);
-        if (!rm.allowedTags.length) rm.allowedTags = undefined;
-        rm.capacity = draft.capacity ? parseInt(draft.capacity, 10) : undefined;
-        rm.color = draft.color || undefined;
-        rm.needsSupervision = !!draft.needsSupervision;
-        rm.isShared = !!draft.isShared;
-        rm.allowedSubjectIds = draft.allowedSubjectIds.slice();
-        rm.bell = draft.bell || undefined;
-        window.APP.audit.append({ entity:"classrooms", op:"update", before, after:{...rm} });
+        window.APP.mutate("Edit classroom", () => {
+          const before = { ...rm };
+          rm.name = draft.name.trim();
+          rm.abbr = draft.short.trim() || undefined;
+          rm.building = draft.building.trim() || undefined;
+          rm.buildingId = draft.buildingId || undefined;
+          rm.allowedTags = (draft.allowedTags || "").split(/[,\s]+/).map(s => s.trim()).filter(Boolean);
+          if (!rm.allowedTags.length) rm.allowedTags = undefined;
+          rm.capacity = draft.capacity ? parseInt(draft.capacity, 10) : undefined;
+          rm.color = draft.color || undefined;
+          rm.needsSupervision = !!draft.needsSupervision;
+          rm.isShared = !!draft.isShared;
+          rm.allowedSubjectIds = draft.allowedSubjectIds.slice();
+          rm.bell = draft.bell || undefined;
+          window.APP.audit.append({ entity:"classrooms", op:"update", before, after:{...rm} });
+        });
       } else {
         const nr = { id:D.uid("r"), name:draft.name.trim(),
           abbr:draft.short.trim() || undefined,
@@ -158,9 +160,10 @@ import "../components/time_off_matrix.js";
           allowedSubjectIds: draft.allowedSubjectIds.slice(),
           bell:draft.bell || undefined };
         if (all.some(x => x.name === nr.name)) { fName.focus(); return false; }
-        all.push(nr);
-        if (window.APP.school._idx) window.APP.school._idx.classroomById[nr.id] = nr;
-        window.APP.audit.append({ entity:"classrooms", op:"add", after:{...nr} });
+        window.APP.mutate("Add classroom", (school) => {
+          school.classrooms.push(nr);
+          window.APP.audit.append({ entity:"classrooms", op:"add", after:{...nr} });
+        });
       }
       D.closeSheet(); D.refresh(rows());
       return true;
@@ -203,11 +206,13 @@ import "../components/time_off_matrix.js";
     const srcRef = r._ref;
     const srcSnapshot = { ...srcRef };
     function applySettings(targetRef) {
-      const before = { ...targetRef };
-      COPYABLE_KEYS.forEach(k => {
-        if (srcSnapshot[k] !== undefined) targetRef[k] = deepClone(srcSnapshot[k]);
+      window.APP.mutate("Copy classroom settings", () => {
+        const before = { ...targetRef };
+        COPYABLE_KEYS.forEach(k => {
+          if (srcSnapshot[k] !== undefined) targetRef[k] = deepClone(srcSnapshot[k]);
+        });
+        window.APP.audit.append({ entity:"classrooms", op:"copy", id:targetRef.id, before, after:{...targetRef} });
       });
-      window.APP.audit.append({ entity:"classrooms", op:"copy", id:targetRef.id, before, after:{...targetRef} });
     }
     const all = rows();
     const others = all.filter(x => x.id !== r.id).map(x => ({
@@ -222,13 +227,17 @@ import "../components/time_off_matrix.js";
         if (srcRef.timeOff != null)          copy.timeOff = deepClone(srcRef.timeOff);
         if (srcRef.constraints)               copy.constraints = deepClone(srcRef.constraints);
         if (srcRef.allowedSubjectIds != null) copy.allowedSubjectIds = deepClone(srcRef.allowedSubjectIds);
-        list.push(copy);
-        if (window.APP.school._idx) window.APP.school._idx.classroomById[copy.id] = copy;
-        window.APP.audit.append({ entity:"classrooms", op:"add", after:{...copy} });
+        window.APP.mutate("Duplicate classroom", (school) => {
+          school.classrooms.push(copy);
+          window.APP.audit.append({ entity:"classrooms", op:"add", after:{...copy} });
+        });
         D.refresh(rows());
       },
       onCopyToOne: (targetRef) => { applySettings(targetRef); D.refresh(rows()); },
-      onCopyToMany: (targetRefs) => { targetRefs.forEach(applySettings); D.refresh(rows()); },
+      onCopyToMany: (targetRefs) => {
+        window.APP.mutate("Copy classroom settings", () => targetRefs.forEach(applySettings));
+        D.refresh(rows());
+      },
     });
   }
 
@@ -253,7 +262,7 @@ import "../components/time_off_matrix.js";
       ],
       onApply: (fieldId, value, ids) => {
         const byId = {}; all.forEach(r => byId[r.id] = r._ref);
-        ids.forEach(id => {
+        window.APP.mutate("Batch edit classrooms", () => ids.forEach(id => {
           const ref = byId[id]; if (!ref) return;
           const before = { ...ref };
           if (fieldId === "color")            ref.color = value || undefined;
@@ -261,7 +270,7 @@ import "../components/time_off_matrix.js";
           else if (fieldId === "capacity")    ref.capacity = value;
           else if (fieldId === "needsSupervision") ref.needsSupervision = !!value;
           window.APP.audit.append({ entity:"classrooms", op:"batch", field:fieldId, id, before, after:{...ref} });
-        });
+        }));
         D.refresh(rows());
       },
     });
@@ -281,8 +290,10 @@ import "../components/time_off_matrix.js";
         { label:"Max students",            control:f2 },
       ],
       onSave:()=>{
-        const before = ref.constraints; ref.constraints = c;
-        window.APP.audit.append({ entity:"classrooms", op:"constraints", id:ref.id, before, after:c });
+        window.APP.mutate("Edit classroom constraints", () => {
+          const before = ref.constraints; ref.constraints = c;
+          window.APP.audit.append({ entity:"classrooms", op:"constraints", id:ref.id, before, after:c });
+        });
         D.closeSheet(); D.refresh(rows());
       },
     });
@@ -309,8 +320,10 @@ import "../components/time_off_matrix.js";
           const all = window.APP.school.classrooms;
           const i = all.findIndex(x => x.id === row._ref.id);
           if (i >= 0) {
-            const removed = all.splice(i, 1)[0];
-            window.APP.audit.append({ entity:"classrooms", op:"remove", before:{...removed} });
+            window.APP.mutate("Delete classroom", () => {
+              const removed = all.splice(i, 1)[0];
+              window.APP.audit.append({ entity:"classrooms", op:"remove", before:{...removed} });
+            });
             D.refresh(rows());
           }
           return;
@@ -319,9 +332,11 @@ import "../components/time_off_matrix.js";
           const ref = row._ref;
           if (!window.TimeOffMatrix) return;
           return window.TimeOffMatrix.open(ref, "classrooms", (newTimeOff) => {
-            const before = ref.timeOff;
-            ref.timeOff = newTimeOff;
-            window.APP.audit.append({ entity:"classrooms", op:"timeoff", id:ref.id, before, after:newTimeOff });
+            window.APP.mutate("Edit classroom time off", () => {
+              const before = ref.timeOff;
+              ref.timeOff = newTimeOff;
+              window.APP.audit.append({ entity:"classrooms", op:"timeoff", id:ref.id, before, after:newTimeOff });
+            });
             D.refresh(rows());
           });
         }

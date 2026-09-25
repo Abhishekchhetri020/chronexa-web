@@ -62,23 +62,28 @@ import "./dialog_shell.js";
       ],
       onSave: () => {
         if (!draft.name.trim()) { fName.focus(); return; }
-        const all = (window.APP.school.holidays = window.APP.school.holidays || []);
+        const all = window.APP.school.holidays || [];
         if (!isNew) {
           const ref = r._ref;
-          const before = { ...ref };
-          ref.name = draft.name.trim();
-          ref.color = draft.color || undefined;
-          ref.startDate = draft.startDate;
-          ref.endDate = draft.endDate;
-          ref.notes = draft.notes.trim() || undefined;
-          window.APP.audit.append({ entity: "holidays", op: "update", before, after: { ...ref } });
+          window.APP.mutate("Edit holiday", () => {
+            const before = { ...ref };
+            ref.name = draft.name.trim();
+            ref.color = draft.color || undefined;
+            ref.startDate = draft.startDate;
+            ref.endDate = draft.endDate;
+            ref.notes = draft.notes.trim() || undefined;
+            window.APP.audit.append({ entity: "holidays", op: "update", before, after: { ...ref } });
+          });
         } else {
           const nh = { id: D.uid("h"), name: draft.name.trim(),
             color: draft.color || undefined,
             startDate: draft.startDate, endDate: draft.endDate,
             notes: draft.notes.trim() || undefined };
-          all.push(nh);
-          window.APP.audit.append({ entity: "holidays", op: "add", after: { ...nh } });
+          window.APP.mutate("Add holiday", (school) => {
+            school.holidays = school.holidays || [];
+            school.holidays.push(nh);
+            window.APP.audit.append({ entity: "holidays", op: "add", after: { ...nh } });
+          });
         }
         D.closeSheet(); D.refresh(rows());
       },
@@ -96,8 +101,10 @@ import "./dialog_shell.js";
           const all = window.APP.school.holidays || [];
           const i = all.findIndex(x => x.id === row._ref.id);
           if (i >= 0) {
-            const removed = all.splice(i, 1)[0];
-            window.APP.audit.append({ entity: "holidays", op: "remove", before: { ...removed } });
+            window.APP.mutate("Delete holiday", () => {
+              const removed = all.splice(i, 1)[0];
+              window.APP.audit.append({ entity: "holidays", op: "remove", before: { ...removed } });
+            });
             D.refresh(rows());
           }
         }

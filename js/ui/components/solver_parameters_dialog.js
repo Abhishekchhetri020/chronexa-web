@@ -61,11 +61,13 @@ import "../entities/dialog_shell.js";
     // can read them. localStorage covers the cross-session case; school
     // settings covers the per-school persistence + XML round-trip.
     if (APP.school) {
-      APP.school.settings = APP.school.settings || {};
-      APP.school.settings.solverParams = Object.assign({}, APP.solverParams);
-      APP.school.settings.minRestingPeriods = APP.solverParams.minRestingPeriods | 0;
-      APP.school.settings.minGapsBetweenBuildingChanges = APP.solverParams.minGapsBetweenBuildingChanges | 0;
-      APP.school.settings.maxBuildingChangesPerDay = APP.solverParams.maxBuildingChangesPerDay | 0;
+      APP.mutate("Save solver parameters", (school) => {
+        school.settings = school.settings || {};
+        school.settings.solverParams = Object.assign({}, APP.solverParams);
+        school.settings.minRestingPeriods = APP.solverParams.minRestingPeriods | 0;
+        school.settings.minGapsBetweenBuildingChanges = APP.solverParams.minGapsBetweenBuildingChanges | 0;
+        school.settings.maxBuildingChangesPerDay = APP.solverParams.maxBuildingChangesPerDay | 0;
+      });
     }
     window.dispatchEvent(new CustomEvent("app:solver-params-changed", { detail: APP.solverParams }));
     (window._chrxNotify || function () {})("Solver parameters saved", "info");

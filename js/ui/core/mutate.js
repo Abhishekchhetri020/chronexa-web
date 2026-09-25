@@ -23,6 +23,14 @@
 
   function cloneValue(value, seen = new Map()) {
     if (value === null || typeof value !== "object") return value;
+    // The school model is plain JSON-shaped data.  Native structuredClone is
+    // materially faster than walking the full demo school in JavaScript and
+    // is available in the browsers supported by Chronexa.  Keep the guarded
+    // recursive path for older runtimes and for the occasional cyclic test
+    // fixture.
+    if (seen.size === 0 && typeof globalThis.structuredClone === "function") {
+      try { return globalThis.structuredClone(value); } catch (_) { /* fallback below */ }
+    }
     if (value instanceof Date) return new Date(value.getTime());
     if (seen.has(value)) return seen.get(value);
     const copy = Array.isArray(value) ? [] : {};
@@ -58,6 +66,11 @@
     return true;
   }
 
+  function serializedEqual(a, b) {
+    try { return JSON.stringify(a) === JSON.stringify(b); }
+    catch (_) { return valuesEqual(a, b); }
+  }
+
   function pathKey(path) {
     return JSON.stringify(path);
   }
@@ -79,7 +92,15 @@
       }
       return;
     }
-    if (valuesEqual(before, after)) return;
+
+    if (before === after) return;
+    const beforeObject = before !== null && typeof before === "object";
+    const afterObject = after !== null && typeof after === "object";
+    if (!beforeObject || !afterObject || isArray(before) !== isArray(after) ||
+        before instanceof Date || after instanceof Date) {
+      if (!valuesEqual(before, after)) patches.push(makePatch(path, before, after, true, true));
+      return;
+    }
 
     if (isArray(before) && isArray(after)) {
       // An insertion/removal changes array indexes. Recording the complete
@@ -89,6 +110,12 @@
         return;
       }
       for (let i = 0; i < before.length; i++) {
+        if (before[i] === after[i]) continue;
+        // Array elements are commonly small records (cards/entities). Avoid
+        // allocating two JSON strings for every unchanged element on every
+        // transaction; the recursive structural comparison short-circuits
+        // on the first differing primitive and is substantially cheaper.
+        if (path.length <= 1 && valuesEqual(before[i], after[i])) continue;
         diffValues(before[i], after[i], path.concat(i), patches, true, true);
       }
       return;
@@ -97,8 +124,15 @@
     if (isRecord(before) && isRecord(after)) {
       const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
       for (const key of keys) {
+        // `_idx` is a derived viewer cache. It is rebuilt after replay and is
+        // deliberately never part of the school transaction payload.
+        if (path.length === 0 && key === "_idx") continue;
         const beforeHas = Object.prototype.hasOwnProperty.call(before, key);
         const afterHas = Object.prototype.hasOwnProperty.call(after, key);
+        if (beforeHas && afterHas && before[key] === after[key]) continue;
+        // Most top-level collections are untouched by a small edit. Prove
+        // that once and avoid descending into every entity on every move.
+        if (path.length === 0 && beforeHas && afterHas && serializedEqual(before[key], after[key])) continue;
         diffValues(
           beforeHas ? before[key] : undefined,
           afterHas ? after[key] : undefined,
@@ -244,9 +278,11 @@
       state.transaction = null;
       throw error;
     }
-    const after = snapshotSchool(school);
     state.transaction = null;
-    const patches = diffSchools(before, after);
+    // Compare against the live school after the callback.  The old snapshot
+    // is the only copy required for undo; cloning a second full demo school
+    // for every small card move needlessly multiplies the hot-path cost.
+    const patches = diffSchools(before, school);
     if (!patches.length) return result;
 
     pushEntry({

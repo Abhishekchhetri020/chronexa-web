@@ -531,8 +531,10 @@ import "./dialog_shell.js";
     if (!draft.classids.length) { alert("Pick at least one class."); return; }
     const all = ensureRelations();
     const payload = { id: D.uid("rel"), ...packPayload(draft) };
-    all.push(payload);
-    window.APP.audit.append({ entity:"relations", op:"add", after:{...payload} });
+    window.APP.mutate("Add relation", (school) => {
+      school.relations.push(payload);
+      window.APP.audit.append({ entity:"relations", op:"add", after:{...payload} });
+    });
     D.closeSheet();
     D.refresh(rowsOf());
   }
@@ -572,11 +574,13 @@ import "./dialog_shell.js";
       // typ is immutable in edit mode — guard against accidental change.
       next.typ = ref.typ;
       // Wipe stale optional keys so the in-memory shape matches packPayload.
-      for (const k of Object.keys(ref)) {
-        if (k !== "id" && !(k in next)) delete ref[k];
-      }
-      Object.assign(ref, next);
-      window.APP.audit.append({ entity:"relations", op:"update", before, after:{...ref} });
+      window.APP.mutate("Edit relation", () => {
+        for (const k of Object.keys(ref)) {
+          if (k !== "id" && !(k in next)) delete ref[k];
+        }
+        Object.assign(ref, next);
+        window.APP.audit.append({ entity:"relations", op:"update", before, after:{...ref} });
+      });
       D.closeSheet();
       D.refresh(rowsOf());
       return true;
@@ -622,17 +626,19 @@ import "./dialog_shell.js";
     const hasPeers = sameTypOthers.length > 0;
 
     function applyOnto(targetRef) {
-      const before = { ...targetRef };
-      // Build a draft-like shape from srcRef, then packPayload to canonicalize.
-      const sourceDraft = draftFromRef(srcRef);
-      const next = packPayload(sourceDraft);
-      // typ on target stays the same; everything else is overwritten.
-      next.typ = targetRef.typ;
-      for (const k of Object.keys(targetRef)) {
-        if (k !== "id" && !(k in next)) delete targetRef[k];
-      }
-      Object.assign(targetRef, next);
-      window.APP.audit.append({ entity:"relations", op:"copy", id:targetRef.id, before, after:{...targetRef} });
+      window.APP.mutate("Copy relation settings", () => {
+        const before = { ...targetRef };
+        // Build a draft-like shape from srcRef, then packPayload to canonicalize.
+        const sourceDraft = draftFromRef(srcRef);
+        const next = packPayload(sourceDraft);
+        // typ on target stays the same; everything else is overwritten.
+        next.typ = targetRef.typ;
+        for (const k of Object.keys(targetRef)) {
+          if (k !== "id" && !(k in next)) delete targetRef[k];
+        }
+        Object.assign(targetRef, next);
+        window.APP.audit.append({ entity:"relations", op:"copy", id:targetRef.id, before, after:{...targetRef} });
+      });
     }
 
     D.openCopyChooser({
@@ -641,12 +647,17 @@ import "./dialog_shell.js";
       others: sameTypOthers,
       onDuplicate: () => {
         const copy = { ...packPayload(draftFromRef(srcRef)), id: D.uid("rel") };
-        all.push(copy);
-        window.APP.audit.append({ entity:"relations", op:"add", after:{...copy} });
+        window.APP.mutate("Duplicate relation", (school) => {
+          school.relations.push(copy);
+          window.APP.audit.append({ entity:"relations", op:"add", after:{...copy} });
+        });
         D.refresh(rowsOf());
       },
       onCopyToOne: hasPeers ? (targetRef) => { applyOnto(targetRef); D.refresh(rowsOf()); } : null,
-      onCopyToMany: hasPeers ? (targetRefs) => { targetRefs.forEach(applyOnto); D.refresh(rowsOf()); } : null,
+      onCopyToMany: hasPeers ? (targetRefs) => {
+        window.APP.mutate("Copy relation settings", () => targetRefs.forEach(applyOnto));
+        D.refresh(rowsOf());
+      } : null,
     });
   }
 
@@ -671,13 +682,13 @@ import "./dialog_shell.js";
       ],
       onApply: (fieldId, value, ids) => {
         const byId = {}; all.forEach(r => byId[r.id] = r._ref);
-        ids.forEach(id => {
+        window.APP.mutate("Batch edit relations", () => ids.forEach(id => {
           const ref = byId[id]; if (!ref) return;
           const before = { ...ref };
           if (fieldId === "importance") ref.importance = value;
           else if (fieldId === "disabled") ref.disabled = !!value;
           window.APP.audit.append({ entity:"relations", op:"batch", field:fieldId, id, before, after:{...ref} });
-        });
+        }));
         D.refresh(rowsOf());
       },
     });
@@ -700,8 +711,10 @@ import "./dialog_shell.js";
           const all = ensureRelations();
           const i = all.findIndex(x => x.id === row._ref.id);
           if (i >= 0) {
-            const removed = all.splice(i, 1)[0];
-            window.APP.audit.append({ entity:"relations", op:"remove", before:{...removed} });
+            window.APP.mutate("Delete relation", () => {
+              const removed = all.splice(i, 1)[0];
+              window.APP.audit.append({ entity:"relations", op:"remove", before:{...removed} });
+            });
             D.refresh(rowsOf());
           }
           return;

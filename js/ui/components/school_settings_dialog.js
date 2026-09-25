@@ -186,12 +186,14 @@ import "../entities/weeks.js";
           alert("School name is required."); return;
         }
         const before = { schoolName: school.schoolName, settings: { ...school.settings } };
-        school.schoolName = draft.schoolName.trim();
-        if (typeof draft.daysPerWeek === "number") {
-          school.daysPerWeek = draft.daysPerWeek;
-        }
-        school.settings = { ...draft };
-        delete school.settings.schoolName; // already on school root
+        window.APP.mutate("Edit school settings", (currentSchool) => {
+          currentSchool.schoolName = draft.schoolName.trim();
+          if (typeof draft.daysPerWeek === "number") {
+            currentSchool.daysPerWeek = draft.daysPerWeek;
+          }
+          currentSchool.settings = { ...draft };
+          delete currentSchool.settings.schoolName; // already on school root
+        });
         if (window.APP.audit && window.APP.audit.append) {
           window.APP.audit.append({ entity: "school", op: "settings", before, after: { schoolName: school.schoolName, settings: school.settings } });
         }

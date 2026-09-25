@@ -93,7 +93,7 @@ import "./verification_panel_pro.js";
     ui.logLine(`▶ Phase 1: Generate (budget ${Math.round(totalBudget * 0.5)}s)…`);
     if (!window.SolverUI?.run) { ui.setPhase("p1", "fail", "SolverUI missing"); ui.done(); return; }
     const t0 = performance.now();
-    school.cards = []; // start fresh
+    window.APP.mutate("Generate timetable", (currentSchool) => { currentSchool.cards = []; });
     const source = window.SolverUI.run({
       school, options: { timeLimitSec: Math.round(totalBudget * 0.5), verbose: false },
       algorithm: "browser",
@@ -105,9 +105,12 @@ import "./verification_panel_pro.js";
       setTimeout(resolve, totalBudget * 600); // safety
     });
     if (result?.assignment) {
-      school.cards = result.assignment.map(a => ({
+      const generatedCards = result.assignment.map(a => ({
         lessonId: a.lessonId, day: a.day, period: a.period, classroomId: a.classroomId || null,
       }));
+      window.APP.mutate("Apply generated timetable", (currentSchool) => {
+        currentSchool.cards = generatedCards;
+      });
     }
     if (window.CreateNew?.refreshIndex) window.CreateNew.refreshIndex();
     const p1Cards = school.cards.length;
@@ -133,7 +136,7 @@ import "./verification_panel_pro.js";
       ui.logLine(`▶ Phase 3: Auto-fix hard violations…`);
       let fixed = 0, scanned = 0;
       const lessonById = (school._idx?.lessonById) || Object.fromEntries((school.lessons || []).map(l => [l.id, l]));
-      for (const card of (school.cards || [])) {
+      window.APP.mutate("Auto-fix timetable violations", () => { for (const card of (school.cards || [])) {
         scanned++;
         const lesson = lessonById[card.lessonId];
         if (!lesson) continue;
@@ -150,7 +153,7 @@ import "./verification_panel_pro.js";
             }
           }
         }
-      }
+      } });
       ui.setPhase("p3", "ok", `${fixed} fixed of ${scanned} scanned`);
       ui.logLine(`✓ Phase 3 done: auto-fixed ${fixed} hard violations.`);
     } else {

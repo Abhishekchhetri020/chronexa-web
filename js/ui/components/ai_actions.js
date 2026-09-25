@@ -34,8 +34,7 @@ import "../entities/dialog_shell.js";
             lessonId: a.lessonId, day: a.day, period: a.period,
             classroomId: a.classroomId || null,
           }));
-          APP.school.cards = newCards;
-          if (window.CreateNew?.refreshIndex) window.CreateNew.refreshIndex();
+          APP.mutate("Auto-fill empty cells", (school) => { school.cards = newCards; });
           window.dispatchEvent(new CustomEvent("entity:changed", { detail: { entity: "cards" } }));
           notify(`Placed ${newCards.length} cards.`);
         }
@@ -53,9 +52,11 @@ import "../entities/dialog_shell.js";
     const APP = window.APP;
     if (!APP || !APP.school || !APP.school.cards) { notify("Open a timetable first.", "error"); return; }
     let count = 0;
-    for (const c of APP.school.cards) {
-      if (!c.locked) { c.locked = true; count++; }
-    }
+    APP.mutate("Lock all placed cards", (school) => {
+      for (const c of school.cards) {
+        if (!c.locked) { c.locked = true; count++; }
+      }
+    });
     if (window.APP.audit?.append) APP.audit.append({ entity: "cards", op: "lock-all", count });
     notify(`Locked ${count} cards. Solver will not move them.`);
   }

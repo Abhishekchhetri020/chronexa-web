@@ -102,13 +102,17 @@ import "./dialog_shell.js";
         const all = ensure();
         if (!isNew) {
           const st = r._ref;
-          const before = { ...st };
-          Object.assign(st, draft);
-          window.APP.audit.append({ entity: "students", op: "update", before, after: { ...st } });
+          window.APP.mutate("Edit student", () => {
+            const before = { ...st };
+            Object.assign(st, draft);
+            window.APP.audit.append({ entity: "students", op: "update", before, after: { ...st } });
+          });
         } else {
           const ns = Object.assign({ id: D.uid("st") }, draft);
-          all.push(ns);
-          window.APP.audit.append({ entity: "students", op: "add", after: { ...ns } });
+          window.APP.mutate("Add student", (school) => {
+            school.students.push(ns);
+            window.APP.audit.append({ entity: "students", op: "add", after: { ...ns } });
+          });
         }
         D.closeSheet();
         D.refresh(rows());
@@ -131,9 +135,11 @@ import "./dialog_shell.js";
         const list = ensure();
         const i = list.findIndex(x => x.id === r.id);
         if (i !== -1) {
-          const removed = list[i];
-          list.splice(i, 1);
-          window.APP.audit.append({ entity: "students", op: "remove", before: { ...removed } });
+          window.APP.mutate("Delete student", () => {
+            const removed = list[i];
+            list.splice(i, 1);
+            window.APP.audit.append({ entity: "students", op: "remove", before: { ...removed } });
+          });
         }
         D.refresh(rows());
       },

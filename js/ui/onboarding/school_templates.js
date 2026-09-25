@@ -51,50 +51,52 @@ import "./data_library.js";
       ensure(false, "OnboardingData missing — seeding skeleton only");
       return { ok: true, choice: "blank-fallback" };
     }
-    // Seed subjects
-    if (choice.subj && data.SUBJECTS[choice.subj]) {
-      school.subjects = data.SUBJECTS[choice.subj].map((s, i) => ({
-        id: "s_" + i + "_" + Math.random().toString(36).slice(2, 6),
-        name: s.name, abbr: s.short, color: s.color,
-        contractWeight: s.weight,
-      }));
-    }
-    // Seed bell schedule
-    if (choice.bell && data.BELLS[choice.bell]) {
-      const bell = data.BELLS[choice.bell];
-      school.bell = { periods: bell.periods.map((p, i) => ({
-        index: i + 1, label: p.label, startMin: p.startMin, endMin: p.endMin, isTeaching: true,
-      })) };
-      // Seed breaks
-      if (bell.breaks?.length) {
-        school.breaks = bell.breaks.map((b, i) => ({
-          id: "b_" + i, name: b.name, startMin: b.startMin, endMin: b.endMin,
-          afterPeriod: b.afterPeriod,
+    global.APP.mutate(`Apply ${choice.label} template`, (currentSchool) => {
+      // Seed subjects
+      if (choice.subj && data.SUBJECTS[choice.subj]) {
+        currentSchool.subjects = data.SUBJECTS[choice.subj].map((s, i) => ({
+          id: "s_" + i + "_" + Math.random().toString(36).slice(2, 6),
+          name: s.name, abbr: s.short, color: s.color,
+          contractWeight: s.weight,
         }));
       }
-      school.daysPerWeek = bell.daysPerWeek;
-    }
-    // Seed sample classes
-    if (choice.classes && data.CLASS_PATTERNS[choice.classes]) {
-      school.classes = data.CLASS_PATTERNS[choice.classes].slice(0, 3).map((name, i) => ({
-        id: "c_" + i + "_" + Math.random().toString(36).slice(2, 6),
-        name, short: name, color: "#3b82f6",
-      }));
-    }
-    // Seed one sample teacher
-    if (choice.names && data.TEACHER_NAMES[choice.names]?.length) {
-      const t = data.TEACHER_NAMES[choice.names][0];
-      school.teachers = [{
-        id: "t_seed", name: t + " — replace with real teachers", color: "#10b981",
-      }];
-    }
-    // Seed two sample rooms
-    const roomPattern = data.ROOM_PATTERNS["Numbered"];
-    if (roomPattern) {
-      school.classrooms = roomPattern.slice(0, 2).map((name, i) => ({
-        id: "r_" + i, name, short: name,
-      }));
-    }
+      // Seed bell schedule
+      if (choice.bell && data.BELLS[choice.bell]) {
+        const bell = data.BELLS[choice.bell];
+        currentSchool.bell = { periods: bell.periods.map((p, i) => ({
+          index: i + 1, label: p.label, startMin: p.startMin, endMin: p.endMin, isTeaching: true,
+        })) };
+        // Seed breaks
+        if (bell.breaks?.length) {
+          currentSchool.breaks = bell.breaks.map((b, i) => ({
+            id: "b_" + i, name: b.name, startMin: b.startMin, endMin: b.endMin,
+            afterPeriod: b.afterPeriod,
+          }));
+        }
+        currentSchool.daysPerWeek = bell.daysPerWeek;
+      }
+      // Seed sample classes
+      if (choice.classes && data.CLASS_PATTERNS[choice.classes]) {
+        currentSchool.classes = data.CLASS_PATTERNS[choice.classes].slice(0, 3).map((name, i) => ({
+          id: "c_" + i + "_" + Math.random().toString(36).slice(2, 6),
+          name, short: name, color: "#3b82f6",
+        }));
+      }
+      // Seed one sample teacher
+      if (choice.names && data.TEACHER_NAMES[choice.names]?.length) {
+        const t = data.TEACHER_NAMES[choice.names][0];
+        currentSchool.teachers = [{
+          id: "t_seed", name: t + " — replace with real teachers", color: "#10b981",
+        }];
+      }
+      // Seed two sample rooms
+      const roomPattern = data.ROOM_PATTERNS["Numbered"];
+      if (roomPattern) {
+        currentSchool.classrooms = roomPattern.slice(0, 2).map((name, i) => ({
+          id: "r_" + i, name, short: name,
+        }));
+      }
+    });
     if (global.CreateNew?.refreshIndex) global.CreateNew.refreshIndex();
     if (global.APP?.audit?.append) {
       global.APP.audit.append({ entity: "school", op: "template-applied", template: id });

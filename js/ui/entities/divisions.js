@@ -95,14 +95,18 @@ import "./dialog_shell.js";
           groupids: draft.groupids.slice(),
         };
         if (!isNew) {
-          const before = { ...ref };
-          Object.assign(ref, payload);
-          window.APP.audit.append({ entity:"divisions", op:"update",
-            before, after:{...ref} });
+          window.APP.mutate("Edit division", () => {
+            const before = { ...ref };
+            Object.assign(ref, payload);
+            window.APP.audit.append({ entity:"divisions", op:"update",
+              before, after:{...ref} });
+          });
         } else {
           payload.id = D.uid("div");
-          all.push(payload);
-          window.APP.audit.append({ entity:"divisions", op:"add", after:{...payload} });
+          window.APP.mutate("Add division", (school) => {
+            school.divisions.push(payload);
+            window.APP.audit.append({ entity:"divisions", op:"add", after:{...payload} });
+          });
         }
         D.closeSheet(); D.refresh(rows());
       },
@@ -121,9 +125,11 @@ import "./dialog_shell.js";
           const all = ensure();
           const i = all.findIndex(x => x.id === row._ref.id);
           if (i >= 0) {
-            const removed = all.splice(i,1)[0];
-            window.APP.audit.append({ entity:"divisions", op:"remove",
-              before:{...removed} });
+            window.APP.mutate("Delete division", () => {
+              const removed = all.splice(i,1)[0];
+              window.APP.audit.append({ entity:"divisions", op:"remove",
+                before:{...removed} });
+            });
             D.refresh(rows());
           }
         }

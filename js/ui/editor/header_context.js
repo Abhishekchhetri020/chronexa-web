@@ -32,23 +32,25 @@ import "./grid_canvas.js";
   function lockDay(d, lock) {
     const S = window.APP && window.APP.school;
     if (!S) return;
-    S.cards = S.cards || [];
-    S.lockedDays = S.lockedDays || [];
-    if (lock) {
-      if (!S.lockedDays.includes(d)) S.lockedDays.push(d);
-    } else {
-      S.lockedDays = S.lockedDays.filter((x) => x !== d);
-    }
     let count = 0;
-    for (const card of S.cards) {
-      if (card.day !== d) continue;
+    window.APP.mutate((lock ? "Lock " : "Unlock ") + "day", (school) => {
+      school.cards = school.cards || [];
+      school.lockedDays = school.lockedDays || [];
       if (lock) {
-        card.locked = true;
+        if (!school.lockedDays.includes(d)) school.lockedDays.push(d);
       } else {
-        delete card.locked;
+        school.lockedDays = school.lockedDays.filter((x) => x !== d);
       }
-      count++;
-    }
+      for (const card of school.cards) {
+        if (card.day !== d) continue;
+        if (lock) {
+          card.locked = true;
+        } else {
+          delete card.locked;
+        }
+        count++;
+      }
+    });
     const host = document.querySelector(".chrx-editor");
     if (host && window.Editor && window.Editor.render) window.Editor.render(host);
     const dayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];

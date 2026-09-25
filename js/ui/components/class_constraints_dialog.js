@@ -178,7 +178,7 @@ import "../entities/dialog_shell.js";
       onConfirm: (ids) => {
         if (!ids.length) return;
         const val = getValueNow();
-        ids.forEach(id => {
+        window.APP.mutate("Set class constraints for multiple", () => ids.forEach(id => {
           const target = others.find(c => c.id === id);
           if (!target) return;
           const before = target.constraints ? { ...target.constraints } : undefined;
@@ -194,7 +194,7 @@ import "../entities/dialog_shell.js";
             entity:"classes", op:"constraints-setformore", field: fieldKey,
             id, before, after: { ...next },
           });
-        });
+        }));
       },
     });
   }

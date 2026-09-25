@@ -70,17 +70,19 @@ import "./dialog_shell.js";
       ],
       onSave: () => {
         if (!draft.name.trim()) { fName.focus(); return; }
-        const all = (window.APP.school.buildings = window.APP.school.buildings || []);
+        const all = window.APP.school.buildings || [];
         if (!isNew) {
           const ref = r._ref;
-          const before = { ...ref };
-          ref.name = draft.name.trim();
-          ref.short = draft.short.trim() || undefined;
-          ref.color = draft.color || undefined;
-          ref.floors = draft.floors;
-          ref.address = draft.address.trim() || undefined;
-          ref.notes = draft.notes.trim() || undefined;
-          window.APP.audit.append({ entity: "buildings", op: "update", before, after: { ...ref } });
+          window.APP.mutate("Edit building", () => {
+            const before = { ...ref };
+            ref.name = draft.name.trim();
+            ref.short = draft.short.trim() || undefined;
+            ref.color = draft.color || undefined;
+            ref.floors = draft.floors;
+            ref.address = draft.address.trim() || undefined;
+            ref.notes = draft.notes.trim() || undefined;
+            window.APP.audit.append({ entity: "buildings", op: "update", before, after: { ...ref } });
+          });
         } else {
           const nb = { id: D.uid("b"), name: draft.name.trim(),
             short: draft.short.trim() || undefined, color: draft.color || undefined,
@@ -88,12 +90,11 @@ import "./dialog_shell.js";
             address: draft.address.trim() || undefined,
             notes: draft.notes.trim() || undefined };
           if (all.some(x => x.name === nb.name)) { fName.focus(); return; }
-          all.push(nb);
-          if (window.APP.school._idx) {
-            window.APP.school._idx.buildingById = window.APP.school._idx.buildingById || {};
-            window.APP.school._idx.buildingById[nb.id] = nb;
-          }
-          window.APP.audit.append({ entity: "buildings", op: "add", after: { ...nb } });
+          window.APP.mutate("Add building", (school) => {
+            school.buildings = school.buildings || [];
+            school.buildings.push(nb);
+            window.APP.audit.append({ entity: "buildings", op: "add", after: { ...nb } });
+          });
         }
         D.closeSheet(); D.refresh(rows());
       },
@@ -125,15 +126,17 @@ import "./dialog_shell.js";
           const all = window.APP.school.buildings || [];
           const i = all.findIndex(x => x.id === row._ref.id);
           if (i >= 0) {
-            const removed = all.splice(i, 1)[0];
-            // Unset buildingId on any classrooms that used this building
-            for (const c of (window.APP.school.classrooms || [])) {
-              if (c.buildingId === removed.id || c.buildingid === removed.id) {
-                c.buildingId = undefined;
-                c.buildingid = undefined;
+            window.APP.mutate("Delete building", () => {
+              const removed = all.splice(i, 1)[0];
+              // Unset buildingId on any classrooms that used this building
+              for (const c of (window.APP.school.classrooms || [])) {
+                if (c.buildingId === removed.id || c.buildingid === removed.id) {
+                  c.buildingId = undefined;
+                  c.buildingid = undefined;
+                }
               }
-            }
-            window.APP.audit.append({ entity: "buildings", op: "remove", before: { ...removed } });
+              window.APP.audit.append({ entity: "buildings", op: "remove", before: { ...removed } });
+            });
             D.refresh(rows());
           }
           return;

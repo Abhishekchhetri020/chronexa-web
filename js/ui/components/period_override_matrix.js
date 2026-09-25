@@ -80,8 +80,10 @@ import "../state.js";
           endInp.style.borderColor = "#f87171";
           return;
         }
-        period.perDayOverrides = period.perDayOverrides || {};
-        period.perDayOverrides[dayIdx] = { startMin: s, endMin: e };
+        window.APP.mutate("Edit per-day bell override", () => {
+          period.perDayOverrides = period.perDayOverrides || {};
+          period.perDayOverrides[dayIdx] = { startMin: s, endMin: e };
+        });
         document.dispatchEvent(new CustomEvent("entity:changed", { detail: { source: "override-matrix" } }));
         closeEditor();
         onDone();
@@ -92,12 +94,14 @@ import "../state.js";
       type: "button",
       class: "chrx-override-matrix__btn chrx-override-matrix__btn--clear",
       onclick: () => {
-        if (period.perDayOverrides) {
-          delete period.perDayOverrides[dayIdx];
-          if (Object.keys(period.perDayOverrides).length === 0) {
-            delete period.perDayOverrides;
+        window.APP.mutate("Reset per-day bell override", () => {
+          if (period.perDayOverrides) {
+            delete period.perDayOverrides[dayIdx];
+            if (Object.keys(period.perDayOverrides).length === 0) {
+              delete period.perDayOverrides;
+            }
           }
-        }
+        });
         document.dispatchEvent(new CustomEvent("entity:changed", { detail: { source: "override-matrix" } }));
         closeEditor();
         onDone();

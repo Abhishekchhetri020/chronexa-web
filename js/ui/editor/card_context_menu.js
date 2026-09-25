@@ -52,28 +52,18 @@ import "./card_in_hand.js";
     const idx = S.cards.findIndex(c =>
       c.lessonId === lessonId && c.day === day && c.period === period);
     if (idx === -1) return;
-    const removed = S.cards.splice(idx, 1)[0];
-
-    function doIt() {
-      const i2 = S.cards.findIndex(c =>
+    function remove(school) {
+      const i2 = school.cards.findIndex(c =>
         c.lessonId === lessonId && c.day === day && c.period === period);
-      if (i2 !== -1) S.cards.splice(i2, 1);
+      if (i2 !== -1) school.cards.splice(i2, 1);
       document.dispatchEvent(new CustomEvent("editor:unplace",
         { detail: { lessonId, day, period } }));
       rerender();
     }
-    function undoIt() {
-      S.cards.push(removed);
-      document.dispatchEvent(new CustomEvent("editor:place",
-        { detail: { lessonId, day, period } }));
-      rerender();
-    }
-    // First removal already happened above, push back for undo-based commit
-    S.cards.push(removed);
-    if (window.APP && window.APP.audit && typeof window.APP.audit.commit === "function") {
-      window.APP.audit.commit({ label: "Remove card", do: doIt, undo: undoIt });
+    if (window.APP && typeof window.APP.mutate === "function") {
+      window.APP.mutate("Remove card", remove);
     } else {
-      doIt();
+      remove(S);
     }
   }
 
@@ -81,7 +71,8 @@ import "./card_in_hand.js";
     const S = window.APP && window.APP.school;
     if (!S || !S.cards) return;
     const card = S.cards.find(c => c.lessonId === lessonId && c.day === day && c.period === period);
-    if (card) card.locked = true;
+    if (!card) return;
+    window.APP.mutate("Lock card", () => { card.locked = true; });
     rerender();
     const lesson = S._idx && S._idx.lessonById && S._idx.lessonById[lessonId];
     notify("Locked: " + (lesson ? (lesson.subjectId || lessonId) : lessonId));
@@ -91,7 +82,8 @@ import "./card_in_hand.js";
     const S = window.APP && window.APP.school;
     if (!S || !S.cards) return;
     const card = S.cards.find(c => c.lessonId === lessonId && c.day === day && c.period === period);
-    if (card) delete card.locked;
+    if (!card) return;
+    window.APP.mutate("Unlock card", () => { delete card.locked; });
     rerender();
     const lesson = S._idx && S._idx.lessonById && S._idx.lessonById[lessonId];
     notify("Unlocked: " + (lesson ? (lesson.subjectId || lessonId) : lessonId));
@@ -209,8 +201,8 @@ import "./card_in_hand.js";
       notify(`Restored ${cardsToRemove.length} cards for ${entityName}.`);
     }
 
-    if (window.APP && window.APP.audit && typeof window.APP.audit.commit === "function") {
-      window.APP.audit.commit({ label: "Clear row cards", do: doIt, undo: undoIt });
+    if (window.APP && typeof window.APP.mutate === "function") {
+      window.APP.mutate("Clear row cards", doIt);
     } else {
       doIt();
     }

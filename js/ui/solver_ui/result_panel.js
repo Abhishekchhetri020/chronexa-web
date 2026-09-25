@@ -286,13 +286,31 @@ import "./progress_modal.js";  // provides SolverUI.expectedCardCount
     return out;
   }
 
+  function cloneCards(cards) {
+    const core = global.APP && global.APP.__chronexaMutateCore;
+    if (core && typeof core.cloneValue === "function") return core.cloneValue(cards);
+    if (typeof global.structuredClone === "function") return global.structuredClone(cards);
+    return JSON.parse(JSON.stringify(cards));
+  }
+
+  function mutateResultCards(label, school, cards) {
+    const apply = (target) => { target.cards = cloneCards(cards); };
+    if (school && school === global.APP?.school && typeof global.APP?.mutate === "function") {
+      return global.APP.mutate(label, apply);
+    }
+    // Result previews can be opened with a detached school in tests or by a
+    // caller preparing a preview. Keep that API usable without recording a
+    // transaction against a different live school.
+    if (school) apply(school);
+  }
+
   function applyImmediately() {
     if (!state) return;
     const newCards = assignmentToCards(state.result.assignment);
     if (state.school && !state.snapshot) {
-      state.snapshot = Array.isArray(state.school.cards) ? state.school.cards.slice() : [];
+      state.snapshot = cloneCards(Array.isArray(state.school.cards) ? state.school.cards : []);
     }
-    if (state.school) state.school.cards = newCards;
+    mutateResultCards("Apply solver timetable", state.school, newCards);
     state.applied = true;
     state.discarded = false;
     refs.apply.disabled = true;
@@ -353,7 +371,7 @@ import "./progress_modal.js";  // provides SolverUI.expectedCardCount
   function doDiscard() {
     if (!state) return;
     if (state.school && state.snapshot != null) {
-      state.school.cards = state.snapshot;
+      mutateResultCards("Discard solver timetable", state.school, state.snapshot);
       state.snapshot = null;
     }
     state.discarded = true;

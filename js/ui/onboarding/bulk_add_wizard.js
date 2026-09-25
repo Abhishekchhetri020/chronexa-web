@@ -124,13 +124,15 @@ import "../wizard/create_new.js";
       el("button", { class: "chrx-bulk-cancel", onclick: () => root.remove() }, "Cancel"),
       el("button", { class: "chrx-bulk-go", onclick: () => {
         if (!parsedItems.length) return;
-        const arr = (school[info.store] = school[info.store] || []);
         let added = 0;
-        parsedItems.forEach((name, i) => {
-          const id = info.store[0] + "_b_" + Date.now() + "_" + i;
-          const color = useColorTaxonomy ? window.ColorTaxonomy.colorForId(id, kind.slice(0, -1)) : info.defaultColor();
-          arr.push({ id, name, short: name.slice(0, 6), color });
-          added++;
+        global.APP.mutate(`Bulk add ${info.plural}`, (currentSchool) => {
+          const arr = (currentSchool[info.store] = currentSchool[info.store] || []);
+          parsedItems.forEach((name, i) => {
+            const id = info.store[0] + "_b_" + Date.now() + "_" + i;
+            const color = useColorTaxonomy ? window.ColorTaxonomy.colorForId(id, kind.slice(0, -1)) : info.defaultColor();
+            arr.push({ id, name, short: name.slice(0, 6), color });
+            added++;
+          });
         });
         if (global.CreateNew?.refreshIndex) global.CreateNew.refreshIndex();
         if (global.APP?.audit?.append) {

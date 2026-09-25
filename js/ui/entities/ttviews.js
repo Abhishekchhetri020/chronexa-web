@@ -82,15 +82,19 @@ import "./dialog_shell.js";
           colortables: !!draft.colortables,
         };
         if (!isNew) {
-          const before = { ...ref };
-          Object.assign(ref, payload);
-          window.APP.audit.append({ entity:"ttviews", op:"update",
-            before, after:{...ref} });
+          window.APP.mutate("Edit timetable view", () => {
+            const before = { ...ref };
+            Object.assign(ref, payload);
+            window.APP.audit.append({ entity:"ttviews", op:"update",
+              before, after:{...ref} });
+          });
         } else {
           if (all.some(x => x.name === payload.name)) { fName.focus(); return; }
           payload.id = D.uid("vw");
-          all.push(payload);
-          window.APP.audit.append({ entity:"ttviews", op:"add", after:{...payload} });
+          window.APP.mutate("Add timetable view", (school) => {
+            school.ttviews.push(payload);
+            window.APP.audit.append({ entity:"ttviews", op:"add", after:{...payload} });
+          });
         }
         D.closeSheet(); D.refresh(rows());
       },
@@ -109,9 +113,11 @@ import "./dialog_shell.js";
           const all = ensure();
           const i = all.findIndex(x => x.id === row._ref.id);
           if (i >= 0) {
-            const removed = all.splice(i,1)[0];
-            window.APP.audit.append({ entity:"ttviews", op:"remove",
-              before:{...removed} });
+            window.APP.mutate("Delete timetable view", () => {
+              const removed = all.splice(i,1)[0];
+              window.APP.audit.append({ entity:"ttviews", op:"remove",
+                before:{...removed} });
+            });
             D.refresh(rows());
           }
         }

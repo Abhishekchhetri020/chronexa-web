@@ -99,24 +99,25 @@ import "../components/time_off_matrix.js";
       // Auto-assign unique color if none selected
       if (!draft.color) draft.color = D.autoPickColor("subjects");
       const all = window.APP.school.subjects;
-      if (!isNew) {
-        const subj = r._ref;
-        const before = { ...subj };
-        subj.name = draft.name.trim();
-        subj.abbr = draft.short.trim() || undefined;
-        subj.color = draft.color || undefined;
-        subj.contractWeight = draft.contractWeight;
-        subj.pictureUrl = draft.pictureUrl || undefined;
-        window.APP.audit.append({ entity:"subjects", op:"update", before, after:{...subj} });
-      } else {
-        const ns = { id:D.uid("s"), name:draft.name.trim(),
-          abbr:draft.short.trim() || undefined, color:draft.color || undefined,
-          contractWeight:draft.contractWeight, pictureUrl:draft.pictureUrl || undefined };
-        if (all.some(x => x.name === ns.name)) { fName.focus(); return false; }
-        all.push(ns);
-        if (window.APP.school._idx) window.APP.school._idx.subjectById[ns.id] = ns;
-        window.APP.audit.append({ entity:"subjects", op:"add", after:{...ns} });
-      }
+      const ns = isNew ? { id:D.uid("s"), name:draft.name.trim(),
+        abbr:draft.short.trim() || undefined, color:draft.color || undefined,
+        contractWeight:draft.contractWeight, pictureUrl:draft.pictureUrl || undefined } : null;
+      if (isNew && all.some(x => x.name === ns.name)) { fName.focus(); return false; }
+      window.APP.mutate(isNew ? "Add subject" : "Edit subject", (school) => {
+        if (!isNew) {
+          const subj = r._ref;
+          const before = { ...subj };
+          subj.name = draft.name.trim();
+          subj.abbr = draft.short.trim() || undefined;
+          subj.color = draft.color || undefined;
+          subj.contractWeight = draft.contractWeight;
+          subj.pictureUrl = draft.pictureUrl || undefined;
+          window.APP.audit.append({ entity:"subjects", op:"update", before, after:{...subj} });
+        } else {
+          school.subjects.push(ns);
+          window.APP.audit.append({ entity:"subjects", op:"add", after:{...ns} });
+        }
+      });
       D.closeSheet(); D.refresh(rows());
       return true;
     }
@@ -141,9 +142,11 @@ import "../components/time_off_matrix.js";
     const ref = r._ref;
     if (!window.TimeOffMatrix) return;
     window.TimeOffMatrix.open(ref, "subjects", (newTimeOff) => {
-      const before = ref.timeOff;
-      ref.timeOff = newTimeOff;
-      window.APP.audit.append({ entity:"subjects", op:"timeoff", id:ref.id, before, after:newTimeOff });
+      window.APP.mutate("Edit subject time off", () => {
+        const before = ref.timeOff;
+        ref.timeOff = newTimeOff;
+        window.APP.audit.append({ entity:"subjects", op:"timeoff", id:ref.id, before, after:newTimeOff });
+      });
       D.refresh(rows());
     });
   }
@@ -301,14 +304,16 @@ import "../components/time_off_matrix.js";
         onclick: () => {
           const val = getValue();
           const allS = (window.APP.school && window.APP.school.subjects) || [];
-          for (const sid of chosen) {
-            const subj = allS.find(s => s.id === sid);
-            if (!subj) continue;
-            const before = subj.constraints ? { ...subj.constraints } : null;
-            subj.constraints = Object.assign({}, subj.constraints || {});
-            subj.constraints[fieldKey] = val;
-            window.APP.audit.append({ entity: "subjects", op: "constraints", id: sid, before, after: { ...subj.constraints } });
-          }
+          window.APP.mutate("Set subject constraints for multiple", () => {
+            for (const sid of chosen) {
+              const subj = allS.find(s => s.id === sid);
+              if (!subj) continue;
+              const before = subj.constraints ? { ...subj.constraints } : null;
+              subj.constraints = Object.assign({}, subj.constraints || {});
+              subj.constraints[fieldKey] = val;
+              window.APP.audit.append({ entity: "subjects", op: "constraints", id: sid, before, after: { ...subj.constraints } });
+            }
+          });
           overlay.remove();
           const notify = window._chrxNotify || console.log;
           notify("Applied " + fieldLabel + " to " + chosen.size + " subjects", "info");
@@ -451,9 +456,11 @@ import "../components/time_off_matrix.js";
         { label: null,                              control: relList },
       ],
       onSave: () => {
-        const before = ref.constraints;
-        ref.constraints = c;
-        window.APP.audit.append({ entity: "subjects", op: "constraints", id: ref.id, before, after: c });
+        window.APP.mutate("Edit subject constraints", () => {
+          const before = ref.constraints;
+          ref.constraints = c;
+          window.APP.audit.append({ entity: "subjects", op: "constraints", id: ref.id, before, after: c });
+        });
         D.closeSheet(); D.refresh(rows());
       },
       siblingRows: rows(),
@@ -486,11 +493,13 @@ import "../components/time_off_matrix.js";
     const srcRef = r._ref;
     const srcSnapshot = { ...srcRef };
     function applySettings(targetRef) {
-      const before = { ...targetRef };
-      COPYABLE_KEYS.forEach(k => {
-        if (srcSnapshot[k] !== undefined) targetRef[k] = deepClone(srcSnapshot[k]);
+      window.APP.mutate("Copy subject settings", () => {
+        const before = { ...targetRef };
+        COPYABLE_KEYS.forEach(k => {
+          if (srcSnapshot[k] !== undefined) targetRef[k] = deepClone(srcSnapshot[k]);
+        });
+        window.APP.audit.append({ entity:"subjects", op:"copy", id:targetRef.id, before, after:{...targetRef} });
       });
-      window.APP.audit.append({ entity:"subjects", op:"copy", id:targetRef.id, before, after:{...targetRef} });
     }
     const all = rows();
     const others = all.filter(x => x.id !== r.id).map(x => ({
@@ -502,13 +511,13 @@ import "../components/time_off_matrix.js";
       source: srcRef,
       others,
       onDuplicate: () => {
-        const all = window.APP.school.subjects;
         const copy = { ...srcRef, id: D.uid("s"), name: (srcRef.name || "") + " (copy)" };
         if (srcRef.timeOff != null)   copy.timeOff = deepClone(srcRef.timeOff);
         if (srcRef.constraints)        copy.constraints = deepClone(srcRef.constraints);
-        all.push(copy);
-        if (window.APP.school._idx) window.APP.school._idx.subjectById[copy.id] = copy;
-        window.APP.audit.append({ entity:"subjects", op:"add", after:{...copy} });
+        window.APP.mutate("Duplicate subject", (school) => {
+          school.subjects.push(copy);
+          window.APP.audit.append({ entity:"subjects", op:"add", after:{...copy} });
+        });
         D.refresh(rows());
       },
       onCopyToOne: (targetRef) => {
@@ -516,7 +525,7 @@ import "../components/time_off_matrix.js";
         D.refresh(rows());
       },
       onCopyToMany: (targetRefs) => {
-        targetRefs.forEach(applySettings);
+        window.APP.mutate("Copy subject settings", () => targetRefs.forEach(applySettings));
         D.refresh(rows());
       },
     });
@@ -537,13 +546,13 @@ import "../components/time_off_matrix.js";
       ],
       onApply: (fieldId, value, ids) => {
         const byId = {}; all.forEach(r => byId[r.id] = r._ref);
-        ids.forEach(id => {
+        window.APP.mutate("Batch edit subjects", () => ids.forEach(id => {
           const ref = byId[id]; if (!ref) return;
           const before = { ...ref };
           if (fieldId === "color")             ref.color = value || undefined;
           else if (fieldId === "contractWeight") ref.contractWeight = value;
           window.APP.audit.append({ entity:"subjects", op:"batch", field:fieldId, id, before, after:{...ref} });
-        });
+        }));
         D.refresh(rows());
       },
     });
@@ -571,8 +580,11 @@ import "../components/time_off_matrix.js";
           const all = window.APP.school.subjects;
           const i = all.findIndex(x => x.id === row._ref.id);
           if (i >= 0) {
-            const removed = all.splice(i, 1)[0];
-            window.APP.audit.append({ entity:"subjects", op:"remove", before:{...removed} });
+            let removed;
+            window.APP.mutate("Delete subject", () => {
+              removed = all.splice(i, 1)[0];
+              window.APP.audit.append({ entity:"subjects", op:"remove", before:{...removed} });
+            });
             D.refresh(rows());
           }
           return;

@@ -110,7 +110,7 @@ import "../ribbon/topbar.js";
           }
         }
         const before = { ...period.perDayOverrides };
-        period.perDayOverrides = newOverrides;
+        global.APP.mutate("Edit per-day bell override", () => { period.perDayOverrides = newOverrides; });
         if (global.APP?.audit?.append) {
           global.APP.audit.append({ entity: "bells", op: "per-day-override", period: period.label, before, after: newOverrides });
         }

@@ -722,7 +722,10 @@ import "../ribbon/topbar.js";
     function save(opts) {
       const beforeLessons = JSON.parse(initialLessons);
       const beforeCards = JSON.parse(initialCards);
-      const cleaned = commitDraft(school, draft);
+      let cleaned;
+      window.APP.mutate("Save lesson grid", (currentSchool) => {
+        cleaned = commitDraft(currentSchool, draft);
+      });
       const changed = JSON.stringify(cleaned.lessons) !== initialLessons || JSON.stringify(cleaned.cards) !== initialCards;
       if (changed && window.APP?.audit?.append) {
         window.APP.audit.append({

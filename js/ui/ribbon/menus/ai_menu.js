@@ -27,16 +27,18 @@ import "../topbar.js";
       notify("Open a timetable first.", "error"); return;
     }
     let unlocked = 0;
-    for (const l of s.lessons) {
-      if (l.fixedDay != null || l.fixedPeriod != null) {
-        delete l.fixedDay;
-        delete l.fixedPeriod;
-        unlocked++;
+    APP.mutate("Unlock all placed lessons", (school) => {
+      for (const l of school.lessons) {
+        if (l.fixedDay != null || l.fixedPeriod != null) {
+          delete l.fixedDay;
+          delete l.fixedPeriod;
+          unlocked++;
+        }
       }
-    }
+    });
     if (APP.audit && APP.audit.append) APP.audit.append({ entity: "lessons", op: "unlock-all-placed", unlocked });
     notify("Unlocked " + unlocked + " lesson placement" + (unlocked === 1 ? "" : "s") + ".");
-    window.dispatchEvent(new CustomEvent("app:school-loaded", { detail: { source: "unlock-all" } }));
+    window.dispatchEvent(new CustomEvent("entity:changed", { detail: { entity: "lessons", source: "unlock-all" } }));
   }
 
   // Bulk Assign Classrooms — fill in every card that has no classroomId
@@ -51,20 +53,22 @@ import "../topbar.js";
     const lessonById = (s._idx && s._idx.lessonById) ||
       Object.fromEntries((s.lessons || []).map(l => [l.id, l]));
     let assigned = 0;
-    for (const c of s.cards) {
-      if (c.classroomId) continue;
-      const baseId = String(c.lessonId).replace(/#\d+$/, "");
-      const lesson = lessonById[baseId] || lessonById[c.lessonId];
-      if (!lesson) continue;
-      const room = lesson.preferredRoomId ||
-        (Array.isArray(lesson.allowedRoomIds) && lesson.allowedRoomIds[0]) ||
-        (Array.isArray(lesson.classroomIdsExpanded) && lesson.classroomIdsExpanded[0]) ||
-        null;
-      if (room) { c.classroomId = room; assigned++; }
-    }
+    APP.mutate("Assign classrooms to cards", (school) => {
+      for (const c of school.cards) {
+        if (c.classroomId) continue;
+        const baseId = String(c.lessonId).replace(/#\d+$/, "");
+        const lesson = lessonById[baseId] || lessonById[c.lessonId];
+        if (!lesson) continue;
+        const room = lesson.preferredRoomId ||
+          (Array.isArray(lesson.allowedRoomIds) && lesson.allowedRoomIds[0]) ||
+          (Array.isArray(lesson.classroomIdsExpanded) && lesson.classroomIdsExpanded[0]) ||
+          null;
+        if (room) { c.classroomId = room; assigned++; }
+      }
+    });
     if (APP.audit && APP.audit.append) APP.audit.append({ entity: "cards", op: "assign-classrooms-bulk", assigned });
     notify("Assigned classrooms to " + assigned + " card" + (assigned === 1 ? "" : "s") + ".");
-    window.dispatchEvent(new CustomEvent("app:school-loaded", { detail: { source: "assign-classrooms" } }));
+    window.dispatchEvent(new CustomEvent("entity:changed", { detail: { entity: "cards", source: "assign-classrooms" } }));
   }
 
   // Mark every lesson that has at least one placed card as fixed to that
@@ -77,22 +81,24 @@ import "../topbar.js";
     if (!cards.length) { notify("No placed cards to lock.", "error"); return; }
     const lessonById = Object.fromEntries((s.lessons || []).map(l => [l.id, l]));
     let locked = 0, alreadyFixed = 0;
-    for (const c of cards) {
-      // Strip the #N suffix the solver appends to expanded cards.
-      const srcId = String(c.lessonId).replace(/#\d+$/, "");
-      const lesson = lessonById[srcId] || lessonById[c.lessonId];
-      if (!lesson) continue;
-      if (lesson.fixedDay != null && lesson.fixedPeriod != null) { alreadyFixed++; continue; }
-      // fixedDay is 0-based to match card.day; fixedPeriod is 1-based to
-      // match card.period and CLASSIC's convention.
-      lesson.fixedDay = c.day | 0;
-      lesson.fixedPeriod = c.period | 0;
-      locked++;
-    }
+    APP.mutate("Lock all placed lessons", (school) => {
+      for (const c of school.cards || []) {
+        // Strip the #N suffix the solver appends to expanded cards.
+        const srcId = String(c.lessonId).replace(/#\d+$/, "");
+        const lesson = lessonById[srcId] || lessonById[c.lessonId];
+        if (!lesson) continue;
+        if (lesson.fixedDay != null && lesson.fixedPeriod != null) { alreadyFixed++; continue; }
+        // fixedDay is 0-based to match card.day; fixedPeriod is 1-based to
+        // match card.period and CLASSIC's convention.
+        lesson.fixedDay = c.day | 0;
+        lesson.fixedPeriod = c.period | 0;
+        locked++;
+      }
+    });
     if (APP.audit && APP.audit.append) APP.audit.append({ entity: "lessons", op: "lock-all-placed", locked, alreadyFixed });
     notify(`Locked ${locked} placement${locked === 1 ? "" : "s"} as fixed.${alreadyFixed ? ` ${alreadyFixed} already fixed.` : ""}`);
     // Re-render the editor so the UI reflects the new lock state.
-    window.dispatchEvent(new CustomEvent("app:school-loaded", { detail: { source: "lock-all" } }));
+    window.dispatchEvent(new CustomEvent("entity:changed", { detail: { entity: "lessons", source: "lock-all" } }));
   }
 
   const has = () => !!APP.school;

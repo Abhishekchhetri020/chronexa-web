@@ -69,11 +69,15 @@ import "../ribbon/topbar.js";
         }
       }
     }
-    maybeSet(school.subjects, "subject");
-    maybeSet(school.teachers, "teacher");
-    maybeSet(school.classes,  "class");
-    maybeSet(school.classrooms, "room");
-    maybeSet(school.buildings, "building");
+    const apply = () => {
+      maybeSet(school.subjects, "subject");
+      maybeSet(school.teachers, "teacher");
+      maybeSet(school.classes,  "class");
+      maybeSet(school.classrooms, "room");
+      maybeSet(school.buildings, "building");
+    };
+    if (window.APP?.mutate && school === window.APP.school) window.APP.mutate("Auto-color school", apply);
+    else apply();
     if (window.APP?.audit?.append) {
       window.APP.audit.append({ entity: "school", op: "auto-color", touched, overwrite });
     }
@@ -95,9 +99,13 @@ import "../ribbon/topbar.js";
         touched++;
       });
     }
-    rebalance(school.subjects || [], 55, 70);
-    rebalance(school.teachers || [], 60, 60);
-    rebalance(school.classes  || [], 50, 65);
+    const apply = () => {
+      rebalance(school.subjects || [], 55, 70);
+      rebalance(school.teachers || [], 60, 60);
+      rebalance(school.classes  || [], 50, 65);
+    };
+    if (window.APP?.mutate && school === window.APP.school) window.APP.mutate("Harmonize school colors", apply);
+    else apply();
     if (window.APP?.audit?.append) {
       window.APP.audit.append({ entity: "school", op: "harmonize-colors", touched });
     }

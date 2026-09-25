@@ -208,16 +208,18 @@ import "../components/divisions_tree.js";
       const all = window.APP.school.classes;
       if (!isNew) {
         const c = r._ref;
-        const before = { ...c };
-        c.name = draft.name.trim();
-        c.abbr = draft.short.trim() || undefined;
-        c.color = draft.color || undefined;
-        c.teacherId = draft.teacherIds[0] || undefined;
-        c.teacherIds = draft.teacherIds.length ? draft.teacherIds.slice() : undefined;
-        c.classroomIds = draft.classroomIds.slice();
-        c.bellId = draft.bellId || undefined;
-        c.bell = draft.bell || undefined;
-        window.APP.audit.append({ entity:"classes", op:"update", before, after:{...c} });
+        window.APP.mutate("Edit class", () => {
+          const before = { ...c };
+          c.name = draft.name.trim();
+          c.abbr = draft.short.trim() || undefined;
+          c.color = draft.color || undefined;
+          c.teacherId = draft.teacherIds[0] || undefined;
+          c.teacherIds = draft.teacherIds.length ? draft.teacherIds.slice() : undefined;
+          c.classroomIds = draft.classroomIds.slice();
+          c.bellId = draft.bellId || undefined;
+          c.bell = draft.bell || undefined;
+          window.APP.audit.append({ entity:"classes", op:"update", before, after:{...c} });
+        });
       } else {
         const nc = { id:D.uid("c"), name:draft.name.trim(),
           abbr:draft.short.trim() || undefined, color:draft.color || undefined,
@@ -227,9 +229,10 @@ import "../components/divisions_tree.js";
           bellId: draft.bellId || undefined,
           bell:draft.bell || undefined };
         if (all.some(x => x.name === nc.name)) { fName.focus(); return false; }
-        all.push(nc);
-        if (window.APP.school._idx) window.APP.school._idx.classById[nc.id] = nc;
-        window.APP.audit.append({ entity:"classes", op:"add", after:{...nc} });
+        window.APP.mutate("Add class", (school) => {
+          school.classes.push(nc);
+          window.APP.audit.append({ entity:"classes", op:"add", after:{...nc} });
+        });
       }
       D.closeSheet(); D.refresh(rows());
       return true;
@@ -266,11 +269,13 @@ import "../components/divisions_tree.js";
     const srcRef = r._ref;
     const srcSnapshot = { ...srcRef };
     function applySettings(targetRef) {
-      const before = { ...targetRef };
-      COPYABLE_KEYS.forEach(k => {
-        if (srcSnapshot[k] !== undefined) targetRef[k] = deepClone(srcSnapshot[k]);
+      window.APP.mutate("Copy class settings", () => {
+        const before = { ...targetRef };
+        COPYABLE_KEYS.forEach(k => {
+          if (srcSnapshot[k] !== undefined) targetRef[k] = deepClone(srcSnapshot[k]);
+        });
+        window.APP.audit.append({ entity:"classes", op:"copy", id:targetRef.id, before, after:{...targetRef} });
       });
-      window.APP.audit.append({ entity:"classes", op:"copy", id:targetRef.id, before, after:{...targetRef} });
     }
     const all = rows();
     const others = all.filter(x => x.id !== r.id).map(x => ({
@@ -287,13 +292,17 @@ import "../components/divisions_tree.js";
         if (srcRef.constraints)          copy.constraints = deepClone(srcRef.constraints);
         if (srcRef.classroomIds != null) copy.classroomIds = deepClone(srcRef.classroomIds);
         if (srcRef.divisions != null)    copy.divisions = deepClone(srcRef.divisions);
-        all.push(copy);
-        if (window.APP.school._idx) window.APP.school._idx.classById[copy.id] = copy;
-        window.APP.audit.append({ entity:"classes", op:"add", after:{...copy} });
+        window.APP.mutate("Duplicate class", (school) => {
+          school.classes.push(copy);
+          window.APP.audit.append({ entity:"classes", op:"add", after:{...copy} });
+        });
         D.refresh(rows());
       },
       onCopyToOne: (targetRef) => { applySettings(targetRef); D.refresh(rows()); },
-      onCopyToMany: (targetRefs) => { targetRefs.forEach(applySettings); D.refresh(rows()); },
+      onCopyToMany: (targetRefs) => {
+        window.APP.mutate("Copy class settings", () => targetRefs.forEach(applySettings));
+        D.refresh(rows());
+      },
     });
   }
 
@@ -312,13 +321,13 @@ import "../components/divisions_tree.js";
       ],
       onApply: (fieldId, value, ids) => {
         const byId = {}; all.forEach(r => byId[r.id] = r._ref);
-        ids.forEach(id => {
+        window.APP.mutate("Batch edit classes", () => ids.forEach(id => {
           const ref = byId[id]; if (!ref) return;
           const before = { ...ref };
           if (fieldId === "color") ref.color = value || undefined;
           else if (fieldId === "bell") ref.bell = value || undefined;
           window.APP.audit.append({ entity:"classes", op:"batch", field:fieldId, id, before, after:{...ref} });
-        });
+        }));
         D.refresh(rows());
       },
     });
@@ -328,9 +337,11 @@ import "../components/divisions_tree.js";
     const ref = r._ref;
     if (!window.ClassConstraintsDialog) return;
     window.ClassConstraintsDialog.open(ref, (next) => {
-      const before = ref.constraints;
-      ref.constraints = next;
-      window.APP.audit.append({ entity:"classes", op:"constraints", id:ref.id, before, after:next });
+      window.APP.mutate("Edit class constraints", () => {
+        const before = ref.constraints;
+        ref.constraints = next;
+        window.APP.audit.append({ entity:"classes", op:"constraints", id:ref.id, before, after:next });
+      });
       D.refresh(rows());
     });
   }
@@ -339,9 +350,11 @@ import "../components/divisions_tree.js";
     const ref = r._ref;
     if (!window.TimeOffMatrix) return;
     window.TimeOffMatrix.open(ref, "classes", (newTimeOff) => {
-      const before = ref.timeOff;
-      ref.timeOff = newTimeOff;
-      window.APP.audit.append({ entity:"classes", op:"timeoff", id:ref.id, before, after:newTimeOff });
+      window.APP.mutate("Edit class time off", () => {
+        const before = ref.timeOff;
+        ref.timeOff = newTimeOff;
+        window.APP.audit.append({ entity:"classes", op:"timeoff", id:ref.id, before, after:newTimeOff });
+      });
       D.refresh(rows());
     });
   }
@@ -442,9 +455,11 @@ import "../components/divisions_tree.js";
           onclick:()=>{
             const err = window.DivisionsTree.validate(draft);
             if (err) { alert(err); return; }
-            ref.divisions = draft;
-            window.APP.audit.append({ entity:"classes", op:"divisions",
-              id:ref.id, before, after:cloneDivisions(draft) });
+            window.APP.mutate("Edit class divisions", () => {
+              ref.divisions = draft;
+              window.APP.audit.append({ entity:"classes", op:"divisions",
+                id:ref.id, before, after:cloneDivisions(draft) });
+            });
             D.closeSheet(); D.refresh(rows());
           } }, "Save"),
       ),
@@ -489,8 +504,10 @@ import "../components/divisions_tree.js";
           const all = window.APP.school.classes;
           const i = all.findIndex(x => x.id === row._ref.id);
           if (i >= 0) {
-            const removed = all.splice(i, 1)[0];
-            window.APP.audit.append({ entity:"classes", op:"remove", before:{...removed} });
+            window.APP.mutate("Delete class", () => {
+              const removed = all.splice(i, 1)[0];
+              window.APP.audit.append({ entity:"classes", op:"remove", before:{...removed} });
+            });
             D.refresh(rows());
           }
           return;

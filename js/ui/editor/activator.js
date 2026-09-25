@@ -179,11 +179,12 @@ import "./curtain.js";
       color: D && D.autoPickColor ? D.autoPickColor(kind) : undefined,
     };
     if (kind === "teachers") entity.lastName = name;
-    list.push(entity);
-    if (global.CreateNew && global.CreateNew.refreshIndex) global.CreateNew.refreshIndex();
-    if (global.APP.audit && global.APP.audit.append) {
-      global.APP.audit.append({ entity: kind, op: "add", after: { ...entity }, source: "hero-quick-add" });
-    }
+    global.APP.mutate("Add " + kind.slice(0, -1), (schoolData) => {
+      schoolData[kind].push(entity);
+      if (global.APP.audit && global.APP.audit.append) {
+        global.APP.audit.append({ entity: kind, op: "add", after: { ...entity }, source: "hero-quick-add" });
+      }
+    });
     form.reset();
     if (message) message.textContent = name + " added.";
     document.dispatchEvent(new CustomEvent("entity:changed", { detail: { entity: kind, source: "hero-quick-add" } }));

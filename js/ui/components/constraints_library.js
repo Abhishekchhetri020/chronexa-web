@@ -116,7 +116,10 @@ import "../ribbon/topbar.js";
   function open() {
     const school = window.APP?.school;
     if (!school) { (window._chrxNotify || console.log)("Open a timetable first.", "error"); return; }
-    school.scoreRules = school.scoreRules || [];
+    // Opening the library is read-only.  The collection is created only by a
+    // rule-add transaction, so simply inspecting the dialog cannot create an
+    // undo entry or mutate a loaded school.
+    const rules = Array.isArray(school.scoreRules) ? school.scoreRules : [];
     ensureStyles();
 
     const root = el("div", { class: "chrx-clib-root",
@@ -132,25 +135,34 @@ import "../ribbon/topbar.js";
 
     // ─── Active rules section
     const activeWrap = el("section", { class: "chrx-clib-active" },
-      el("h3", null, `Active rules (${school.scoreRules.length})`));
-    if (!school.scoreRules.length) {
+      el("h3", null, `Active rules (${rules.length})`));
+    if (!rules.length) {
       activeWrap.appendChild(el("div", { class: "chrx-clib-empty" }, "No rules yet. Pick a template below to add one."));
     }
-    school.scoreRules.forEach((r, i) => {
+    rules.forEach((r, i) => {
       const row = el("div", { class: "chrx-clib-rule" });
       row.appendChild(el("span", { class: "chrx-clib-weight",
         style: `background:${r.weight > 0 ? "#10b981" : "#ef4444"}` }, String(r.weight)));
       row.appendChild(el("span", { class: "chrx-clib-name" }, r.name));
       const toggle = el("input", { type: "checkbox",
         checked: r.disabled ? null : "checked",
-        onchange: e => { r.disabled = !e.target.checked;
-          window.APP.audit?.append?.({ entity: "scoreRules", op: "toggle", index: i, disabled: r.disabled }); }
+        onchange: e => {
+          window.APP.mutate("Toggle scoring rule", (currentSchool) => {
+            const current = currentSchool.scoreRules?.[i];
+            if (!current) return;
+            current.disabled = !e.target.checked;
+            window.APP.audit?.append?.({ entity: "scoreRules", op: "toggle", index: i, disabled: current.disabled });
+          });
+        }
       });
       row.appendChild(toggle);
       row.appendChild(el("button", { class: "chrx-clib-del",
         onclick: () => {
-          school.scoreRules.splice(i, 1);
-          window.APP.audit?.append?.({ entity: "scoreRules", op: "remove", index: i });
+          window.APP.mutate("Delete scoring rule", (currentSchool) => {
+            if (!Array.isArray(currentSchool.scoreRules)) return;
+            currentSchool.scoreRules.splice(i, 1);
+            window.APP.audit?.append?.({ entity: "scoreRules", op: "remove", index: i });
+          });
           root.remove(); open();
         } }, "Delete"));
       activeWrap.appendChild(row);
@@ -177,8 +189,11 @@ import "../ribbon/topbar.js";
       if (!txt) return;
       try {
         const expr = JSON.parse(txt);
-        school.scoreRules.push({ name: "Custom rule", weight: 1, expr });
-        window.APP.audit?.append?.({ entity: "scoreRules", op: "add", custom: true });
+        window.APP.mutate("Add custom scoring rule", (currentSchool) => {
+          if (!Array.isArray(currentSchool.scoreRules)) currentSchool.scoreRules = [];
+          currentSchool.scoreRules.push({ name: "Custom rule", weight: 1, expr });
+          window.APP.audit?.append?.({ entity: "scoreRules", op: "add", custom: true });
+        });
         parentRoot.remove(); open();
       } catch (e) { alert("Invalid JSON: " + e.message); }
       return;
@@ -209,8 +224,11 @@ import "../ribbon/topbar.js";
       label = tpl.label.replace(/\[DAY\]/g, ["Mon","Tue","Wed","Thu","Fri","Sat"][arg] || "?");
     }
     const expr = tpl.build(arg);
-    school.scoreRules.push({ name: label, weight: tpl.weight, expr });
-    window.APP.audit?.append?.({ entity: "scoreRules", op: "add", tplId: tpl.id });
+    window.APP.mutate("Add scoring rule", (currentSchool) => {
+      if (!Array.isArray(currentSchool.scoreRules)) currentSchool.scoreRules = [];
+      currentSchool.scoreRules.push({ name: label, weight: tpl.weight, expr });
+      window.APP.audit?.append?.({ entity: "scoreRules", op: "add", tplId: tpl.id });
+    });
     parentRoot.remove(); open();
   }
 

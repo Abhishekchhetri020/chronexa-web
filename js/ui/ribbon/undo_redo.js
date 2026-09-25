@@ -40,9 +40,11 @@ import "./topbar.js";
   audit.commit = function (cmd) {
     if (!cmd || typeof cmd.do !== "function" || typeof cmd.undo !== "function") return;
     try {
-      APP.mutate(cmd.label || "Change", () => cmd.do(), {
-        replay: { undo: cmd.undo, redo: cmd.do },
-      });
+      // The transaction core records exact patches.  The legacy undo callback
+      // is retained in the command contract for callers, but must not replay
+      // semantic operations: those can drift after a later edit and can also
+      // bypass the exact array/object shape captured by APP.mutate.
+      APP.mutate(cmd.label || "Change", () => cmd.do());
       notify(cmd.label ? "Done: " + cmd.label : "Done", "info");
     } catch (e) { console.error("[audit] do() failed:", e); return; }
   };

@@ -32,10 +32,10 @@ import "../entities/dialog_shell.js";
     notes: "",
   };
   function load() {
-    const s = APP.school = APP.school || {};
+    const s = APP.school;
+    if (!s) return Object.assign({}, DEFAULTS);
     s.settings = s.settings || {};
-    s.settings.supervisionCriteria = Object.assign({}, DEFAULTS, s.settings.supervisionCriteria || {});
-    return s.settings.supervisionCriteria;
+    return Object.assign({}, DEFAULTS, s.settings.supervisionCriteria || {});
   }
 
   function row(label, control, hint) {
@@ -105,6 +105,10 @@ import "../entities/dialog_shell.js";
     save.className = "chrx-btn chrx-btn--primary"; save.type = "button";
     save.textContent = "Save";
     save.onclick = () => {
+      APP.mutate("Edit supervision criteria", (school) => {
+        school.settings = school.settings || {};
+        school.settings.supervisionCriteria = { ...target };
+      });
       if (APP.audit && APP.audit.append) {
         APP.audit.append({ entity: "settings", op: "supervisionCriteria", after: { ...target } });
       }

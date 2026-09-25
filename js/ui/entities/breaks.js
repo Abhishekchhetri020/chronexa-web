@@ -139,14 +139,19 @@ import "./dialog_shell.js";
           printinclassrooms: !!draft.printinclassrooms,
         };
         if (!isNew) {
-          const before = { ...ref };
-          Object.assign(ref, payload);
-          window.APP.audit.append({ entity:"breaks", op:"update", before, after:{...ref} });
+          if (all.some(x => x !== ref && x.name === payload.name)) { fName.focus(); return; }
+          window.APP.mutate("Edit break", () => {
+            const before = { ...ref };
+            Object.assign(ref, payload);
+            window.APP.audit.append({ entity:"breaks", op:"update", before, after:{...ref} });
+          });
         } else {
           if (all.some(x => x.name === payload.name)) { fName.focus(); return; }
           payload.id = D.uid("brk");
-          all.push(payload);
-          window.APP.audit.append({ entity:"breaks", op:"add", after:{...payload} });
+          window.APP.mutate("Add break", (school) => {
+            school.breaks.push(payload);
+            window.APP.audit.append({ entity:"breaks", op:"add", after:{...payload} });
+          });
         }
         D.closeSheet(); D.refresh(rows());
       },
@@ -165,8 +170,10 @@ import "./dialog_shell.js";
           const all = ensure();
           const i = all.findIndex(x => x.id === row._ref.id);
           if (i >= 0) {
-            const removed = all.splice(i,1)[0];
-            window.APP.audit.append({ entity:"breaks", op:"remove", before:{...removed} });
+            window.APP.mutate("Delete break", () => {
+              const removed = all.splice(i,1)[0];
+              window.APP.audit.append({ entity:"breaks", op:"remove", before:{...removed} });
+            });
             D.refresh(rows());
           }
         }

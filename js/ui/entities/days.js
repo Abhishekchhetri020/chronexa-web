@@ -172,14 +172,18 @@ import "./dialog_shell.js";
           days: draft.days,
         };
         if (!isNew) {
-          const before = { ...ref };
-          Object.assign(ref, payload);
-          window.APP.audit.append({ entity:"days", op:"update", before, after:{...ref} });
+          window.APP.mutate("Edit day pattern", () => {
+            const before = { ...ref };
+            Object.assign(ref, payload);
+            window.APP.audit.append({ entity:"days", op:"update", before, after:{...ref} });
+          });
         } else {
           if (all.some(x => x.name === payload.name)) { fName.focus(); return; }
           payload.id = D.uid("day");
-          all.push(payload);
-          window.APP.audit.append({ entity:"days", op:"add", after:{...payload} });
+          window.APP.mutate("Add day pattern", (school) => {
+            school.days.push(payload);
+            window.APP.audit.append({ entity:"days", op:"add", after:{...payload} });
+          });
         }
         D.closeSheet(); D.refresh(rows());
       },
@@ -198,8 +202,10 @@ import "./dialog_shell.js";
           const all = ensure();
           const i = all.findIndex(x => x.id === row._ref.id);
           if (i >= 0) {
-            const removed = all.splice(i,1)[0];
-            window.APP.audit.append({ entity:"days", op:"remove", before:{...removed} });
+            window.APP.mutate("Delete day pattern", () => {
+              const removed = all.splice(i,1)[0];
+              window.APP.audit.append({ entity:"days", op:"remove", before:{...removed} });
+            });
             D.refresh(rows());
           }
         }
