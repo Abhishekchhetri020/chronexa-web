@@ -768,14 +768,52 @@ body.chrx-card-in-hand .chrx-shell .chrx-slot.empty:focus { outline: 2px solid v
 
 /* Click-mode selection + swap highlights: accent language, not yellow */
 .chrx-shell .chrx-vkarta.chrx-vkarta--selected {
-  outline: 2px solid var(--chrx-accent); outline-offset: 1px;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.14);
+  outline: 2px solid var(--chrx-accent); outline-offset: 2px;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--chrx-accent) 24%, transparent),
+    0 8px 20px rgba(0, 0, 0, 0.14);
   transform: translateY(-1px) scale(1.03); z-index: 10;
+}
+.chrx-shell .chrx-selection-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin: 8px 0; padding: 7px 10px;
+  border: 1px solid var(--chrx-accent);
+  border-radius: 10px;
+  background: var(--chrx-accent-soft);
+  color: var(--chrx-fg);
+  font: 600 12px/1.2 var(--chrx-font-sans);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--chrx-accent) 12%, transparent);
+}
+.chrx-shell .chrx-selection-bar__count { color: var(--chrx-accent); white-space: nowrap; }
+.chrx-shell .chrx-selection-bar__actions {
+  display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px;
+}
+.chrx-shell .chrx-selection-bar button {
+  border: 1px solid color-mix(in srgb, var(--chrx-accent) 34%, var(--line));
+  border-radius: 7px; padding: 4px 8px;
+  background: var(--chrx-bg-elev); color: var(--chrx-fg);
+  font: 600 11px/1 var(--chrx-font-sans); cursor: pointer;
+}
+.chrx-shell .chrx-selection-bar button:hover,
+.chrx-shell .chrx-selection-bar button:focus-visible {
+  border-color: var(--chrx-accent); color: var(--chrx-accent);
+  outline: none; background: var(--chrx-bg-canvas);
+}
+.chrx-shell .chrx-selection-bar[hidden] { display: none !important; }
+.chrx-selection-marquee {
+  position: fixed; z-index: 10030; pointer-events: none;
+  border: 1px solid var(--chrx-accent);
+  background: color-mix(in srgb, var(--chrx-accent) 14%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--chrx-accent) 12%, transparent);
 }
 .chrx-shell .chrx-slot.chrx-slot--highlight-place { outline: 1.5px dashed var(--chrx-accent); outline-offset: -3px; background: var(--chrx-accent-soft); }
 .chrx-shell .chrx-slot.chrx-slot--highlight-place:hover { background: var(--chrx-accent-bg); box-shadow: none; }
 .chrx-shell .chrx-slot.chrx-slot--highlight-swap { outline: 1.5px solid var(--chrx-amber); outline-offset: -3px; background: var(--chrx-amber-bg); }
 .chrx-shell .chrx-vkarta.chrx-vkarta--highlight-swap-target { outline: 1.5px solid var(--chrx-amber); outline-offset: 1px; box-shadow: none; animation: none; }
+
+@media (max-width: 767px) {
+  .chrx-shell .chrx-selection-bar { align-items: flex-start; flex-direction: column; }
+  .chrx-shell .chrx-selection-bar__actions { justify-content: flex-start; }
+}
 
 /* Drag tooltip (reasons) */
 .chrx-drag-tooltip {
@@ -1550,4 +1588,3 @@ body.chrx-card-in-hand .chrx-shell .chrx-slot.chrx-avail-forbidden.empty {
 .chrx-availability-legend .chrx-avail-dot.is-hard {
   background: var(--chrx-red, #9c4322);
 }
-
