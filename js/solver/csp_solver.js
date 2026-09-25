@@ -3440,6 +3440,13 @@ function backtrack(model, state, unassigned, unassignedCount, ctx) {
       ctx.timedOut = true;
       return;
     }
+    // Deterministic mode (options.maxNodes): same stop condition, counted in
+    // nodes instead of milliseconds. Checked with the deadline above so the
+    // 32-node sampling window is shared.
+    if (ctx.nodeCap > 0 && ctx.nodeBase + ctx.nodesVisited >= ctx.nodeCap) {
+      ctx.timedOut = true;
+      return;
+    }
   }
   // Luby restart: if this run's node budget is exhausted, bail out so the
   // outer loop can start a fresh run with a new seed and longer budget.
@@ -3574,7 +3581,8 @@ function backtrack(model, state, unassigned, unassignedCount, ctx) {
   const reducedCount = removeFromUnassigned(unassigned, unassignedCount, selected);
 
   for (let offset = 0; offset < feasibleCount; offset++) {
-    if (performance.now() >= ctx.deadlineMs) { ctx.timedOut = true; break; }
+    if (performance.now() >= ctx.deadlineMs ||
+        (ctx.nodeCap > 0 && ctx.nodeBase + ctx.nodesVisited >= ctx.nodeCap)) { ctx.timedOut = true; break; }
     const idx = (offset * iterStep) % feasibleCount;
     const candidate = candidates[idx];
     const slot = model.candidateSlot[candidate];
@@ -4935,6 +4943,20 @@ export function solve(school, options = {}) {
   }
   const t0 = performance.now();
   const timeLimitSec = options.timeLimitSec ?? 30;
+  // Test-only determinism hook (lane W2-7). The wall-clock backtracking budget
+  // makes solve() non-deterministic under CPU contention: on a loaded machine
+  // the pre-search setup (buildModel/candidate build/learning init) can eat the
+  // whole backtracking slice, the driver then bails before its very first run
+  // and returns `placed: 0` for an instance that is trivially solvable. When
+  // `options.maxNodes` is a positive number the backtracking phase is bounded
+  // by a total node count instead of by the clock, so a fixed seed yields the
+  // same answer on any machine. The repair/LNS phases keep the ordinary
+  // timeLimitSec backstop, so the run can never become unbounded. Production
+  // callers never pass `maxNodes`, so omitting it keeps the previous behaviour
+  // exactly (btShare x timeLimitSec for backtracking, timeLimitSec overall).
+  const nodeCap = Number.isFinite(options.maxNodes) && options.maxNodes > 0
+    ? Math.floor(options.maxNodes)
+    : -1;
   const totalDeadlineMs = t0 + timeLimitSec * 1000;
   // Budget split: ~30% backtracking, ~70% repair. The repair phase is what
   // closes the gap from 28% → 80%+ on dense fixtures; backtracking alone is
@@ -4952,7 +4974,7 @@ export function solve(school, options = {}) {
     if (raw >= 400) btShare = 0.60;
     else if (raw >= 200) btShare = 0.45;
   }
-  const btDeadlineMs = t0 + timeLimitSec * 1000 * btShare;
+  const btDeadlineMs = nodeCap > 0 ? Infinity : t0 + timeLimitSec * 1000 * btShare;
   const deadlineMs = btDeadlineMs; // legacy alias used inside the BT branch loop
   const seed = options.seed ?? 9881;
   const onProgress = options.onProgress;
@@ -5110,7 +5132,12 @@ export function solve(school, options = {}) {
   const maxRestarts = useLubyRestarts ? 16 : fixedBranches;
 
   for (let run = 0; run < maxRestarts; run++) {
-    if (performance.now() >= deadlineMs) { anyTimedOut = true; break; }
+    // Deterministic mode: stop on the node cap, not on the clock. Runs are also
+    // capped from inside backtrack() so a single run cannot overshoot much.
+    if (nodeCap > 0 ? totalNodes >= nodeCap : performance.now() >= deadlineMs) {
+      anyTimedOut = true;
+      break;
+    }
     // Stop early if we already have a full solution with zero hard conflicts
     if (globalBest && globalBest.assignedEntries === unassignedCount0 && globalBest.softScore > -1) break;
 
@@ -5204,6 +5231,11 @@ export function solve(school, options = {}) {
       lastImproveMs: performance.now(),
       // Luby restart: per-run node budget (-1 = unlimited for last run)
       restartNodeBudget: runBudget,
+      // Deterministic-mode node accounting (see options.maxNodes above):
+      // nodeBase is the cumulative count when this run started, nodesVisited is
+      // this run's own counter.
+      nodeBase: totalNodes,
+      nodeCap,
       macPruneCount: 0,
       domCache: state._domCache,
       // Progress emission state — inline in the search loop. See backtrack().
