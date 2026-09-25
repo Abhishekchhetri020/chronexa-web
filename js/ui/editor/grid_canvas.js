@@ -4,6 +4,7 @@ import "../components/bell_resolver.js";
 import { computeUnplacedCountsByClass } from "./unplaced_counts.js";
 import { buildStudentCardLookup, rowsFor as studentRowsFor } from "./student_view.js";
 import { buildSupervisionLookup, rowsFor as supervisionRowsFor, supervisionChipHtml, supervisionSummary } from "./supervision_view.js";
+import "./card_selection.js";
 
 /**
  * Editor.render(rootEl) — writable timetable grid.
@@ -132,6 +133,7 @@ window.Editor = (function () {
       window.ConstraintExplainer.attachTooltip(rootEl);
     }
     initRovingTabindex(rootEl);
+    syncSelectionUi(rootEl);
   }
 
   /* Hook for dated substitution overrides (Lane W2-4). */
@@ -193,6 +195,505 @@ window.Editor = (function () {
     if (!A.editor.viewMode) A.editor.viewMode = "focus";
     if (!A.editor.focusRowByPerspective) A.editor.focusRowByPerspective = {};
     if (A.editor.cardInHand === undefined) A.editor.cardInHand = null;
+    if (!Array.isArray(A.editor.selectedCardIds)) A.editor.selectedCardIds = [];
+    if (A.editor.selectionAnchorCardId === undefined) A.editor.selectionAnchorCardId = null;
+    if (!A.editor.cardClipboard) A.editor.cardClipboard = null;
+  }
+
+  function selectionBarHtml() {
+    return `
+      <div class="chrx-selection-bar" data-selection-bar hidden role="toolbar" aria-label="Selected card actions">
+        <span class="chrx-selection-bar__count" data-selection-count>0 selected</span>
+        <div class="chrx-selection-bar__actions">
+          <button type="button" data-selection-action="lock">Lock</button>
+          <button type="button" data-selection-action="unlock">Unlock</button>
+          <button type="button" data-selection-action="unplace">Unplace</button>
+          <button type="button" data-selection-action="delete">Delete</button>
+          <button type="button" data-selection-action="move-day" data-selection-delta="-1" aria-label="Move selected cards one day earlier">← day</button>
+          <button type="button" data-selection-action="move-day" data-selection-delta="1" aria-label="Move selected cards one day later">day →</button>
+          <button type="button" data-selection-action="clear">Clear</button>
+        </div>
+      </div>
+    `;
+  }
+
+  function selectionRecords(S) {
+    const ids = new Set(window.APP?.editor?.selectedCardIds || []);
+    return (S?.cards || []).filter(card => ids.has(CardSelection.cardKey(card)));
+  }
+
+  function selectedCardsWithBlocks(S) {
+    const out = [];
+    const seen = new Set();
+    for (const card of selectionRecords(S)) {
+      const length = CardSelection.cardLength(S, card);
+      let startPeriod = Number(card.period);
+      for (let offset = 1; offset < length; offset++) {
+        const previous = (S.cards || []).find(candidate =>
+          candidate.lessonId === card.lessonId &&
+          Number(candidate.day) === Number(card.day) &&
+          Number(candidate.period) === startPeriod - 1);
+        if (!previous) break;
+        startPeriod = Number(previous.period);
+      }
+      for (let offset = 0; offset < length; offset++) {
+        const item = (S.cards || []).find(candidate =>
+          candidate.lessonId === card.lessonId &&
+          Number(candidate.day) === Number(card.day) &&
+          Number(candidate.period) === startPeriod + offset);
+        if (!item) continue;
+        const key = CardSelection.cardKey(item);
+        if (!seen.has(key)) {
+          seen.add(key);
+          out.push(item);
+        }
+      }
+      // A malformed/imported double card can have only its first model card;
+      // retain that card so bulk lock/delete still does what the user asked.
+      if (!seen.has(CardSelection.cardKey(card))) {
+        seen.add(CardSelection.cardKey(card));
+        out.push(card);
+      }
+    }
+    return out;
+  }
+
+  function editorHost() {
+    return document.querySelector(".chrx-editor");
+  }
+
+  function rerenderEditorAndPending() {
+    const host = editorHost();
+    if (host) render(host);
+    const pending = document.querySelector(".chrx-pending-strip");
+    if (pending && window.PendingStrip?.render) window.PendingStrip.render(pending);
+  }
+
+  function notifySelection(message, level) {
+    if (typeof window._chrxNotify === "function") window._chrxNotify(message, level);
+    else if (message) console.info("[selection]", message);
+  }
+
+  function cardMatchesRow(S, card, rowKey, perspective) {
+    const lesson = S?._idx?.lessonById?.[card?.lessonId] ||
+      (S?.lessons || []).find(item => item.id === card?.lessonId);
+    if (!lesson || !rowKey) return false;
+    if (perspective === "class") return (lesson.classIds || []).includes(rowKey);
+    if (perspective === "teacher") return (lesson.teacherIds || []).includes(rowKey);
+    if (perspective === "subject") return lesson.subjectId === rowKey;
+    if (perspective === "room") return (card.classroomId || lesson.preferredRoomId) === rowKey;
+    return false;
+  }
+
+  function pasteOccupiedKeys(S, anchor) {
+    const perspective = window.APP?.editor?.perspective || "class";
+    const occupied = new Set();
+    for (const card of (S?.cards || [])) {
+      if (cardMatchesRow(S, card, anchor?.rowKey, perspective)) {
+        occupied.add(CardSelection.slotKey(card.day, card.period));
+      }
+    }
+    return occupied;
+  }
+
+  function bulkMoveByDay(delta) {
+    const S = window.APP && window.APP.school;
+    if (!S) return;
+    const selected = selectedCardsWithBlocks(S);
+    if (!selected.length) return;
+    // A double-period lesson has one model card per period. Plan once from
+    // the first period, then move the whole contiguous block together.
+    const selectedRoots = selected.filter(card => {
+      const length = CardSelection.cardLength(S, card);
+      return length === 1 || !selected.some(previous =>
+        previous.lessonId === card.lessonId &&
+        Number(previous.day) === Number(card.day) &&
+        Number(previous.period) === Number(card.period) - 1);
+    });
+    const selectedSet = new Set(selected);
+    const days = Math.max(1, Math.min(NUM_DAYS, Number(S.daysPerWeek) || NUM_DAYS));
+    const existing = (S.cards || []).filter(card => !selectedSet.has(card));
+    const planned = [];
+    const claimed = new Set();
+    const skipped = [];
+    const slotKey = (day, period) => `${day}|${period}`;
+    const periods = new Set((S.bell?.periods || [])
+      .map(period => Number(period?.index)).filter(Number.isFinite));
+    const hasPeriodList = periods.size > 0;
+
+    for (const card of selectedRoots) {
+      const day = Number(card.day) + Number(delta);
+      const period = Number(card.period);
+      const lesson = S._idx?.lessonById?.[card.lessonId] ||
+        (S.lessons || []).find(item => item.id === card.lessonId);
+      const length = CardSelection.cardLength(S, card);
+      if (card.locked || lesson?.fixedDay != null || lesson?.fixedPeriod != null) {
+        skipped.push({ card, reason: "locked" });
+        continue;
+      }
+      if (day < 0 || day >= days) {
+        skipped.push({ card, reason: "outside-grid" });
+        continue;
+      }
+      const targetSlots = Array.from({ length }, (_, offset) => slotKey(day, period + offset));
+      if (hasPeriodList && targetSlots.some(key => !periods.has(Number(key.split("|")[1])))) {
+        skipped.push({ card, reason: "outside-grid" });
+        continue;
+      }
+      if (targetSlots.some(key => claimed.has(`${card.lessonId}|${key}`) || existing.some(item =>
+        item.lessonId === card.lessonId && slotKey(Number(item.day), Number(item.period)) === key))) {
+        skipped.push({ card, reason: "occupied" });
+        continue;
+      }
+      let validity = "green";
+      if (window.Placement?.classify && lesson) {
+        for (let offset = 0; offset < length; offset++) {
+          const targetPeriod = period + offset;
+          const plannedCards = planned.flatMap(move => Array.from(
+            { length: CardSelection.cardLength(S, move.card) },
+            (_, plannedOffset) => ({
+              lessonId: move.card.lessonId,
+              day: move.day,
+              period: Number(move.period) + plannedOffset,
+              classroomId: move.card.classroomId,
+            }),
+          ));
+          const prefiltered = existing.filter(item =>
+            Number(item.day) === day && Number(item.period) === targetPeriod)
+            .concat(plannedCards.filter(item =>
+              Number(item.day) === day && Number(item.period) === targetPeriod));
+          const result = window.Placement.classify(
+            card.lessonId, day, targetPeriod,
+            card.classroomId || lesson.preferredRoomId,
+            prefiltered,
+          );
+          if (result && result.validity === "red") {
+            validity = "red";
+            break;
+          }
+        }
+      }
+      if (validity === "red") {
+        skipped.push({ card, reason: "conflict" });
+        continue;
+      }
+      targetSlots.forEach(key => claimed.add(`${card.lessonId}|${key}`));
+      planned.push({ card, day, period });
+    }
+
+    if (planned.length) {
+      window.APP.mutate("Move selected cards by day", () => {
+        for (const move of planned) {
+          const length = CardSelection.cardLength(S, move.card);
+          for (const item of selected) {
+            if (item.lessonId !== move.card.lessonId ||
+                Number(item.day) !== Number(move.card.day) ||
+                Number(item.period) < Number(move.card.period) ||
+                Number(item.period) >= Number(move.card.period) + length) continue;
+            item.day = move.day;
+          }
+        }
+      });
+      // Card ids are positional in the current renderer. Keep the selection
+      // attached to the moved objects instead of leaving stale ids behind.
+      window.APP.editor.selectedCardIds = selected.map(CardSelection.cardKey);
+      window.APP.editor.selectionAnchorCardId = window.APP.editor.selectedCardIds[0] || null;
+      rerenderEditorAndPending();
+    }
+    const moved = planned.length;
+    const suffix = skipped.length ? `; ${skipped.length} skipped` : "";
+    notifySelection(`Moved ${moved} card${moved === 1 ? "" : "s"} by ${delta > 0 ? "one day later" : "one day earlier"}${suffix}.`);
+  }
+
+  function bulkSelectionAction(action) {
+    const S = window.APP && window.APP.school;
+    if (!S) return;
+    const selected = selectedCardsWithBlocks(S);
+    if (!selected.length) return;
+    if (action === "clear") return clearSelection(editorHost());
+    if (action === "move-day") return bulkMoveByDay(Number(arguments[1]) || 0);
+
+    const selectedSet = new Set(selected);
+    const label = action === "lock" ? "Lock selected cards"
+      : action === "unlock" ? "Unlock selected cards"
+      : action === "delete" ? "Delete selected cards"
+      : "Unplace selected cards";
+    window.APP.mutate(label, () => {
+      if (action === "lock") {
+        selected.forEach(card => { card.locked = true; });
+      } else if (action === "unlock") {
+        selected.forEach(card => { delete card.locked; });
+      } else {
+        S.cards = (S.cards || []).filter(card => !selectedSet.has(card));
+      }
+    });
+
+    const removed = action === "lock" || action === "unlock" ? 0 : selected.length;
+    if (removed) {
+      document.dispatchEvent(new CustomEvent("editor:unplace", {
+        detail: { cardIds: selected.map(CardSelection.cardKey), bulk: true },
+      }));
+      window.APP.editor.selectedCardIds = [];
+      window.APP.editor.selectionAnchorCardId = null;
+      rerenderEditorAndPending();
+    } else {
+      rerenderEditorAndPending();
+    }
+    notifySelection(`${label.replace(" selected cards", "")} ${selected.length} card${selected.length === 1 ? "" : "s"}.`);
+  }
+
+  function copySelection() {
+    const S = window.APP && window.APP.school;
+    const copied = CardSelection.clipboardForCards(S, selectionRecords(S));
+    if (!copied) return false;
+    window.APP.editor.cardClipboard = copied;
+    notifySelection(`Copied ${copied.cards.length} card${copied.cards.length === 1 ? "" : "s"}.`);
+    return true;
+  }
+
+  function pasteAnchorFromUi() {
+    const stored = window.APP?.editor?.pasteAnchor;
+    if (stored && Number.isFinite(Number(stored.day)) && Number.isFinite(Number(stored.period))) return stored;
+    const active = document.activeElement?.closest?.(".chrx-slot");
+    if (active) return {
+      day: Number(active.dataset.day), period: Number(active.dataset.period),
+      rowKey: active.dataset.row || "",
+    };
+    return null;
+  }
+
+  function pasteSelection() {
+    const S = window.APP && window.APP.school;
+    const clipboard = window.APP?.editor?.cardClipboard;
+    const anchor = pasteAnchorFromUi();
+    if (!S || !clipboard || !anchor) {
+      notifySelection("Hover or focus a timetable slot before pasting.", "warn");
+      return false;
+    }
+    const reservedSlots = new Set();
+    const plan = CardSelection.planPaste(S, clipboard.cards, anchor, pasteOccupiedKeys(S, anchor), {
+      canPlace: ({ lesson, day, period, length }) => {
+        const perspective = window.APP.editor.perspective || "class";
+        const rowIds = perspective === "class" ? lesson.classIds
+          : perspective === "teacher" ? lesson.teacherIds
+          : perspective === "subject" ? [lesson.subjectId]
+          : null;
+        if (rowIds && anchor.rowKey && !rowIds.includes(anchor.rowKey)) return false;
+        const targets = Array.from({ length }, (_, offset) => `${day}|${period + offset}`);
+        if (targets.some(key => reservedSlots.has(key))) return false;
+        if (window.Placement?.classify) {
+          const existing = (S.cards || []).filter(card =>
+            Number(card.day) === day && Number(card.period) >= period &&
+            Number(card.period) < period + length);
+          for (let offset = 0; offset < length; offset++) {
+            const result = window.Placement.classify(
+              lesson.id, day, period + offset,
+              anchor.rowKey && window.APP.editor.perspective === "room" ? anchor.rowKey : lesson.preferredRoomId,
+              existing.filter(card => Number(card.period) === period + offset),
+            );
+            if (result && result.validity === "red") return false;
+          }
+        }
+        targets.forEach(key => reservedSlots.add(key));
+        return true;
+      },
+    });
+    if (!plan.cards.length) {
+      notifySelection("Nothing could be pasted: the selected lessons have no weekly count available or the target is occupied.", "warn");
+      return false;
+    }
+
+    if (window.APP.editor.perspective === "room" && anchor.rowKey) {
+      plan.cards.forEach(card => { card.classroomId = anchor.rowKey; });
+    }
+    window.APP.mutate("Paste cards", () => {
+      S.cards.push(...plan.cards.map(card => ({ ...card })));
+    });
+    window.APP.editor.selectedCardIds = plan.cards.map(CardSelection.cardKey);
+    window.APP.editor.selectionAnchorCardId = window.APP.editor.selectedCardIds[0] || null;
+    rerenderEditorAndPending();
+    const skipped = plan.skipped.length;
+    notifySelection(`Pasted ${plan.cards.length} card${plan.cards.length === 1 ? "" : "s"}${skipped ? `; ${skipped} skipped` : ""}.`);
+    return true;
+  }
+
+  function syncSelectionUi(rootEl) {
+    if (!rootEl) return;
+    ensureEditorState();
+    const S = window.APP && window.APP.school;
+    const liveIds = new Set((S?.cards || []).map(CardSelection.cardKey));
+    window.APP.editor.selectedCardIds = window.APP.editor.selectedCardIds
+      .filter(id => liveIds.has(id));
+
+    const selected = new Set(window.APP.editor.selectedCardIds);
+    rootEl.querySelectorAll(".chrx-vkarta").forEach(card => {
+      const isSelected = selected.has(card.dataset.cardId);
+      card.classList.toggle("chrx-vkarta--selected", isSelected);
+      card.setAttribute("aria-selected", isSelected ? "true" : "false");
+    });
+    const bar = rootEl.querySelector("[data-selection-bar]");
+    if (!bar) return;
+    const count = selected.size;
+    bar.hidden = count < 2;
+    const countEl = bar.querySelector("[data-selection-count]");
+    if (countEl) countEl.textContent = `${count} selected`;
+  }
+
+  function selectedCardElementMeta(rootEl) {
+    return Array.from(rootEl.querySelectorAll(".chrx-vkarta")).map(card => {
+      const slot = card.closest(".chrx-slot");
+      return {
+        id: card.dataset.cardId,
+        rowKey: slot?.dataset.row || card.closest(".chrx-row")?.dataset.row || "",
+        day: Number(card.dataset.day),
+        period: Number(card.dataset.period),
+      };
+    });
+  }
+
+  function selectCardElement(card, options = {}) {
+    const rootEl = card && card.closest(".chrx-editor");
+    if (!rootEl || !card.dataset.cardId) return;
+    ensureEditorState();
+    const metas = selectedCardElementMeta(rootEl);
+    const id = card.dataset.cardId;
+    const anchorId = window.APP.editor.selectionAnchorCardId;
+    if (options.range && anchorId) {
+      window.APP.editor.selectedCardIds = CardSelection.range(metas, anchorId, id);
+    } else if (options.toggle) {
+      window.APP.editor.selectedCardIds = CardSelection.toggle(window.APP.editor.selectedCardIds, id);
+    } else if (options.extend) {
+      window.APP.editor.selectedCardIds = CardSelection.toggle(window.APP.editor.selectedCardIds, id);
+      if (!window.APP.editor.selectedCardIds.includes(id)) {
+        window.APP.editor.selectedCardIds.push(id);
+      }
+    } else {
+      window.APP.editor.selectedCardIds = [id];
+    }
+    if (!options.preserveAnchor) window.APP.editor.selectionAnchorCardId = id;
+    syncSelectionUi(rootEl);
+  }
+
+  function clearSelection(rootEl) {
+    ensureEditorState();
+    window.APP.editor.selectedCardIds = [];
+    window.APP.editor.selectionAnchorCardId = null;
+    syncSelectionUi(rootEl || document.querySelector(".chrx-editor"));
+  }
+
+  function onSelectionShortcut(ev) {
+    const key = String(ev.key || "").toLowerCase();
+    const modified = ev.metaKey || ev.ctrlKey;
+    const target = ev.target;
+    const tag = String(target?.tagName || "").toLowerCase();
+    const typing = tag === "input" || tag === "textarea" || tag === "select" || target?.isContentEditable;
+    if (typing || !window.APP?.editor || window.APP.editor.cardInHand) return;
+    const rootEl = document.querySelector(".chrx-editor");
+    if (!rootEl || !window.APP.school) return;
+    if (modified && !ev.altKey && key === "c" && window.APP.editor.selectedCardIds?.length) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      copySelection();
+      return;
+    }
+    if (modified && !ev.altKey && key === "v" && window.APP.editor.cardClipboard) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      pasteSelection();
+      return;
+    }
+    if (key === "escape" && window.APP.editor.selectedCardIds?.length &&
+        (rootEl.contains(document.activeElement) || rootEl.contains(target))) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      clearSelection(rootEl);
+    }
+  }
+
+  function setPasteAnchor(slot) {
+    if (!slot || slot.classList.contains("out-of-bell")) return;
+    ensureEditorState();
+    const day = Number(slot.dataset.day);
+    const period = Number(slot.dataset.period);
+    if (!Number.isFinite(day) || !Number.isFinite(period)) return;
+    window.APP.editor.pasteAnchor = {
+      day,
+      period,
+      rowKey: slot.dataset.row || "",
+    };
+  }
+
+  function marqueeSelection(rootEl, startEvent, startSlot) {
+    if (!rootEl || !startSlot || startSlot.classList.contains("out-of-bell")) return;
+    const pointerId = startEvent.pointerId;
+    const startX = startEvent.clientX;
+    const startY = startEvent.clientY;
+    const owner = rootEl;
+    const additive = !!(startEvent.metaKey || startEvent.ctrlKey || startEvent.shiftKey);
+    const base = additive ? new Set(window.APP.editor.selectedCardIds || []) : new Set();
+    let moved = false;
+    let marquee = null;
+
+    function ensureMarquee() {
+      if (marquee) return;
+      marquee = document.createElement("div");
+      marquee.className = "chrx-selection-marquee";
+      marquee.setAttribute("aria-hidden", "true");
+      document.body.appendChild(marquee);
+    }
+
+    function paint(x, y) {
+      if (!moved && Math.hypot(x - startX, y - startY) < 5) return;
+      moved = true;
+      ensureMarquee();
+      const left = Math.min(startX, x);
+      const top = Math.min(startY, y);
+      marquee.style.left = `${left}px`;
+      marquee.style.top = `${top}px`;
+      marquee.style.width = `${Math.abs(x - startX)}px`;
+      marquee.style.height = `${Math.abs(y - startY)}px`;
+    }
+
+    function finish(x, y) {
+      const left = Math.min(startX, x);
+      const right = Math.max(startX, x);
+      const top = Math.min(startY, y);
+      const bottom = Math.max(startY, y);
+      const ids = new Set(base);
+      if (moved) {
+        rootEl.querySelectorAll(".chrx-vkarta").forEach(card => {
+          const rect = card.getBoundingClientRect();
+          const intersects = rect.right >= left && rect.left <= right &&
+            rect.bottom >= top && rect.top <= bottom;
+          if (intersects && card.dataset.cardId) ids.add(card.dataset.cardId);
+        });
+        window.APP.editor.selectedCardIds = Array.from(ids);
+        const last = Array.from(ids).pop() || null;
+        if (last) window.APP.editor.selectionAnchorCardId = last;
+        syncSelectionUi(rootEl);
+      }
+    }
+
+    function move(ev) {
+      if (ev.pointerId !== pointerId) return;
+      paint(ev.clientX, ev.clientY);
+      if (moved) ev.preventDefault();
+    }
+
+    function up(ev) {
+      if (ev.pointerId !== pointerId) return;
+      finish(ev.clientX, ev.clientY);
+      if (marquee && marquee.parentNode) marquee.parentNode.removeChild(marquee);
+      owner.releasePointerCapture?.(pointerId);
+      document.removeEventListener("pointermove", move, true);
+      document.removeEventListener("pointerup", up, true);
+      document.removeEventListener("pointercancel", up, true);
+    }
+
+    owner.setPointerCapture?.(pointerId);
+    document.addEventListener("pointermove", move, true);
+    document.addEventListener("pointerup", up, true);
+    document.addEventListener("pointercancel", up, true);
   }
 
   function resolveFocusRow(rows, perspective) {
@@ -287,6 +788,7 @@ window.Editor = (function () {
         <div class="chrx-ob-stats" id="chrx-ob-stats" aria-live="polite"></div>
         <button type="button" data-focus-nav="focus">Focus board</button>
       </div>
+      ${selectionBarHtml()}
       ${dayTabsHtml}
       <div class="chrx-grid-scroll">
         <div class="chrx-grid" style="--chrx-periods:${periods.length || 8}">
@@ -411,6 +913,7 @@ window.Editor = (function () {
         <p class="${hintClass}">${hintText}</p>
         <button type="button" class="chrx-focus-boardbar__overview" data-focus-nav="overview">All ${esc(PERSPECTIVE_PLURAL[perspective])}</button>
       </div>
+      ${selectionBarHtml()}
       ${dayTabsHtml}
       <div class="chrx-focus-workspace">
         ${classRailHtml}
@@ -1265,6 +1768,13 @@ window.Editor = (function () {
       rootEl.addEventListener("focusin", onFocusIn);
       rootEl.addEventListener("mouseout", onMouseOut);
       wireKeyboardNav(rootEl);
+      // Clipboard and Escape also work while focus is on a slot or card after
+      // a re-render; the document listener avoids depending on a particular
+      // child retaining focus.
+      if (typeof document !== "undefined" && !document._chrxSelectionShortcuts) {
+        document.addEventListener("keydown", onSelectionShortcut, true);
+        document._chrxSelectionShortcuts = true;
+      }
 
       // Re-render when breakpoint changes between phone single-day and desktop multi-day,
       // or on device orientation change / window resize.
@@ -1320,6 +1830,7 @@ window.Editor = (function () {
   function onMouseOver(ev) {
     const vk = ev.target.closest(".chrx-vkarta");
     if (vk && vk.dataset.lessonId) {
+      setPasteAnchor(vk.closest(".chrx-slot"));
       // While a card is in hand: show hover-target info as a tip inside the
       // inspector (Classic-style: bottom-left detail panel updates on hover).
       if (document.body.classList.contains("chrx-card-in-hand")) {
@@ -1340,6 +1851,8 @@ window.Editor = (function () {
       });
       return;
     }
+    const slot = ev.target.closest(".chrx-slot");
+    if (slot) setPasteAnchor(slot);
     const label = ev.target.closest(".chrx-rowlabel");
     if (!label) return;
     const row = label.closest(".chrx-row");
@@ -1414,6 +1927,8 @@ window.Editor = (function () {
 
   function onFocusIn(ev) {
     const vk = ev.target.closest(".chrx-vkarta");
+    const slot = ev.target.closest(".chrx-slot");
+    if (slot) setPasteAnchor(slot);
     if (vk && vk.dataset.lessonId) {
       showCardPanel(vk.dataset.lessonId, {
         day: parseInt(vk.dataset.day, 10),
@@ -1451,6 +1966,18 @@ window.Editor = (function () {
     if (skipBtn) {
       ev.preventDefault();
       focusGridFirst(skipBtn.closest(".chrx-editor"));
+      return;
+    }
+    const selectionAction = ev.target.closest("[data-selection-action]");
+    if (selectionAction) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const action = selectionAction.dataset.selectionAction;
+      if (action === "move-day") {
+        bulkSelectionAction(action, Number(selectionAction.dataset.selectionDelta) || 0);
+      } else {
+        bulkSelectionAction(action);
+      }
       return;
     }
     const focusNav = ev.target.closest("[data-focus-nav]");
@@ -2071,6 +2598,36 @@ window.Editor = (function () {
     const slot = active?.closest?.(".chrx-slot");
     if (!card && !slot) return;
 
+    const modified = ev.metaKey || ev.ctrlKey;
+    if (modified && !ev.altKey && (key === "c" || key === "C")) {
+      if (window.APP.editor.selectedCardIds?.length) {
+        ev.preventDefault();
+        copySelection();
+      }
+      return;
+    }
+    if (modified && !ev.altKey && (key === "v" || key === "V")) {
+      if (window.APP.editor.cardClipboard) {
+        ev.preventDefault();
+        pasteSelection();
+      }
+      return;
+    }
+
+    if (key === "Escape" && !window.APP.editor.cardInHand) {
+      if (window.APP.editor.selectedCardIds?.length) {
+        ev.preventDefault();
+        clearSelection(rootEl);
+      }
+      return;
+    }
+
+    if (key === " " && !window.APP.editor.cardInHand && card) {
+      ev.preventDefault();
+      selectCardElement(card, { toggle: true });
+      return;
+    }
+
     if ((key === "Enter" || key === " ") && card && !window.APP.editor.cardInHand) {
       if (window.APP?.editor?.perspective === "student" || card.classList.contains("locked")) return;
       ev.preventDefault();
@@ -2090,7 +2647,17 @@ window.Editor = (function () {
 
     if (key === "ArrowDown" || key === "ArrowUp" || key === "ArrowRight" || key === "ArrowLeft") {
       ev.preventDefault();
+      const priorCard = card;
+      if (ev.shiftKey && priorCard) {
+        if (!window.APP.editor.selectionAnchorCardId) {
+          window.APP.editor.selectionAnchorCardId = priorCard.dataset.cardId;
+        }
+      }
       handleArrowNav(rootEl, slot, card, key);
+      if (ev.shiftKey && !window.APP.editor.cardInHand) {
+        const next = document.activeElement?.closest?.(".chrx-vkarta");
+        if (next) selectCardElement(next, { range: true, preserveAnchor: true });
+      }
     }
   }
 
@@ -2165,8 +2732,35 @@ window.Editor = (function () {
       }
     }
 
-    // Card pickup / Click-to-select duality
     const vk = ev.target.closest(".chrx-vkarta");
+    const slot = ev.target.closest(".chrx-slot");
+    if (slot) setPasteAnchor(slot);
+
+    // Modifier-click belongs exclusively to multi-select. Keep this before
+    // the locked guard so a locked card can be selected for bulk Unlock.
+    if (vk && (ev.metaKey || ev.ctrlKey || ev.shiftKey)) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      selectCardElement(vk, {
+        range: !!ev.shiftKey,
+        toggle: !ev.shiftKey,
+      });
+      focusTarget(vk);
+      return;
+    }
+
+    // Dragging from empty grid space draws a marquee. It is scoped to an
+    // actual slot so labels, tabs, and the scroll container keep their native
+    // interactions.
+    if (!vk && slot && slot.classList.contains("empty") &&
+        !slot.classList.contains("out-of-bell") && !window.APP.editor.cardInHand) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      marqueeSelection(ev.currentTarget, ev, slot);
+      return;
+    }
+
+    // Card pickup / Click-to-select duality
     if (vk) {
       if (window.APP?.editor?.perspective === "student" || vk.classList.contains("locked")) return;
       ev.preventDefault();
@@ -2222,7 +2816,6 @@ window.Editor = (function () {
     }
 
     // Empty-slot place (only when we have something in hand)
-    const slot = ev.target.closest(".chrx-slot.empty");
     if (slot && window.APP.editor.cardInHand) {
       ev.preventDefault();
       return;
