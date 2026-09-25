@@ -2,6 +2,7 @@
 import "../state.js";
 import "../components/bell_resolver.js";
 import { computeUnplacedCountsByClass } from "./unplaced_counts.js";
+import { buildStudentCardLookup, rowsFor as studentRowsFor } from "./student_view.js";
 
 /**
  * Editor.render(rootEl) — writable timetable grid.
@@ -82,6 +83,7 @@ window.Editor = (function () {
 
     rootEl.classList.add("chrx-editor");
     rootEl.classList.toggle("chrx-editor--focus", window.APP.editor.viewMode === "focus");
+    rootEl.classList.toggle("chrx-readonly", perspective === "student");
     // Semantic zoom: the zoom level changes WHAT a cell shows, not just how big
     // it is. A denser grid is only useful if it still answers the question you
     // zoomed out to ask, so each step drops detail deliberately:
@@ -139,6 +141,9 @@ window.Editor = (function () {
   }
 
   function buildCardLookup(S, perspective, visiblePeriodSet) {
+    if (perspective === "student") {
+      return buildStudentCardLookup(S, visiblePeriodSet, dayCount(S));
+    }
     const lookup = Object.create(null);
     for (const c of (S.cards || [])) {
       const day = parseInt(c.day, 10);
@@ -246,6 +251,9 @@ window.Editor = (function () {
         sub: s.abbr && s.abbr !== s.name ? s.abbr : "",
       }));
     }
+    if (perspective === "student") {
+      return studentRowsFor(S);
+    }
     // default = class
     return S.classes.map(c => ({ key: c.id, label: c.name, sub: "" }));
   }
@@ -335,7 +343,35 @@ window.Editor = (function () {
           </div>
         </nav>
       `;
+    } else if (perspective === "student") {
+      const railItems = allRows.map(row => {
+        const isSelected = row.key === focusRow.key;
+        return `<button type="button" class="chrx-class-rail__item chrx-student-rail__item${isSelected ? " is-active" : ""}" data-class-id="${esc(row.key)}" data-student-id="${esc(row.key)}" aria-selected="${isSelected ? "true" : "false"}" title="${esc(row.label)}${row.sub ? ` (${esc(row.sub)})` : ""}">
+          <span class="chrx-class-rail__label">${esc(row.label)}</span>
+          ${row.sub ? `<span class="chrx-class-rail__sub" style="opacity:.6;font-size:11px;margin-left:auto;">${esc(row.sub)}</span>` : ""}
+        </button>`;
+      }).join("");
+
+      classRailHtml = `
+        <nav class="chrx-class-rail chrx-student-rail" aria-label="Student timetable list">
+          <div class="chrx-student-search-box" style="padding:6px 8px;border-bottom:1px solid var(--chrx-border,#e2e8f0);">
+            <input type="search" class="chrx-student-filter-input" data-student-filter placeholder="Search student…" aria-label="Filter students" style="width:100%;box-sizing:border-box;padding:4px 8px;font-size:12px;border:1px solid var(--chrx-border,#cbd5e1);border-radius:4px;" />
+          </div>
+          <div class="chrx-class-rail__list" role="tablist" aria-orientation="vertical">
+            ${railItems}
+          </div>
+        </nav>
+      `;
     }
+
+    const pickerSearchHtml = perspective === "student"
+      ? `<input type="search" class="chrx-student-picker-search" data-focus-student-search placeholder="Search student…" list="chrx-student-datalist" value="${esc(focusRow.label)}" aria-label="Search student" style="margin-left:6px;padding:3px 8px;font-size:12px;border:1px solid var(--chrx-border,#cbd5e1);border-radius:4px;" /><datalist id="chrx-student-datalist">${allRows.map(r => `<option value="${esc(r.label)}">${esc(r.sub)}</option>`).join("")}</datalist>`
+      : "";
+
+    const hintText = perspective === "student"
+      ? "Student timetable is read-only. Drag is disabled."
+      : "Drag a lesson to another period. Conflicts show in the inspector.";
+    const hintClass = perspective === "student" ? "chrx-student-hint" : "";
 
     return `
       <button type="button" class="chrx-skip-link chrx-sr-only" data-skip-to-grid style="position:absolute;z-index:100;padding:6px 12px;background:var(--chrx-accent,#5b6cff);color:#fff;border-radius:6px;font:600 12px var(--chrx-font-sans);border:0;cursor:pointer;">Skip to timetable</button>
@@ -345,14 +381,15 @@ window.Editor = (function () {
           <span>${esc(PERSPECTIVE_LABEL[perspective].replace("By ", ""))}</span>
           <select data-focus-entity aria-label="Choose ${esc(perspective)}">${options}</select>
         </label>
+        ${pickerSearchHtml}
         <button type="button" class="chrx-focus-boardbar__nav" data-focus-nav="next" aria-label="Next ${esc(perspective)}">${icon("chevR", 18)}</button>
-        <p>Drag a lesson to another period. Conflicts show in the inspector.</p>
+        <p class="${hintClass}">${hintText}</p>
         <button type="button" class="chrx-focus-boardbar__overview" data-focus-nav="overview">All ${esc(PERSPECTIVE_PLURAL[perspective])}</button>
       </div>
       ${dayTabsHtml}
       <div class="chrx-focus-workspace">
         ${classRailHtml}
-        <div class="chrx-focus-board" role="grid" aria-label="${esc(focusRow.label)} weekly timetable"
+        <div class="chrx-focus-board${perspective === "student" ? " chrx-readonly" : ""}" role="grid" aria-label="${esc(focusRow.label)} weekly timetable"
              style="--chrx-days:${isMobile ? 1 : numDays}">
           ${focusBoardInnerHtml(S, focusRow, periods, cardLookup, mobileDay, isMobile)}
         </div>
@@ -536,9 +573,9 @@ window.Editor = (function () {
     })();
   }
 
-  const PERSPECTIVES = ["class", "teacher", "room", "subject"];
-  const PERSPECTIVE_LABEL = { class: "By Class", teacher: "By Teacher", room: "By Room", subject: "By Subject" };
-  const PERSPECTIVE_PLURAL = { class: "classes", teacher: "teachers", room: "rooms", subject: "subjects" };
+  const PERSPECTIVES = ["class", "teacher", "room", "subject", "student"];
+  const PERSPECTIVE_LABEL = { class: "By Class", teacher: "By Teacher", room: "By Room", subject: "By Subject", student: "By Student" };
+  const PERSPECTIVE_PLURAL = { class: "classes", teacher: "teachers", room: "rooms", subject: "subjects", student: "students" };
   const COLOR_AXES = ["subject", "teacher", "class", "room"];
   const COLOR_LABEL = { subject: "Color: Subject", teacher: "Color: Teacher", class: "Color: Class", room: "Color: Room" };
 
@@ -592,6 +629,16 @@ window.Editor = (function () {
       const bell = window.BellResolver.forClass(S, row.key);
       if (bell && Array.isArray(bell.periods)) {
         return new Set(bell.periods.map(p => p.index | 0));
+      }
+    }
+    if (persp === "student" && window.BellResolver && row) {
+      const students = (S && S.students) || [];
+      const st = students.find(s => s.id === row.key);
+      if (st && st.classId) {
+        const bell = window.BellResolver.forClass(S, st.classId);
+        if (bell && Array.isArray(bell.periods)) {
+          return new Set(bell.periods.map(p => p.index | 0));
+        }
       }
     }
     return null;
@@ -1061,8 +1108,8 @@ window.Editor = (function () {
       stripeBg = teacherStripes(hues);
     }
     const cardId = `placed_${card.lessonId}_${day}_${period}`;
-    const locked = (card.locked || lesson?.fixedDay != null || lesson?.fixedPeriod != null) ? " locked" : "";
     const persp = window.APP.editor.perspective;
+    const locked = (card.locked || lesson?.fixedDay != null || lesson?.fixedPeriod != null) ? " locked" : "";
     // Prominent (line1) text is the field that VARIES within this row — the
     // row's own dimension is already known, so repeating it big is wasted
     // space (aSc does the same). In a teacher row every card is that teacher,
@@ -1080,6 +1127,10 @@ window.Editor = (function () {
     if (persp === "teacher") { line1 = classShort || subjShort; line2 = subjShort; }
     else if (persp === "subject") { line1 = classShort || teacherShort; line2 = teacherShort; }
     else if (persp === "room") { line1 = subjFull; line2 = classShort; }
+    else if (persp === "student") {
+      line1 = inFocus ? subjFull : (zoom === "far" ? subjCode : subjFull);
+      line2 = [teacherShort, roomShort].filter(Boolean).join(" · ");
+    }
     // By-Class: a compact subject CODE is enough at the working zoom (the class
     // is the row and colour already encodes the subject) — aSc uses short codes
     // here for exactly this reason, since a ~28-38px cell cannot show a full
@@ -1148,6 +1199,7 @@ window.Editor = (function () {
       // replace without needing a re-bind every render.
       rootEl.addEventListener("click", onRootClick);
       rootEl.addEventListener("change", onRootChange);
+      rootEl.addEventListener("input", onRootInput);
       rootEl.addEventListener("mouseover", onMouseOver);
       rootEl.addEventListener("focusin", onFocusIn);
       rootEl.addEventListener("mouseout", onMouseOut);
@@ -1435,13 +1487,56 @@ window.Editor = (function () {
 
   function onRootChange(ev) {
     const select = ev.target.closest("[data-focus-entity]");
-    if (!select) return;
-    const perspective = window.APP.editor.perspective || "class";
-    window.APP.editor.focusRowByPerspective[perspective] = select.value;
-    if (perspective === "class") {
-      window.APP.editor.selectedClassId = select.value;
+    if (select) {
+      const perspective = window.APP.editor.perspective || "class";
+      window.APP.editor.focusRowByPerspective[perspective] = select.value;
+      if (perspective === "class") {
+        window.APP.editor.selectedClassId = select.value;
+      }
+      render(select.closest(".chrx-editor"));
+      return;
     }
-    render(select.closest(".chrx-editor"));
+    const studentSearch = ev.target.closest("[data-focus-student-search]");
+    if (studentSearch) {
+      const val = studentSearch.value.trim().toLowerCase();
+      const S = window.APP && window.APP.school;
+      if (!S) return;
+      const allRows = rowsFor(S, "student");
+      const match = allRows.find(r => r.label.toLowerCase() === val || r.key.toLowerCase() === val) ||
+                    allRows.find(r => r.label.toLowerCase().startsWith(val));
+      if (match) {
+        window.APP.editor.focusRowByPerspective["student"] = match.key;
+        render(studentSearch.closest(".chrx-editor"));
+      }
+    }
+  }
+
+  function onRootInput(ev) {
+    const filterInput = ev.target.closest("[data-student-filter]");
+    if (filterInput) {
+      const q = filterInput.value.toLowerCase().trim();
+      const host = filterInput.closest(".chrx-editor");
+      if (host) {
+        host.querySelectorAll(".chrx-student-rail .chrx-class-rail__item").forEach(item => {
+          const text = (item.textContent || "").toLowerCase();
+          item.style.display = (!q || text.includes(q)) ? "" : "none";
+        });
+      }
+      return;
+    }
+    const studentSearch = ev.target.closest("[data-focus-student-search]");
+    if (studentSearch) {
+      const val = studentSearch.value.trim().toLowerCase();
+      const S = window.APP && window.APP.school;
+      if (!S) return;
+      const allRows = rowsFor(S, "student");
+      const match = allRows.find(r => r.label.toLowerCase() === val || r.key.toLowerCase() === val) ||
+                    allRows.find(r => r.label.toLowerCase().startsWith(val));
+      if (match) {
+        window.APP.editor.focusRowByPerspective["student"] = match.key;
+        render(studentSearch.closest(".chrx-editor"));
+      }
+    }
   }
 
   function handleEditorTool(kind, host) {
@@ -1619,7 +1714,7 @@ window.Editor = (function () {
   }
 
   function handleCardClick(vk) {
-    if (vk.classList.contains("locked")) return;
+    if (window.APP?.editor?.perspective === "student" || vk.classList.contains("locked")) return;
     const cardId = vk.dataset.cardId;
     const lessonId = vk.dataset.lessonId;
     const day = parseInt(vk.dataset.day, 10);
@@ -1648,6 +1743,7 @@ window.Editor = (function () {
   }
 
   function startDragPickup(vk, startX, startY, pointerId, grabRatioX, grabRatioY) {
+    if (window.APP?.editor?.perspective === "student") return;
     const cardId = vk.dataset.cardId;
     const lessonId = vk.dataset.lessonId;
     const day = parseInt(vk.dataset.day, 10);
@@ -1687,7 +1783,7 @@ window.Editor = (function () {
     // Click-to-place mode: a tap on a highlighted slot commits, like a click.
     if (window.APP.editor.cardInHand && window.APP.editor.cardInHand.mode === "click") return;
     const vk = ev.target.closest(".chrx-vkarta");
-    if (!vk || vk.classList.contains("locked")) return;
+    if (!vk || window.APP?.editor?.perspective === "student" || vk.classList.contains("locked")) return;
     const t = ev.touches[0]; if (!t) return;
     const sx = t.clientX, sy = t.clientY;
     let moved = false, fired = false;
@@ -1911,7 +2007,7 @@ window.Editor = (function () {
     if (!card && !slot) return;
 
     if ((key === "Enter" || key === " ") && card && !window.APP.editor.cardInHand) {
-      if (card.classList.contains("locked")) return;
+      if (window.APP?.editor?.perspective === "student" || card.classList.contains("locked")) return;
       ev.preventDefault();
       const rect = card.getBoundingClientRect();
       startDragPickup(card, rect.left + rect.width / 2, rect.top + rect.height / 2);
@@ -2007,7 +2103,7 @@ window.Editor = (function () {
     // Card pickup / Click-to-select duality
     const vk = ev.target.closest(".chrx-vkarta");
     if (vk) {
-      if (vk.classList.contains("locked")) return;
+      if (window.APP?.editor?.perspective === "student" || vk.classList.contains("locked")) return;
       ev.preventDefault();
       
       const startX = ev.clientX;
