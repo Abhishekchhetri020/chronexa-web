@@ -1,4 +1,4 @@
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect, vi } from 'vitest';
 import { solve, __test_internals } from '../csp_solver.js';
 import { check } from '../relation_enforcer.js';
 import { checkPlacement } from '../constraints.js';
@@ -20,6 +20,14 @@ function relationSchool(typ = 'n_9') {
 }
 
 describe('same day, in order (n_9)', () => {
+  // Lane W2-7: these solver assertions used a wall-clock time limit
+  // (timeLimitSec: 0.1), which made them load-sensitive — on a busy machine the
+  // 30 ms backtracking slice (0.1 s x btShare 0.3) is spent inside buildModel,
+  // the driver bails before its first run and solve() returns placed: 0. The
+  // node cap keeps the same "solve this instance" assertion but bounds the
+  // search by nodes, so a fixed seed is reproducible under any load.
+  const SOLVER_NODE_CAP = 20000;
+
   test.each([false, true])('rejects reversed, overlapping and cross-day partners (leader placed first: %s)', leaderFirst => {
     const school = relationSchool();
     school.lessons[0].isLabDouble = true;
@@ -62,13 +70,32 @@ describe('same day, in order (n_9)', () => {
     const school = relationSchool();
     Object.assign(school.lessons[0], { fixedDay: 0, fixedPeriod: 4 });
     Object.assign(school.lessons[1], { fixedDay: 0, fixedPeriod: 1 });
-    const result = solve(school, { timeLimitSec: 0.1, useLNS: false });
+    const result = solve(school, { maxNodes: SOLVER_NODE_CAP, useLNS: false });
     expect(result.stats.placed).toBe(1);
+  });
+
+  test('places a complete timetable even when the clock is already past any time budget', () => {
+    // Loaded-machine failure, reproduced without load: every clock read reports
+    // a moment far beyond any timeLimitSec, so a wall-clock-bounded solver bails
+    // before its first run and answers placed: 0. Node-capped mode never reads
+    // the clock for its budget, so the answer is the same as on an idle machine.
+    let ticks = 0;
+    const clock = vi.spyOn(performance, 'now').mockImplementation(() => (ticks += 1) * 60_000);
+    try {
+      const school = relationSchool();
+      const result = solve(school, { seed: 42, maxNodes: SOLVER_NODE_CAP });
+      expect(result.stats.placed).toBe(2);
+      school.cards = result.assignment;
+      for (const card of school.cards) expect(check(school, card.lessonId, card.day, card.period).hard).toEqual([]);
+    } finally {
+      clock.mockRestore();
+    }
+    expect(ticks).toBeGreaterThan(0);
   });
 
   test.each([1, 7, 42, 9881])('finds a complete ordered timetable with seed %s', seed => {
     const school = relationSchool();
-    const result = solve(school, { seed, timeLimitSec: 0.1 });
+    const result = solve(school, { seed, maxNodes: SOLVER_NODE_CAP });
     expect(result.stats.placed).toBe(2);
     school.cards = result.assignment;
     for (const card of school.cards) expect(check(school, card.lessonId, card.day, card.period).hard).toEqual([]);
