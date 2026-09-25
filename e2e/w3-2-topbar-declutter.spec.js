@@ -1,9 +1,8 @@
 import { test, expect } from "@playwright/test";
 import { loadDemoSchool } from "./helpers.js";
 
-const STATUS_DIR = "/Users/abhishekchhetri/chronexa-edupage-study/wave3/status";
 
-test("topbar title is readable and not truncated at 1470px and 1280px", async ({ page }) => {
+test("topbar title is readable and not truncated at 1470px and 1280px", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1470, height: 727 });
   await page.goto("/index.html");
   await page.waitForLoadState("networkidle");
@@ -17,7 +16,7 @@ test("topbar title is readable and not truncated at 1470px and 1280px", async ({
     await page.setViewportSize({ width, height: 727 });
     await page.waitForTimeout(300);
     if (filename) {
-      await page.screenshot({ path: `${STATUS_DIR}/${filename}` });
+      await page.screenshot({ path: testInfo.outputPath(filename) });
     }
     return page.evaluate(() => {
       const crumbs = document.getElementById("chrx-crumbs");
