@@ -110,8 +110,12 @@ test("3 edits produce 3+ versions; preview, diff and restore work and ⌘Z undoe
   });
   await expect(page.locator("#chrx-version-history")).toBeVisible();
   await page.locator("#chrx-version-history .chrx-vh-close").click();
+  // Wait for the panel (and its overlay) to be gone before opening the palette, or the closing
+  // overlay can still intercept the palette click on a slow first run.
+  await expect(page.locator("#chrx-version-history")).toBeHidden();
 
   await page.keyboard.press("ControlOrMeta+k");
+  await expect(page.locator("#chrx-palette input")).toBeVisible();
   await page.locator("#chrx-palette input").fill("Version history");
   await page.locator("#chrx-palette .chrx-palette-item", { hasText: "Version history" }).first().click();
 
