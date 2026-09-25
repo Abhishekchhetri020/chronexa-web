@@ -18,11 +18,9 @@ import "../ribbon/topbar.js";
  * local-to-the-viewer). Each card becomes one VEVENT with FREQ=WEEKLY,
  * COUNT=40 (one academic year).
  */
-(function () {
-  "use strict";
-  const APP = window.APP;
-  const notify = window._chrxNotify || console.log;
-  const DAYS_SHORT = ["Mon","Tue","Wed","Thu","Fri","Sat"];
+const APP = (typeof window !== "undefined" ? window.APP : null) || {};
+const notify = (typeof window !== "undefined" && window._chrxNotify) || console.log;
+const DAYS_SHORT = ["Mon","Tue","Wed","Thu","Fri","Sat"];
 
   function need() {
     if (!APP.school) { notify("Open a timetable first.", "error"); return false; }
@@ -78,6 +76,7 @@ import "../ribbon/topbar.js";
     if (scope === "all") return true;
     if (scope === "class")   return (lesson.classIds   || []).includes(scopeId);
     if (scope === "teacher") return (lesson.teacherIds || []).includes(scopeId);
+    if (scope === "room")    return card.classroomId === scopeId || lesson.preferredRoomId === scopeId;
     return false;
   }
 
@@ -90,9 +89,8 @@ import "../ribbon/topbar.js";
   }
 
   // ── Main export ───────────────────────────────────────────────────────────
-  function exportIcs(scope, scopeId) {
-    if (!need()) return;
-    const s = APP.school;
+  export function buildIcsText(s, scope = "all", scopeId = null) {
+    if (!s) return "";
     const idx = indexes(s);
     const monday = nextMonday(new Date());
     const stamp = fmtUtc(new Date());
@@ -101,6 +99,7 @@ import "../ribbon/topbar.js";
     let scopeLabel = "all";
     if (scope === "class")   scopeLabel = (idx.classById[scopeId]?.short || idx.classById[scopeId]?.name || "class");
     if (scope === "teacher") scopeLabel = (idx.teacherById[scopeId]?.short || idx.teacherById[scopeId]?.name || "teacher");
+    if (scope === "room")    scopeLabel = (idx.roomById[scopeId]?.short || idx.roomById[scopeId]?.name || "room");
 
     const lines = [
       "BEGIN:VCALENDAR",
@@ -159,12 +158,24 @@ import "../ribbon/topbar.js";
     }
 
     lines.push("END:VCALENDAR");
-    if (emitted === 0) {
+    return lines.join("\r\n") + "\r\n";
+  }
+
+  export function exportIcs(scope = "all", scopeId = null) {
+    if (!need()) return;
+    const s = APP.school;
+    const idx = indexes(s);
+    let scopeLabel = "all";
+    if (scope === "class")   scopeLabel = (idx.classById[scopeId]?.short || idx.classById[scopeId]?.name || "class");
+    if (scope === "teacher") scopeLabel = (idx.teacherById[scopeId]?.short || idx.teacherById[scopeId]?.name || "teacher");
+    if (scope === "room")    scopeLabel = (idx.roomById[scopeId]?.short || idx.roomById[scopeId]?.name || "room");
+
+    const ics = buildIcsText(s, scope, scopeId);
+    if (!ics.includes("BEGIN:VEVENT")) {
       notify("No cards matched the export scope.", "error");
       return;
     }
 
-    const ics = lines.join("\r\n") + "\r\n";
     const safe = (s.schoolName || "chronexa").replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "chronexa";
     const scopeSafe = String(scopeLabel).replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "all";
     const fname = `${safe}-${scopeSafe}.ics`;
@@ -179,14 +190,18 @@ import "../ribbon/topbar.js";
     document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 1000);
 
-    notify(`Exported ${fname} — ${emitted} event${emitted === 1 ? "" : "s"} recurring weekly × ${COUNT}.`);
+    notify(`Exported ${fname}.`);
+    return fname;
   }
 
   window.addEventListener("app:export-ics", (e) => {
     const d = e.detail || {};
-    exportIcs(d.kind || "all", d.id || null);
+    exportIcs(d.kind || d.scope?.type || "all", d.id || d.scope?.id || null);
   });
 
-  APP.io = APP.io || {};
-  APP.io.exportIcs = exportIcs;
-})();
+  if (typeof window !== "undefined") {
+    window.APP = window.APP || {};
+    window.APP.io = window.APP.io || {};
+    window.APP.io.exportIcs = exportIcs;
+    window.APP.io.buildIcsText = buildIcsText;
+  }

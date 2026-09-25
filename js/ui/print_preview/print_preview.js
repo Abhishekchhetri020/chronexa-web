@@ -734,6 +734,13 @@ import "./print_settings_dialog.js";
     return tbl;
   }
 
+  function subjectHue(s) {
+    if (!s) return 210;
+    const k = (s.abbr || s.name || "").toUpperCase().replace(/[^A-Z]/g, "");
+    let h = 0; for (let i = 0; i < k.length; i++) h = (h * 31 + k.charCodeAt(i)) & 0xffff;
+    return h % 360;
+  }
+
   function cellFromCard(card) {
     const tuning = APP.printTuning || {
       padding: 6,
@@ -887,17 +894,83 @@ import "./print_settings_dialog.js";
       el("div", { style: "color:#666" }, (card.teachers || []).join(",").slice(0, 12)));
   }
 
+  function renderPagesForScope(scope = { type: "all" }) {
+    const s = APP.school;
+    if (!s) return [];
+    const periods = s.bell?.periods || [];
+    const scopeType = typeof scope === "string" ? scope : (scope && scope.type) || "all";
+    const scopeId = typeof scope === "object" ? scope.id : null;
+
+    if (scopeType === "class") {
+      const classes = scopeId ? (s.classes || []).filter(c => c.id === scopeId) : (s.classes || []);
+      return perEntityPages(s, "class", periods, classes, s._idx?.cardsByClass);
+    } else if (scopeType === "teacher") {
+      const teachers = scopeId ? (s.teachers || []).filter(t => t.id === scopeId) : (s.teachers || []);
+      return perEntityPages(s, "teacher", periods, teachers, s._idx?.cardsByTeacher);
+    } else if (scopeType === "room") {
+      const rooms = scopeId ? (s.classrooms || []).filter(r => r.id === scopeId) : (s.classrooms || []);
+      return perEntityPages(s, "room", periods, rooms, s._idx?.cardsByRoom);
+    } else {
+      const classes = s.classes || [];
+      return perEntityPages(s, "class", periods, classes, s._idx?.cardsByClass);
+    }
+  }
+
+  function printScope(scope = { type: "all" }) {
+    const s = APP.school;
+    if (!s) { notify("Open a timetable first.", "error"); return 0; }
+    ensureOverlay();
+    const shell = overlay.querySelector(".chrx-preview-shell");
+    shell.innerHTML = "";
+    docShell = el("div", { class: "chrx-preview-doc", style: "flex:1; overflow:auto;" });
+    shell.appendChild(docShell);
+
+    const scopePages = renderPagesForScope(scope);
+    pages = scopePages;
+    pageIdx = 0;
+
+    overlay.classList.add("is-open");
+    const host = document.getElementById("chrx-ribbon");
+    if (host) host.setAttribute("data-ribbon-mode", "preview");
+
+    enterPrintLayout();
+    while (docShell.firstChild) docShell.removeChild(docShell.firstChild);
+    for (const p of scopePages) {
+      p.style.zoom = "1";
+      docShell.appendChild(p);
+      try { autofitMountedPage(p); } catch (e) {}
+    }
+
+    window.dispatchEvent(new CustomEvent("app:print-triggered", {
+      detail: { pages: scopePages.length, scope }
+    }));
+
+    try {
+      window.print();
+    } catch (e) {
+      console.warn("window.print failed or prevented", e);
+    }
+    return scopePages.length;
+  }
+
   // ─── Wire events ─────────────────────────────────────────────────────────
   window.addEventListener("app:print-preview", openPreview);
   window.addEventListener("app:preview-close", closePreview);
   window.addEventListener("app:preview-prev",  () => stepPage(-1));
   window.addEventListener("app:preview-next",  () => stepPage(1));
   window.addEventListener("app:preview-template", (e) => render(e.detail?.template || "class"));
+  window.addEventListener("app:print-scope", (e) => printScope(e.detail?.scope || e.detail));
   window.addEventListener("keydown", (e) => {
     if ((e.metaKey || e.ctrlKey) && (e.key === "p" || e.key === "P") && !overlay?.classList.contains("is-open")) {
       e.preventDefault(); openPreview();
     }
   });
 
-  APP.printPreview = { open: openPreview, close: closePreview, render };
+  APP.printPreview = {
+    open: openPreview,
+    close: closePreview,
+    render,
+    renderPagesForScope,
+    printScope,
+  };
 })();

@@ -8,11 +8,9 @@ import "../state.js";
  * Ports Swift's ClassicHTMLExporter.swift. Triggered via `app:export-html` event.
  * Output filename derives from school.schoolName.
  */
-(function () {
-  "use strict";
-  const APP = window.APP;
-  const notify = window._chrxNotify || console.log;
-  const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const APP = (typeof window !== "undefined" ? window.APP : null) || {};
+const notify = (typeof window !== "undefined" && window._chrxNotify) || console.log;
+const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, c =>
@@ -65,10 +63,65 @@ import "../state.js";
     return html;
   }
 
-  function buildHTML(school) {
-    const classes = school.classes || [];
+  function buildTeacherGrid(school, teacherRow) {
+    const periods = (school.bell && school.bell.periods) || [];
+    const cards = school.cards || [];
+    const lessonById = (school._idx && school._idx.lessonById) ||
+      Object.fromEntries((school.lessons || []).map(l => [l.id, l]));
+    const subjectById = (school._idx && school._idx.subjectById) ||
+      Object.fromEntries((school.subjects || []).map(s => [s.id, s]));
+    const classById = (school._idx && school._idx.classById) ||
+      Object.fromEntries((school.classes || []).map(c => [c.id, c]));
+    const roomById = (school._idx && school._idx.classroomById) ||
+      Object.fromEntries((school.classrooms || []).map(r => [r.id, r]));
+
+    const grid = Array.from({ length: 6 }, () => Array(periods.length).fill(null));
+    for (const c of cards) {
+      const lesson = lessonById[c.lessonId];
+      if (!lesson) continue;
+      if (!(lesson.teacherIds || []).includes(teacherRow.id)) continue;
+      const pIdx = (c.period | 0) - 1;
+      if (c.day >= 6 || pIdx < 0 || pIdx >= periods.length) continue;
+      const subj = subjectById[lesson.subjectId] || {};
+      const classes = (lesson.classIds || []).map(cid => classById[cid]?.short || classById[cid]?.name || "—").join(", ");
+      const room = c.classroomId ? (roomById[c.classroomId]?.short || roomById[c.classroomId]?.name || "") : "";
+      grid[c.day][pIdx] = { subject: subj.short || subj.name || "?", color: subj.color || "#94a3b8", classes, room };
+    }
+
+    let html = `<h2>${esc(teacherRow.name || teacherRow.short)}</h2><table class="tt">`;
+    html += `<thead><tr><th>Day</th>${periods.map((p, i) => `<th>P${i + 1}</th>`).join("")}</tr></thead><tbody>`;
+    for (let d = 0; d < 6; d++) {
+      html += `<tr><th class="day">${DAYS[d]}</th>`;
+      for (let p = 0; p < periods.length; p++) {
+        const c = grid[d][p];
+        if (c) {
+          html += `<td class="cell" style="background:${esc(c.color)}22;border-left:4px solid ${esc(c.color)}"><div class="subj">${esc(c.subject)}</div><div class="meta">${esc(c.classes)}</div>${c.room ? `<div class="room">${esc(c.room)}</div>` : ""}</td>`;
+        } else {
+          html += `<td class="cell empty"></td>`;
+        }
+      }
+      html += "</tr>";
+    }
+    html += "</tbody></table>";
+    return html;
+  }
+
+  export function buildHtmlExport(school, scope = { type: "all" }) {
+    const scopeType = typeof scope === "string" ? scope : (scope && scope.type) || "all";
+    const scopeId = typeof scope === "object" ? scope.id : null;
+
+    let body = "";
+    if (scopeType === "teacher") {
+      const teachers = (school.teachers || []).filter(t => !scopeId || t.id === scopeId);
+      body = teachers.map(t => buildTeacherGrid(school, t)).join("\n");
+    } else {
+      let classes = school.classes || [];
+      if (scopeType === "class" && scopeId) {
+        classes = classes.filter(c => c.id === scopeId);
+      }
+      body = classes.map(c => buildClassGrid(school, c)).join("\n");
+    }
     const title = `${school.schoolName || "Timetable"} — ${new Date().toLocaleDateString()}`;
-    const body = classes.map(c => buildClassGrid(school, c)).join("\n");
 
     return `<!DOCTYPE html>
 <html lang="en"><head>
@@ -103,22 +156,40 @@ ${body}
 </body></html>`;
   }
 
-  function exportHTML() {
+  function buildHTML(school, scope) {
+    return buildHtmlExport(school, scope);
+  }
+
+  export function exportHTML(scope = { type: "all" }) {
     const school = APP.school;
     if (!school) { notify("Open a timetable first.", "error"); return; }
-    const html = buildHTML(school);
+    const html = buildHtmlExport(school, scope);
     const base = (school._meta?.sourceFilename || school.schoolName || "chronexa").replace(/\.xml$/i, "");
+    const scopeType = typeof scope === "string" ? scope : (scope && scope.type) || "all";
+    const scopeId = typeof scope === "object" ? scope.id : null;
+    let suffix = "";
+    if (scopeType === "class" && scopeId) {
+      const c = (school.classes || []).find(x => x.id === scopeId);
+      suffix = "-" + (c?.short || c?.name || scopeId).replace(/[^\w.-]+/g, "-");
+    } else if (scopeType === "teacher" && scopeId) {
+      const t = (school.teachers || []).find(x => x.id === scopeId);
+      suffix = "-" + (t?.short || t?.name || scopeId).replace(/[^\w.-]+/g, "-");
+    }
+    const fname = base + suffix + ".html";
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = base + ".html";
+    a.download = fname;
     document.body.appendChild(a); a.click();
     setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
-    notify("Exported " + base + ".html");
+    notify("Exported " + fname);
+    return fname;
   }
 
-  window.addEventListener("app:export-html", exportHTML);
-  APP.io = APP.io || {};
-  APP.io.exportHTML = exportHTML;
-  APP.io.buildHtmlExport = buildHTML;
-})();
+  window.addEventListener("app:export-html", (e) => exportHTML(e.detail?.scope || e.detail));
+  if (typeof window !== "undefined") {
+    window.APP = window.APP || {};
+    window.APP.io = window.APP.io || {};
+    window.APP.io.exportHTML = exportHTML;
+    window.APP.io.buildHtmlExport = buildHtmlExport;
+  }
