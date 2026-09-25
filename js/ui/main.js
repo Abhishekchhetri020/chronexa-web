@@ -716,8 +716,8 @@ import "./start_screen.js";
     // ─── Perspective rotator in editor header ──────────────────
     const persBtn = document.getElementById("editor-perspective");
     if (persBtn) {
-      const PERS = ["class", "teacher", "room", "subject", "student"];
-      const LABEL = { class: "By Class", teacher: "By Teacher", room: "By Room", subject: "By Subject", student: "By Student" };
+      const PERS = ["class", "teacher", "room", "subject", "student", "supervision"];
+      const LABEL = { class: "By Class", teacher: "By Teacher", room: "By Room", subject: "By Subject", student: "By Student", supervision: "By Supervision" };
       persBtn.onclick = () => {
         const cur = (window.APP.editor && window.APP.editor.perspective) || "class";
         const next = PERS[(PERS.indexOf(cur) + 1) % PERS.length];

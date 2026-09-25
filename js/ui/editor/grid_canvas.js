@@ -3,6 +3,7 @@ import "../state.js";
 import "../components/bell_resolver.js";
 import { computeUnplacedCountsByClass } from "./unplaced_counts.js";
 import { buildStudentCardLookup, rowsFor as studentRowsFor } from "./student_view.js";
+import { buildSupervisionLookup, rowsFor as supervisionRowsFor, supervisionChipHtml, supervisionSummary } from "./supervision_view.js";
 
 /**
  * Editor.render(rootEl) — writable timetable grid.
@@ -83,7 +84,7 @@ window.Editor = (function () {
 
     rootEl.classList.add("chrx-editor");
     rootEl.classList.toggle("chrx-editor--focus", window.APP.editor.viewMode === "focus");
-    rootEl.classList.toggle("chrx-readonly", perspective === "student");
+    rootEl.classList.toggle("chrx-readonly", perspective === "student" || perspective === "supervision");
     // Semantic zoom: the zoom level changes WHAT a cell shows, not just how big
     // it is. A denser grid is only useful if it still answers the question you
     // zoomed out to ask, so each step drops detail deliberately:
@@ -143,6 +144,9 @@ window.Editor = (function () {
   function buildCardLookup(S, perspective, visiblePeriodSet) {
     if (perspective === "student") {
       return buildStudentCardLookup(S, visiblePeriodSet, dayCount(S));
+    }
+    if (perspective === "supervision") {
+      return buildSupervisionLookup(S, visiblePeriodSet, dayCount(S));
     }
     const lookup = Object.create(null);
     for (const c of (S.cards || [])) {
@@ -254,6 +258,9 @@ window.Editor = (function () {
     if (perspective === "student") {
       return studentRowsFor(S);
     }
+    if (perspective === "supervision") {
+      return supervisionRowsFor(S);
+    }
     // default = class
     return S.classes.map(c => ({ key: c.id, label: c.name, sub: "" }));
   }
@@ -263,7 +270,9 @@ window.Editor = (function () {
     const headerHtml = headerRowHtml(periods, mobileDay, numDays);
     const dayTabsHtml = dayTabsHtml_(mobileDay, numDays);
 
-    const bodyHtml = rows.map(row => rowHtml(S, row, periods, mobileDay, cardLookup, numDays)).join("");
+    const bodyHtml = rows.length
+      ? rows.map(row => rowHtml(S, row, periods, mobileDay, cardLookup, numDays)).join("")
+      : emptyRowsHtml();
 
     // The in-grid tools row was removed — it duplicated the step-6 header
     // buttons (perspective/color/density, wired in main.js) and cost the
@@ -286,6 +295,19 @@ window.Editor = (function () {
         </div>
       </div>
     `;
+  }
+
+  /* The supervision plan can legitimately be empty — the bundled demo ships no
+     supervision rows at all — so say so, and offer the one next step that
+     exists, rather than showing an empty grid. */
+  function emptyRowsHtml() {
+    if ((window.APP.editor.perspective || "class") !== "supervision") return "";
+    return `
+      <div class="chrx-sup-empty" role="row" style="grid-column:1/-1;padding:30px 20px;text-align:center;color:var(--chrx-fg-tertiary,#64748b);font:400 13px/1.5 var(--chrx-font-sans);">
+        <p style="margin:0 0 8px;font-weight:700;font-size:15px;color:var(--chrx-fg,#0f172a);">No supervision slots yet</p>
+        <p style="margin:0 0 14px;">Nothing is being supervised. Add who is on duty in which hall, day and period.</p>
+        <button type="button" data-editor-tool="open-supervisions" style="border:1px solid var(--chrx-line,#e2e8f0);background:var(--chrx-bg-tile,#fff);border-radius:8px;padding:8px 14px;font:600 12px var(--chrx-font-sans);cursor:pointer;">Add supervision slots…</button>
+      </div>`;
   }
 
   function overviewTitle() {
@@ -370,8 +392,11 @@ window.Editor = (function () {
 
     const hintText = perspective === "student"
       ? "Student timetable is read-only. Drag is disabled."
-      : "Drag a lesson to another period. Conflicts show in the inspector.";
-    const hintClass = perspective === "student" ? "chrx-student-hint" : "";
+      : perspective === "supervision"
+        ? "Who is on duty where: read-only plan. \u26a0 marks a supervisor who is teaching, or booked in two areas, at that time."
+        : "Drag a lesson to another period. Conflicts show in the inspector.";
+    const hintClass = perspective === "student" ? "chrx-student-hint"
+      : perspective === "supervision" ? "chrx-sup-hint" : "";
 
     return `
       <button type="button" class="chrx-skip-link chrx-sr-only" data-skip-to-grid style="position:absolute;z-index:100;padding:6px 12px;background:var(--chrx-accent,#5b6cff);color:#fff;border-radius:6px;font:600 12px var(--chrx-font-sans);border:0;cursor:pointer;">Skip to timetable</button>
@@ -389,7 +414,7 @@ window.Editor = (function () {
       ${dayTabsHtml}
       <div class="chrx-focus-workspace">
         ${classRailHtml}
-        <div class="chrx-focus-board${perspective === "student" ? " chrx-readonly" : ""}" role="grid" aria-label="${esc(focusRow.label)} weekly timetable"
+        <div class="chrx-focus-board${perspective === "student" || perspective === "supervision" ? " chrx-readonly" : ""}" role="grid" aria-label="${esc(focusRow.label)} weekly timetable"
              style="--chrx-days:${isMobile ? 1 : numDays}">
           ${focusBoardInnerHtml(S, focusRow, periods, cardLookup, mobileDay, isMobile)}
         </div>
@@ -415,11 +440,13 @@ window.Editor = (function () {
         const cards = bucket ? bucket[day + "_" + period.index] : null;
         const outOfBell = period.synthetic || (bellPeriodSet && !bellPeriodSet.has(period.index | 0));
         const classes = ["chrx-slot", "chrx-focus-slot"];
-        if (!cards || !cards.length) classes.push("empty");
+        const supGap = perspective === "supervision" && (!cards || !cards.length);
+        if (supGap) classes.push(focusRow.needsSupervision ? "chrx-sup-gap chrx-sup-gap--required" : "chrx-sup-gap");
+        else if (!cards || !cards.length) classes.push("empty");
         if (outOfBell) classes.push("out-of-bell");
         if (cards && cards.length > 1) classes.push(cards.length === 2 ? "chrx-slot--split2" : "chrx-slot--split");
         const contents = cards ? cards.map(card => vkartaHtml(S, card, day, period.index, focusRow.key, 1)).join("") : "";
-        const label = outOfBell ? ' aria-hidden="true"' : ` aria-label="${cards && cards.length ? "Scheduled" : "Empty"}, ${esc(DAY_LABELS_EN[day])} ${esc(period.label || ("period " + period.index))}"`;
+        const label = outOfBell ? ' aria-hidden="true"' : ` aria-label="${cards && cards.length ? "Scheduled" : (supGap ? "No supervisor" : "Empty")}, ${esc(DAY_LABELS_EN[day])} ${esc(period.label || ("period " + period.index))}"`;
         const slotTabindex = outOfBell ? "" : (!cards || !cards.length ? ' tabindex="-1"' : "");
         cells.push(`<div class="${classes.join(" ")}" role="gridcell" data-day="${day}" data-period="${period.index}" data-row="${esc(focusRow.key)}"${slotTabindex}${label}>${contents}</div>`);
       }
@@ -435,13 +462,29 @@ window.Editor = (function () {
     const placed   = (S.cards || []).length;
     const days     = dayCount(S);
     const periodCount = (displayPeriods(S) || []).length;
-    const els = [
+    // Supervision counts its own plan, not the lesson grid: areas, duties,
+    // duty clashes and rooms that are flagged as needing supervision but have
+    // no slot at all. "placed/unplaced lessons" is meaningless here.
+    let els;
+    if (perspective === "supervision") {
+      const sup = supervisionSummary(S);
+      els = [
+        stat(rows.length, (PERSPECTIVE_PLURAL[perspective] || "areas")),
+        stat(days, "days"),
+        stat(periodCount, "periods"),
+        stat(sup.duties, "duties"),
+        stat(sup.conflicts, sup.conflicts === 1 ? "conflict" : "conflicts", sup.conflicts > 0),
+        stat(sup.unassigned, "unassigned", sup.unassigned > 0)
+      ];
+    } else {
+      els = [
         stat(rows.length, PERSPECTIVE_PLURAL[perspective] || "rows"),
         stat(days, "days"),
         stat(periodCount, "periods"),
         stat(placed, "placed"),
         stat(unplaced, "unplaced", unplaced > 0)
       ];
+    }
     host.innerHTML = els.map((e, i) => (i > 0 ? '<div class="chrx-ob-divider"></div>' : "") + e).join("");
     function stat(v, label, warn) {
       return `<div class="chrx-ob-stat${warn ? " chrx-ob-stat--warn" : ""}"><b>${esc(String(v))}</b><span>${esc(label)}</span></div>`;
@@ -573,9 +616,9 @@ window.Editor = (function () {
     })();
   }
 
-  const PERSPECTIVES = ["class", "teacher", "room", "subject", "student"];
-  const PERSPECTIVE_LABEL = { class: "By Class", teacher: "By Teacher", room: "By Room", subject: "By Subject", student: "By Student" };
-  const PERSPECTIVE_PLURAL = { class: "classes", teacher: "teachers", room: "rooms", subject: "subjects", student: "students" };
+  const PERSPECTIVES = ["class", "teacher", "room", "subject", "student", "supervision"];
+  const PERSPECTIVE_LABEL = { class: "By Class", teacher: "By Teacher", room: "By Room", subject: "By Subject", student: "By Student", supervision: "By Supervision" };
+  const PERSPECTIVE_PLURAL = { class: "classes", teacher: "teachers", room: "rooms", subject: "subjects", student: "students", supervision: "areas" };
   const COLOR_AXES = ["subject", "teacher", "class", "room"];
   const COLOR_LABEL = { subject: "Color: Subject", teacher: "Color: Teacher", class: "Color: Class", room: "Color: Room" };
 
@@ -665,6 +708,13 @@ window.Editor = (function () {
   // out-of-bell rendering can never drift between the two paths.
   function dayBodyHtml(S, row, periods, d, rowBucket, bellPeriodSet) {
     const slots = [];
+    // Supervision is a duty plan, not a lesson grid: a cell with no chip is a
+    // gap (nobody on duty). Gaps get `chrx-sup-gap` instead of `empty` so the
+    // empty-cell right-click "place lesson here" picker and the drop-on-empty
+    // path stay out of a read-only view; `--required` marks a classroom whose
+    // own record is flagged needsSupervision.
+    const supPersp = (window.APP && window.APP.editor && window.APP.editor.perspective) === "supervision";
+    const gapClass = "chrx-sup-gap" + (row.needsSupervision ? " chrx-sup-gap--required" : "");
     for (let pi = 0; pi < periods.length; pi++) {
       const p = periods[pi];
       const cards = rowBucket ? rowBucket[d + "_" + p.index] : null;
@@ -704,8 +754,9 @@ window.Editor = (function () {
         if (isLab) pi++; // the block covers the next period too — skip it
       } else {
         const oob = outOfBell ? " out-of-bell" : "";
+        const emptyCls = supPersp ? gapClass : "empty";
         slots.push(
-          `<div class="chrx-slot empty${oob}" role="gridcell" data-day="${d}" data-period="${p.index}" data-row="${esc(row.key)}"${outOfBell ? ' aria-hidden="true"' : ` aria-label="Empty, ${esc((DAY_LABELS_EN[d]||("Day "+(d+1))))} period ${p.index}"`}></div>`
+          `<div class="chrx-slot ${emptyCls}${oob}" role="gridcell" data-day="${d}" data-period="${p.index}" data-row="${esc(row.key)}"${outOfBell ? ' aria-hidden="true"' : ` aria-label="${supPersp ? "No supervisor" : "Empty"}, ${esc((DAY_LABELS_EN[d]||("Day "+(d+1))))} period ${p.index}"`}></div>`
         );
       }
     }
@@ -1055,6 +1106,16 @@ window.Editor = (function () {
   }
 
   function vkartaHtml(S, card, day, period, rowKey, blockLen) {
+    // Supervision chips are not timetable cards (Lane W3b-5): they report who
+    // is on duty and which duty clashes.  They deliberately render without the
+    // `.chrx-vkarta` class, so pickup, drag, double-click, context-menu and the
+    // card keyboard path cannot touch them — the view is read-only by
+    // construction, with the edit path left to the Supervisions entity dialog.
+    if (card && card.supervision) {
+      // Overview cells are ~30px wide: same reason the lesson grid shows subject
+      // codes there.
+      return supervisionChipHtml(card, S, { compact: window.APP.editor.viewMode !== "focus" });
+    }
     const lesson = S._idx.lessonById[card.lessonId];
     const subject = lesson ? S._idx.subjectById[lesson.subjectId] : null;
     const subjShort = subject ? (subject.abbr || subject.name) : "?";
@@ -1565,6 +1626,10 @@ window.Editor = (function () {
       const cur = currentZoom();
       setZoom(ZOOM_LEVELS[(ZOOM_LEVELS.indexOf(cur) + 1) % ZOOM_LEVELS.length]);
       syncExternalButton("editor-density", ZOOM_LABELS[currentZoom()]);
+    } else if (kind === "open-supervisions") {
+      // The Supervision perspective's empty state opens the existing entity
+      // dialog — the grid itself stays read-only.
+      window.dispatchEvent(new CustomEvent("app:open-entity", { detail: { kind: "supervisions" } }));
     }
     if (host) render(host);
     const pend = document.querySelector(".chrx-pending-strip");
