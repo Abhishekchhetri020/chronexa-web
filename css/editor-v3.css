@@ -1632,3 +1632,13 @@ body.chrx-card-in-hand .chrx-shell .chrx-slot.chrx-avail-forbidden.empty {
 .chrx-shell .chrx-slot[data-timeoff="conditional"] {
   background-image: repeating-linear-gradient(45deg, transparent 0 5px, var(--chrx-amber-bg) 5px 7px);
 }
+
+/* Compact is the "whole school on one screen" density (20+ classes at
+   1470×727). Its overview bar was still the 60px two-line card, which cost
+   two class rows; in Compact it becomes one 34px line. */
+.chrx-shell .chrx-editor--zoom-far .chrx-overview-bar { padding: 3px 6px 3px 12px; gap: 12px; border-radius: 10px; }
+.chrx-shell .chrx-editor--zoom-far .chrx-overview-bar .chrx-ob-lockup { flex-direction: row; align-items: baseline; gap: 8px; }
+.chrx-shell .chrx-editor--zoom-far .chrx-overview-bar .chrx-ob-title { font-size: 13px; }
+.chrx-shell .chrx-editor--zoom-far .chrx-overview-bar button { height: 26px; padding: 0 10px; font-size: 12px; }
+.chrx-shell .chrx-editor--zoom-far .chrx-ob-stat b { font-size: 13px; }
+.chrx-shell .chrx-editor--zoom-far .chrx-ob-stat { padding: 0 8px; }
