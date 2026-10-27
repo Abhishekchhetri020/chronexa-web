@@ -539,7 +539,26 @@ export function checkPlacement(school, lessonId, day, period, roomId) {
   const rid = roomId || lesson.preferredRoomId;
   const room = rid ? idx.classroomById[rid] : null;
   const span = lesson.lessonLength || (lesson.isLabDouble ? 2 : 1);
-  const _periodsToCheck = Array.from({ length: span }, (_, offset) => period + offset);
+  // A double is stored as one card PER PERIOD (aSc XML and solver output
+  // alike). When the card being checked already sits here and its partner
+  // card is next to it, it covers only its own period — spanning it again
+  // reported "no period 9" for every second half and counted real clashes twice.
+  let _byLessonDay = null;
+  const sameDayPeriods = (lid, d) => {
+    if (!_byLessonDay) {
+      _byLessonDay = new Map();
+      for (const c of school.cards || []) {
+        const k = c.lessonId + "|" + c.day;
+        if (!_byLessonDay.has(k)) _byLessonDay.set(k, new Set());
+        _byLessonDay.get(k).add(c.period);
+      }
+    }
+    return _byLessonDay.get(lid + "|" + d) || new Set();
+  };
+  const mine = span > 1 ? sameDayPeriods(lessonId, day) : null;
+  const storedHalf = mine && mine.has(period) && (mine.has(period + 1) || mine.has(period - 1));
+  const _periodsToCheck = storedHalf ? [period]
+    : Array.from({ length: span }, (_, offset) => period + offset);
 
   // 1. Fixed-day / fixed-period mismatch (hard).
   if (lesson.fixedDay != null && lesson.fixedDay !== day) {
@@ -575,6 +594,10 @@ function _cardOccupies(idx, card, period) {
   if (card.period === period) return true;
   const other = idx && idx.lessonById && idx.lessonById[card.lessonId];
   const span = other?.lessonLength || (other?.isLabDouble ? 2 : 1);
+  if (span < 2) return false;
+  // Per-period storage: the partner card speaks for its own period.
+  const partner = sameDayPeriods(card.lessonId, card.day);
+  if (partner.has(card.period + 1) || partner.has(card.period - 1)) return false;
   if (period >= card.period && period < card.period + span) return true;
   return false;
 }
