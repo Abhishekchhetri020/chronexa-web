@@ -1694,3 +1694,20 @@ html[data-skin="classic"] .chrx-shell .chrx-editor:not(.chrx-editor--focus) .chr
   .chrx-shell:not(.is-side-hidden) #editor-quick-tools .chrx-tool__label { display: none; }
   .chrx-shell:not(.is-side-hidden) #editor-quick-tools button { padding: 0 8px !important; }
 }
+
+/* ── Edge-to-edge editor (fullscreen) ────────────────────────────────────
+   Measured at 1470×900: two nested <main> paddings left 20px empty on each
+   side and a 26px strip under the topbar, the board sat in a bordered,
+   rounded, shadowed box, and its last row ran under the collapsed tray.
+   aSc's grid runs to the window edge; so does this one now, with a 3px rim
+   so the first and last columns stay easy to hit. */
+/* Bottom: the collapsed tray handle (32px, an overlay — curtain.js) gets its
+   own band, so no view's last row sits under it. */
+.chrx-shell.is-fullscreen #chrx-main { padding: 3px 3px 34px !important; }
+.chrx-shell.is-fullscreen #chrx-main > main { padding: 0 !important; max-width: none; }
+.chrx-shell.is-fullscreen .chrx-overview-bar { top: 0; margin: 0; border-radius: 6px; }
+.chrx-shell.is-fullscreen .chrx-editor:not(.chrx-editor--focus) { gap: 3px; }
+.chrx-shell.is-fullscreen .chrx-grid-scroll { border: 0; border-radius: 0; box-shadow: none; margin: 0; }
+/* The page error slot is a 10px band even when empty; in the editor it only
+   takes space when it actually carries a message. */
+.chrx-shell.is-fullscreen #error-slot:not(:has(*)) { display: none; }
