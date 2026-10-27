@@ -778,3 +778,14 @@
 .chrx-spec__askList { margin: 0 0 10px 18px; padding: 0; font-size: 12.5px; }
 .chrx-spec__askBtns { display: flex; flex-wrap: wrap; gap: 6px; }
 .chrx-spec [hidden] { display: none !important; }
+
+/* ---------- Relaxed conditions (relaxed_dialog.js) ---------- */
+.chrx-relaxed__body { max-height: 55vh; overflow-y: auto; }
+.chrx-relaxed__h { margin: 12px 0 4px; font-size: 13px; font-weight: 700; }
+.chrx-relaxed__h.is-strict, .chrx-relaxed__h.is-high { color: var(--chrx-red, #b42318); }
+.chrx-relaxed__h.is-normal { color: var(--chrx-amber, #92400e); }
+.chrx-relaxed__h.is-low { color: var(--chrx-fg-secondary, rgba(0,0,0,0.6)); }
+.chrx-relaxed__list { margin: 0 0 0 18px; padding: 0; font-size: 12.5px; }
+.chrx-relaxed__list li { padding: 2px 0; }
+.chrx-relaxed__ok { color: var(--chrx-green, #1a7f37); font-weight: 600; }
+#csu-result-relaxed[hidden] { display: none !important; }

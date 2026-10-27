@@ -69,9 +69,13 @@ import "./progress_modal.js";  // provides SolverUI.expectedCardCount
 
     const apply = el("button", { type: "button", class: "chrx-btn chrx-btn--primary", onclick: doApply, id: "csu-result-apply" }, "Keep this timetable");
     const view  = el("button", { type: "button", class: "chrx-btn", onclick: doView },  "See issues");
+    // aSc "Show me the relaxed conditions": what this candidate breaks, by importance.
+    const relaxedBtn = el("button", { type: "button", class: "chrx-btn", id: "csu-result-relaxed", hidden: "",
+      onclick: () => global.SolverUI.Relaxed && global.SolverUI.Relaxed.open({
+        school: state.school, cards: assignmentToCards(state.result && state.result.assignment) }) }, "Relaxed conditions");
     const disc  = el("button", { type: "button", class: "chrx-btn chrx-btn--danger", onclick: doDiscard, id: "csu-result-discard" }, "Discard");
     const close = el("button", { type: "button", class: "chrx-btn", id: "csu-result-close", onclick: doClose }, "Close");
-    const actions = el("div", { class: "csu-dialog__actions" }, disc, view, close, apply);
+    const actions = el("div", { class: "csu-dialog__actions" }, disc, view, relaxedBtn, close, apply);
 
     // Phase 4 / Phase 5: diagnostics + weight suggestions container.
     // Populated by renderDiagnostics() only when the solver emitted data.
@@ -81,7 +85,7 @@ import "./progress_modal.js";  // provides SolverUI.expectedCardCount
     host.appendChild(dlg);
     document.body.appendChild(host);
 
-    refs = { title, status, placed, unplaced, relax, soft, grid, diagSection, apply, view, disc, close };
+    refs = { title, status, placed, unplaced, relax, soft, grid, diagSection, apply, view, disc, close, relaxedBtn };
   }
 
   function renderHero(result, totalLessons) {
@@ -259,6 +263,16 @@ import "./progress_modal.js";  // provides SolverUI.expectedCardCount
         refs.diagSection.lastChild.appendChild(tip);
       }
     }
+  }
+
+  function renderRelaxedButton() {
+    const R = global.SolverUI && global.SolverUI.Relaxed;
+    const a = state.result && state.result.assignment;
+    let n = 0;
+    try { if (R && state.school && Array.isArray(a)) n = R.report(state.school, assignmentToCards(a)).total; }
+    catch (e) { console.warn("[relaxed report]", e); }
+    refs.relaxedBtn.hidden = !n;
+    refs.relaxedBtn.textContent = `Relaxed conditions (${n})`;
   }
 
   function assignmentToCards(assignment) {
@@ -481,6 +495,7 @@ import "./progress_modal.js";  // provides SolverUI.expectedCardCount
     renderHero(state.result, totalLessons);
     renderPerSlotGrid(state.result, state.school);
     renderDiagnostics(state.result);
+    renderRelaxedButton();
 
     // De-emphasize Apply when the run is destructive (TIMEOUT, hard conflicts,
     // or strictly fewer cards than the current school). The confirmation

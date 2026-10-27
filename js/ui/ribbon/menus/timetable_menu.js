@@ -21,6 +21,7 @@ import "../../components/verification.js";
         { icon: "☁︎", label: "Generate in cloud",         disabled: !has(), run: () => fire("app:generate-cloud") },
         { icon: "⏹", label: "Stop generation",            disabled: !has(), run: () => fire("app:generate-stop") },
         { icon: "✓",  label: "Verification",              disabled: !has(), run: () => fire("app:verify") },
+        { icon: "≈",  label: "Relaxed conditions…",       disabled: !has(), run: () => fire("app:relaxed-conditions") },
         { icon: "🔧", label: "Verification Pro (auto-fix)…", disabled: !has(), run: () => fire("app:verification-pro") },
         { icon: "💡", label: "Advisor — suggest improvements…", disabled: !has(), run: () => fire("app:advisor") },
         { icon: "🎚", label: "Solver parameters…",         disabled: !has(), run: () => fire("app:solver-params") },
