@@ -4,6 +4,7 @@ import "../components/verification.js";
 import "../solver_ui/backend_client.js";
 import "./activator.js";
 import "./grid_canvas.js";
+import { rowMatcher, removeUnlockedCards, clearClassrooms } from "./grid_actions.js";
 
 /**
  * Editor row right-click context menu.
@@ -59,6 +60,9 @@ import "./grid_canvas.js";
       { id: "delete", label: "Delete row",            icon: "🗑", danger: true, run: () => deleteRow(perspective, rowId, rowLabel) },
       { id: "lock",   label: "Lock row",              icon: "🔒", run: () => lockRow(perspective, rowId, true) },
       { id: "unlock", label: "Unlock row",            icon: "🔓", run: () => lockRow(perspective, rowId, false) },
+      { id: "unplace-unlocked", label: "Remove unlocked cards", icon: "⤓", run: () => rowBulk(perspective, rowId, "cards") },
+      { id: "clear-rooms", label: perspective === "room" ? "Empty the classroom" : "Remove only classrooms", icon: "🚪",
+        run: () => rowBulk(perspective, rowId, "rooms") },
       { sep: true },
       { id: "quick",  label: "Quick changes…",        icon: "⚡", run: () => doQuickChanges(perspective, rowId) },
     ];
@@ -143,6 +147,27 @@ import "./grid_canvas.js";
     // Open the relevant entity dialog so the user can edit fields fast.
     fireEntity(perspective);
   }
+  // aSc "Remove timetable — unlocked cards" / "remove only classrooms" / "Empty the classroom".
+  function rowBulk(perspective, rowId, what) {
+    const APP = window.APP;
+    if (!APP || !APP.school) return;
+    let n = 0;
+    APP.mutate(what === "cards" ? "Remove unlocked cards" : "Remove classrooms", (school) => {
+      const match = rowMatcher(school, perspective, rowId);
+      n = what === "cards" ? removeUnlockedCards(school, match) : clearClassrooms(school, match);
+    });
+    const host = document.querySelector(".chrx-editor");
+    if (host && window.Editor && typeof window.Editor.render === "function") window.Editor.render(host);
+    notify(what === "cards" ? `${n} unlocked card(s) moved to unplaced.` : `Classroom removed from ${n} card(s).`);
+  }
+  // Whole-timetable versions (Timetable menu). Locked cards always stay.
+  window.addEventListener("app:remove-unlocked", () => {
+    if (confirm("Move every unlocked card to unplaced? Locked cards stay. You can undo this.")) rowBulk(null, null, "cards");
+  });
+  window.addEventListener("app:clear-rooms", () => {
+    if (confirm("Remove the classroom from every unlocked card? You can undo this.")) rowBulk(null, null, "rooms");
+  });
+
   function lockRow(perspective, rowId, lock) {
     const APP = window.APP;
     if (!APP || !APP.school) return;

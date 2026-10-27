@@ -2,6 +2,7 @@
 import "../state.js";
 import "./grid_canvas.js";
 import "./card_in_hand.js";
+import { mergeSinglesToDouble } from "./grid_actions.js";
 
 /* Right-click context menu on placed cards (chrx-vkarta).
  *
@@ -37,6 +38,17 @@ import "./card_in_hand.js";
   }
 
   /* ─── Actions ─── */
+
+  // aSc "Merge 2 singles into double": this card + the same lesson's card in the next period.
+  function mergeDouble(lessonId, day, period) {
+    const A = window.APP;
+    if (!A || !A.school) return;
+    let res = null;
+    const run = (school) => { res = mergeSinglesToDouble(school, lessonId, day, period); };
+    if (typeof A.mutate === "function") A.mutate("Merge into double", run); else run(A.school);
+    if (res && !res.ok) { if (window.SolverUI && window.SolverUI._toast) window.SolverUI._toast(res.reason); return; }
+    rerender();
+  }
 
   function removeCard(lessonId, day, period) {
     const S = window.APP && window.APP.school;
@@ -238,6 +250,7 @@ import "./card_in_hand.js";
        ? { icon: "🔓", label: "Unlock",   run: () => unlockCard(lessonId, day, period) }
        : { icon: "🔒", label: "Lock",     run: () => lockCard(lessonId, day, period) },
       { icon: "🧹", label: "Delete row",   run: () => clearRowCards(lessonId, day, period, clickedRowKey) },
+      { icon: "⧉", label: "Merge with next period into a double", run: () => mergeDouble(lessonId, day, period) },
      { sep: true },
       { icon: "✎",  label: "Edit lesson", run: () => editLesson(lessonId) },
       { icon: "🔍", label: "Find",        run: () => findCard(lessonId) },
