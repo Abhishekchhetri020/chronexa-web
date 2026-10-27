@@ -4,7 +4,7 @@ import "../components/verification.js";
 import "../solver_ui/backend_client.js";
 import "./activator.js";
 import "./grid_canvas.js";
-import { rowMatcher, removeUnlockedCards, clearClassrooms } from "./grid_actions.js";
+import { rowMatcher, removeUnlockedCards, clearClassrooms, assignClassrooms } from "./grid_actions.js";
 
 /**
  * Editor row right-click context menu.
@@ -163,6 +163,18 @@ import { rowMatcher, removeUnlockedCards, clearClassrooms } from "./grid_actions
   // Whole-timetable versions (Timetable menu). Locked cards always stay.
   window.addEventListener("app:remove-unlocked", () => {
     if (confirm("Move every unlocked card to unplaced? Locked cards stay. You can undo this.")) rowBulk(null, null, "cards");
+  });
+  // aSc "Add or optimize classrooms": rooms only, no lesson moves.
+  window.addEventListener("app:assign-rooms", (e) => {
+    const APP = window.APP;
+    if (!APP || !APP.school) return;
+    const mode = (e.detail && e.detail.mode) || "add";
+    let r = null;
+    APP.mutate(mode === "add" ? "Add missing classrooms" : "Optimise classrooms", (school) => { r = assignClassrooms(school, { mode }); });
+    const host = document.querySelector(".chrx-editor");
+    if (host && window.Editor && typeof window.Editor.render === "function") window.Editor.render(host);
+    notify(`${r.assigned} card(s) have a classroom${mode === "optimize" ? `, ${r.changed} changed` : ""}` +
+      (r.failed.length ? `; ${r.failed.length} could not get a free allowed room.` : "."));
   });
   window.addEventListener("app:clear-rooms", () => {
     if (confirm("Remove the classroom from every unlocked card? You can undo this.")) rowBulk(null, null, "rooms");

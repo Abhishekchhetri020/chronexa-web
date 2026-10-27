@@ -89,3 +89,56 @@ export function mergeSinglesToDouble(school, lessonId, day, period) {
   school.cards.push({ lessonId: doubleId, day, period, classroomId: a.classroomId || b.classroomId || null });
   return { ok: true, lessonId: doubleId };
 }
+
+/** Rooms a lesson may use, in the solver's priority order (csp_solver.js expandLessons). */
+export function allowedRooms(lesson) {
+  if (Array.isArray(lesson.classroomIdsExpanded) && lesson.classroomIdsExpanded.length) return lesson.classroomIdsExpanded;
+  if (Array.isArray(lesson._lessonRoomIds) && lesson._lessonRoomIds.length) return lesson._lessonRoomIds;
+  return lesson.preferredRoomId ? [lesson.preferredRoomId] : [];
+}
+
+/**
+ * aSc "Add or optimize classrooms" without moving any lesson.
+ *   mode "add":      only cards that need a room and have none.
+ *   mode "optimize": also re-pick rooms of every unlocked card.
+ * Greedy: preferred room first, then the least-used free allowed room.
+ * Returns { assigned, changed, failed: [card] }.
+ */
+export function assignClassrooms(school, { mode = "add" } = {}) {
+  const byId = Object.fromEntries((school.lessons || []).map((l) => [l.id, l]));
+  const lessonOf = (c) => byId[c.lessonId] || byId[baseId(c.lessonId)];
+  const span = (c) => Math.max(1, (lessonOf(c) || {}).periodsPerCard | 0);
+  const busy = new Set();
+  const use = new Map();
+  const occupy = (room, c) => {
+    for (let k = 0; k < span(c); k++) busy.add(`${room}|${c.day}|${c.period + k}`);
+    use.set(room, (use.get(room) || 0) + 1);
+  };
+  const free = (room, c) => {
+    for (let k = 0; k < span(c); k++) if (busy.has(`${room}|${c.day}|${c.period + k}`)) return false;
+    return true;
+  };
+  const todo = [];
+  for (const c of school.cards || []) {
+    const l = lessonOf(c);
+    const rooms = l ? allowedRooms(l) : [];
+    const redo = mode === "optimize" && !c.locked && rooms.length;
+    if (c.classroomId && !redo) occupy(c.classroomId, c);
+    else if (rooms.length && (redo || !c.classroomId)) todo.push({ c, rooms, before: c.classroomId || null });
+  }
+  // Most constrained cards first, so a one-room lesson is not starved.
+  todo.sort((a, b) => a.rooms.length - b.rooms.length);
+  let assigned = 0, changed = 0;
+  const failed = [];
+  for (const { c, rooms, before } of todo) {
+    const pref = lessonOf(c).preferredRoomId;
+    const cand = rooms.filter((r) => free(r, c))
+      .sort((a, b) => (b === pref) - (a === pref) || (b === before) - (a === before) || (use.get(a) || 0) - (use.get(b) || 0));
+    if (!cand.length) { c.classroomId = null; failed.push(c); if (before) changed++; continue; }
+    c.classroomId = cand[0];
+    occupy(cand[0], c);
+    assigned++;
+    if (cand[0] !== before) changed++;
+  }
+  return { assigned, changed, failed };
+}

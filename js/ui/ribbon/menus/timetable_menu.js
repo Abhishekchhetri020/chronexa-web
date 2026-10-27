@@ -21,6 +21,8 @@ import "../../components/verification.js";
         { icon: "☁︎", label: "Generate in cloud",         disabled: !has(), run: () => fire("app:generate-cloud") },
         { icon: "⏹", label: "Stop generation",            disabled: !has(), run: () => fire("app:generate-stop") },
         { icon: "⤓", label: "Remove unlocked cards",       disabled: !has(), run: () => fire("app:remove-unlocked") },
+        { icon: "🏫", label: "Add missing classrooms",      disabled: !has(), run: () => fire("app:assign-rooms", { mode: "add" }) },
+        { icon: "🏫", label: "Optimise classrooms (lessons stay put)", disabled: !has(), run: () => fire("app:assign-rooms", { mode: "optimize" }) },
         { icon: "🚪", label: "Remove all classrooms",       disabled: !has(), run: () => fire("app:clear-rooms") },
         { icon: "✓",  label: "Verification",              disabled: !has(), run: () => fire("app:verify") },
         { icon: "≈",  label: "Relaxed conditions…",       disabled: !has(), run: () => fire("app:relaxed-conditions") },

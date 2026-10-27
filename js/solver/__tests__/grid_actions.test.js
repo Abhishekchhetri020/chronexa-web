@@ -61,3 +61,48 @@ describe("grid actions", () => {
     expect(mergeSinglesToDouble(s, "L1", 0, 1).reason).toMatch(/Unlock/);
   });
 });
+
+import { assignClassrooms } from "../../ui/editor/grid_actions.js";
+
+describe("assign classrooms without moving lessons", () => {
+  const sch = () => ({
+    lessons: [
+      { id: "A", periodsPerCard: 1, _lessonRoomIds: ["lab"] },
+      { id: "B", periodsPerCard: 1, _lessonRoomIds: ["lab", "r2"], preferredRoomId: "lab" },
+      { id: "C", periodsPerCard: 2, _lessonRoomIds: ["r2"] },
+      { id: "N", periodsPerCard: 1 },
+    ],
+    cards: [
+      { lessonId: "A", day: 0, period: 0 },
+      { lessonId: "B", day: 0, period: 0 },
+      { lessonId: "C", day: 1, period: 0, classroomId: "r2", locked: true },
+      { lessonId: "B", day: 1, period: 1 },
+      { lessonId: "N", day: 2, period: 0 },
+    ],
+  });
+
+  it("add: one-room lessons first, no double booking, roomless lessons untouched", () => {
+    const s = sch();
+    const r = assignClassrooms(s, { mode: "add" });
+    expect(s.cards.map((c) => c.classroomId || null)).toEqual(["lab", "r2", "r2", "lab", null]);
+    expect(r).toMatchObject({ assigned: 3, failed: [] });
+  });
+
+  it("a locked double keeps its room and blocks both periods", () => {
+    const s = sch();
+    s.cards[3] = { lessonId: "B", day: 1, period: 1 };
+    s.lessons[1]._lessonRoomIds = ["r2"]; s.lessons[1].preferredRoomId = undefined;
+    const r = assignClassrooms(s, { mode: "add" });
+    expect(s.cards[3].classroomId).toBe(null);
+    expect(r.failed).toEqual([s.cards[3]]);
+  });
+
+  it("optimize re-picks unlocked rooms but never a locked card", () => {
+    const s = sch();
+    s.cards[0].classroomId = "x"; // not allowed — gets fixed
+    const r = assignClassrooms(s, { mode: "optimize" });
+    expect(s.cards[0].classroomId).toBe("lab");
+    expect(s.cards[2].classroomId).toBe("r2");
+    expect(r.changed).toBeGreaterThan(0);
+  });
+});
