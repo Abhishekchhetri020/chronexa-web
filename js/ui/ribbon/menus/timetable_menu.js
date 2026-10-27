@@ -15,6 +15,7 @@ import "../../components/verification.js";
       return [
         { icon: "🚀", label: "Master Solve (one-click)…",disabled: !has(), run: () => fire("app:master-solve") },
         { icon: "🧪", label: "Test",                     disabled: !has(), run: () => fire("app:test") },
+        { icon: "🔎", label: "Check the file (each class & teacher alone)…", disabled: !has(), run: () => fire("app:spec-check") },
         { icon: "⚡", label: "Generate",                  disabled: !has(), run: () => fire("app:generate") },
         { icon: "✨", label: "Improve current schedule",  disabled: !has(), run: () => fire("app:improve") },
         { icon: "☁︎", label: "Generate in cloud",         disabled: !has(), run: () => fire("app:generate-cloud") },

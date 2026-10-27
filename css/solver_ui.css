@@ -746,3 +746,35 @@
   .csu-dialog .chrx-preset-grid { grid-template-columns: 1fr 1fr; }
   .csu-dialog__foot { text-align: left; }
 }
+
+/* ---------- Check the file (spec_check_dialog.js) ---------- */
+.chrx-spec__dlg { width: min(620px, 100%); }
+.chrx-spec__stages { display: flex; gap: 8px; margin-bottom: 10px; }
+.chrx-spec__stage {
+  flex: 1 1 0; display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 8px; border-radius: 8px; background: var(--chrx-bg-tile, #f2f2f2);
+  color: var(--chrx-fg-secondary, rgba(0,0,0,0.6)); font-weight: 600;
+}
+.chrx-spec__stage.is-passed { color: var(--chrx-green, #1a7f37); background: var(--chrx-green-bg, #e6f4ea); }
+.chrx-spec__stage.is-failed { color: var(--chrx-red, #b42318); background: var(--chrx-red-bg, #fde2e2); }
+.chrx-spec__stage.is-running { color: var(--chrx-accent, #0f766e); }
+.chrx-spec__bar { height: 6px; border-radius: 3px; background: var(--chrx-bg-tile, #eee); overflow: hidden; }
+.chrx-spec__fill { height: 100%; width: 0; background: var(--chrx-accent, #0f766e); transition: width 200ms ease; }
+.chrx-spec__now { margin: 8px 0; min-height: 18px; color: var(--chrx-fg-secondary, rgba(0,0,0,0.6)); }
+.chrx-spec__log {
+  list-style: none; margin: 0; padding: 6px; max-height: 220px; overflow-y: auto;
+  border: 1px solid var(--chrx-border, rgba(0,0,0,0.1)); border-radius: 8px; font-size: 12.5px;
+}
+.chrx-spec__log li { display: flex; gap: 6px; padding: 2px 0; }
+.chrx-spec__log li.is-failed { color: var(--chrx-red, #b42318); }
+.chrx-spec__log li.is-relaxed, .chrx-spec__log li.is-skipped { color: var(--chrx-amber, #92400e); }
+.chrx-spec__ic { width: 14px; flex: 0 0 auto; text-align: center; }
+.chrx-spec__ask {
+  margin: 8px 0 12px; padding: 12px; border-radius: 10px;
+  background: var(--chrx-red-bg, #fde2e2); color: var(--chrx-fg, #111);
+}
+.chrx-spec__ask[hidden] { display: none; }
+.chrx-spec__askHead { font-weight: 600; margin-bottom: 6px; }
+.chrx-spec__askList { margin: 0 0 10px 18px; padding: 0; font-size: 12.5px; }
+.chrx-spec__askBtns { display: flex; flex-wrap: wrap; gap: 6px; }
+.chrx-spec [hidden] { display: none !important; }

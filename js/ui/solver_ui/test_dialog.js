@@ -57,6 +57,10 @@ import "./progress_modal.js";  // provides SolverUI.expectedCardCount
       el("p", { class: "csu-dialog__sub" }, "Hard conflicts and soft penalties will be listed in the verification panel."),
       el("div", { class: "csu-dialog__actions" },
         el("button", { type: "button", class: "chrx-btn", onclick: cancel }, "Cancel"),
+        el("button", { type: "button", class: "chrx-btn", id: "csu-test-spec",
+          title: "Solve every class, teacher and room on its own to find what makes the file unsolvable",
+          onclick: () => { closeConfirm(); confirmState = null; global.SolverUI.SpecCheck && global.SolverUI.SpecCheck.open(); } },
+          "Check the file instead"),
         el("button", { type: "button", class: "chrx-btn chrx-btn--primary", id: "csu-test-go", onclick: go }, "Run test"),
       ),
     );

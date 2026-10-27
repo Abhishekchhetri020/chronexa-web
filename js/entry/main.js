@@ -104,6 +104,7 @@ import "../ui/solver_ui/progress_modal.js";
 import "../ui/solver_ui/result_panel.js";
 import "../ui/solver_ui/verification_panel.js";
 import "../ui/solver_ui/test_dialog.js";
+import "../ui/solver_ui/spec_check_dialog.js";
 import "../ui/wizard/create_new.js";
 import "../ui/wizard/wizard_walkthrough.js";
 import "../ui/editor/activator.js";
