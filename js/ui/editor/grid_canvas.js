@@ -135,6 +135,7 @@ window.Editor = (function () {
     }
     initRovingTabindex(rootEl);
     syncSelectionUi(rootEl);
+    if (window.TimeOffMarks) window.TimeOffMarks.markTimeOff(rootEl, S, perspective);
   }
 
   /* Hook for dated substitution overrides (Lane W2-4). */

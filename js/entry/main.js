@@ -114,6 +114,7 @@ import "../ui/pwa_install.js";
 import "../ui/editor/student_view.js";
 import "../ui/editor/supervision_view.js";
 import "../ui/editor/grid_canvas.js";
+import "../ui/editor/timeoff_marks.js";
 import "../ui/editor/canvas_geometry.js";
 import "../ui/editor/pending_strip.js";
 import "../ui/editor/placement_validator.js";

@@ -1620,3 +1620,15 @@ body.chrx-card-in-hand .chrx-shell .chrx-slot.chrx-avail-forbidden.empty {
 .chrx-availability-legend .chrx-avail-dot.is-hard {
   background: var(--chrx-red, #9c4322);
 }
+
+/* Time-off in the grid (timeoff_marks.js): aSc's × on unavailable periods,
+   a light hatch on conditional ones. Cards sit on top, so only free cells show it. */
+.chrx-shell .chrx-slot[data-timeoff="off"] {
+  background-color: var(--chrx-bg-tile);
+  background-image:
+    linear-gradient(to top right, transparent calc(50% - 0.6px), var(--chrx-fg-faint) calc(50% - 0.6px), var(--chrx-fg-faint) calc(50% + 0.6px), transparent calc(50% + 0.6px)),
+    linear-gradient(to bottom right, transparent calc(50% - 0.6px), var(--chrx-fg-faint) calc(50% - 0.6px), var(--chrx-fg-faint) calc(50% + 0.6px), transparent calc(50% + 0.6px));
+}
+.chrx-shell .chrx-slot[data-timeoff="conditional"] {
+  background-image: repeating-linear-gradient(45deg, transparent 0 5px, var(--chrx-amber-bg) 5px 7px);
+}
