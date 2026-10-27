@@ -1563,6 +1563,8 @@ window.Editor = (function () {
   const FIT_COMFORT_PX = 10; // prefer a shorter rung over type smaller than this
   const FIT_MIN_CHARS = 3;   // the code floor: 3 characters identify a subject
   const FIT_STEP_PX = 0.5;
+  const WRAP_LINE_H = 1.05; // line-height of a wrapped name (css [data-fit="wrap"])
+  const WRAP_MIN_PX = 8;    // a whole word at 8px beats a 3-letter code (aSc prints ~8-9px)
 
   function autoFitSubjectCodes(rootEl, scopeEl) {
     if (!rootEl || (window.APP.editor.perspective || "class") !== "class") return;
@@ -1599,16 +1601,43 @@ window.Editor = (function () {
         el, subject,
         avail: Math.max(10, el.clientWidth || slotW),
         size: parseFloat(getComputedStyle(el).fontSize) || fontPx,
+        // Stacked split cells are half height: they keep the 1-line code.
+        cardH: card && !card.closest(".chrx-slot--split2") ? card.clientHeight - 2 : 0,
       });
     }
+    // aSc prints the school's own short name ("Hindi Gram", "Sleeping Time")
+    // over up to two lines instead of a derived 4-letter code. Largest size at
+    // which `text` word-wraps into the box, or null (a word wider than the box,
+    // more than two lines, or taller than the card).
+    const wrapSize = (text, avail, h, size) => {
+      const words = text.split(" ");
+      for (let s = size; s >= WRAP_MIN_PX; s -= FIT_STEP_PX) {
+        let lines = 1, cur = "", ok = true;
+        for (const w of words) {
+          if (wOf(w, s) > avail) { ok = false; break; }
+          const t = cur ? cur + " " + w : w;
+          if (wOf(t, s) <= avail) cur = t; else { lines++; cur = w; }
+        }
+        if (ok && lines <= 2 && lines * s * WRAP_LINE_H <= h) return s;
+      }
+      return null;
+    };
     const cache = new Map();
-    for (const { el, subject, avail, size } of targets) {
+    for (const { el, subject, avail, size, cardH } of targets) {
       // Reset whatever a previous pass (or a post-drag re-fit of this row) left
       // behind, so the pass is idempotent and always re-measures the natural code.
       el.style.fontSize = "";
       el.style.textOverflow = "";
       delete el.dataset.fit;
       if (!subject) continue;
+      const own = String(subject.abbr || subject.name || "").replace(/\s+/g, " ").trim();
+      const ws = own && cardH ? wrapSize(own, avail, cardH, size) : null;
+      if (ws) {
+        if (el.textContent !== own) el.textContent = own;
+        el.dataset.fit = "wrap";
+        if (ws < size) el.style.fontSize = ws + "px";
+        continue;
+      }
       const preferred = subjectCode(subject);
       if (el.textContent !== preferred) el.textContent = preferred;
       let ladder = cache.get(subject.id);
@@ -1713,6 +1742,7 @@ window.Editor = (function () {
     })();
 
     const hue = cardHue(S, card, lesson, subject);
+    const solid = cardSolid(S, card, lesson, subject, hue);
     // In Color:Teacher mode a lesson with N teachers (Sci Lab = 3 teachers,
     // Activity = 6+) renders as N diagonal stripes, one band per teacher's
     // colour (aSc-style). Single-teacher cards stay a flat colour.
@@ -1798,7 +1828,7 @@ window.Editor = (function () {
            data-classroom-id="${esc(card.classroomId || "")}"
            role="button" tabindex="0" aria-label="${esc(ariaLabel)}"
            aria-roledescription="timetable card"
-           style="--chrx-card-hue:${hue}${bgStyle}">
+           style="--chrx-card-hue:${hue};--chrx-card-solid:${solid.bg};--chrx-card-ink:${solid.ink}${bgStyle}">
         ${line1 ? `<div class="chrx-vk-line1">${esc(line1)}</div>` : ""}
         ${line2 ? `<div class="chrx-vk-line2">${esc(line2)}</div>` : ""}
       </div>
@@ -2967,6 +2997,32 @@ window.Editor = (function () {
     h *= 60; if (h < 0) h += 360;
     return Math.round(h);
   }
+  // Solid aSc-style fill (Classic skin): the entity's own stored colour exactly
+  // as the school set it in aSc — not just its hue — or a vivid colour from the
+  // hue when none is stored, plus a black/white ink chosen for contrast.
+  function cardSolid(S, card, lesson, subject, hue) {
+    const axis = (window.APP && window.APP.editor && window.APP.editor.colorBy) || "subject";
+    let ent = subject;
+    if (axis === "teacher") ent = lesson && lesson.teacherIds && S._idx.teacherById[lesson.teacherIds[0]];
+    else if (axis === "class") ent = lesson && lesson.classIds && S._idx.classById[lesson.classIds[0]];
+    else if (axis === "room") {
+      const rid = (card && card.classroomId) || (lesson && lesson.preferredRoomId);
+      ent = rid ? S._idx.classroomById[rid] : null;
+    }
+    const hex = ent && /^#?[0-9a-f]{6}$/i.test(String(ent.color || "")) ? "#" + String(ent.color).replace("#", "")
+      : hslHex(hue, 62, 60);
+    const n = parseInt(hex.slice(1), 16);
+    const lin = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+    const L = 0.2126 * lin(n >> 16) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
+    return { bg: hex, ink: L > 0.22 ? "#111" : "#fff" };
+  }
+  function hslHex(h, s, l) {
+    s /= 100; l /= 100;
+    const k = (n) => (n + h / 30) % 12, a = s * Math.min(l, 1 - l);
+    const f = (n) => Math.round(255 * (l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)))));
+    return "#" + [f(0), f(8), f(4)].map((v) => v.toString(16).padStart(2, "0")).join("");
+  }
+
   function cardHue(S, card, lesson, subject) {
     const axis = (window.APP && window.APP.editor && window.APP.editor.colorBy) || "subject";
     if (axis === "subject") return subjectHue(subject);
