@@ -31,8 +31,36 @@ import "./main.js";
 (function () {
   "use strict";
 
-  function rankAll(school, absentIds, day) {
+  // Teacher time-off: is (day, period) blocked? Both stored shapes (see csp_solver.js).
+  function offAt(timeOff, day, period) {
+    if (!timeOff) return false;
+    if (Array.isArray(timeOff)) return ((timeOff[day] && timeOff[day][period - 1]) | 0) === 2;
+    const v = timeOff[`${day}_${period}`];
+    return v === "unavailable" || v === "blocked" || v === 2;
+  }
+
+  // aSc "Equable substitution": substitutions each teacher covered in the 30
+  // days before `date`, from the saved per-date history (school.substitutions).
+  function recentLoad(school, date) {
+    const out = Object.create(null);
+    if (!date || !Array.isArray(school.substitutions)) return out;
+    const end = Date.parse(date);
+    if (!Number.isFinite(end)) return out;
+    const start = end - 30 * 86400000;
+    for (const sub of school.substitutions) {
+      const t = Date.parse(sub.date);
+      if (!sub.substituteTeacherId || !(t >= start && t < end)) continue;
+      out[sub.substituteTeacherId] = (out[sub.substituteTeacherId] || 0) + 1;
+    }
+    return out;
+  }
+
+  function rankAll(school, absentIds, day, date) {
     if (!school || !school._idx) return [];
+    if (date === undefined) date = window.APP && window.APP.substitution && window.APP.substitution.date;
+    const recent = recentLoad(school, date);
+    const classTeacherOf = Object.create(null);
+    for (const c of school.classes || []) if (c._teacherId) classTeacherOf[c.id] = c._teacherId;
     const absentSet = new Set(absentIds);
     const teachers = school.teachers || [];
     const idx = school._idx;
@@ -96,6 +124,7 @@ import "./main.js";
       for (const t of teachers) {
         if (absentSet.has(t.id)) continue;
         if (busyByTeacher[t.id].has(slot.period)) continue;
+        if (offAt(t.timeOff, day, slot.period)) continue;
 
         let score = 0;
         const reasons = [];
@@ -107,6 +136,14 @@ import "./main.js";
         if (slot.classId && classesByTeacher[t.id].has(slot.classId)) {
           score += 30;
           reasons.push("teaches this class");
+        }
+        if (slot.classId && classTeacherOf[slot.classId] === t.id) {
+          score += 10;
+          reasons.push("class teacher");
+        }
+        if (recent[t.id]) {
+          score -= 3 * recent[t.id];
+          reasons.push(`${recent[t.id]} sub${recent[t.id] === 1 ? "" : "s"} in last 30 days`);
         }
         const already = subsToday[t.id] || 0;
         if (already > 0) {

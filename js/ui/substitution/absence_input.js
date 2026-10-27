@@ -150,10 +150,50 @@ import "./candidate_ranker.js";
       }
     });
 
+    // aSc "Copy yesterday's absents" + long-term absence (date range).
+    const addDays = (ymd, n) => {
+      const [y, m, d] = ymd.split("-").map(Number);
+      const t = new Date(y, m - 1, d + n);
+      return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
+    };
+    const copyPrev = el("button", { type: "button", class: "chrx-sub-btn", id: "chrx-sub-copy-prev",
+      title: "Mark everyone absent on the previous school day as absent today",
+      onclick: () => {
+        let prev = addDays(state.date, -1);
+        if (S.ymdToDay(prev) < 0) prev = addDays(prev, -1); // skip Sunday
+        const ids = (school.absences || []).filter(a => a.date === prev).map(a => a.teacherId);
+        let added = 0;
+        for (const tid of ids) {
+          if (state.absent.includes(tid)) continue;
+          state.absent.push(tid);
+          if (S.recordAbsence) S.recordAbsence(school, { date: state.date, teacherId: tid });
+          added++;
+        }
+        copyPrev.textContent = ids.length ? `Copied ${added} from ${prev}` : `Nobody was absent on ${prev}`;
+        renderChips();
+        updateGenerate();
+      } }, "Copy previous day's absentees");
+    const untilInput = el("input", { type: "date", class: "chrx-sub-date", id: "chrx-sub-until",
+      "aria-label": "Absent until" });
+    const applyRange = el("button", { type: "button", class: "chrx-sub-btn", id: "chrx-sub-apply-range",
+      title: "Record the selected teachers as absent on every school day up to this date",
+      onclick: () => {
+        const until = untilInput.value;
+        if (!until || until <= state.date || !state.absent.length) return;
+        let days = 0;
+        for (let d = addDays(state.date, 1); d <= until; d = addDays(d, 1)) {
+          if (S.ymdToDay(d) < 0) continue;
+          for (const tid of state.absent) if (S.recordAbsence) S.recordAbsence(school, { date: d, teacherId: tid });
+          days++;
+        }
+        applyRange.textContent = `Recorded for ${days} more day(s)`;
+      } }, "Absent until…");
+
     host.appendChild(el("div", { class: "chrx-sub-row chrx-sub-row--col" },
       el("label", { class: "chrx-sub-lbl" }, "Absent teachers"),
       chips,
       el("div", { class: "chrx-sub-search-wrap" }, search, dropdown),
+      el("div", { class: "chrx-sub-row" }, copyPrev, untilInput, applyRange),
     ));
 
     // ---- generate button ----

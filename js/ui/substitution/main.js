@@ -236,7 +236,7 @@ import "../state.js";
     if (!tids.length) return [];
 
     const ranker = window.SubstitutionRanker;
-    const assignments = ranker ? ranker.rankAll(s, tids, d) : [];
+    const assignments = ranker ? ranker.rankAll(s, tids, d, date) : [];
 
     return mutateCompat("Assign substitutions", (targetSchool) => {
       const sc = targetSchool || s;
