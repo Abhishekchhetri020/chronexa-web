@@ -1443,6 +1443,20 @@ body.chrx-card-in-hand .chrx-shell .chrx-card-panel { display: none; }
 @media (max-width: 1536px) {
   .chrx-shell #editor-quick-tools label[for="editor-date-input"] { display: none; }
 }
+/* Up to 1600px the all-classes tool cluster (~1040px) ran under the ⌘K search
+   (measured at 1470: Views 994-1070 and Classic/Dark painted over the search at
+   1036-1256). Below 1600 the four stateless toggles go icon-only (their titles
+   still name them) and the search shrinks to its icon + ⌘K. */
+@media (min-width: 768px) and (max-width: 1600px) {
+  .chrx-shell #editor-legend .chrx-tool__label,
+  .chrx-shell #editor-saved-views .chrx-tool__label,
+  .chrx-shell #editor-toggle-skin .chrx-tool__label,
+  .chrx-shell #editor-toggle-dark .chrx-tool__label { display: none; }
+  .chrx-shell #editor-legend, .chrx-shell #editor-saved-views,
+  .chrx-shell #editor-toggle-skin, .chrx-shell #editor-toggle-dark { padding: 0 8px !important; }
+  .chrx-shell .chrx-kbd-search { min-width: 0; }
+  .chrx-shell .chrx-kbd-search > span:not(.chrx-kbd-search__icon):not(.chrx-kbd-search__kbd) { display: none; }
+}
 @media (max-width: 1320px) {
   .chrx-shell .chrx-kbd-search { display: none; }
   .chrx-shell .chrx-crumbs { font-size: 13px; }
