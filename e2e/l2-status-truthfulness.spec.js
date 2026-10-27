@@ -34,6 +34,24 @@ test("B1: chip reports conflicts on the stock demo and opens Verification", asyn
 
 test("B9+B17: explicit apply proposal, recount, unclipped footer, hidden toast", async ({ page }) => {
   await loadDemoSchool(page);
+  // The stock demo has no real teacher clashes (its old ~100 'hard violations'
+  // were doubles miscounted by checkPlacement), so make three genuine ones:
+  // move a single-period card onto a period where its teacher already teaches.
+  await page.evaluate(() => {
+    const A = window.APP, L = A.school._idx.lessonById;
+    A.mutate("e2e: make clashes", (school) => {
+      let made = 0;
+      const single = school.cards.filter((c) => (L[c.lessonId]?.periodsPerCard | 0) <= 1);
+      for (const a of single) {
+        if (made >= 3) break;
+        const t = (L[a.lessonId].teacherIds || [])[0];
+        const b = single.find((c) => c !== a && c.day === a.day && c.period !== a.period &&
+          (L[c.lessonId].teacherIds || []).includes(t) && !(L[c.lessonId].classIds || []).some((x) => L[a.lessonId].classIds.includes(x)));
+        if (b && !b._moved) { b.period = a.period; b._moved = true; made++; }
+      }
+    });
+    window.Editor.render(document.getElementById("editor-root"));
+  });
   await page.locator("#editor-unplaced-count").click();
   const panel = page.locator(".chrx-vpro-panel");
   await expect(panel).toBeVisible({ timeout: 10_000 });

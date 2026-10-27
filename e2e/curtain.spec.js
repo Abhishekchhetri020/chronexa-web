@@ -93,9 +93,9 @@ test.describe("bottom curtain", () => {
     await loadDemoSchool(page);
 
     await expect(page.locator(CURTAIN)).toBeVisible();
-    // The demo school is fully placed, so the resting state is the slim one.
-    await expect(page.locator(CURTAIN)).toHaveAttribute("data-state", "peek");
-    expect(await curtainHeight(page)).toBeLessThan(160);
+    // The demo school is fully placed, so the tray rests on its handle row.
+    await expect(page.locator(CURTAIN)).toHaveAttribute("data-state", "collapsed");
+    expect(await curtainHeight(page)).toBeLessThan(60);
 
     // Overlay, not flow.
     expect(await page.locator(CURTAIN).evaluate((el) => getComputedStyle(el).position)).toBe("fixed");
@@ -107,12 +107,11 @@ test.describe("bottom curtain", () => {
     await expect(page.locator(`${CURTAIN} #pending-strip-root`)).toBeAttached();
     await expect(page.locator(`${CURTAIN} #pending-count`)).toBeAttached();
 
-    // Collapsed by default? No — but the body is present and the handle is a
-    // real separator widget.
+    // Collapsed while empty, with a real separator widget for the handle.
     await expect(page.locator(HANDLE)).toHaveAttribute("role", "separator");
     await expect(page.locator(HANDLE)).toHaveAttribute("aria-orientation", "horizontal");
     await expect(page.locator(HANDLE)).toHaveAttribute("tabindex", "0");
-    await expect(page.locator("#chrx-curtain-toggle")).toHaveAttribute("aria-expanded", "true");
+    await expect(page.locator("#chrx-curtain-toggle")).toHaveAttribute("aria-expanded", "false");
   });
 
   test("never reflows or resizes the grid — identical box in all three states", async ({ page }) => {
@@ -223,10 +222,10 @@ test.describe("bottom curtain", () => {
     expect(stored.state).toBe("expanded");
     expect(stored.height).toBeGreaterThan(190);
 
-    // Reload: the height is remembered, but an empty tray must rest slim.
+    // Reload: the height is remembered, but an empty tray rests collapsed.
     await page.reload();
     await loadDemoSchool(page);
-    await expect(page.locator(CURTAIN)).toHaveAttribute("data-state", "peek");
+    await expect(page.locator(CURTAIN)).toHaveAttribute("data-state", "collapsed");
     const restored = await page.locator(CURTAIN).evaluate(() => window.Curtain.getState());
     expect(restored.expandedHeight).toBeGreaterThan(190);
     expect(restored.height).toBeLessThan(expanded);
@@ -290,9 +289,9 @@ test.describe("bottom curtain", () => {
       ).first()
     ).toBeVisible({ timeout: 10_000 });
     await expect(page.locator(`${CURTAIN} #pending-strip-root [data-card-id]`)).toHaveCount(0);
-    // The tray emptied, so the curtain returns to its slim resting state —
+    // The tray emptied, so the curtain returns to its collapsed resting state —
     // after the card hand is released, which happens on a timer.
-    await expect(page.locator(CURTAIN)).toHaveAttribute("data-state", "peek", { timeout: 10_000 });
+    await expect(page.locator(CURTAIN)).toHaveAttribute("data-state", "collapsed", { timeout: 10_000 });
   });
 
   test("stable API + event seam for the class-count lane", async ({ page }) => {

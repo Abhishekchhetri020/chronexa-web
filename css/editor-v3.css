@@ -442,8 +442,9 @@
 .chrx-shell .chrx-editor--zoom-near .chrx-row { height: calc(var(--e3-row-h-near) * var(--chrx-grid-zoom, 1)); min-height: calc(var(--e3-row-h-near) * var(--chrx-grid-zoom, 1)); }
 .chrx-shell .chrx-row:hover:not(.chrx-row-head) .chrx-rowlabel { color: var(--chrx-fg); }
 .chrx-shell .chrx-rowlabel {
-  --chrx-rowlabel-w: 72px;
-  width: 72px; min-width: 72px;
+  /* Width comes from autoFitRowLabels (set on .chrx-grid); redefining the var
+     here pinned every label to 72px and clipped "Pre Nursery". */
+  width: var(--chrx-rowlabel-w, 72px); min-width: var(--chrx-rowlabel-w, 72px);
   padding: 0 10px;
   background: var(--chrx-bg-canvas);
   border-right: 1px solid var(--line);
@@ -1668,3 +1669,28 @@ html[data-skin="classic"] .chrx-shell .chrx-editor:not(.chrx-editor--focus) .chr
 }
 html[data-skin="classic"] .chrx-shell .chrx-editor:not(.chrx-editor--focus) .chrx-slot--split2 .chrx-vkarta:nth-child(1) { inset: 0 1px 50% 0; }
 html[data-skin="classic"] .chrx-shell .chrx-editor:not(.chrx-editor--focus) .chrx-slot--split2 .chrx-vkarta:nth-child(2) { inset: 50% 1px 1px 0; }
+
+/* Specification row in the grid header (entityBarHtml) — aSc ribbon parity. */
+.chrx-shell .chrx-entbar { display: flex; align-items: center; gap: 2px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.chrx-shell .chrx-entbar::-webkit-scrollbar { display: none; }
+.chrx-shell .chrx-overview-bar .chrx-entbar__btn,
+.chrx-shell .chrx-focus-boardbar .chrx-entbar__btn {
+  display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto;
+  height: 28px; padding: 0 8px; border: 0; border-radius: 7px;
+  background: transparent; color: var(--chrx-fg-secondary);
+  font: 500 12.5px/1 var(--chrx-font-sans); cursor: pointer; box-shadow: none;
+}
+.chrx-shell .chrx-overview-bar .chrx-entbar__btn:hover,
+.chrx-shell .chrx-focus-boardbar .chrx-entbar__btn:hover { background: var(--chrx-bg-tile); color: var(--chrx-fg); }
+.chrx-shell .chrx-editor--zoom-far .chrx-overview-bar .chrx-entbar__btn { height: 24px; font-size: 12px; }
+/* Narrow screens: icons only; the title still names each. */
+@media (max-width: 1280px) { .chrx-shell .chrx-entbar__btn span { display: none; } }
+@media (max-width: 767px) { .chrx-shell .chrx-entbar { display: none; } }
+
+/* Sidebar open: the bar loses ~215px, which pushed Generate off-screen at
+   1470px. Same compaction the bar uses ~215px earlier without the sidebar. */
+@media (min-width: 768px) and (max-width: 1815px) {
+  .chrx-shell:not(.is-side-hidden) .chrx-kbd-search { display: none; }
+  .chrx-shell:not(.is-side-hidden) #editor-quick-tools .chrx-tool__label { display: none; }
+  .chrx-shell:not(.is-side-hidden) #editor-quick-tools button { padding: 0 8px !important; }
+}

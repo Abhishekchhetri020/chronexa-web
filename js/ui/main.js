@@ -785,7 +785,8 @@ import "./start_screen.js";
       if (ZOOM_ORDER.indexOf(savedZoom) === -1) {
         let legacy = "";
         try { legacy = localStorage.getItem("chronexa.editor.density") || ""; } catch {}
-        savedZoom = legacy === "comfortable" ? "near" : "mid";
+        // First run: Compact, the whole-school density aSc opens with.
+        savedZoom = legacy === "comfortable" ? "near" : legacy === "compact" ? "mid" : "far";
       }
       window.APP.editor.zoom = savedZoom;
       window.APP.editor.density = savedZoom === "near" ? "comfortable" : "compact";

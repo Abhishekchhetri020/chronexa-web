@@ -205,7 +205,15 @@ window.Editor = (function () {
     A.editor = A.editor || {};
     if (!A.editor.perspective) A.editor.perspective = "class";
     if (!A.editor.colorBy) A.editor.colorBy = "subject";
-    if (!A.editor.viewMode) A.editor.viewMode = "focus";
+    // aSc opens on the whole school. That is the default here too; the last
+    // view the user chose (Focus board or All classes) is remembered.
+    if (!A.editor.viewMode) {
+      let saved = "";
+      try { saved = localStorage.getItem("chronexa.editor.viewMode") || ""; } catch (_e) {}
+      // A phone keeps the single-entity board: 48 periods do not fit 390px.
+      const phone = typeof matchMedia === "function" && matchMedia("(max-width: 767px)").matches;
+      A.editor.viewMode = saved === "focus" || saved === "overview" ? saved : phone ? "focus" : "overview";
+    }
     if (!A.editor.focusRowByPerspective) A.editor.focusRowByPerspective = {};
     if (A.editor.cardInHand === undefined) A.editor.cardInHand = null;
     if (!Array.isArray(A.editor.selectedCardIds)) A.editor.selectedCardIds = [];
@@ -812,6 +820,7 @@ window.Editor = (function () {
           <span class="chrx-ob-title">${esc(overviewTitle())}</span>
           <span class="chrx-ob-sub">${rows.length} ${esc(PERSPECTIVE_PLURAL[window.APP.editor.perspective || "class"] || "rows")} · ${periods.length || 8} periods</span>
         </div>
+        ${entityBarHtml()}
         <div class="chrx-ob-stats" id="chrx-ob-stats" aria-live="polite"></div>
         <button type="button" data-focus-nav="focus">Focus board</button>
       </div>
@@ -941,6 +950,7 @@ window.Editor = (function () {
         ${pickerSearchHtml}
         <button type="button" class="chrx-focus-boardbar__nav" data-focus-nav="next" aria-label="Next ${esc(perspective)}">${icon("chevR", 18)}</button>
         <p class="${hintClass}">${hintText}</p>
+        ${entityBarHtml()}
         <button type="button" class="chrx-focus-boardbar__overview" data-focus-nav="overview">All ${esc(PERSPECTIVE_PLURAL[perspective])}</button>
       </div>
       ${selectionBarHtml()}
@@ -1178,6 +1188,21 @@ window.Editor = (function () {
 
   function icon(name, size) {
     return window.ChrxIcons ? window.ChrxIcons.svg(name, size || 16) : "";
+  }
+
+  // aSc keeps the specification one click from the grid (its ribbon: Subjects,
+  // Classes, Classrooms, Teachers, Lessons, Relations). Chronexa had them only
+  // in a sidebar that the editor hides, so the same row sits in the grid's own
+  // header bar. Each button fires app:open-entity (entity_router.js).
+  const ENTITY_BAR = [
+    ["school", "school", "School"], ["subjects", "subject", "Subjects"], ["classes", "class", "Classes"],
+    ["classrooms", "room", "Rooms"], ["teachers", "teacher", "Teachers"], ["lessons", "lesson", "Lessons"],
+    ["relations", "link", "Relations"],
+  ];
+  function entityBarHtml() {
+    return `<nav class="chrx-entbar" aria-label="Specification">${ENTITY_BAR.map(([kind, ic, label]) =>
+      `<button type="button" class="chrx-entbar__btn" data-open-entity="${kind}" title="Open ${label}">${icon(ic, 14)}<span>${label}</span></button>`
+    ).join("")}</nav>`;
   }
 
  function pendingCount(S) {
@@ -1601,8 +1626,9 @@ window.Editor = (function () {
         el, subject,
         avail: Math.max(10, el.clientWidth || slotW),
         size: parseFloat(getComputedStyle(el).fontSize) || fontPx,
-        // Stacked split cells are half height: they keep the 1-line code.
-        cardH: card && !card.closest(".chrx-slot--split2") ? card.clientHeight - 2 : 0,
+        // Stacked split halves get one line of the school's name (their height
+        // allows no second line, which wrapSize measures).
+        cardH: card ? card.clientHeight - (card.closest(".chrx-slot--split2") ? 0 : 2) : 0,
       });
     }
     // aSc prints the school's own short name ("Hindi Gram", "Sleeping Time")
@@ -2065,6 +2091,12 @@ window.Editor = (function () {
       }
       return;
     }
+    const entBtn = ev.target.closest("[data-open-entity]");
+    if (entBtn) {
+      ev.preventDefault();
+      window.dispatchEvent(new CustomEvent("app:open-entity", { detail: { kind: entBtn.dataset.openEntity } }));
+      return;
+    }
     const focusNav = ev.target.closest("[data-focus-nav]");
     if (focusNav) {
       ev.preventDefault();
@@ -2084,6 +2116,7 @@ window.Editor = (function () {
       // Announce the mode change so the toolbar can reflect what now applies —
       // the zoom control is inert in Focus view and must say so rather than
       // appearing to work (its old silent no-op was a reported confusion).
+      try { localStorage.setItem("chronexa.editor.viewMode", window.APP.editor.viewMode); } catch (_e) {}
       document.dispatchEvent(new CustomEvent("editor:view-mode", {
         detail: { viewMode: window.APP.editor.viewMode },
       }));
@@ -3063,15 +3096,24 @@ window.Editor = (function () {
     for (const m of mains) m.style.transform = "none";
     grid.style.setProperty("--chrx-rowlabel-w", "auto");
 
-    // Step 2 — find the widest label's natural text width
+    // Step 2 — find the widest label's natural text width. Measured from the
+    // text itself: the rendered box is already constrained by the label CSS,
+    // so scrollWidth under-read "Pre Nursery" (70 of 90px) and it clipped.
+    const mctx = (autoFitRowLabels._c || (autoFitRowLabels._c = document.createElement("canvas").getContext("2d")));
+    const mcs = getComputedStyle(mains[0]);
+    mctx.font = `${mcs.fontWeight} ${mcs.fontSize} ${mcs.fontFamily}`;
     let maxW = 0;
     for (const m of mains) {
-      const w = m.scrollWidth;
+      const w = Math.max(m.scrollWidth, Math.ceil(mctx.measureText(m.textContent.trim()).width));
       if (w > maxW) maxW = w;
     }
 
     // Step 3 — compute optimal column width (text + 6px padding), clamped
-    const PAD = 8; // 3px padding each side + 2px safety
+    // The label box's real side padding (v3 CSS uses more than the 3px this
+    // once assumed) + 2px safety; a fixed 8 left "Pre Nursery" 19px short.
+    const lbl = mains[0].closest(".chrx-rowlabel");
+    const lcs = lbl ? getComputedStyle(lbl) : null;
+    const PAD = Math.max(8, (lcs ? (parseFloat(lcs.paddingLeft) || 0) + (parseFloat(lcs.paddingRight) || 0) : 6) + 2);
     const MIN_W = 32;
     const MAX_W = 120;
     const optimalW = Math.min(MAX_W, Math.max(MIN_W, maxW + PAD));

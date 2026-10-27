@@ -8,7 +8,8 @@
 //
 // STATES
 //   collapsed  ~32px   handle row only (body hidden + inert)
-//   peek       ~118px  slim resting state — what an empty tray sits at
+//   peek       ~118px  resting state while there is work
+//   (an EMPTY tray rests collapsed — see reapplyEmptyRule)
 //   expanded   >=190px user-chosen height (persisted)
 //
 // SNAP RULE (why it is deliberately timid)
@@ -256,8 +257,12 @@ window.Curtain = (function () {
     if (!mounted || dragging) return false;
     if (count !== 0 || manualDuringEmpty) return false;
     if (window.APP && window.APP.editor && window.APP.editor.cardInHand) return false;
-    if (state !== "expanded") return false;
-    setState("peek", { instant: true });
+    // An empty tray rests on its handle row: aSc gives the grid the whole
+    // height when nothing is unplaced, and the 118px "every lesson is on the
+    // timetable" peek cost the overview two class rows. Work arriving re-opens
+    // it to peek (syncCount), and a manual open while empty is respected.
+    if (state === "collapsed") return false;
+    setState("collapsed", { instant: true });
     return true;
   }
 
@@ -568,6 +573,19 @@ window.Curtain = (function () {
   }
 
   // ── document-level API events (the stable seam for other lanes) ──────────
+  // A click or keyboard pickup shows the availability legend in the inspector, which an
+  // empty (collapsed) tray hides: rise to peek for it. Never during a drag —
+  // the drop surface must not move under the pointer. Placing or Escape lets
+  // reapplyEmptyRule collapse it again via watchHand().
+  // Keyboard pickup reuses the drag path (mode "drag"), so the test is whether
+  // a pointer is actually held down, not the reported mode.
+  let pointerHeld = false;
+  document.addEventListener("pointerdown", () => { pointerHeld = true; }, true);
+  document.addEventListener("pointerup", () => { pointerHeld = false; }, true);
+  document.addEventListener("pointercancel", () => { pointerHeld = false; }, true);
+  document.addEventListener("editor:pickup", () => {
+    if (!pointerHeld && mounted && !dragging && count === 0 && state === "collapsed") setState("peek", { instant: true });
+  });
   document.addEventListener("curtain:open", (e) => open(e.detail || {}));
   document.addEventListener("curtain:close", () => close());
   document.addEventListener("curtain:toggle", () => toggle());
