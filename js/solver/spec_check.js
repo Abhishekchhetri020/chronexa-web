@@ -45,6 +45,35 @@ export function listObjects(school, parts = PARTS) {
   return out;
 }
 
+// timeOff → is (day, period1) unavailable? Same two shapes as the solver reads.
+function blocked(timeOff, d, p1) {
+  if (!timeOff) return false;
+  if (Array.isArray(timeOff)) return ((timeOff[d] && timeOff[d][p1 - 1]) | 0) === 2;
+  const v = timeOff[`${d}_${p1}`];
+  return v === "unavailable" || v === "blocked" || v === 2;
+}
+
+/**
+ * Periods the object's lessons need vs. periods it has free. Only meaningful
+ * where its lessons cannot run in parallel: teachers and rooms always, a
+ * class only when none of its lessons is a group (division) lesson.
+ */
+export function capacity(school, obj) {
+  const lessons = (school.lessons || []).filter(PICK[obj.part](obj.id));
+  if (obj.part === "classes") {
+    const whole = new Set((school.groups || []).filter((g) => g.entireClass).map((g) => g.id));
+    const isGroupLesson = (l) => (l.groupIds || []).some((g) => !whole.has(g));
+    if (lessons.some(isGroupLesson)) return null;
+  }
+  const need = lessons.reduce((a, l) => a + (Number(l.periodsPerWeek) || 0), 0);
+  const days = school.daysPerWeek || 5;
+  const periods = ((school.bell && school.bell.periods) || []).filter((p) => p.isTeaching !== false);
+  const ent = (school[obj.part] || []).find((x) => x.id === obj.id) || {};
+  let have = 0;
+  for (let d = 0; d < days; d++) for (const p of periods) if (!blocked(ent.timeOff, d, p.index | 0)) have++;
+  return { need, have };
+}
+
 /** Solve one object alone. status: "passed" | "failed". */
 export function testObject(school, obj, { timeLimitSec = 2, seed = 1, dropRelations = false } = {}) {
   const sub = subSchoolFor(school, obj.part, obj.id, { dropRelations });
@@ -53,6 +82,7 @@ export function testObject(school, obj, { timeLimitSec = 2, seed = 1, dropRelati
   const unplaced = st.unplaced | 0;
   return {
     ...obj,
+    capacity: unplaced > 0 ? capacity(school, obj) : null,
     status: unplaced > 0 ? "failed" : "passed",
     relaxed: dropRelations,
     placed: st.placed | 0,

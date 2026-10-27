@@ -37,3 +37,26 @@ describe("specification check (each object solved alone)", () => {
     expect(r.unplaced).toBeGreaterThan(0);
   });
 });
+
+import { capacity } from "../spec_check.js";
+
+describe("capacity figures for a failing object", () => {
+  const BELL = { periods: [1, 2, 3].map((i) => ({ index: i, isTeaching: true })) };
+  const s = {
+    daysPerWeek: 2, bell: BELL,
+    teachers: [{ id: "t", timeOff: [[2, 0, 0], [0, 0, 0]] }],
+    classes: [{ id: "c" }],
+    groups: [{ id: "whole", entireClass: true }, { id: "half", entireClass: false }],
+    lessons: [{ id: "a", teacherIds: ["t"], classIds: ["c"], periodsPerWeek: 4 }, { id: "b", teacherIds: ["t"], classIds: ["c"], periodsPerWeek: 3 }],
+  };
+  it("teacher: needs 7, has 6 minus one blocked = 5", () => {
+    expect(capacity(s, { part: "teachers", id: "t" })).toEqual({ need: 7, have: 5 });
+  });
+  it("class with whole-class lessons only gets a figure", () => {
+    expect(capacity(s, { part: "classes", id: "c" })).toEqual({ need: 7, have: 6 });
+  });
+  it("class with a group lesson: no figure (groups can run in parallel)", () => {
+    const g = { ...s, lessons: [...s.lessons, { id: "g", classIds: ["c"], teacherIds: [], groupIds: ["half"], periodsPerWeek: 1 }] };
+    expect(capacity(g, { part: "classes", id: "c" })).toBe(null);
+  });
+});

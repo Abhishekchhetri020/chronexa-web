@@ -799,3 +799,4 @@
 .chrx-runcond__count { color: var(--chrx-fg-tertiary, rgba(0,0,0,0.45)); font-variant-numeric: tabular-nums; }
 .csu-chip--link { cursor: pointer; border: 0; font: inherit; }
 .csu-chip--link.is-warn { background: var(--chrx-amber-bg, #fef3c7); color: var(--chrx-amber, #92400e); font-weight: 600; }
+.chrx-spec__cap { margin: 0 0 6px; font-weight: 600; color: var(--chrx-red, #b42318); }

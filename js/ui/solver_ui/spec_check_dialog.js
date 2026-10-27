@@ -102,6 +102,9 @@
     refs.ask.append(
       el("div", { class: "chrx-spec__askHead" },
         `The ${PART_ONE[r.part]} ${r.name} cannot be generated even on its own: ${r.unplaced} of ${r.placed + r.unplaced} cards stay unplaced.`),
+      r.capacity && r.capacity.need > r.capacity.have
+        ? el("div", { class: "chrx-spec__cap" }, `Its lessons need ${r.capacity.need} periods a week, but only ${r.capacity.have} are free.`)
+        : null,
       lessons.length ? el("ul", { class: "chrx-spec__askList" }, ...lessons) : null,
       el("div", { class: "chrx-spec__askBtns" },
         btn("Show me this " + PART_ONE[r.part], "show", "chrx-btn--primary"),
