@@ -480,12 +480,21 @@ function buildModel(school) {
   const teacherMaxConsec      = new Int32Array(teacherIds.length).fill(-1);
   const teacherMaxLastPeriod  = new Int32Array(teacherIds.length).fill(-1);
   const teacherMaxGapsPerDay  = new Int32Array(teacherIds.length).fill(-1);
+  const teacherMaxGapsPerWeek = new Int32Array(teacherIds.length).fill(-1);
+  // The teacher Constraints dialog stores its limits under
+  // `teacher.constraints.*` (aSc key names); the edit sheet uses top-level
+  // fields. Top-level wins, the dialog key is the fallback.
+  const tcons = (tt, key) => {
+    const v = tt.constraints && tt.constraints[key];
+    return v === "" || v === undefined ? null : v;
+  };
   for (let t = 0; t < school.teachers.length; t++) {
     const tt = school.teachers[t];
-    teacherMaxPerDay[t]     = gFallback(tt.maxPerDay,             "teacherMaxPerDay");
-    teacherMaxConsec[t]     = gFallback(tt.maxConsecutivePeriods, "teacherMaxConsecutive");
+    teacherMaxPerDay[t]     = gFallback(tt.maxPerDay ?? tcons(tt, "lessonsPerDayMax"), "teacherMaxPerDay");
+    teacherMaxConsec[t]     = gFallback(tt.maxConsecutivePeriods ?? tcons(tt, "teachers_maxconsecutiveperiods"), "teacherMaxConsecutive");
     teacherMaxLastPeriod[t] = gFallback(tt.maxLastPeriodOverflow, "teacherMaxLastPeriod");
-    teacherMaxGapsPerDay[t] = gFallback(tt.maxGapsPerDay,         "teacherMaxGapsPerDay");
+    teacherMaxGapsPerDay[t] = gFallback(tt.maxGapsPerDay ?? tcons(tt, "teachers_maxgapsday"), "teacherMaxGapsPerDay");
+    teacherMaxGapsPerWeek[t] = gFallback(tcons(tt, "teachers_maxgapsweek"), "teacherMaxGapsPerWeek");
   }
 
   // Class day caps default to periodsPerDay (effectively unlimited).
@@ -587,6 +596,7 @@ function buildModel(school) {
   const teacherIntervalMaxDays = new Array(teacherIds.length);
   for (let t = 0; t < teacherIds.length; t++) {
     const tch = school.teachers[t];
+    const dlgMaxDays = tch && tch.constraints && tch.constraints.maxDaysPerWeek;
     teacherIntervalMaxDays[t] = (tch && tch.intervalMaxDays
       && tch.intervalMaxDays.fromPeriod != null
       && tch.intervalMaxDays.toPeriod != null
@@ -594,7 +604,10 @@ function buildModel(school) {
       ? { fromPeriod: tch.intervalMaxDays.fromPeriod | 0,
           toPeriod: tch.intervalMaxDays.toPeriod | 0,
           maxDays: tch.intervalMaxDays.maxDays | 0 }
-      : null;
+      // Dialog "Max days per week" = the whole day as the interval.
+      : (Number.isFinite(parseInt(dlgMaxDays, 10)) && dlgMaxDays !== "*")
+        ? { fromPeriod: 0, toPeriod: periodsPerDay - 1, maxDays: parseInt(dlgMaxDays, 10) }
+        : null;
   }
   // Item 7 — supervision criteria (read once for the soft scorer).
   const supervisionCriteria = (school.settings && school.settings.supervisionCriteria) || null;
@@ -1365,6 +1378,7 @@ function buildModel(school) {
     weights,
     teacherLastPeriodCap: teacherMaxLastPeriod,
     teacherMaxGapsPerDay,
+    teacherMaxGapsPerWeek,
     classMaxGapsPerDay,
     lessonN1Partners,
     lessonN0Partners,
@@ -2494,6 +2508,7 @@ function softScore(model, state) {
   s += modeAfternoonHeavyPenalty(model, state) * (w[1] || 1);
   s += modeBlockPairingPenalty(model, state) * (w[1] || 1);
   s += teacherIntervalMaxDaysPenalty(model, state) * (w[0] || 1);
+  s += teacherGapCapPenalty(model, state) * (w[0] || 1) * 10;
   s += supervisionCriteriaSoftPenalty(model, state) * (w[0] || 1);
   s += studentSubjectsConflictPenalty(model, state) * (w[1] || 1);
   state._cachedSoftScore = s;
@@ -2631,6 +2646,28 @@ function modeBlockPairingPenalty(model, state) {
 // teacher carries teacher.intervalMaxDays = { fromPeriod, toPeriod,
 // maxDays }. Soft penalty per day the teacher has any teaching slot
 // inside [fromPeriod, toPeriod] beyond maxDays.
+// Per-teacher "Max gaps per day / per week" (gap = free period between a
+// teacher's first and last lesson of the day). Counts only the excess over
+// each cap; weighted well above the generic gap term so caps win.
+function teacherGapCapPenalty(model, state) {
+  const perDay = model.teacherMaxGapsPerDay, perWeek = model.teacherMaxGapsPerWeek;
+  if (!perDay || !state.teacherDayGap) return 0;
+  const days = model.days;
+  let penalty = 0;
+  for (let t = 0; t < perDay.length; t++) {
+    const dayCap = perDay[t], weekCap = perWeek ? perWeek[t] : -1;
+    if (dayCap < 0 && weekCap < 0) continue;
+    let week = 0;
+    for (let d = 0; d < days; d++) {
+      const g = state.teacherDayGap[t * days + d];
+      week += g;
+      if (dayCap >= 0 && g > dayCap) penalty += g - dayCap;
+    }
+    if (weekCap >= 0 && week > weekCap) penalty += week - weekCap;
+  }
+  return penalty;
+}
+
 function teacherIntervalMaxDaysPenalty(model, state) {
   if (model.scorerFlags && !model.scorerFlags.intervalMaxDays) return 0;
   const intervals = model.teacherIntervalMaxDays;
