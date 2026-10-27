@@ -173,7 +173,7 @@ import "./candidate_ranker.js";
         renderChips();
         updateGenerate();
       } }, "Copy previous day's absentees");
-    const untilInput = el("input", { type: "date", class: "chrx-sub-date", id: "chrx-sub-until",
+    const untilInput = el("input", { type: "date", class: "chrx-sub-until", id: "chrx-sub-until",
       "aria-label": "Absent until" });
     const applyRange = el("button", { type: "button", class: "chrx-sub-btn", id: "chrx-sub-apply-range",
       title: "Record the selected teachers as absent on every school day up to this date",

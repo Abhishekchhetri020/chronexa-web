@@ -71,7 +71,7 @@
   color: var(--chrx-fg);
   min-width: 110px;
 }
-.chrx-sub-date {
+.chrx-sub-date, .chrx-sub-until {
   padding: 6px 8px; border: 1px solid var(--chrx-line);
   border-radius: 6px; background: var(--chrx-bg-input, #fff);
   font: var(--chrx-fw-regular) var(--chrx-font-body)/1.2 var(--chrx-font-sans);
@@ -347,6 +347,7 @@
   border-color: var(--chrx-accent);
 }
 :root[data-theme="dark"] .chrx-sub-date,
+:root[data-theme="dark"] .chrx-sub-until,
 :root[data-theme="dark"] .chrx-sub-search,
 :root[data-theme="dark"] .chrx-sub-dropdown {
   background: var(--chrx-bg-input);
