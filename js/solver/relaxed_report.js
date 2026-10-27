@@ -106,6 +106,34 @@ export function limitViolations(school) {
   return out;
 }
 
+/** Subjects with more cards in one period than subject maxParallel allows. */
+export function subjectParallelViolations(school) {
+  const lessonById = new Map((school.lessons || []).map((l) => [l.id, l]));
+  const caps = new Map();
+  for (const sj of school.subjects || []) {
+    const v = num(sj.maxParallel ?? (sj.constraints && sj.constraints.maxParallel));
+    if (v != null && v > 0) caps.set(sj.id, { cap: v, name: sj.name || sj.short || sj.id });
+  }
+  if (!caps.size) return [];
+  const count = new Map();
+  for (const c of school.cards || []) {
+    const l = lessonById.get(c.lessonId);
+    if (!l || !caps.has(l.subjectId)) continue;
+    for (let k = 0; k < Math.max(1, l.periodsPerCard | 0); k++) {
+      const key = `${l.subjectId}|${c.day}|${c.period + k}`;
+      count.set(key, (count.get(key) || 0) + 1);
+    }
+  }
+  const out = [];
+  for (const [key, n] of count) {
+    const [sid, d, p] = key.split("|");
+    const { cap, name } = caps.get(sid);
+    if (n > cap) out.push({ kind: "limit", entity: "subject", id: sid, name, rule: "Max cards in one period",
+      limit: cap, actual: n, where: +d, period: +p, importance: "normal" });
+  }
+  return out;
+}
+
 /** Everything the current timetable relaxes, grouped by importance. */
 export function relaxedReport(school) {
   // Solver output can carry expanded ids ("<lesson>#2"); score against the lesson.
@@ -115,7 +143,7 @@ export function relaxedReport(school) {
     return known.has(c.lessonId) || !known.has(base) ? c : { ...c, lessonId: base };
   });
   school = { ...school, cards };
-  const items = [...relationViolations(school), ...limitViolations(school)];
+  const items = [...relationViolations(school), ...limitViolations(school), ...subjectParallelViolations(school)];
   const byImportance = Object.fromEntries(IMPORTANCE_ORDER.map((k) => [k, items.filter((i) => i.importance === k)]));
   return { total: items.length, items, byImportance };
 }

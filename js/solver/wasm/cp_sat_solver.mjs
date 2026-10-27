@@ -269,6 +269,31 @@ export async function buildAndSolve(school, options = {}) {
   for (const vs of tOcc.values()) if (vs.length > 1) atMost(m, sum(vs), 1);
   for (const vs of roomOcc.values()) if (vs.length > 1) atMost(m, sum(vs), 1);
 
+  // aSc "Max cards on one period" per subject (subject.maxParallel): at most
+  // N cards of that subject in any one period school-wide, e.g. how many
+  // sections the Games ground holds.
+  const subjCap = new Map((school.subjects || [])
+    .map((sj) => [sj.id, (sj.maxParallel ?? (sj.constraints && sj.constraints.maxParallel)) | 0])
+    .filter(([, cap]) => cap > 0));
+  if (subjCap.size) {
+    const sOcc = new Map();
+    for (let ci = 0; ci < cards.length; ci++) {
+      const card = cards[ci];
+      if (!subjCap.has(card.subject)) continue;
+      for (const [skey, avar] of assign[ci]) {
+        for (const ps of cover(card, skey.split(',').map(Number))) {
+          const k = `${card.subject}|${ps.join(',')}`;
+          if (!sOcc.has(k)) sOcc.set(k, []);
+          sOcc.get(k).push(avar);
+        }
+      }
+    }
+    for (const [k, vs] of sOcc) {
+      const cap = subjCap.get(k.slice(0, k.indexOf('|')));
+      if (vs.length > cap) atMost(m, sum(vs), cap);
+    }
+  }
+
   for (const [k, entries] of clsAt) {
     const byDiv = new Map();
     const byDivGroup = new Map();

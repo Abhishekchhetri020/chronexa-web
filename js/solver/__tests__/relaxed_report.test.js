@@ -40,3 +40,33 @@ describe("relaxed-conditions report", () => {
     expect(limitViolations(tiny({}, [{ lessonId: "l1", day: 0, period: 0 }, { lessonId: "l1", day: 0, period: 5 }]))).toHaveLength(0);
   });
 });
+
+import { subjectParallelViolations } from "../relaxed_report.js";
+import { solve } from "../csp_solver.js";
+
+describe("max cards of a subject in one period", () => {
+  const BELL = { id: "b", periods: [1, 2, 3].map((i) => ({ index: i, label: "P" + i, isTeaching: true })) };
+  const school = (cap) => ({
+    daysPerWeek: 1, periodsPerDay: 3, bell: BELL, bells: [BELL],
+    subjects: [{ id: "g", name: "Games", constraints: cap ? { maxParallel: cap } : {} }],
+    teachers: ["t1", "t2", "t3"].map((id) => ({ id, name: id, timeOff: {} })),
+    classes: ["c1", "c2", "c3"].map((id) => ({ id, name: id, bellId: "b" })),
+    classrooms: [],
+    lessons: [1, 2, 3].map((i) => ({ id: "L" + i, subjectId: "g", teacherIds: ["t" + i], classIds: ["c" + i], periodsPerWeek: 1, periodsPerCard: 1 })),
+    relations: [], cards: [],
+  });
+
+  it("the report flags 3 Games cards in one period when the cap is 2", () => {
+    const s = school(2);
+    s.cards = [1, 2, 3].map((i) => ({ lessonId: "L" + i, day: 0, period: 1 }));
+    expect(subjectParallelViolations(s)).toEqual([expect.objectContaining({ name: "Games", limit: 2, actual: 3, where: 0, period: 1 })]);
+  });
+
+  it("the JS solver spreads Games when capped at 1", () => {
+    const r = solve(school(1), { timeLimitSec: 2, seed: 3 });
+    const per = new Map();
+    for (const a of r.assignment) per.set(a.period, (per.get(a.period) || 0) + 1);
+    expect(r.stats.placed).toBe(3);
+    expect(Math.max(...per.values())).toBe(1);
+  });
+});

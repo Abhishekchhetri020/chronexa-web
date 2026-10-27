@@ -593,6 +593,12 @@ function buildModel(school) {
     : Math.ceil(periodsPerDay / 2);
   // Tier-B FET — per-teacher "working in hourly interval max days per
   // week". Each entry: { fromPeriod, toPeriod, maxDays }.
+  // aSc "Max cards on one period" per subject (subject.maxParallel); -1 = none.
+  const subjectMaxParallel = new Int32Array(subjectIds.length).fill(-1);
+  school.subjects.forEach((sj, i) => {
+    const v = sj.maxParallel ?? (sj.constraints && sj.constraints.maxParallel);
+    if ((v | 0) > 0) subjectMaxParallel[i] = v | 0;
+  });
   const teacherIntervalMaxDays = new Array(teacherIds.length);
   for (let t = 0; t < teacherIds.length; t++) {
     const tch = school.teachers[t];
@@ -1379,6 +1385,7 @@ function buildModel(school) {
     teacherLastPeriodCap: teacherMaxLastPeriod,
     teacherMaxGapsPerDay,
     teacherMaxGapsPerWeek,
+    subjectMaxParallel,
     classMaxGapsPerDay,
     lessonN1Partners,
     lessonN0Partners,
@@ -1469,6 +1476,8 @@ function makeState(model) {
     roomOcc: new Uint32Array(roomCount * days),
     // Day-load counters
     teacherDayLoad: new Int32Array(teacherCount * days),
+    // Cards per (subject, slot) — only maintained for subjects with maxParallel.
+    subjectSlotCount: new Int16Array(subjectCount * totalSlots),
     classDayLoad: new Int32Array(classCount * days),
     classSubjectDayCount: new Int32Array(classCount * subjectCount * days),
     classSubjectTotalPlaced: new Int32Array(classCount * subjectCount),
@@ -1784,7 +1793,8 @@ function canPlace(model, state, lessonIdx, slot, roomIdx) {
   if (model._wasmEnabled) {
     // The optional AssemblyScript accelerator predates n_9 and class-specific
     // edge masks. Keep these lessons on the complete JS constraint path.
-    if (model.lessonMustFirstLast[lessonIdx] || model.lessonOrderedBefore[lessonIdx] || model.lessonOrderedAfter[lessonIdx]) {
+    if (model.lessonMustFirstLast[lessonIdx] || model.lessonOrderedBefore[lessonIdx] || model.lessonOrderedAfter[lessonIdx]
+        || (model.subjectMaxParallel && model.subjectMaxParallel[model.lessonSubject[lessonIdx]] > 0)) {
       return _canPlaceJS(model, state, lessonIdx, slot, roomIdx);
     }
     try {
@@ -1838,6 +1848,12 @@ function _canPlaceJS(model, state, lessonIdx, slot, roomIdx) {
   const classStart = model.lessonClassStart[lessonIdx];
   const classCount = model.lessonClassCount[lessonIdx];
   const subject = model.lessonSubject[lessonIdx];
+
+  // aSc "Max cards on one period" (subject.maxParallel).
+  if (model.subjectMaxParallel && model.subjectMaxParallel[subject] > 0 && state.subjectSlotCount &&
+      state.subjectSlotCount[subject * model.totalSlots + slot] >= model.subjectMaxParallel[subject]) {
+    return FAIL.SUBJECT_PARALLEL_CAP;
+  }
 
   for (let k = 0; k < classCount; k++) {
     const c = model.lessonClassFlat[classStart + k];
@@ -2078,6 +2094,11 @@ function _canPlaceJS(model, state, lessonIdx, slot, roomIdx) {
 }
 
 function canPlaceSecond(model, state, lessonIdx, slot, roomIdx) {
+  const sjCap = model.subjectMaxParallel ? model.subjectMaxParallel[model.lessonSubject[lessonIdx]] : -1;
+  if (sjCap > 0 && state.subjectSlotCount &&
+      state.subjectSlotCount[model.lessonSubject[lessonIdx] * model.totalSlots + slot] >= sjCap) {
+    return FAIL.SUBJECT_PARALLEL_CAP;
+  }
   const d = model.slotDay[slot];
   const p = model.slotPeriod[slot];
   const bit = (1 << p) >>> 0;
@@ -2255,10 +2276,18 @@ function refreshPeriodLoad(model, state) {
   state.totalPeriodLoadBalance = total;
 }
 
+function bumpSubjectSlot(model, state, lessonIdx, slot, by) {
+  const cap = model.subjectMaxParallel;
+  if (!cap || !state.subjectSlotCount) return;
+  const sj = model.lessonSubject[lessonIdx];
+  if (sj >= 0 && cap[sj] > 0) state.subjectSlotCount[sj * model.totalSlots + slot] += by;
+}
+
 function applySingle(model, state, lessonIdx, slot, roomIdx) {
   state._scoreDirty = true;
   // Bump wasm sync version so wasmSyncState knows state is dirty.
   state._wasmVersion++;
+  bumpSubjectSlot(model, state, lessonIdx, slot, 1);
   const d = model.slotDay[slot];
   const p = model.slotPeriod[slot];
   const bit = (1 << p) >>> 0;
@@ -2348,6 +2377,7 @@ function removeSingle(model, state, lessonIdx, slot, roomIdx) {
   state._scoreDirty = true;
   // Bump wasm sync version so wasmSyncState knows state is dirty.
   state._wasmVersion++;
+  bumpSubjectSlot(model, state, lessonIdx, slot, -1);
   const d = model.slotDay[slot];
   const p = model.slotPeriod[slot];
   const bit = (1 << p) >>> 0;
@@ -2509,6 +2539,7 @@ function softScore(model, state) {
   s += modeBlockPairingPenalty(model, state) * (w[1] || 1);
   s += teacherIntervalMaxDaysPenalty(model, state) * (w[0] || 1);
   s += teacherGapCapPenalty(model, state) * (w[0] || 1) * 10;
+  s += subjectParallelPenalty(model, state) * (w[0] || 1) * 20;
   s += supervisionCriteriaSoftPenalty(model, state) * (w[0] || 1);
   s += studentSubjectsConflictPenalty(model, state) * (w[1] || 1);
   state._cachedSoftScore = s;
@@ -2649,6 +2680,26 @@ function modeBlockPairingPenalty(model, state) {
 // Per-teacher "Max gaps per day / per week" (gap = free period between a
 // teacher's first and last lesson of the day). Counts only the excess over
 // each cap; weighted well above the generic gap term so caps win.
+// Cards of one subject in the same slot beyond subject.maxParallel.
+function subjectParallelPenalty(model, state) {
+  const cap = model.subjectMaxParallel;
+  if (!cap || !cap.some((c) => c > 0)) return 0;
+  const count = new Map();
+  let penalty = 0;
+  for (let i = 0; i < model.lessonCount; i++) {
+    if (!state.lessonAssigned[i]) continue;
+    const sj = model.lessonSubject[i];
+    if (sj < 0 || cap[sj] <= 0) continue;
+    for (const slot of _slotsOfLesson(model, state, i)) {
+      const k = sj * 4096 + slot;
+      const n = (count.get(k) || 0) + 1;
+      count.set(k, n);
+      if (n > cap[sj]) penalty++;
+    }
+  }
+  return penalty;
+}
+
 function teacherGapCapPenalty(model, state) {
   const perDay = model.teacherMaxGapsPerDay, perWeek = model.teacherMaxGapsPerWeek;
   if (!perDay || !state.teacherDayGap) return 0;
@@ -3696,6 +3747,7 @@ function materializeBestIntoState(model, state) {
   state.roomOcc.fill(0);
   state.teacherDayLoad.fill(0);
   state.classDayLoad.fill(0);
+  if (state.subjectSlotCount) state.subjectSlotCount.fill(0);
   state.classSubjectDayCount.fill(0);
   state.classSubjectTotalPlaced.fill(0);
   state.teacherLastPeriodCount.fill(0);

@@ -416,6 +416,14 @@ import "../components/time_off_matrix.js";
     studentsRow.appendChild(fStudents);
     studentsRow.appendChild(setForMoreLink("maxStudents", "Max students", () => c.maxStudents));
 
+    // aSc "Max cards on one period": sections of this subject at once, school-wide.
+    const fParallel = D.el("input", { type: "number", min: "0", max: "99",
+      value: c.maxParallel || "", style: "width:80px", placeholder: "no limit",
+      oninput: (e) => c.maxParallel = e.target.value === "" ? undefined : parseInt(e.target.value, 10) || undefined });
+    const parallelRow = D.el("div", { style: "display:flex;align-items:center;gap:4px" });
+    parallelRow.appendChild(fParallel);
+    parallelRow.appendChild(setForMoreLink("maxParallel", "Max at the same time", () => c.maxParallel));
+
     const fContract = D.el("input", { type: "number", min: "0", max: "99",
       value: c.teacherContractLength || "", style: "width:80px",
       oninput: (e) => c.teacherContractLength = e.target.value });
@@ -468,6 +476,7 @@ import "../components/time_off_matrix.js";
         { label: "Homework preparation required",   control: fHomework },
         { label: null,                              control: D.el("div", { style: "border-top:1px solid #e2e8f0;margin:4px 0" }) },
         { label: "Max students on lesson with this subject", control: studentsRow },
+        { label: "Max cards of this subject in one period (whole school)", control: parallelRow },
         { label: "Length for teacher's contract",    control: contractRow },
         { label: null,                              control: D.el("div", { style: "border-top:1px solid #e2e8f0;margin:4px 0" }) },
         { label: "Temporary subject",               control: fTemp },

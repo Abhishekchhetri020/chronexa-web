@@ -39,7 +39,8 @@ import { relaxedReport, IMPORTANCE_ORDER } from "../../solver/relaxed_report.js"
       const scope = [subj.join(", "), cls.length ? "in " + cls.join(", ") : ""].filter(Boolean).join(" ");
       return `“${it.label}”${scope ? " — " + scope : ""}: broken by ${it.count} card${it.count === 1 ? "" : "s"}`;
     }
-    const where = it.where == null ? "over the week" : "on " + (DAY[it.where] || "day " + (it.where + 1));
+    const where = (it.where == null ? "over the week" : "on " + (DAY[it.where] || "day " + (it.where + 1))) +
+      (it.period != null ? ` period ${it.period}` : "");
     return `${it.name}: ${it.rule} ${it.limit}, has ${it.actual} ${where}`;
   }
 

@@ -56,6 +56,7 @@ export const FAIL = Object.freeze({
   RELATION_SAME_PERIOD_FORBIDDEN: 31,
   RELATION_ORDER: 32,
   DAY_LOCKED: 33,
+  SUBJECT_PARALLEL_CAP: 34,
 });
 
 /** Numeric ID → name string. */
@@ -94,6 +95,7 @@ export const FAIL_NAME = Object.freeze({
   31: "relation_same_period_forbidden",
   32: "relation_order",
   33: "day_locked",
+  34: "subject_parallel_cap",
 });
 
 /** Catalog rows (UI uses these for the violations list). */
