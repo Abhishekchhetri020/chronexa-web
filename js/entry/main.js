@@ -106,6 +106,7 @@ import "../ui/solver_ui/verification_panel.js";
 import "../ui/solver_ui/test_dialog.js";
 import "../ui/solver_ui/spec_check_dialog.js";
 import "../ui/solver_ui/relaxed_dialog.js";
+import "../ui/solver_ui/run_conditions_dialog.js";
 import "../ui/wizard/create_new.js";
 import "../ui/wizard/wizard_walkthrough.js";
 import "../ui/editor/activator.js";

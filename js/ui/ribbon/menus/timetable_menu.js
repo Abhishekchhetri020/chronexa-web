@@ -24,6 +24,7 @@ import "../../components/verification.js";
         { icon: "≈",  label: "Relaxed conditions…",       disabled: !has(), run: () => fire("app:relaxed-conditions") },
         { icon: "🔧", label: "Verification Pro (auto-fix)…", disabled: !has(), run: () => fire("app:verification-pro") },
         { icon: "💡", label: "Advisor — suggest improvements…", disabled: !has(), run: () => fire("app:advisor") },
+        { icon: "🧩", label: "Conditions for this run…",   disabled: !has(), run: () => fire("app:run-conditions") },
         { icon: "🎚", label: "Solver parameters…",         disabled: !has(), run: () => fire("app:solver-params") },
         { icon: "📊", label: "Statistics (with Exhaustion)…", disabled: !has(), run: () => fire("app:statistics") },
         { icon: "📜", label: "List constraints",          disabled: !has(), run: () => fire("app:list-constraints") },

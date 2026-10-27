@@ -313,6 +313,12 @@ import "./backend_client.js";
     chip(classes, "classes");
     chip(lessons, "lessons");
     chip(cards, "placed");
+    const RC = global.SolverUI && global.SolverUI.RunConditions;
+    const off = RC ? RC.offCount(school) : 0;
+    sum.appendChild(el("button", { type: "button", class: "csu-chip csu-chip--link" + (off ? " is-warn" : ""),
+      id: "csu-run-conditions", title: "Switch condition families on or off for this run",
+      onclick: () => RC && RC.open({ onClose: () => setSummary(school) }) },
+      off ? `${off} condition famil${off === 1 ? "y" : "ies"} off` : "Conditions: all on"));
     sum.classList.add("is-on");
   }
 

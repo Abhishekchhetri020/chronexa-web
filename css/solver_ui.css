@@ -789,3 +789,13 @@
 .chrx-relaxed__list li { padding: 2px 0; }
 .chrx-relaxed__ok { color: var(--chrx-green, #1a7f37); font-weight: 600; }
 #csu-result-relaxed[hidden] { display: none !important; }
+
+/* ---------- Conditions for this run (run_conditions_dialog.js) ---------- */
+.chrx-runcond__list { max-height: 55vh; overflow-y: auto; }
+.chrx-runcond__h { margin: 12px 0 4px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--chrx-fg-secondary, rgba(0,0,0,0.6)); }
+.chrx-runcond__row { display: flex; align-items: center; gap: 10px; padding: 6px 4px; border-radius: 6px; cursor: pointer; }
+.chrx-runcond__row:hover { background: var(--chrx-bg-tile, #f2f2f2); }
+.chrx-runcond__label { flex: 1 1 auto; }
+.chrx-runcond__count { color: var(--chrx-fg-tertiary, rgba(0,0,0,0.45)); font-variant-numeric: tabular-nums; }
+.csu-chip--link { cursor: pointer; border: 0; font: inherit; }
+.csu-chip--link.is-warn { background: var(--chrx-amber-bg, #fef3c7); color: var(--chrx-amber, #92400e); font-weight: 600; }

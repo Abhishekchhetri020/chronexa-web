@@ -29,6 +29,8 @@
  *   the legacy `POST /solve` + 750ms synthesized heartbeat path. The Source
  *   contract is identical either way.
  */
+import { applyRunConditions } from "../../solver/run_conditions.js";
+
 (function (global) {
   "use strict";
 
@@ -597,7 +599,8 @@
   }
 
   function run(spec) {
-    let school = spec.school;
+    // Families switched Off in "Conditions for this run" leave the solver's copy only.
+    let school = applyRunConditions(spec.school);
     const options = { ...(spec.options || {}) };
     if (spec.generatorMode && !options.generatorMode) options.generatorMode = spec.generatorMode;
     if (options.generatorMode === "add_unplaced") {
