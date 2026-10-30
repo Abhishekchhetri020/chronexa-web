@@ -137,6 +137,33 @@ import "./dialog_shell.js";
     { code:"a_17", label:"Max different period numbers per week", category:"Advanced — frequency",
       param1:{ label:"Max period numbers", min:1, max:12, def:6 },
       help:"These subjects may appear in only this many different period slots across the week." },
+    { code:"a_11", label:"No A one day and B the next day", category:"Advanced — ordering",
+      param1:{ label:"Allowed exceptions per week", min:0, max:20, def:0 },
+      needsSubject2:true,
+      help:"Stops a subject landing at the end of one day and the paired subject at the start of the next — e.g. a late lab folowed by an early one." },
+    { code:"a_20", label:"Max free days between cards per week", category:"Advanced — frequency",
+      param1:{ label:"Max free days", min:0, max:6, def:1 },
+      help:"Between the first and last day the subject runs, there may not be more than this many empty days in a row." },
+    { code:"a_23", label:"Max consecutive days", category:"Advanced — frequency",
+      param1:{ label:"Max days in a row", min:1, max:6, def:3 },
+      help:"These subjects may not appear on more than this many consecutive days." },
+    { code:"a_37", label:"Max consecutive periods (A and B together)", category:"Advanced — day shape",
+      param1:{ label:"Max in a row", min:1, max:12, def:3 },
+      needsSubject2:true,
+      help:"A and B counted as one block: no more than this many back-to-back periods." },
+    { code:"a_40", label:"A lessons must be before B lessons in a day", category:"Advanced — ordering",
+      param1:{ label:"Allowed exceptions per week", min:0, max:20, def:0 },
+      needsSubject2:true,
+      help:"Within a day, every A card must come before the first B card." },
+    { code:"a_41", label:"A lessons must be before B lessons in a week", category:"Advanced — ordering",
+      param1:{ label:"Allowed exceptions per week", min:0, max:20, def:0 },
+      needsSubject2:true,
+      help:"Across the week, every A card must come before every B card." },
+    { code:"a_42", label:"A days must be before B days in a week", category:"Advanced — ordering",
+      param1:{ label:"Allowed exceptions per week", min:0, max:20, def:0 },
+      needsSubject2:true,
+      help:"All days that carry A must come before the days that carry B." },
+
     { code:"a_21", label:"Can not be on the same period", category:"Advanced — ordering",
       param1:{ label:"Allowed exceptions per week", min:0, max:20, def:0 },
       needsSubject2:true,
@@ -164,7 +191,7 @@ import "./dialog_shell.js";
     "Advanced — day shape","Advanced — frequency","Advanced — ordering"];
 
   // Per-typ field requirements.
-  const NEEDS_SUBJECT2 = new Set(["n_5","n_6","n_8","n_9","a_1","a_22","a_82","a_83","a_21"]);
+  const NEEDS_SUBJECT2 = new Set(["n_5","n_6","n_8","n_9","a_1","a_22","a_82","a_83","a_21","a_11","a_37","a_40","a_41","a_42"]);
   // Advanced types carry a numeric limit in `param1`.
   const NEEDS_PARAM1 = new Set(TYP_CATALOGUE.filter(t => t.param1).map(t => t.code));
   const NEEDS_POSITIONS_FIRSTLAST = new Set(["n_16"]);

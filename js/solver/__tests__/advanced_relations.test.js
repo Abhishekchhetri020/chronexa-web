@@ -52,7 +52,8 @@ describe("registry of advanced types", () => {
   it("covers the gap and ordering families", () => {
     for (const t of ["a_4", "a_5", "a_6", "a_26", "a_27", "a_1", "a_22", "a_82", "a_83",
       "a_0", "a_3", "a_9", "a_10", "a_12", "a_13", "a_54", "a_74",
-      "a_17", "a_18", "a_19", "a_21", "a_67", "a_68", "a_69", "a_70"]) {
+      "a_17", "a_18", "a_19", "a_21", "a_67", "a_68", "a_69", "a_70",
+      "a_11", "a_20", "a_23", "a_37", "a_40", "a_41", "a_42"]) {
       expect(ADV_REL_TYPS.has(t), t).toBe(true);
     }
   });
@@ -263,5 +264,56 @@ describe("span, start/end gap counting and same-period bans", () => {
     const same = score(school(sch, lessons), [[0, 0, 2], [1, 0, 2]]);
     const apart = score(school(sch, lessons), [[0, 0, 2], [1, 0, 4]]);
     expect(same).toBeGreaterThan(apart);
+  });
+});
+
+describe("day sequencing — a_11 / a_20 / a_23 / a_37 / a_40 / a_41 / a_42", () => {
+  const pair = [L("lb", "bio"), L("lp", "phy")];
+  const pairRel = (typ, p1) => [{ typ, subjectids: ["bio"], subject2ids: ["phy"], param1: p1 }];
+  const pairScore = (typ, p1, pl) => score(school(pairRel(typ, p1), pair), pl);
+
+  it("a_11 forbids A one day and B the next", () => {
+    const nextDay = pairScore("a_11", 0, [[0, 0, 6], [1, 1, 0]]);  // Bio day0, Phy day1
+    const sameDay = pairScore("a_11", 0, [[0, 0, 0], [1, 0, 3]]);
+    expect(nextDay).toBeGreaterThan(sameDay);
+  });
+
+  it("a_20 limits free days between cards", () => {
+    const sch = school([{ typ: "a_20", subjectids: ["bio"], param1: 0 }], [L("l1", "bio", 2)]);
+    const spread = score(sch, [[0, 0, 0], [1, 4, 0]]);   // three free days between
+    const adjacent = score(sch, [[0, 0, 0], [1, 1, 0]]); // none
+    expect(spread).toBeGreaterThan(adjacent);
+  });
+
+  it("a_23 caps consecutive days", () => {
+    const sch = school([{ typ: "a_23", subjectids: ["bio"], param1: 2 }], [L("l1", "bio", 3)]);
+    const run3 = score(sch, [[0, 0, 0], [1, 1, 0], [2, 2, 0]]);
+    const breakRun = score(sch, [[0, 0, 0], [1, 1, 0], [2, 3, 0]]);
+    expect(run3).toBeGreaterThan(breakRun);
+  });
+
+  it("a_37 caps the combined A+B run in a day", () => {
+    const sch = school(pairRel("a_37", 2), [L("lb", "bio", 2), L("lp", "phy", 2)]);
+    const block = score(sch, [[0, 0, 0], [1, 0, 1], [2, 0, 2], [3, 0, 3]]);  // 4 in a row
+    const split = score(sch, [[0, 0, 0], [1, 0, 1], [2, 0, 4], [3, 0, 5]]);
+    expect(block).toBeGreaterThan(split);
+  });
+
+  it("a_40 wants every A before the first B in a day", () => {
+    const after = pairScore("a_40", 0, [[0, 0, 4], [1, 0, 2]]);   // Bio after Phy
+    const before = pairScore("a_40", 0, [[0, 0, 2], [1, 0, 4]]);
+    expect(after).toBeGreaterThan(before);
+  });
+
+  it("a_41 wants A before B across the week", () => {
+    const later = pairScore("a_41", 0, [[0, 2, 0], [1, 0, 0]]);   // Bio on day2, Phy day0
+    const earlier = pairScore("a_41", 0, [[0, 0, 0], [1, 2, 0]]);
+    expect(later).toBeGreaterThan(earlier);
+  });
+
+  it("a_42 wants A days before B days", () => {
+    const later = pairScore("a_42", 0, [[0, 2, 0], [1, 0, 0]]);
+    const earlier = pairScore("a_42", 0, [[0, 0, 0], [1, 2, 0]]);
+    expect(later).toBeGreaterThan(earlier);
   });
 });

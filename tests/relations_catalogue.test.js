@@ -7,8 +7,9 @@ import { describe, it, expect, beforeAll } from "vitest";
 
 const ADVANCED = ["a_4", "a_5", "a_6", "a_26", "a_27", "a_1", "a_22", "a_82", "a_83",
   "a_0", "a_3", "a_9", "a_10", "a_12", "a_13", "a_54", "a_74",
-  "a_17", "a_18", "a_19", "a_21", "a_67", "a_68", "a_69", "a_70"];
-const PAIR_TYPES = ["a_1", "a_22", "a_82", "a_83", "a_21"];
+  "a_17", "a_18", "a_19", "a_21", "a_67", "a_68", "a_69", "a_70",
+  "a_11", "a_20", "a_23", "a_37", "a_40", "a_41", "a_42"];
+const PAIR_TYPES = ["a_1", "a_22", "a_82", "a_83", "a_21", "a_11", "a_37", "a_40", "a_41", "a_42"];
 
 beforeAll(async () => {
   // Minimal EntityDialog stub — the module only needs buildField/el at import time.

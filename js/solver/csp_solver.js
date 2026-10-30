@@ -38,6 +38,8 @@ export const ADV_REL_TYPS = new Set([
   "a_0", "a_3", "a_9", "a_10", "a_12", "a_13", "a_54", "a_74",
   // span / position counting
   "a_17", "a_18", "a_19", "a_21", "a_67", "a_68", "a_69", "a_70",
+  // day sequencing: A/B across days, streaks and week order
+  "a_11", "a_20", "a_23", "a_37", "a_40", "a_41", "a_42",
 ]);
 import { popcount32 } from "./bitmask.js";
 import { createLearningForSchool, SolverLearning } from "./solver_learning.js";
@@ -3407,6 +3409,14 @@ function advancedRelationPenalty(model, state) {
     const typ = rel.typ, p1 = rel.p1;
     // class*days -> { all, A, B } period masks for the watched lessons.
     const masks = new Map();
+    // Per-class week view, needed by the day-sequencing rules below.
+    const week = new Map();
+    const weekOf = (c) => {
+      let w = week.get(c);
+      if (!w) week.set(c, w = { dayMask: 0, dayMaskA: 0, dayMaskB: 0,
+        minA: Infinity, maxA: -Infinity, minB: Infinity, maxB: -Infinity });
+      return w;
+    };
     const wantSubjects = typ === "a_54";
     const touch = (key, bit) => {
       let e = masks.get(key);
@@ -3429,6 +3439,22 @@ function advancedRelationPenalty(model, state) {
           if (flag & 1) e.A |= bit;
           if (flag & 2) e.B |= bit;
           if (e.subj) e.subj.add(model.lessonSubject[i]);
+          if (typ === "a_11" || typ === "a_20" || typ === "a_23" ||
+              typ === "a_40" || typ === "a_41" || typ === "a_42") {
+            const w = weekOf(c);
+            const slotIdx = d * ppd + model.slotPeriod[slot];
+            w.dayMask |= (1 << d);
+            if (flag & 1) {
+              w.dayMaskA |= (1 << d);
+              if (slotIdx < w.minA) w.minA = slotIdx;
+              if (slotIdx > w.maxA) w.maxA = slotIdx;
+            }
+            if (flag & 2) {
+              w.dayMaskB |= (1 << d);
+              if (slotIdx < w.minB) w.minB = slotIdx;
+              if (slotIdx > w.maxB) w.maxB = slotIdx;
+            }
+          }
         }
       }
     }
@@ -3555,6 +3581,88 @@ function advancedRelationPenalty(model, state) {
       for (const [, e] of masks) {
         if (!e.subj || !e.subj.size) continue;
         if (e.subj.size > p1) penalty += e.subj.size - p1;
+      }
+      continue;
+    }
+
+    if (typ === "a_37") {
+      // Longest combined A+B run in a day ("max consecutive periods (A&B)").
+      for (const [, e] of masks) {
+        if (!e.all) continue;
+        const run = longestRun(e.all, ppd);
+        if (run > p1) penalty += run - p1;
+      }
+      continue;
+    }
+
+    if (typ === "a_11") {
+      // "No A on one day AND B on the next day" — the last-period-tonight /
+      // first-period-tomorrow pattern GDG asked about. Positions are the whole
+      // day here: any A day followed by a B day is the violation.
+      for (const [, w] of week) {
+        for (let d = 0; d + 1 < days; d++) {
+          if ((w.dayMaskA >> d) & 1 && (w.dayMaskB >> (d + 1)) & 1) penalty += 1;
+        }
+      }
+      continue;
+    }
+
+    if (typ === "a_23") {
+      // Max consecutive days that carry the watched lessons.
+      for (const [, w] of week) {
+        let best = 0, run = 0;
+        for (let d = 0; d < days; d++) {
+          if ((w.dayMask >> d) & 1) { run++; if (run > best) best = run; } else run = 0;
+        }
+        if (best > p1) penalty += best - p1;
+      }
+      continue;
+    }
+
+    if (typ === "a_20") {
+      // Max free days between two used days: runs of empty days strictly inside
+      // the first and last used day.
+      for (const [, w] of week) {
+        if (!w.dayMask) continue;
+        const first = 31 - Math.clz32(w.dayMask & -w.dayMask);
+        const last = 31 - Math.clz32(w.dayMask);
+        let run = 0;
+        for (let d = first; d <= last; d++) {
+          if ((w.dayMask >> d) & 1) { run = 0; continue; }
+          run++;
+          if (run > p1) penalty += 1;
+        }
+      }
+      continue;
+    }
+
+    if (typ === "a_40") {
+      // All A lessons before all B lessons within the same day.
+      for (const [, e] of masks) {
+        if (!e.A || !e.B) continue;
+        const firstB = 31 - Math.clz32(e.B & -e.B);
+        const lastA = 31 - Math.clz32(e.A);
+        if (lastA > firstB) penalty += 1;
+      }
+      continue;
+    }
+
+    if (typ === "a_41") {
+      // A before B across the WEEK (every A card earlier than every B card).
+      for (const [, w] of week) {
+        if (w.minA === Infinity || w.minB === Infinity) continue;
+        if (w.maxA > w.minB) penalty += 1;
+      }
+      continue;
+    }
+
+    if (typ === "a_42") {
+      // Every A day before every B day in the week.
+      for (const [, w] of week) {
+        if (!w.dayMaskA || !w.dayMaskB) continue;
+        const firstB = 31 - Math.clz32(w.dayMaskB & -w.dayMaskB);
+        const lastA = 31 - Math.clz32(w.dayMaskA);
+        if (lastA > firstB) penalty += 1;
       }
       continue;
     }
