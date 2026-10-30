@@ -5,7 +5,7 @@ import { describe, it, expect } from "vitest";
 import { __test_internals, ADV_REL_TYPS } from "../csp_solver.js";
 import { FAIL } from "../constraints.js";
 
-const { buildModel, makeState, softScore, canPlace } = __test_internals;
+const { buildModel, makeState, softScore, canPlace, advancedRelationPenalty } = __test_internals;
 
 const BELL = {
   id: "b8", name: "8-period day",
@@ -56,7 +56,8 @@ describe("registry of advanced types", () => {
       "a_17", "a_18", "a_19", "a_21", "a_67", "a_68", "a_69", "a_70",
       "a_11", "a_20", "a_23", "a_37", "a_40", "a_41", "a_42",
       "a_7", "a_8", "a_30", "a_34", "a_60",
-      "a_24", "a_25", "a_39", "a_43", "a_58", "a_50", "a_51"]) {
+      "a_24", "a_25", "a_39", "a_43", "a_58", "a_50", "a_51",
+      "a_29", "a_31", "a_38", "a_36", "a_49", "a_56", "a_76", "a_85"]) {
       expect(ADV_REL_TYPS.has(t), t).toBe(true);
     }
   });
@@ -501,5 +502,114 @@ describe("selected-classroom budgets — a_50 / a_51", () => {
     if (st.lessonAssignedRoom) st.lessonAssignedRoom[0] = m.roomIds.indexOf("r1");
     st._scoreDirty = true;
     expect(softScore(m, st)).toBe(softScore(m, makeState(m)));
+  });
+});
+
+describe("remaining counted family — a_29 / a_31 / a_38 / a_36 / a_49 / a_56 / a_76", () => {
+  const bio = (n) => [L("l1", "bio", n)];
+  const rel = (typ, p1) => [{ typ, subjectids: ["bio"], param1: p1 }];
+
+  it("a_29 charges every short day, including empty ones", () => {
+    const sch = school(rel("a_29", 2), bio(3));
+    const penaltyOf = (rows) => {
+      const m = buildModel(sch);
+      const st = makeState(m);
+      for (const [i, d, p] of rows) { st.lessonAssigned[i] = 1; st.lessonAssignedSlot[i] = d * m.periodsPerDay + p; }
+      return advancedRelationPenalty(m, st);
+    };
+    // 5 days x (2 - per-day count); a day with 2 lessons is free.
+    expect(penaltyOf([[0, 0, 0], [1, 0, 1], [2, 1, 0]])).toBe(1 + 2 + 2 + 2);
+    // everything crammed on one day: 4 empty days at 2 each, that day is over cap
+    expect(penaltyOf([[0, 0, 0], [1, 0, 1], [2, 0, 2]])).toBe(4 * 2);
+  });
+
+  it("a_31 caps the cycle total, a_38 floors it", () => {
+    const placement = [[0, 0, 0], [1, 0, 1]];
+    expect(score(school(rel("a_31", 1), bio(2)), placement))
+      .toBeGreaterThan(score(school(rel("a_31", 5), bio(2)), placement));
+    expect(score(school(rel("a_38", 4), bio(2)), placement))
+      .toBeGreaterThan(score(school(rel("a_38", 1), bio(2)), placement));
+  });
+
+  it("a_36 wants a batch of cards in one period", () => {
+    const lessons = [L("lb", "bio", 2), L("lp", "phy", 2)];
+    const sch = [{ typ: "a_36", subjectids: ["bio", "phy"], param1: 2 }];
+    const together = score(school(sch, lessons), [[0, 0, 0], [1, 0, 0], [2, 1, 2], [3, 1, 4]]);
+    const apart = score(school(sch, lessons), [[0, 0, 0], [1, 1, 0], [2, 2, 0], [3, 3, 0]]);
+    expect(apart).toBeGreaterThan(together);
+  });
+
+  it("a_49 fills A's holes with B", () => {
+    // lesson 0,1 = Bio (2 cards); lesson 2 = Phy
+    const lessons = [L("lb", "bio", 2), L("lp", "phy", 1)];
+    const sch = [{ typ: "a_49", subjectids: ["bio"], subject2ids: ["phy"] }];
+    const penaltyOf = (rows) => {
+      const m = buildModel(school(sch, lessons));
+      const st = makeState(m);
+      for (const [i, d, p] of rows) { st.lessonAssigned[i] = 1; st.lessonAssignedSlot[i] = d * m.periodsPerDay + p; }
+      return advancedRelationPenalty(m, st);
+    };
+    // Bio at P1 and P3 leaves exactly one hole (P2).
+    const filled = penaltyOf([[0, 0, 0], [1, 0, 2], [2, 0, 1]]);  // Phy in the hole
+    expect(filled).toBe(0);
+    const hole = penaltyOf([[0, 0, 0], [1, 0, 2], [2, 0, 5]]);    // Phy elsewhere
+    expect(hole).toBe(1);
+    // A wider hole needs more B cards: two holes, one B -> one still open.
+    expect(penaltyOf([[0, 0, 0], [1, 0, 4], [2, 0, 2]])).toBe(2);
+  });
+
+  it("a_56 caps a run of different subjects", () => {
+    const lessons = [L("lb", "bio", 1), L("lp", "phy", 1), L("lc", "chem", 1)];
+    const sch = [{ typ: "a_56", subjectids: ["bio", "phy", "chem"], param1: 2 }];
+    const run3 = score(school(sch, lessons), [[0, 0, 0], [1, 0, 1], [2, 0, 2]]);
+    const run2 = score(school(sch, lessons), [[0, 0, 0], [1, 0, 1], [2, 0, 3]]);
+    expect(run3).toBeGreaterThan(run2);
+  });
+
+  it("a_76 forbids adjacency in either order", () => {
+    const lessons = [L("lb", "bio"), L("lp", "phy")];
+    const sch = [{ typ: "a_76", subjectids: ["bio"], subject2ids: ["phy"] }];
+    const penaltyOf = (rows) => {
+      const m = buildModel(school(sch, lessons));
+      const st = makeState(m);
+      for (const [i, d, p] of rows) { st.lessonAssigned[i] = 1; st.lessonAssignedSlot[i] = d * m.periodsPerDay + p; }
+      return advancedRelationPenalty(m, st);
+    };
+    expect(penaltyOf([[0, 0, 3], [1, 0, 2]])).toBe(1);  // Phy immediately before Bio
+    expect(penaltyOf([[0, 0, 2], [1, 0, 3]])).toBe(1);  // Bio immediately before Phy
+    expect(penaltyOf([[0, 0, 3], [1, 0, 0]])).toBe(0);  // apart
+  });
+});
+
+describe("a_85 — classroom changes per day", () => {
+  it("charges a building change between consecutive periods", () => {
+    const sch = {
+      schoolName: "changes", daysPerWeek: 5, periodsPerDay: 6, bell: BELL, bells: [BELL],
+      buildings: [{ id: "b1", name: "Main" }, { id: "b2", name: "Annex" }],
+      subjects: [{ id: "bio", name: "Bio" }],
+      teachers: [{ id: "t1", name: "T1", subjects: ["bio"], timeOff: {} }],
+      classes: [{ id: "c1", name: "IX A", bellId: "b8" }],
+      classrooms: [{ id: "r1", name: "R1", buildingId: "b1", tags: [] },
+                   { id: "r3", name: "R3", buildingId: "b2", tags: [] }],
+      lessons: [
+        { id: "l1", subjectId: "bio", teacherIds: ["t1"], classIds: ["c1"], periodsPerWeek: 2 },
+        { id: "l2", subjectId: "bio", teacherIds: ["t1"], classIds: ["c1"], periodsPerWeek: 2 },
+      ],
+      relations: [{ typ: "a_85", subjectids: ["bio"], param1: 0 }],
+      cards: [],
+    };
+    const run = (r0, r1) => {
+      const m = buildModel(sch);
+      const st = makeState(m);
+      st.lessonAssigned[0] = 1; st.lessonAssignedSlot[0] = 0;
+      st.lessonAssigned[1] = 1; st.lessonAssignedSlot[1] = 1;
+      if (st.lessonAssignedRoom) {
+        st.lessonAssignedRoom[0] = m.roomIds.indexOf(r0);
+        st.lessonAssignedRoom[1] = m.roomIds.indexOf(r1);
+      }
+      st._scoreDirty = true;
+      return softScore(m, st);
+    };
+    expect(run("r1", "r3")).toBeGreaterThan(run("r1", "r1"));
   });
 });
