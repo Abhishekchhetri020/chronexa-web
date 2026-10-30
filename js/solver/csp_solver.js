@@ -32,6 +32,9 @@ import { DEFAULT_SOFT_WEIGHTS, FAIL, FAIL_NAME, Weight } from "./constraints.js"
 // Scope comes from the relation row: subjectids = A set, subject2ids = B set,
 // classids = classes to watch (empty = every class the lessons touch),
 // param1 = the limit. A row without a usable param1 is inert, as in aSc.
+// Types that carry no numeric limit — they are positional, not counted.
+export const ADV_NO_PARAM = new Set(["a_30", "a_34", "a_60"]);
+
 export const ADV_REL_TYPS = new Set([
   "a_1", "a_4", "a_5", "a_6", "a_22", "a_26", "a_27", "a_82", "a_83",
   // frequency caps — how often the watched lessons may (or must) appear
@@ -40,6 +43,8 @@ export const ADV_REL_TYPS = new Set([
   "a_17", "a_18", "a_19", "a_21", "a_67", "a_68", "a_69", "a_70",
   // day sequencing: A/B across days, streaks and week order
   "a_11", "a_20", "a_23", "a_37", "a_40", "a_41", "a_42",
+  // position family: same-slot counting, A-only-where-B, allowed windows
+  "a_7", "a_8", "a_30", "a_34", "a_60",
 ]);
 import { popcount32 } from "./bitmask.js";
 import { createLearningForSchool, SolverLearning } from "./solver_learning.js";
@@ -1279,8 +1284,14 @@ function buildModel(school) {
     const typ = rel.typ;
     if (!ADV_REL_TYPS.has(typ)) continue;
     const rawP = rel.param1;
-    const p1 = rawP == null || rawP === "" ? null : parseInt(rawP, 10);
-    if (p1 == null || Number.isNaN(p1) || p1 < 0) continue;
+    let p1 = rawP == null || rawP === "" ? null : parseInt(rawP, 10);
+    if (Number.isNaN(p1) || p1 < 0) p1 = null;
+    if (p1 == null) {
+      // Positional types need no limit; a counted type without one is inert,
+      // exactly as in aSc.
+      if (!ADV_NO_PARAM.has(typ)) continue;
+      p1 = 0;
+    }
     const aSet = new Set((rel.subjectids || []).filter(Boolean));
     let bSet = new Set((rel.subject2ids || []).filter(Boolean));
     if (!bSet.size && aSet.size > 1) bSet = new Set(Array.from(aSet).slice(1, 2));
@@ -1302,7 +1313,32 @@ function buildModel(school) {
       typ, p1,
       lessonIdxs: Int32Array.from(lessonIdxs),
       flags: Uint8Array.from(flags),
+      positions: rel.positions,
     });
+  }
+
+  // ─── a_60 "cards must only be placed on selected positions" ─────────────
+  // aSc marks arbitrary positions; Chronexa models the window (from..to,
+  // 1-based, inclusive) because that is what a timetable team actually asks
+  // for: "labs only in periods 3-6". 0 = no restriction for that lesson.
+  const lessonAllowedStart = new Uint32Array(lessonCount);
+  for (const rel of advRels) {
+    if (rel.typ !== "a_60") continue;
+    const pos = rel.positions;
+    if (!pos) continue;
+    let from, to;
+    if (typeof pos === "string" && /^\d+-\d+$/.test(pos)) {
+      [from, to] = pos.split("-").map((n) => parseInt(n, 10));
+    } else if (typeof pos === "object") {
+      from = parseInt(pos.from, 10);
+      to = parseInt(pos.to, 10);
+    }
+    if (!Number.isFinite(from) || !Number.isFinite(to)) continue;
+    let mask = 0;
+    for (let p = Math.max(1, from); p <= Math.min(periodsPerDay, to); p++) mask |= 1 << (p - 1);
+    mask = mask >>> 0;
+    if (!mask) continue;
+    for (const i of rel.lessonIdxs) lessonAllowedStart[i] |= mask;
   }
 
   // ─── Lesson adjacency (neighbor lists) ──────────────────────────────────
@@ -1497,6 +1533,7 @@ function buildModel(school) {
     lessonSoftRelIdx,
     softRels,
     advRels,
+    lessonAllowedStart,
   };
 }
 
@@ -1920,6 +1957,11 @@ function _canPlaceJS(model, state, lessonIdx, slot, roomIdx) {
   const d = model.slotDay[slot];
   const p = model.slotPeriod[slot];
   const bit = (1 << p) >>> 0;
+  // aSc a_60 — these cards may only START on the marked positions.
+  if (model.lessonAllowedStart) {
+    const allowed = model.lessonAllowedStart[lessonIdx];
+    if (allowed && !(allowed & bit)) return FAIL.POSITION_BANNED;
+  }
   // aSc a_32 / a_33 — subject may not start (or end) on a banned period.
   if (model.subjectStartBan) {
     const sj = model.lessonSubject[lessonIdx];
@@ -3543,6 +3585,63 @@ function advancedRelationPenalty(model, state) {
         }
       }
       if (typ === "a_5") for (const [, total] of weekGaps) if (total > p1) penalty += total - p1;
+      continue;
+    }
+
+    if (typ === "a_7" || typ === "a_8") {
+      // "Max days with lesson on the same period": the same slot may be used on
+      // at most `param1` days (a_8 is the multi-week spelling; identical here).
+      const perClass = new Map(); // class -> Map(period -> dayMask)
+      for (const [key, e] of masks) {
+        if (!e.all) continue;
+        const c = Math.floor(key / days);
+        const d = key % days;
+        let slots = perClass.get(c);
+        if (!slots) perClass.set(c, slots = new Map());
+        for (let p = 0; p < ppd; p++) {
+          if (!(e.all & (1 << p))) continue;
+          slots.set(p, (slots.get(p) || 0) | (1 << d));
+        }
+      }
+      for (const [, slots] of perClass) {
+        for (const [, dayMask] of slots) {
+          const used = popcount32(dayMask >>> 0);
+          if (used > p1) penalty += used - p1;
+        }
+      }
+      continue;
+    }
+
+    if (typ === "a_30") {
+      // "A lessons can be only on positions of B lessons (A<B)": an A card must
+      // sit in a period B also uses that day, and before that B.
+      for (const [, e] of masks) {
+        if (!e.A) continue;
+        // A may only run on a day B also runs...
+        if (!e.B) { penalty += popcount32(e.A >>> 0); continue; }
+        // ...and each A card needs a B card after it that day.
+        for (let p = 0; p < ppd; p++) {
+          if (!(e.A & (1 << p))) continue;
+          const laterB = e.B & ~((1 << (p + 1)) - 1);
+          if (!laterB) penalty += 1;
+        }
+      }
+      continue;
+    }
+
+    if (typ === "a_34") {
+      // "A must be before or after B in a day": no interleaving. Either every A
+      // period is before every B period, or every B before every A.
+      for (const [, e] of masks) {
+        if (!e.A || !e.B) continue;
+        const firstA = 31 - Math.clz32(e.A & -e.A);
+        const lastA = 31 - Math.clz32(e.A);
+        const firstB = 31 - Math.clz32(e.B & -e.B);
+        const lastB = 31 - Math.clz32(e.B);
+        const aFullyBefore = lastA < firstB;
+        const bFullyBefore = lastB < firstA;
+        if (!aFullyBefore && !bFullyBefore) penalty += 1;
+      }
       continue;
     }
 

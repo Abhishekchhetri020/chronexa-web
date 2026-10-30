@@ -3,8 +3,9 @@
 //   subjectids = A set, subject2ids = B set, classids = scope, param1 = limit.
 import { describe, it, expect } from "vitest";
 import { __test_internals, ADV_REL_TYPS } from "../csp_solver.js";
+import { FAIL } from "../constraints.js";
 
-const { buildModel, makeState, softScore } = __test_internals;
+const { buildModel, makeState, softScore, canPlace } = __test_internals;
 
 const BELL = {
   id: "b8", name: "8-period day",
@@ -53,7 +54,8 @@ describe("registry of advanced types", () => {
     for (const t of ["a_4", "a_5", "a_6", "a_26", "a_27", "a_1", "a_22", "a_82", "a_83",
       "a_0", "a_3", "a_9", "a_10", "a_12", "a_13", "a_54", "a_74",
       "a_17", "a_18", "a_19", "a_21", "a_67", "a_68", "a_69", "a_70",
-      "a_11", "a_20", "a_23", "a_37", "a_40", "a_41", "a_42"]) {
+      "a_11", "a_20", "a_23", "a_37", "a_40", "a_41", "a_42",
+      "a_7", "a_8", "a_30", "a_34", "a_60"]) {
       expect(ADV_REL_TYPS.has(t), t).toBe(true);
     }
   });
@@ -315,5 +317,56 @@ describe("day sequencing — a_11 / a_20 / a_23 / a_37 / a_40 / a_41 / a_42", ()
     const later = pairScore("a_42", 0, [[0, 2, 0], [1, 0, 0]]);
     const earlier = pairScore("a_42", 0, [[0, 0, 0], [1, 2, 0]]);
     expect(later).toBeGreaterThan(earlier);
+  });
+});
+
+describe("position family — a_7 / a_8 / a_30 / a_34 / a_60", () => {
+  it("a_7 caps how many days may use the same period", () => {
+    const sch = school([{ typ: "a_7", subjectids: ["bio"], param1: 2 }], [L("l1", "bio", 3)]);
+    const everyDay = score(sch, [[0, 0, 0], [1, 1, 0], [2, 2, 0]]);   // period 0 on 3 days
+    const varied = score(sch, [[0, 0, 0], [1, 1, 1], [2, 2, 2]]);
+    expect(everyDay).toBeGreaterThan(varied);
+  });
+
+  it("a_8 behaves like a_7 on a single-week timetable", () => {
+    const sch = school([{ typ: "a_8", subjectids: ["bio"], param1: 1 }], [L("l1", "bio", 2)]);
+    expect(score(sch, [[0, 0, 0], [1, 1, 0]])).toBeGreaterThan(score(sch, [[0, 0, 0], [1, 1, 1]]));
+  });
+
+  it("a_30 runs A only where B runs, and before it", () => {
+    const lessons = [L("lb", "bio", 2), L("lp", "phy")];
+    const sch = [{ typ: "a_30", subjectids: ["bio"], subject2ids: ["phy"] }];
+    // Bio twice: on day 0 before Phy (fine) and on day 1 with no Phy (violation).
+    const orphan = score(school(sch, lessons), [[0, 0, 2], [1, 0, 4], [2, 1, 2]]);
+    // Both Bio cards on day 0, before Phy: satisfied.
+    const paired = score(school(sch, lessons), [[0, 0, 0], [1, 0, 2], [2, 0, 4]]);
+    expect(orphan).toBeGreaterThan(paired);
+  });
+
+  it("a_34 forbids interleaving A and B inside a day", () => {
+    const lessons = [L("lb", "bio", 2), L("lp", "phy", 2)];
+    const sch = [{ typ: "a_34", subjectids: ["bio"], subject2ids: ["phy"] }];
+    const mixed = score(school(sch, lessons),
+      [[0, 0, 0], [1, 0, 2], [2, 0, 1], [3, 0, 3]]);        // Bio, Phy, Bio, Phy
+    const blocked = score(school(sch, lessons),
+      [[0, 0, 0], [1, 0, 1], [2, 0, 2], [3, 0, 3]]);        // all Bio then all Phy
+    expect(mixed).toBeGreaterThan(blocked);
+  });
+
+  it("a_60 is hard: the card may only start inside the window", () => {
+    const lessons = [L("l1", "bio", 2)];
+    const sch = school([{ typ: "a_60", subjectids: ["bio"], positions: { from: 3, to: 5 } }], lessons);
+    const m = buildModel(sch);
+    const st = makeState(m);
+    const slot = (d, p) => d * m.periodsPerDay + p;
+    expect(canPlace(m, st, 0, slot(0, 1), 0)).toBe(FAIL.POSITION_BANNED); // period 2, outside
+    expect(canPlace(m, st, 0, slot(0, 2), 0)).toBe(null);                 // period 3, inside
+    expect(canPlace(m, st, 0, slot(0, 4), 0)).toBe(null);                 // period 5, inside
+    expect(canPlace(m, st, 0, slot(0, 5), 0)).toBe(FAIL.POSITION_BANNED); // period 6, outside
+  });
+
+  it("a_60 without positions is inert", () => {
+    const m = buildModel(school([{ typ: "a_60", subjectids: ["bio"] }], [L("l1", "bio", 2)]));
+    expect(m.lessonAllowedStart[0]).toBe(0);
   });
 });
