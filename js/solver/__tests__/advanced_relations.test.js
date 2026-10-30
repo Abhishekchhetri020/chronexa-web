@@ -56,7 +56,7 @@ describe("registry of advanced types", () => {
       "a_17", "a_18", "a_19", "a_21", "a_67", "a_68", "a_69", "a_70",
       "a_11", "a_20", "a_23", "a_37", "a_40", "a_41", "a_42",
       "a_7", "a_8", "a_30", "a_34", "a_60",
-      "a_24", "a_25", "a_39", "a_43", "a_58"]) {
+      "a_24", "a_25", "a_39", "a_43", "a_58", "a_50", "a_51"]) {
       expect(ADV_REL_TYPS.has(t), t).toBe(true);
     }
   });
@@ -445,5 +445,61 @@ describe("room and building family — a_24 / a_25 / a_39 / a_43 / a_58", () => 
     const together = scoreRooms(sch, [[0, 0, 2, "r1"], [1, 0, 2, "r2"]]);
     const separate = scoreRooms(sch, [[0, 0, 2, "r1"], [1, 0, 4, "r2"]]);
     expect(together).toBeGreaterThan(separate);
+  });
+});
+
+describe("selected-classroom budgets — a_50 / a_51", () => {
+  function sch(typ, p1, roomIds) {
+    return {
+      schoolName: "Selected rooms",
+      daysPerWeek: 5, periodsPerDay: 6, bell: BELL, bells: [BELL],
+      subjects: [{ id: "bio", name: "Bio" }],
+      teachers: [{ id: "t1", name: "T1", subjects: ["bio"], timeOff: {} },
+                 { id: "t2", name: "T2", subjects: ["bio"], timeOff: {} }],
+      classes: [{ id: "c1", name: "IX A", bellId: "b8" }],
+      classrooms: [{ id: "r1", name: "Lab", tags: [] }, { id: "r2", name: "Room", tags: [] }],
+      lessons: [
+        { id: "l1", subjectId: "bio", teacherIds: ["t1"], classIds: ["c1"], periodsPerWeek: 2 },
+        { id: "l2", subjectId: "bio", teacherIds: ["t2"], classIds: ["c1"], periodsPerWeek: 2 },
+      ],
+      relations: [{ typ, subjectids: ["bio"], classroomids: roomIds || ["r1"], param1: p1 }],
+      cards: [],
+    };
+  }
+  const scoreRooms2 = (s, rows) => {
+    const m = buildModel(s);
+    const st = makeState(m);
+    for (const [i, d, p, r] of rows) {
+      st.lessonAssigned[i] = 1;
+      st.lessonAssignedSlot[i] = d * m.periodsPerDay + p;
+      if (st.lessonAssignedRoom) st.lessonAssignedRoom[i] = m.roomIds.indexOf(r);
+    }
+    st._scoreDirty = true;
+    return softScore(m, st);
+  };
+
+  it("a_50 penalises too many periods in the selected room", () => {
+    const s = sch("a_50", 1);
+    const tooMany = scoreRooms2(s, [[0, 0, 0, "r1"], [1, 1, 0, "r1"]]);
+    const within = scoreRooms2(s, [[0, 0, 0, "r1"], [1, 1, 0, "r2"]]);
+    expect(tooMany).toBeGreaterThan(within);
+  });
+
+  it("a_51 penalises too few periods in the selected room", () => {
+    const s = sch("a_51", 2);
+    const tooFew = scoreRooms2(s, [[0, 0, 0, "r1"], [1, 1, 0, "r2"]]);
+    const enough = scoreRooms2(s, [[0, 0, 0, "r1"], [1, 1, 0, "r1"]]);
+    expect(tooFew).toBeGreaterThan(enough);
+  });
+
+  it("ignores a relation with no classrooms selected", () => {
+    const s = sch("a_50", 0, []);
+    const m = buildModel(s);
+    const st = makeState(m);
+    st.lessonAssigned[0] = 1;
+    st.lessonAssignedSlot[0] = 0;
+    if (st.lessonAssignedRoom) st.lessonAssignedRoom[0] = m.roomIds.indexOf("r1");
+    st._scoreDirty = true;
+    expect(softScore(m, st)).toBe(softScore(m, makeState(m)));
   });
 });

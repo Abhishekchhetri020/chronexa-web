@@ -47,6 +47,8 @@ export const ADV_REL_TYPS = new Set([
   "a_7", "a_8", "a_30", "a_34", "a_60",
   // room / building family
   "a_24", "a_25", "a_39", "a_43", "a_58",
+  // periods spent in the selected classrooms
+  "a_50", "a_51",
 ]);
 import { popcount32 } from "./bitmask.js";
 import { createLearningForSchool, SolverLearning } from "./solver_learning.js";
@@ -1316,6 +1318,7 @@ function buildModel(school) {
       lessonIdxs: Int32Array.from(lessonIdxs),
       flags: Uint8Array.from(flags),
       positions: rel.positions,
+      classrooms: rel.classroomids || [],
     });
   }
 
@@ -3587,6 +3590,34 @@ function advancedRelationPenalty(model, state) {
         }
       }
       if (typ === "a_5") for (const [, total] of weekGaps) if (total > p1) penalty += total - p1;
+      continue;
+    }
+
+    if (typ === "a_50" || typ === "a_51") {
+      // Periods the watched lessons spend in the SELECTED classrooms.
+      // aSc pairs this with an emergency/optimal room classification, which
+      // Chronexa does not model yet — here the relation's classroomids are the
+      // room set, so the same rule reads "these lessons must spend between N
+      // and M periods a week in these rooms".
+      const roomSet = new Set((rel.classrooms || []).filter(Boolean));
+      if (!roomSet.size) continue;
+      const roomIdxSet = new Set();
+      for (const rid of roomSet) {
+        const i = (model.roomIds || []).indexOf(rid);
+        if (i >= 0) roomIdxSet.add(i);
+      }
+      if (!roomIdxSet.size) continue;
+      let periods = 0;
+      for (let k = 0; k < rel.lessonIdxs.length; k++) {
+        const i = rel.lessonIdxs[k];
+        if (!state.lessonAssigned[i]) continue;
+        const room = state.lessonAssignedRoom ? state.lessonAssignedRoom[i] : -1;
+        if (!roomIdxSet.has(room)) continue;
+        // _slotsOfLesson is a generator: count, never read .length.
+        for (const _slot of _slotsOfLesson(model, state, i)) periods++;
+      }
+      if (typ === "a_50" && periods > p1) penalty += periods - p1;
+      if (typ === "a_51" && periods < p1) penalty += p1 - periods;
       continue;
     }
 
@@ -6850,7 +6881,7 @@ function maxCandidatesPerLesson(model) {
 // whole module to reach private functions.
 export const __test_internals = {
   buildModel, makeState, applySingle, removeSingle, canPlace, wasmSyncState, softScore, applyPlacement, scorePlacement,
-  subjectParallelPenalty, classMinPerDayPenalty,
+  subjectParallelPenalty, classMinPerDayPenalty, advancedRelationPenalty,
 };
 
 // In Web Worker context, setInterval is global; in unusual hosts it might not
