@@ -153,6 +153,7 @@ export async function buildAndSolve(school, options = {}) {
 
   const m = new CpModel();
   const tIdxOf = new Map((jm.teacherIds || []).map((id, i) => [id, i]));
+  const subjIdx = new Map((jm.subjectIds || []).map((id, i) => [id, i]));
   const lockedDaysSet = new Set(school.lockedDays || school.blockedDays || []);
 
   const validStarts = (card) => {
@@ -161,6 +162,16 @@ export async function buildAndSolve(school, options = {}) {
       if (card.fixed_day != null && d !== card.fixed_day) continue;
       if (card.fixed_period != null && p !== card.fixed_period) continue;
       if (card.fixed_day == null && lockedDaysSet.has(d)) continue;
+      // aSc a_32 / a_33 — subject may not start or end on a banned period.
+      if (jm.subjectStartBan || jm.subjectEndBan) {
+        const si = subjIdx.get(card.subject);
+        if (si != null) {
+          const banS = jm.subjectStartBan ? jm.subjectStartBan[si] : 0;
+          const banE = jm.subjectEndBan ? jm.subjectEndBan[si] : 0;
+          if (banS & ((1 << p) >>> 0)) continue;
+          if (banE & ((1 << (p + card.length - 1)) >>> 0)) continue;
+        }
+      }
       // Multi-period: every consecutive period must exist in teaching periods without break
       let validBlock = true;
       for (let off = 1; off < card.length; off++) {

@@ -231,6 +231,18 @@ export const CONSTRAINT_KEYS = Object.freeze([
   // Every one of these is stored by the Subject dialog and read by no solver —
   // the R3-B3 pattern, now visible in one place instead of guessed at.
   {
+    entity: "subject", key: "noStartPeriods", label: "Cannot start in period(s)",
+    kind: "object", weight: "hard", dialog: "subject",
+    solvers: { js: "subjectStartBan", wasm: "subjectStartBan", cloud: null },
+    probes: { wasm: "subjectStartBan" },
+  },
+  {
+    entity: "subject", key: "noEndPeriods", label: "Cannot end in period(s)",
+    kind: "object", weight: "hard", dialog: "subject",
+    solvers: { js: "subjectEndBan", wasm: "subjectEndBan", cloud: null },
+    probes: { wasm: "subjectEndBan" },
+  },
+  {
     entity: "subject", key: "minParallel", label: "Min at the same time",
     kind: "int", weight: "soft", dialog: "subject",
     solvers: { js: "subjectMinParallel", wasm: null, cloud: null },
