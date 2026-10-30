@@ -5,7 +5,8 @@
 // never inert in the solver.
 import { describe, it, expect, beforeAll } from "vitest";
 
-const ADVANCED = ["a_4", "a_5", "a_6", "a_26", "a_27", "a_1", "a_22", "a_82", "a_83"];
+const ADVANCED = ["a_4", "a_5", "a_6", "a_26", "a_27", "a_1", "a_22", "a_82", "a_83",
+  "a_0", "a_3", "a_9", "a_10", "a_12", "a_13", "a_54", "a_74"];
 const PAIR_TYPES = ["a_1", "a_22", "a_82", "a_83"];
 
 beforeAll(async () => {

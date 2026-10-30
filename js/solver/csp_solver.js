@@ -34,6 +34,8 @@ import { DEFAULT_SOFT_WEIGHTS, FAIL, FAIL_NAME, Weight } from "./constraints.js"
 // param1 = the limit. A row without a usable param1 is inert, as in aSc.
 export const ADV_REL_TYPS = new Set([
   "a_1", "a_4", "a_5", "a_6", "a_22", "a_26", "a_27", "a_82", "a_83",
+  // frequency caps — how often the watched lessons may (or must) appear
+  "a_0", "a_3", "a_9", "a_10", "a_12", "a_13", "a_54", "a_74",
 ]);
 import { popcount32 } from "./bitmask.js";
 import { createLearningForSchool, SolverLearning } from "./solver_learning.js";
@@ -3391,9 +3393,10 @@ function advancedRelationPenalty(model, state) {
     const typ = rel.typ, p1 = rel.p1;
     // class*days -> { all, A, B } period masks for the watched lessons.
     const masks = new Map();
+    const wantSubjects = typ === "a_54";
     const touch = (key, bit) => {
       let e = masks.get(key);
-      if (!e) masks.set(key, e = { all: 0, A: 0, B: 0 });
+      if (!e) masks.set(key, e = { all: 0, A: 0, B: 0, subj: wantSubjects ? new Set() : null });
       e.all |= bit;
       return e;
     };
@@ -3411,6 +3414,7 @@ function advancedRelationPenalty(model, state) {
           const e = touch(c * days + d, bit);
           if (flag & 1) e.A |= bit;
           if (flag & 2) e.B |= bit;
+          if (e.subj) e.subj.add(model.lessonSubject[i]);
         }
       }
     }
@@ -3439,6 +3443,45 @@ function advancedRelationPenalty(model, state) {
         }
       }
       if (typ === "a_5") for (const [, total] of weekGaps) if (total > p1) penalty += total - p1;
+      continue;
+    }
+
+    // Frequency family — counting only, on the same per (class, day) masks.
+    if (typ === "a_0" || typ === "a_74" || typ === "a_9" || typ === "a_3" ||
+        typ === "a_10" || typ === "a_12" || typ === "a_13") {
+      const perClass = new Map(); // c -> { dayMask, periods }
+      for (const [key, e] of masks) {
+        if (!e.all) continue;
+        const c = Math.floor(key / days);
+        let acc = perClass.get(c);
+        if (!acc) perClass.set(c, acc = { dayMask: 0, periods: 0 });
+        acc.dayMask |= (1 << (key % days));
+        acc.periods += popcount32(e.all >>> 0);
+        if (typ === "a_3" || typ === "a_10") {
+          const n = popcount32(e.all >>> 0);
+          if (typ === "a_3" && n < p1) penalty += p1 - n;      // empty days exempt
+          if (typ === "a_10" && n > p1) penalty += n - p1;
+        }
+      }
+      if (typ === "a_0" || typ === "a_74" || typ === "a_9" || typ === "a_12" || typ === "a_13") {
+        for (const [, acc] of perClass) {
+          const usedDays = popcount32(acc.dayMask >>> 0);
+          if ((typ === "a_0" || typ === "a_74") && usedDays > p1) penalty += usedDays - p1;
+          if (typ === "a_9" && usedDays < p1) penalty += p1 - usedDays;
+          if (typ === "a_12" && acc.periods < p1) penalty += p1 - acc.periods;
+          if (typ === "a_13" && acc.periods > p1) penalty += acc.periods - p1;
+        }
+      }
+      continue;
+    }
+
+    // a_54 — distinct subjects in a day. Needs the subject identity per
+    // placement, so it is recorded during the mask build above.
+    if (typ === "a_54") {
+      for (const [, e] of masks) {
+        if (!e.subj || !e.subj.size) continue;
+        if (e.subj.size > p1) penalty += e.subj.size - p1;
+      }
       continue;
     }
 
