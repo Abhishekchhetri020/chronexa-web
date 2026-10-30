@@ -20,6 +20,21 @@
 // All hot loops use `(x | 0)` / typed arrays to stay in V8's fast path.
 
 import { DEFAULT_SOFT_WEIGHTS, FAIL, FAIL_NAME, Weight } from "./constraints.js";
+
+// aSc advanced conditions (a_*) that Chronexa now enforces, scored because they
+// describe the SHAPE of a day/week rather than a single placement:
+//   gaps      a_4 max gaps/day, a_5 max gaps/week, a_6 max consecutive,
+//             a_26 minimum gap length, a_27 maximum gap length
+//   ordering  a_1 cannot be on the same day (N exceptions/week),
+//             a_22 cannot follow in the specified order (gap > N),
+//             a_82 at least one A before B in a day,
+//             a_83 at least one B after A in a day
+// Scope comes from the relation row: subjectids = A set, subject2ids = B set,
+// classids = classes to watch (empty = every class the lessons touch),
+// param1 = the limit. A row without a usable param1 is inert, as in aSc.
+export const ADV_REL_TYPS = new Set([
+  "a_1", "a_4", "a_5", "a_6", "a_22", "a_26", "a_27", "a_82", "a_83",
+]);
 import { popcount32 } from "./bitmask.js";
 import { createLearningForSchool, SolverLearning } from "./solver_learning.js";
 // TYPS is the canonical relation-type registry (n_0..n_17).
@@ -1249,6 +1264,41 @@ function buildModel(school) {
     softRels.push({ typ, groups, flatIndices: Int32Array.from(matched) });
 
   }
+  // ─── Advanced (a_*) relations — precompute the lesson sets they watch ───
+  // One pass over the lessons per relation, so the scorer never re-resolves
+  // subject/class membership while the search is running.
+  const advRels = [];
+  for (const rel of rels) {
+    if (!rel || rel.disabled) continue;
+    const typ = rel.typ;
+    if (!ADV_REL_TYPS.has(typ)) continue;
+    const rawP = rel.param1;
+    const p1 = rawP == null || rawP === "" ? null : parseInt(rawP, 10);
+    if (p1 == null || Number.isNaN(p1) || p1 < 0) continue;
+    const aSet = new Set((rel.subjectids || []).filter(Boolean));
+    let bSet = new Set((rel.subject2ids || []).filter(Boolean));
+    if (!bSet.size && aSet.size > 1) bSet = new Set(Array.from(aSet).slice(1, 2));
+    const classSet = new Set((rel.classids || []).filter(Boolean));
+    const lessonIdxs = [];
+    const flags = [];
+    for (let i = 0; i < lessonCount; i++) {
+      const L = expanded[i];
+      const cls = L.classIds || [];
+      if (classSet.size && !cls.some((c) => classSet.has(c))) continue;
+      const isA = aSet.has(L.subjectId);
+      const isB = bSet.has(L.subjectId);
+      if (!isA && !isB) continue;
+      lessonIdxs.push(i);
+      flags.push((isA ? 1 : 0) | (isB ? 2 : 0));
+    }
+    if (!lessonIdxs.length) continue;
+    advRels.push({
+      typ, p1,
+      lessonIdxs: Int32Array.from(lessonIdxs),
+      flags: Uint8Array.from(flags),
+    });
+  }
+
   // ─── Lesson adjacency (neighbor lists) ──────────────────────────────────
   // Built via per-entity buckets: total cost is the number of actual
   // (lesson, lesson, shared-entity) adjacencies, not L². degree counts
@@ -1440,6 +1490,7 @@ function buildModel(school) {
     lessonPositionMask,
     lessonSoftRelIdx,
     softRels,
+    advRels,
   };
 }
 
@@ -2586,6 +2637,7 @@ function softScore(model, state) {
   s += state.totalTeacherLastPeriodOverflow * w[6];
   s += state.totalPeriodLoadBalance * w[7];
   s += softRelationPenalty(model, state) * w[8];
+  s += advancedRelationPenalty(model, state) * w[8];
   s += state.totalTeacherConsecHeavy * w[9];
   s += state.totalSiblingDeficit * w[10];
   s += teacherConditionalPlacementPenalty(model, state) * w[11];
@@ -3296,6 +3348,147 @@ function softRelationPenalty(model, state) {
     }
   }
   return penalty;
+}
+
+
+// ─── Advanced (a_*) relation scoring ──────────────────────────────────────
+// Everything here works on the shape of a (class, day): which periods the
+// watched lessons occupy, where the holes are, and how A/B cards sit relative
+// to each other. All penalties are per unit of excess, so the search can rank
+// two imperfect timetables against each other.
+
+/** Internal gap runs of a period bitmask (zeros between the first and last set bit). */
+function internalGapRuns(mask, ppd) {
+  if (!mask) return [];
+  const first = 31 - Math.clz32(mask & -mask);
+  const last = 31 - Math.clz32(mask);
+  const runs = [];
+  let run = 0;
+  for (let p = first; p <= last; p++) {
+    if (mask & (1 << p)) {
+      if (run) { runs.push(run); run = 0; }
+    } else run++;
+  }
+  return runs;
+}
+
+/** Longest consecutive run of set bits. */
+function longestRun(mask, ppd) {
+  let best = 0, run = 0;
+  for (let p = 0; p < ppd; p++) {
+    if (mask & (1 << p)) { run++; if (run > best) best = run; } else run = 0;
+  }
+  return best;
+}
+
+function advancedRelationPenalty(model, state) {
+  const rels = model.advRels;
+  if (!rels || !rels.length) return 0;
+  const ppd = model.periodsPerDay, days = model.days;
+  let penalty = 0;
+  for (let r = 0; r < rels.length; r++) {
+    const rel = rels[r];
+    const typ = rel.typ, p1 = rel.p1;
+    // class*days -> { all, A, B } period masks for the watched lessons.
+    const masks = new Map();
+    const touch = (key, bit) => {
+      let e = masks.get(key);
+      if (!e) masks.set(key, e = { all: 0, A: 0, B: 0 });
+      e.all |= bit;
+      return e;
+    };
+    for (let k = 0; k < rel.lessonIdxs.length; k++) {
+      const i = rel.lessonIdxs[k];
+      if (!state.lessonAssigned[i]) continue;
+      const flag = rel.flags[k];
+      const cs = model.lessonClassStart[i], cc = model.lessonClassCount[i];
+      for (const slot of _slotsOfLesson(model, state, i)) {
+        const d = model.slotDay[slot];
+        const bit = (1 << model.slotPeriod[slot]) >>> 0;
+        for (let j = 0; j < cc; j++) {
+          const c = model.lessonClassFlat[cs + j];
+          if (c < 0) continue;
+          const e = touch(c * days + d, bit);
+          if (flag & 1) e.A |= bit;
+          if (flag & 2) e.B |= bit;
+        }
+      }
+    }
+    if (!masks.size) continue;
+
+    if (typ === "a_4" || typ === "a_5" || typ === "a_6" || typ === "a_26" || typ === "a_27") {
+      // Week totals are per class, so each class gets its own a_5 budget.
+      const weekGaps = new Map();
+      for (const [key, e] of masks) {
+        if (!e.all) continue;
+        const runs = internalGapRuns(e.all, ppd);
+        const total = runs.reduce((a, b) => a + b, 0);
+        if (typ === "a_4") {
+          if (total > p1) penalty += total - p1;
+        } else if (typ === "a_5") {
+          const c = Math.floor(key / days);
+          weekGaps.set(c, (weekGaps.get(c) || 0) + total);
+        } else if (typ === "a_6") {
+          const run = longestRun(e.all, ppd);
+          if (run > p1) penalty += run - p1;
+        } else if (typ === "a_26") {
+          // "If a gap exists it has to be at least N long."
+          for (const len of runs) if (len < p1) penalty += p1 - len;
+        } else if (typ === "a_27") {
+          for (const len of runs) if (len > p1) penalty += len - p1;
+        }
+      }
+      if (typ === "a_5") for (const [, total] of weekGaps) if (total > p1) penalty += total - p1;
+      continue;
+    }
+
+    // Ordering family — needs both sides.
+    for (const [, e] of masks) {
+      if (!e.all) continue;
+      const daysA = e.A, daysB = e.B;
+      if (typ === "a_1") {
+        // aSc allows `param1` exceptions per week; count the days that break
+        // the rule and only the excess is penalised.
+        if (daysA && daysB) (e._v = (e._v || 0) + 1);
+        continue;
+      }
+      if (!daysA || !daysB) continue;
+      const firstA = 31 - Math.clz32(daysA & -daysA);
+      const lastA = 31 - Math.clz32(daysA);
+      const firstB = 31 - Math.clz32(daysB & -daysB);
+      const lastB = 31 - Math.clz32(daysB);
+      if (typ === "a_22") {
+        // "Cards can not follow (in specified order)": the gap between A and B
+        // has to be GREATER than param1, so consecutive (gap 1) is a violation
+        // when param1 = 1.
+        for (let pa = firstA; pa <= lastA; pa++) {
+          if (!(daysA & (1 << pa))) continue;
+          for (let pb = nextSetBit(daysB, pa + 1); pb >= 0 && pb < ppd; pb = nextSetBit(daysB, pb + 1)) {
+            if (pb - pa <= p1) penalty += 1;
+          }
+        }
+      } else if (typ === "a_82") {
+        // At least one A before a B in the day.
+        if (!(firstA < lastB)) penalty += 1;
+      } else if (typ === "a_83") {
+        // At least one B after an A in the day.
+        if (!(lastB > firstA)) penalty += 1;
+      }
+    }
+    if (typ === "a_1") {
+      let violations = 0;
+      for (const [, e] of masks) violations += e._v || 0;
+      if (violations > p1) penalty += violations - p1;
+    }
+  }
+  return penalty;
+}
+
+/** Lowest set bit index >= from, or -1. */
+function nextSetBit(mask, from) {
+  const shifted = (mask >>> from) << from;
+  if (!shifted) return -1;
+  return 31 - Math.clz32(shifted & -shifted);
 }
 
 function snapshotBest(state) {

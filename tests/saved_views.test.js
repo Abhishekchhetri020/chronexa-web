@@ -160,13 +160,26 @@ describe("SavedViews manager", () => {
     expect(window.APP.school.savedViews[0].name).toBe("Keep Me");
   });
 
-  it("prompts the user and saves a view via promptSave()", () => {
+  it("opens the in-app manager (not a native prompt) from promptSave()", () => {
+    // A native window.prompt is blocked in embedded/PWA contexts and cannot be
+    // styled, which made this menu entry look dead. promptSave() must route to
+    // the manager sheet, which owns the name input.
+    // Mount the sheet like the real EntityDialog does, so the name input is in
+    // the document and the assertions below exercise the real path.
+    window.EntityDialog = {
+      openSheet: vi.fn((node) => document.body.appendChild(node)),
+      closeSheet: vi.fn(),
+    };
     window.prompt = vi.fn().mockReturnValue("Prompted View");
-    const saved = SavedViews.promptSave();
-    expect(window.prompt).toHaveBeenCalledWith("Name this view:");
-    expect(saved).not.toBeNull();
-    expect(saved.name).toBe("Prompted View");
-    expect(window.APP.school.savedViews[0].name).toBe("Prompted View");
+    const result = SavedViews.promptSave();
+    expect(window.prompt).not.toHaveBeenCalled();
+    expect(window.EntityDialog.openSheet).toHaveBeenCalled();
+    expect(result).toBeNull(); // the manager saves on its own
+    const input = document.querySelector("#chrx-sv-name-input");
+    expect(input).toBeTruthy();
+    input.value = "Sheet View";
+    document.querySelector("#chrx-sv-save-btn").click();
+    expect((window.APP.school.savedViews || []).some(v => v.name === "Sheet View")).toBe(true);
   });
 
   it("opens the manager sheet when openManager() is called", () => {
