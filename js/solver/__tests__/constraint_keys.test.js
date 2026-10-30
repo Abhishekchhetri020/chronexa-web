@@ -97,12 +97,16 @@ describe("constraint registry — does not drift from the solvers", () => {
     }
   });
 
-  it("the cloud CP-SAT still enforces no per-entity limit (R3-B4)", () => {
-    // Not a wish — a recorded fact. When the backend gains limits this fails and
-    // the registry rows get updated at the same time.
-    for (const r of CONSTRAINT_KEYS) {
-      expect(r.solvers.cloud, `${r.entity}.${r.key} claims cloud enforcement`).toBeNull();
-    }
+  it("records exactly which limits the cloud CP-SAT enforces (R3-B4)", () => {
+    // Not a wish — a recorded fact, so the table cannot drift from the backend.
+    // Only the two daily caps exist there today; everything else (gaps,
+    // consecutive, windows, relations, the a_* family) is still browser-only.
+    const CLOUD = ["class.maxperiodsday", "teacher.lessonsPerDayMax"];
+    const claimed = CONSTRAINT_KEYS
+      .filter((r) => r.solvers.cloud)
+      .map((r) => `${r.entity}.${r.key}`)
+      .sort();
+    expect(claimed).toEqual(CLOUD);
   });
 });
 

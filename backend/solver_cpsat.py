@@ -221,6 +221,46 @@ def build_and_solve(school, time_limit_sec=30, num_workers=8, seed=1,
                     for ps in covered:
                         room_occ[(r, ps)].append(yv)
 
+    # ---- per-entity daily caps (parity with the JS / WASM solvers) --------
+    # Before this the cloud run ignored every per-teacher and per-class limit,
+    # so "Generate in cloud" produced a different timetable from the browser on
+    # the same file (Round 3 bug R3-B4). The caps read the same keys the JS
+    # solver reads, with top-level fields winning over aSc constraint keys.
+    def _cap(v):
+        if v is None or v == "" or v == "*" or v == "i":
+            return None
+        try:
+            n = int(v)
+        except (TypeError, ValueError):
+            return None
+        return n if n > 0 else None
+
+    teacher_max_per_day = {}
+    for t in (school.get("teachers") or []):
+        cons = t.get("constraints") or {}
+        teacher_max_per_day[t["id"]] = _cap(t.get("maxPerDay")) or _cap(cons.get("lessonsPerDayMax"))
+    class_max_per_day = {}
+    for c in (school.get("classes") or []):
+        cons = c.get("constraints") or {}
+        class_max_per_day[c["id"]] = _cap(c.get("maxPerDay")) or _cap(cons.get("maxperiodsday"))
+
+    teacher_day_vars = defaultdict(list)   # (t, day) -> avars
+    class_day_vars = defaultdict(list)     # (c, day) -> avars
+    if any(teacher_max_per_day.values()) or any(class_max_per_day.values()):
+        for ci, card in enumerate(cards):
+            for start, avar in assign[ci].items():
+                d = start[0]
+                for t in card["teachers"]:
+                    if teacher_max_per_day.get(t):
+                        teacher_day_vars[(t, d)].append(avar)
+                for c in card["cls_occ"].keys():
+                    if class_max_per_day.get(c):
+                        class_day_vars[(c, d)].append(avar)
+        for (t, d), vs in teacher_day_vars.items():
+            m.Add(sum(vs) <= teacher_max_per_day[t])
+        for (c, d), vs in class_day_vars.items():
+            m.Add(sum(vs) <= class_max_per_day[c])
+
     for key, vs in t_occ.items():
         if len(vs) > 1:
             m.Add(sum(vs) <= 1)
@@ -298,7 +338,12 @@ def build_and_solve(school, time_limit_sec=30, num_workers=8, seed=1,
         slotidx_var[ci] = sv
     for lid, cis in lesson_cards.items():
         for a, b in zip(cis, cis[1:]):
-            m.Add(slotidx_var[a] < slotidx_var[b])
+            # Non-strict on purpose: an unplaced card's index collapses to
+            # NOSLOT, so two unplaced cards of the same lesson were making the
+            # whole model INFEASIBLE (`NOSLOT < NOSLOT` is false). That turned
+            # any tight instance — relations, per-day caps, a busy teacher —
+            # into "0 placed" instead of "these cards could not be placed".
+            m.Add(slotidx_var[a] <= slotidx_var[b])
 
     saved = defaultdict(list)
     for c in (school.get("cards") or []):
