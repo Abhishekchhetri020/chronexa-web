@@ -609,11 +609,29 @@ function buildModel(school) {
   // Games/Swimming/Lab batch is kept together. Soft: it is a shape preference
   // and a hard form would block ordinary moves early in the search.
   const subjectMinParallel = new Int32Array(subjectIds.length).fill(-1);
+  // aSc conditions a_32 / a_33 at subject level — "this subject may not START on
+  // these periods" and "…may not END on these periods". Bit p (0-based) set =
+  // banned. Stored per subject as 1-based period numbers, which is what the
+  // Subject dialog shows.
+  const subjectStartBan = new Int32Array(subjectIds.length).fill(0);
+  const subjectEndBan   = new Int32Array(subjectIds.length).fill(0);
+  const periodsToMask = (list) => {
+    if (!list) return 0;
+    const arr = Array.isArray(list) ? list : String(list).split(/[,\s]+/);
+    let mask = 0;
+    for (const raw of arr) {
+      const n = parseInt(raw, 10);
+      if (Number.isFinite(n) && n >= 1 && n <= periodsPerDay) mask |= 1 << (n - 1);
+    }
+    return mask >>> 0;
+  };
   school.subjects.forEach((sj, i) => {
     const v = sj.maxParallel ?? (sj.constraints && sj.constraints.maxParallel);
     if ((v | 0) > 0) subjectMaxParallel[i] = v | 0;
     const m = sj.minParallel ?? (sj.constraints && sj.constraints.minParallel);
     if ((m | 0) > 0) subjectMinParallel[i] = m | 0;
+    subjectStartBan[i] = periodsToMask(sj.noStartPeriods ?? sj.constraints?.noStartPeriods);
+    subjectEndBan[i]   = periodsToMask(sj.noEndPeriods ?? sj.constraints?.noEndPeriods);
   });
   const teacherIntervalMaxDays = new Array(teacherIds.length);
   for (let t = 0; t < teacherIds.length; t++) {
@@ -1402,6 +1420,9 @@ function buildModel(school) {
     teacherMaxGapsPerDay,
     teacherMaxGapsPerWeek,
     subjectMaxParallel,
+    subjectMinParallel,
+    subjectStartBan,
+    subjectEndBan,
     classMaxGapsPerDay,
     lessonN1Partners,
     lessonN0Partners,
@@ -1811,7 +1832,8 @@ function canPlace(model, state, lessonIdx, slot, roomIdx) {
     // The optional AssemblyScript accelerator predates n_9 and class-specific
     // edge masks. Keep these lessons on the complete JS constraint path.
     if (model.lessonMustFirstLast[lessonIdx] || model.lessonOrderedBefore[lessonIdx] || model.lessonOrderedAfter[lessonIdx]
-        || (model.subjectMaxParallel && model.subjectMaxParallel[model.lessonSubject[lessonIdx]] > 0)) {
+        || (model.subjectMaxParallel && model.subjectMaxParallel[model.lessonSubject[lessonIdx]] > 0)
+        || (model.subjectStartBan && (model.subjectStartBan[model.lessonSubject[lessonIdx]] || model.subjectEndBan[model.lessonSubject[lessonIdx]]))) {
       return _canPlaceJS(model, state, lessonIdx, slot, roomIdx);
     }
     try {
@@ -1841,6 +1863,19 @@ function _canPlaceJS(model, state, lessonIdx, slot, roomIdx) {
   const d = model.slotDay[slot];
   const p = model.slotPeriod[slot];
   const bit = (1 << p) >>> 0;
+  // aSc a_32 / a_33 — subject may not start (or end) on a banned period.
+  if (model.subjectStartBan) {
+    const sj = model.lessonSubject[lessonIdx];
+    if (sj >= 0) {
+      if (model.subjectStartBan[sj] & bit) return FAIL.POSITION_BANNED;
+      const banEnd = model.subjectEndBan[sj];
+      if (banEnd) {
+        const span = model.lessonSpan ? model.lessonSpan[lessonIdx]
+                                      : (model.lessonLabDouble[lessonIdx] ? 2 : 1);
+        if (banEnd & ((1 << (p + span - 1)) >>> 0)) return FAIL.POSITION_BANNED;
+      }
+    }
+  }
   const teacherStart = model.lessonTeacherStart[lessonIdx];
   const teacherCount = model.lessonTeacherCount[lessonIdx];
 
@@ -2119,6 +2154,16 @@ function canPlaceSecond(model, state, lessonIdx, slot, roomIdx) {
   const d = model.slotDay[slot];
   const p = model.slotPeriod[slot];
   const bit = (1 << p) >>> 0;
+  // aSc a_32 / a_33 — subject may not start (or end) on a banned period.
+  // aSc a_33 — this call validates the SECOND period of a double, which IS the
+  // end period, so the end ban is checked against `bit` directly. The start ban
+  // (a_32) belongs to canPlace, which is the only caller that knows the start;
+  // re-checking it here would wrongly ban a double whose second period happens
+  // to sit on a banned START period.
+  if (model.subjectEndBan) {
+    const sj = model.lessonSubject[lessonIdx];
+    if (sj >= 0 && (model.subjectEndBan[sj] & bit)) return FAIL.POSITION_BANNED;
+  }
   const teacherStart = model.lessonTeacherStart[lessonIdx];
   const teacherCount = model.lessonTeacherCount[lessonIdx];
 

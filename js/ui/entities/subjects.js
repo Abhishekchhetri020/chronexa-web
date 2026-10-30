@@ -424,6 +424,32 @@ import "../components/time_off_matrix.js";
     parallelRow.appendChild(fParallel);
     parallelRow.appendChild(setForMoreLink("maxParallel", "Max at the same time", () => c.maxParallel));
 
+    // aSc conditions a_32 / a_33 at subject level: a start/end position ban.
+    // Periods are 1-based, comma separated ("1,2" = the first two periods).
+    const periodList = (value) => Array.isArray(value) ? value.join(",") : (value || "");
+    const parsePeriodList = (raw) => {
+      const out = [];
+      for (const part of String(raw).split(/[,\s]+/)) {
+        if (!part) continue;
+        const n = parseInt(part, 10);
+        if (Number.isFinite(n) && n >= 1) out.push(n);
+      }
+      return out.length ? out : undefined;
+    };
+    const fNoStart = D.el("input", { type: "text", value: periodList(c.noStartPeriods),
+      style: "width:110px", placeholder: "e.g. 1,2",
+      oninput: (e) => c.noStartPeriods = parsePeriodList(e.target.value) });
+    const noStartRow = D.el("div", { style: "display:flex;align-items:center;gap:4px" });
+    noStartRow.appendChild(fNoStart);
+    noStartRow.appendChild(setForMoreLink("noStartPeriods", "Not in periods", () => c.noStartPeriods));
+
+    const fNoEnd = D.el("input", { type: "text", value: periodList(c.noEndPeriods),
+      style: "width:110px", placeholder: "e.g. 7,8",
+      oninput: (e) => c.noEndPeriods = parsePeriodList(e.target.value) });
+    const noEndRow = D.el("div", { style: "display:flex;align-items:center;gap:4px" });
+    noEndRow.appendChild(fNoEnd);
+    noEndRow.appendChild(setForMoreLink("noEndPeriods", "Not ending in periods", () => c.noEndPeriods));
+
     // aSc condition a_16 — the floor twin of the cap above: at least N sections
     // of this subject must share one period somewhere in the week, which is how
     // a combined Games/Swimming/Lab batch is kept together.
@@ -487,6 +513,12 @@ import "../components/time_off_matrix.js";
         { label: null,                              control: D.el("div", { style: "border-top:1px solid #e2e8f0;margin:4px 0" }) },
         { label: "Max students on lesson with this subject", control: studentsRow },
         { label: "Max cards of this subject in one period (whole school)", control: parallelRow },
+        { label: "This subject cannot start in period(s)",
+          helpText: "Hard rule. 1-based period numbers, comma separated — \"1,2\" keeps the subject out of the first two periods.",
+          control: noStartRow },
+        { label: "This subject cannot end in period(s)",
+          helpText: "Hard rule. A double lesson ends on its second period, so \"8\" also blocks a double starting in period 7.",
+          control: noEndRow },
         { label: "Min cards of this subject in one period (keep the batch together)",
           helpText: "Soft goal: at least this many sections share one period somewhere in the week. Set it on the subject that must run as one batch (Games, Swimming, Lab).",
           control: parallelMinRow },
