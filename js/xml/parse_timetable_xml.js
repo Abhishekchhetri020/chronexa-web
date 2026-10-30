@@ -35,6 +35,46 @@ _global.parseTimetableXml = (function () {
   function pickName(el) {
     return (el.getAttribute("name") || el.getAttribute("short") || "").trim();
   }
+
+  // aSc keeps per-entity limits in a <constraints> child and availability in
+  // <timeoff>. The school's own export omits both (they live only in the online
+  // document), but aSc's database/desktop exports and Chronexa's own report
+  // files carry them — so read them when present instead of dropping them.
+  // Keys are kept in aSc spelling so the solver and the XML agree; the few that
+  // Chronexa models in camelCase are aliased.
+  const CONSTRAINT_KEY_ALIASES = {
+    classteacherpos: "classTeacherPos",
+    maxquestionmarked: "maxquestionmarked",
+  };
+  const CONSTRAINT_BOOL_TRUE = new Set(["true", "1"]);
+
+  function coerceConstraint(v) {
+    const t = String(v).trim();
+    if (t === "" || t === "*" || t === "i") return "*";
+    if (t === "true" || t === "false") return t === "true";
+    if (/^-?\d+$/.test(t)) return parseInt(t, 10);
+    return t; // masks like "001000000", nested json, etc.
+  }
+
+  /** <constraints a="b"><key>value</key></constraints> -> plain object. */
+  function readConstraints(node) {
+    let box = null;
+    for (const child of node.children || []) {
+      if (child.tagName === "constraints") { box = child; break; }
+    }
+    if (!box) return undefined;
+    const out = {};
+    const put = (rawKey, rawVal) => {
+      const k = CONSTRAINT_KEY_ALIASES[rawKey] || rawKey;
+      out[k] = coerceConstraint(rawVal);
+    };
+    for (const a of Array.from(box.attributes || [])) {
+      if (a.name === "columns" || a.name === "options") continue;
+      put(a.name, a.value);
+    }
+    for (const child of box.children || []) put(child.tagName, child.textContent || "");
+    return Object.keys(out).length ? out : undefined;
+  }
   function timeToMin(t) {
     if (!t) return 0;
     const [h, m] = t.split(":").map(Number);
@@ -132,6 +172,8 @@ _global.parseTimetableXml = (function () {
         abbr: (s.getAttribute("short") || "").trim() || undefined,
       };
       if (!obj.id) return;
+      const sc = readConstraints(s);
+      if (sc) obj.constraints = sc;
       subjects.push(obj);
       subjectById[obj.id] = obj;
     });
@@ -154,6 +196,8 @@ _global.parseTimetableXml = (function () {
         lastName: attr(t, "lastname") || undefined,
       };
       if (!obj.id) return;
+      const tc = readConstraints(t);
+      if (tc) obj.constraints = tc;
       teachers.push(obj);
       teacherById[obj.id] = obj;
     });
@@ -170,6 +214,8 @@ _global.parseTimetableXml = (function () {
         roomType: undefined,
       };
       if (!obj.id) return;
+      const rc = readConstraints(r);
+      if (rc) obj.constraints = rc;
       classrooms.push(obj);
       classroomById[obj.id] = obj;
     });
@@ -198,6 +244,8 @@ _global.parseTimetableXml = (function () {
         _teacherId: attr(c, "teacherid") || undefined,
       };
       if (!obj.id) return;
+      const cc = readConstraints(c);
+      if (cc) obj.constraints = cc;
       classes.push(obj);
       classById[obj.id] = obj;
     });
@@ -370,6 +418,9 @@ _global.parseTimetableXml = (function () {
       // in the exported XML.
       _classroomIds: c._classroomIds,
       _teacherId: c._teacherId,
+      // Per-class limits (aSc <constraints> child). Whitelisted here because
+      // this map silently dropped every field it did not name.
+      constraints: c.constraints,
     }));
 
     return {

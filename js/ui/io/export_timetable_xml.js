@@ -17,6 +17,13 @@ import "../ribbon/topbar.js";
  * One CLASSIC card with multi-bit days becomes N entries on parse; we collapse
  * back here only when we have the original card lines (preserve identity);
  * otherwise we emit one <card days="bbbbbb"/> per (day,period) pair.
+ *
+ * Sections this exporter does NOT regenerate: <constraints>, <timeoff>,
+ * <cardrelationships>. Strategy 1 keeps them because the whole file is the
+ * source template and only <cards> is rewritten. A re-generated file (no
+ * sourceText) carries none of them — that is intended: this format is the aSc
+ * interchange, not the app's save format. Full-fidelity save/restore is the
+ * snapshot (js/ui/io/snapshot.js, complete `school` JSON).
  */
 (function () {
   "use strict";

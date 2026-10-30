@@ -5,11 +5,16 @@
 // family is removed from the COPY of the school the solver receives, never
 // from the file. Stored in school.globals.runConditions = { off: [familyId] }.
 
-const TEACHER_LIMIT_FIELDS = ["maxPerDay", "maxConsecutivePeriods", "maxGapsPerDay", "maxLastPeriodOverflow", "intervalMaxDays"];
-const TEACHER_LIMIT_KEYS = ["teachers_maxgapsweek", "teachers_maxgapsday", "teachers_maxconsecutiveperiods",
-  "lessonsPerDayMin", "lessonsPerDayMax", "maxDaysPerWeek", "maxOnConditional"];
+import { rowsFor, hasValue as keyHasValue } from "./constraint_keys.js";
 
-const hasValue = (v) => v !== undefined && v !== null && v !== "" && v !== "*";
+// Derived from the constraint registry rather than hand-listed, so a key added
+// to the Teacher constraints dialog is switched by this family automatically
+// and can never be silently left behind in a draft run.
+const TEACHER_ROWS = rowsFor("teacher").filter((r) => r.dialog === "teacher");
+const TEACHER_LIMIT_KEYS = TEACHER_ROWS.map((r) => r.key);
+const TEACHER_LIMIT_FIELDS = [...new Set(TEACHER_ROWS.map((r) => r.topLevel).filter(Boolean))];
+
+const hasValue = keyHasValue;
 
 /** Families present in this school, with how many items each switches. */
 export function listFamilies(school, typeLabels = {}) {

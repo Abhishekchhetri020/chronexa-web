@@ -501,6 +501,10 @@ function buildModel(school) {
   const classMaxPerDay     = new Int32Array(classIds.length).fill(-1);
   const classMaxConsec     = new Int32Array(classIds.length).fill(-1);
   const classMaxGapsPerDay = new Int32Array(classIds.length).fill(-1);
+  // Class daily minimum (aSc `minperiodsday`). Soft: an under-loaded day is
+  // penalised, because a hard minimum makes a partially-built timetable
+  // infeasible for every move while the search is still filling days.
+  const classMinPerDay     = new Int32Array(classIds.length).fill(-1);
   // Lunch-window bitmask per class — audit §3.8. Bit p set iff period p
   // (0-based) is INSIDE the configured [lunch_periodfrom, lunch_periodto]
   // range. The soft scorer below penalises class teaching during this
@@ -539,10 +543,15 @@ function buildModel(school) {
   }
   for (let c = 0; c < (school.classes || []).length; c++) {
     const cc = school.classes[c];
-    classMaxPerDay[c]     = gFallback(cc.maxPerDay,             "classMaxPerDay");
-    classMaxConsec[c]     = gFallback(cc.maxConsecutivePeriods, "classMaxConsecutive");
-    classMaxGapsPerDay[c] = gFallback(cc.maxGapsPerDay,         "classMaxGapsPerDay");
     const cons = (school.classes[c] && school.classes[c].constraints) || {};
+    // The Class Constraints dialog keeps aSc's names (`maxperiodsday`,
+    // `minperiodsday`); the edit sheet uses top-level fields. Top-level wins.
+    classMaxPerDay[c]     = gFallback(cc.maxPerDay ?? cons.maxperiodsday, "classMaxPerDay");
+    classMaxConsec[c]     = gFallback(cc.maxConsecutivePeriods ?? cons.maxconsecutiveperiods, "classMaxConsecutive");
+    classMaxGapsPerDay[c] = gFallback(cc.maxGapsPerDay ?? cons.maxgapsday, "classMaxGapsPerDay");
+    const cMin = cc.minPerDay ?? cons.minperiodsday;
+    classMinPerDay[c] = (cMin != null && cMin !== "" && cMin !== "*" && cMin !== "i")
+      ? (parseInt(cMin, 10) | 0) : -1;
     classLunchMask[c]    = parseWindow(cons.lunch_periodfrom, cons.lunch_periodto);
     classTeachingMask[c] = parseWindow(cons.m_nMaxVyucOd,     cons.m_nMaxVyucDo);
     classBlockMask[c]    = parseWindow(cons.m_nMinBlokOd,     cons.m_nMinBlokDo);
@@ -595,9 +604,16 @@ function buildModel(school) {
   // week". Each entry: { fromPeriod, toPeriod, maxDays }.
   // aSc "Max cards on one period" per subject (subject.maxParallel); -1 = none.
   const subjectMaxParallel = new Int32Array(subjectIds.length).fill(-1);
+  // aSc "Min cards on one period" (condition a_16): at least N cards of the
+  // subject must share one period somewhere in the week — how a combined
+  // Games/Swimming/Lab batch is kept together. Soft: it is a shape preference
+  // and a hard form would block ordinary moves early in the search.
+  const subjectMinParallel = new Int32Array(subjectIds.length).fill(-1);
   school.subjects.forEach((sj, i) => {
     const v = sj.maxParallel ?? (sj.constraints && sj.constraints.maxParallel);
     if ((v | 0) > 0) subjectMaxParallel[i] = v | 0;
+    const m = sj.minParallel ?? (sj.constraints && sj.constraints.minParallel);
+    if ((m | 0) > 0) subjectMinParallel[i] = m | 0;
   });
   const teacherIntervalMaxDays = new Array(teacherIds.length);
   for (let t = 0; t < teacherIds.length; t++) {
@@ -1350,7 +1366,7 @@ function buildModel(school) {
     lessonCandidateStart, lessonCandidateCount,
     candidateSlot: candidateSlotArr, candidateRoom: candidateRoomArr,
     teacherAvailabilityMask, teacherConditionalMask, teacherMaxPerDay, teacherMaxConsec,
-    classMaxPerDay, classMaxConsec,
+    classMaxPerDay, classMaxConsec, classMinPerDay, subjectMinParallel,
     classValidPeriodMask,
     classLunchMask,
     classTeachingMask,
@@ -1698,6 +1714,7 @@ function wasmBind(model, state) {
       lAssignedSlot:        copyI32(state.lessonAssignedSlot),
       teacherMaxPerDay:     copyI32(model.teacherMaxPerDay),
       classMaxPerDay:       copyI32(model.classMaxPerDay),
+      classMinPerDay:       copyI32(model.classMinPerDay),
       classValidPeriodMask: copyU32(model.classValidPeriodMask || new Uint32Array(model.classCount).map((_, c) => ~0)),
       subjectDailyLimit:    copyI32(model.subjectDailyLimit),
       subjectDailyMin:      copyI32(model.subjectDailyMin || new Int32Array(model.classCount * model.subjectCount)),
@@ -2540,6 +2557,7 @@ function softScore(model, state) {
   s += teacherIntervalMaxDaysPenalty(model, state) * (w[0] || 1);
   s += teacherGapCapPenalty(model, state) * (w[0] || 1) * 10;
   s += subjectParallelPenalty(model, state) * (w[0] || 1) * 20;
+  s += classMinPerDayPenalty(model, state) * (w[0] || 1);
   s += supervisionCriteriaSoftPenalty(model, state) * (w[0] || 1);
   s += studentSubjectsConflictPenalty(model, state) * (w[1] || 1);
   state._cachedSoftScore = s;
@@ -2680,21 +2698,76 @@ function modeBlockPairingPenalty(model, state) {
 // Per-teacher "Max gaps per day / per week" (gap = free period between a
 // teacher's first and last lesson of the day). Counts only the excess over
 // each cap; weighted well above the generic gap term so caps win.
-// Cards of one subject in the same slot beyond subject.maxParallel.
+// Cards of one subject sharing a slot — aSc conditions a_15 (max) and a_16
+// (min). Counts are per (subject, slot):
+//   max  — every card past `subjectMaxParallel` in a slot is a violation;
+//   min  — the subject's best slot must reach `subjectMinParallel`, otherwise
+//          the shortfall is penalised (a combined batch that never lines up).
+// A subject with neither limit is skipped entirely, so the two passes stay as
+// cheap as the old max-only version.
 function subjectParallelPenalty(model, state) {
   const cap = model.subjectMaxParallel;
-  if (!cap || !cap.some((c) => c > 0)) return 0;
+  const min = model.subjectMinParallel;
+  const anyMax = cap && cap.some((c) => c > 0);
+  const anyMin = min && min.some((m) => m > 0);
+  if (!anyMax && !anyMin) return 0;
   const count = new Map();
+  const best = new Map(); // subject -> largest per-slot count seen
   let penalty = 0;
   for (let i = 0; i < model.lessonCount; i++) {
     if (!state.lessonAssigned[i]) continue;
     const sj = model.lessonSubject[i];
-    if (sj < 0 || cap[sj] <= 0) continue;
+    if (sj < 0) continue;
+    const c = cap ? cap[sj] : -1;
+    const m = min ? min[sj] : -1;
+    if (c <= 0 && m <= 0) continue;
     for (const slot of _slotsOfLesson(model, state, i)) {
       const k = sj * 4096 + slot;
       const n = (count.get(k) || 0) + 1;
       count.set(k, n);
-      if (n > cap[sj]) penalty++;
+      if (c > 0 && n > c) penalty++;
+      if (m > 0 && n > (best.get(sj) || 0)) best.set(sj, n);
+    }
+  }
+  if (anyMin) {
+    for (let sj = 0; sj < min.length; sj++) {
+      const m = min[sj];
+      if (m <= 0) continue;
+      const got = best.get(sj) || 0;
+      if (got < m) penalty += (m - got) * 3;
+    }
+  }
+  return penalty;
+}
+
+// Class daily minimum (aSc `minperiodsday`): penalise each day a class has
+// fewer lessons than the configured floor, ignoring empty days (a class with no
+// lessons that day is out of scope — that is what maxDaysPerWeek is for).
+function classMinPerDayPenalty(model, state) {
+  const floor = model.classMinPerDay;
+  if (!floor || !floor.some((f) => f > 0)) return 0;
+  const days = model.days, ppd = model.periodsPerDay;
+  const taught = new Uint16Array(model.classCount * days);
+  for (let i = 0; i < model.lessonCount; i++) {
+    if (!state.lessonAssigned[i]) continue;
+    const cStart = model.lessonClassStart ? model.lessonClassStart[i] : -1;
+    const cCount = model.lessonClassCount ? model.lessonClassCount[i] : 0;
+    if (cStart < 0) continue;
+    for (const slot of _slotsOfLesson(model, state, i)) {
+      const d = model.slotDay[slot];
+      for (let k = 0; k < cCount; k++) {
+        const c = model.lessonClassFlat[cStart + k];
+        if (c >= 0) taught[c * days + d] += 1;
+      }
+    }
+  }
+  let penalty = 0;
+  for (let c = 0; c < model.classCount; c++) {
+    const f = floor[c];
+    if (f <= 0) continue;
+    for (let d = 0; d < days; d++) {
+      const n = taught[c * days + d];
+      if (n > 0 && n < f) penalty += f - n;
     }
   }
   return penalty;
@@ -6153,6 +6226,7 @@ function maxCandidatesPerLesson(model) {
 // whole module to reach private functions.
 export const __test_internals = {
   buildModel, makeState, applySingle, removeSingle, canPlace, wasmSyncState, softScore, applyPlacement, scorePlacement,
+  subjectParallelPenalty, classMinPerDayPenalty,
 };
 
 // In Web Worker context, setInterval is global; in unusual hosts it might not
