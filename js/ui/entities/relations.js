@@ -164,6 +164,22 @@ import "./dialog_shell.js";
       needsSubject2:true,
       help:"All days that carry A must come before the days that carry B." },
 
+    { code:"a_7",  label:"Max days with lesson on the same period", category:"Advanced — frequency",
+      param1:{ label:"Max days", min:1, max:6, def:2 },
+      help:"The same period slot may be used on at most this many days — keeps one subject out of, say, period 1 every single day." },
+    { code:"a_8",  label:"Max days with lesson on the same period (all weeks)", category:"Advanced — frequency",
+      param1:{ label:"Max days", min:1, max:30, def:2 },
+      help:"Same cap counted over the whole week cycle; on a single-week timetable it matches the entry above." },
+    { code:"a_30", label:"A lessons only on positions of B lessons (A before B)", category:"Advanced — ordering",
+      needsSubject2:true,
+      help:"An A card may only sit where B also runs that day, and before it." },
+    { code:"a_34", label:"A must be before or after B in a day (no mixing)", category:"Advanced — ordering",
+      needsSubject2:true,
+      help:"Within a day all A cards come before all B cards, or all B before all A — never interleaved." },
+    { code:"a_60", label:"Cards must only be placed on selected positions", category:"Advanced — day shape",
+      needsPositionsRange:true,
+      help:"HARD rule: the selected subjects may only start inside this period window (e.g. labs only in periods 3-6)." },
+
     { code:"a_21", label:"Can not be on the same period", category:"Advanced — ordering",
       param1:{ label:"Allowed exceptions per week", min:0, max:20, def:0 },
       needsSubject2:true,
@@ -191,11 +207,17 @@ import "./dialog_shell.js";
     "Advanced — day shape","Advanced — frequency","Advanced — ordering"];
 
   // Per-typ field requirements.
-  const NEEDS_SUBJECT2 = new Set(["n_5","n_6","n_8","n_9","a_1","a_22","a_82","a_83","a_21","a_11","a_37","a_40","a_41","a_42"]);
+  // Derived from the catalogue (`needsSubject2: true`) plus the four legacy
+  // n_* pair types, so a new advanced type can never be added without its
+  // Subject B field.
+  const NEEDS_SUBJECT2 = new Set([
+    "n_5", "n_6", "n_8", "n_9",
+    ...TYP_CATALOGUE.filter(t => t.needsSubject2).map(t => t.code),
+  ]);
   // Advanced types carry a numeric limit in `param1`.
   const NEEDS_PARAM1 = new Set(TYP_CATALOGUE.filter(t => t.param1).map(t => t.code));
   const NEEDS_POSITIONS_FIRSTLAST = new Set(["n_16"]);
-  const NEEDS_POSITIONS_RANGE     = new Set(["n_17"]);
+  const NEEDS_POSITIONS_RANGE     = new Set(["n_17", "a_60"]);
 
   const IMPORTANCE_LEVELS = ["low","normal","high","strict","optimize","default"];
 

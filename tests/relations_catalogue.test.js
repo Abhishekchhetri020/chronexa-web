@@ -8,8 +8,10 @@ import { describe, it, expect, beforeAll } from "vitest";
 const ADVANCED = ["a_4", "a_5", "a_6", "a_26", "a_27", "a_1", "a_22", "a_82", "a_83",
   "a_0", "a_3", "a_9", "a_10", "a_12", "a_13", "a_54", "a_74",
   "a_17", "a_18", "a_19", "a_21", "a_67", "a_68", "a_69", "a_70",
-  "a_11", "a_20", "a_23", "a_37", "a_40", "a_41", "a_42"];
-const PAIR_TYPES = ["a_1", "a_22", "a_82", "a_83", "a_21", "a_11", "a_37", "a_40", "a_41", "a_42"];
+  "a_11", "a_20", "a_23", "a_37", "a_40", "a_41", "a_42",
+  "a_7", "a_8", "a_30", "a_34", "a_60"];
+const PAIR_TYPES = ["a_1", "a_22", "a_82", "a_83", "a_21", "a_11", "a_37", "a_40", "a_41", "a_42",
+  "a_30", "a_34"];
 
 beforeAll(async () => {
   // Minimal EntityDialog stub — the module only needs buildField/el at import time.
@@ -47,7 +49,10 @@ describe("relations catalogue — advanced aSc conditions", () => {
   });
 
   it("every advanced type declares a param1 with a sane default", () => {
+    const NO_PARAM = ["a_30", "a_34"];   // positional; a_60 uses a period window
     for (const code of ADVANCED) {
+      if (NO_PARAM.includes(code)) { expect(window.EntityRelations.needsParam1.has(code)).toBe(false); continue; }
+      if (code === "a_60") { expect(window.EntityRelations.needsParam1.has(code)).toBe(false); continue; }
       const t = window.EntityRelations.catalogue.find((x) => x.code === code);
       expect(t.param1, `${code} has no param1 config`).toBeTruthy();
       expect(t.param1.min).toBeLessThanOrEqual(t.param1.def);
