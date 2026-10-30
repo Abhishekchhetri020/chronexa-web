@@ -59,15 +59,14 @@ import "./dialog_shell.js";
       oninput:(e)=>draft.short = e.target.value });
     const fColor = D.buildSwatchPicker(draft.color, v => draft.color = v);
 
-    const fClasses = D.el("select", { multiple:"multiple", size:"8" });
-    ((window.APP.school?.classes) || []).forEach(c => {
-      const opt = D.el("option", { value:c.id },
-        c.name + (c.abbr ? ` (${c.abbr})` : ""));
-      if (draft.classids.includes(c.id)) opt.selected = true;
-      fClasses.appendChild(opt);
-    });
-    fClasses.addEventListener("change", () => {
-      draft.classids = Array.from(fClasses.selectedOptions).map(o => o.value);
+    const fClasses = D.buildIdMultiPicker({
+      items: ((window.APP.school?.classes) || []).map(c => ({
+        id: c.id, label: c.name + (c.abbr ? ` (${c.abbr})` : "") })),
+      ids: draft.classids,
+      label: "Classes",
+      emptyText: "None selected — click Choose…",
+      searchPlaceholder: "Search classes…",
+      onChange: (ids) => { draft.classids = ids; },
     });
 
     D.buildEditSheet({

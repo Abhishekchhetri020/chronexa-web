@@ -425,7 +425,47 @@
 .chrx-ent-picker__row:hover { background: var(--chrx-line-soft); }
 .chrx-ent-picker__row input[type=checkbox],
 .chrx-ent-picker__row input[type=radio] { margin: 0; }
-.chrx-ent-picker__bar { display: flex; gap: 6px; margin: 8px 0 4px; }
+.chrx-ent-picker__bar { display: flex; gap: 6px; margin: 8px 0 4px; align-items: center; flex-wrap: wrap; }
+.chrx-ent-picker__search {
+  flex: 1 1 160px; min-width: 140px;
+  padding: 6px 9px; border: 1px solid var(--chrx-line);
+  border-radius: var(--chrx-radius-sm);
+  background: var(--chrx-bg-input); color: var(--chrx-fg); font: inherit;
+}
+.chrx-ent-picker__count {
+  font-size: var(--chrx-font-small, 12px);
+  color: var(--chrx-fg-secondary); white-space: nowrap;
+}
+
+/* ---------- Multi-select field: chips + Choose… ---------- */
+.chrx-ent-multi {
+  display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+  padding: 6px; border: 1px solid var(--chrx-line);
+  border-radius: var(--chrx-radius-md); background: var(--chrx-bg-input);
+  min-height: 38px;
+}
+.chrx-ent-multi__chips { display: flex; flex-wrap: wrap; gap: 4px; flex: 1 1 auto; }
+.chrx-ent-multi__empty {
+  font-size: var(--chrx-font-small, 12px);
+  color: var(--chrx-fg-secondary); font-style: italic;
+}
+.chrx-ent-multi__choose { flex: 0 0 auto; white-space: nowrap; }
+.chrx-ent-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 4px 2px 8px; border-radius: 999px;
+  background: var(--chrx-accent-soft, #e8f0ec);
+  color: var(--chrx-fg); font-size: var(--chrx-font-small, 12px);
+  border: 1px solid var(--chrx-accent-line, #cfe0d8);
+  max-width: 220px;
+}
+.chrx-ent-chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chrx-ent-chip--more { padding-right: 8px; font-variant-numeric: tabular-nums; }
+.chrx-ent-chip__x {
+  border: 0; background: transparent; cursor: pointer; line-height: 1;
+  font-size: 13px; padding: 0 4px; color: var(--chrx-fg-secondary);
+  border-radius: 999px;
+}
+.chrx-ent-chip__x:hover { background: rgba(0,0,0,.08); color: var(--chrx-fg); }
 
 /* ---------- Copy chooser ---------- */
 .chrx-ent-copybtns { display: flex; flex-direction: column; gap: 10px; }
