@@ -49,12 +49,12 @@ export const CONSTRAINT_KEYS = Object.freeze([
   {
     entity: "teacher", key: "teachers_maxgapsweek", label: "Max gaps per week",
     kind: "intOrAny", weight: "soft", dialog: "teacher",
-    solvers: { js: "teacherMaxGapsPerWeek", wasm: null, cloud: null },
+    solvers: { js: "teacherMaxGapsPerWeek", wasm: null, cloud: "gap_cap_week" },
   },
   {
     entity: "teacher", key: "teachers_maxgapsday", label: "Max gaps per day",
     kind: "intOrAny", weight: "soft", dialog: "teacher", topLevel: "maxGapsPerDay",
-    solvers: { js: "teacherMaxGapsPerDay", wasm: null, cloud: null },
+    solvers: { js: "teacherMaxGapsPerDay", wasm: null, cloud: "gap_cap_day" },
   },
   {
     entity: "teacher", key: "teachers_maxconsecutiveperiods", label: "Max consecutive periods",
@@ -129,27 +129,27 @@ export const CONSTRAINT_KEYS = Object.freeze([
   {
     entity: "class", key: "classTeacherPos", ascKey: "classteacherpos",
     label: "Class-teacher positions", kind: "mask", weight: "soft", dialog: "class",
-    solvers: { js: "classTeacherPosMask", wasm: "classTeacherPosMask", cloud: null },
+    solvers: { js: "classTeacherPosMask", wasm: "classTeacherPosMask", cloud: "ctp" },
   },
   {
     entity: "class", key: "lunch_periodfrom", label: "Lunch break — from",
     kind: "intOrAny", weight: "soft", dialog: "class",
-    solvers: { js: "classLunchMask", wasm: "classLunchMask", cloud: null },
+    solvers: { js: "classLunchMask", wasm: "classLunchMask", cloud: "lunch" },
   },
   {
     entity: "class", key: "lunch_periodto", label: "Lunch break — to",
     kind: "intOrAny", weight: "soft", dialog: "class",
-    solvers: { js: "classLunchMask", wasm: "classLunchMask", cloud: null },
+    solvers: { js: "classLunchMask", wasm: "classLunchMask", cloud: "lunch" },
   },
   {
     entity: "class", key: "m_nMaxVyucOd", label: "Teaching window — from",
     kind: "intOrAny", weight: "soft", dialog: "class",
-    solvers: { js: "classTeachingMask", wasm: "classTeachingMask", cloud: null },
+    solvers: { js: "classTeachingMask", wasm: "classTeachingMask", cloud: "outside" },
   },
   {
     entity: "class", key: "m_nMaxVyucDo", label: "Teaching window — to",
     kind: "intOrAny", weight: "soft", dialog: "class",
-    solvers: { js: "classTeachingMask", wasm: "classTeachingMask", cloud: null },
+    solvers: { js: "classTeachingMask", wasm: "classTeachingMask", cloud: "outside" },
   },
   {
     entity: "class", key: "m_nMinBlokOd", label: "Required block — from",

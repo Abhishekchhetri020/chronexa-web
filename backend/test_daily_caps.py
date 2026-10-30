@@ -126,5 +126,52 @@ for d, ps in per_day.items():
     runs.append(best)
 ok &= check("teacher max-consecutive 1 keeps runs short", all(r <= 2 for r in runs), str(dict(per_day)))
 
+
+
+# --- soft parity: windows, class-teacher slot, gap caps --------------------
+def solve_with(mutate, secs=12):
+    sch = base_school()
+    mutate(sch)
+    out, _ = solve_custom(sch, secs)
+    return out
+
+
+# class lunch window: the solver should avoid it when there is room elsewhere.
+def _lunch(sch):
+    sch["lessons"] = [{"id": "la", "subjectId": "games", "teacherIds": ["t1"],
+                       "classIds": ["cA"], "periodsPerWeek": 2}]
+    sch["classes"][0]["constraints"] = {"lunch_periodfrom": 3, "lunch_periodto": 4}
+out = solve_with(_lunch)
+in_lunch = [p for p in out["assignment"] if p["period"] in (3, 4)]
+ok &= check("lunch window avoided when avoidable", len(in_lunch) <= 1, str(in_lunch))
+
+# class-teacher slot: the marked period should go to the homeroom teacher.
+def _ctp(sch):
+    sch["lessons"] = [
+        {"id": "la", "subjectId": "games", "teacherIds": ["t1"], "classIds": ["cA"], "periodsPerWeek": 2},
+        {"id": "lb", "subjectId": "games", "teacherIds": ["t2"], "classIds": ["cA"], "periodsPerWeek": 2},
+    ]
+    sch["classes"] = [{"id": "cA", "name": "IX A", "_teacherId": "t1",
+                       "constraints": {"classTeacherPos": [[["1"]]]}}]
+    sch["classes"][0]["constraints"]["classTeacherPos"] = [[["1", "0", "0", "0", "0", "0"]]]
+out = solve_with(_ctp)
+# The marked slot is day 0 / period 1 and t1 is the homeroom teacher (lesson la).
+slot = [p for p in out["assignment"] if p["day"] == 0 and p["period"] == 1]
+ok &= check("class-teacher slot gives the marked slot to the homeroom teacher",
+            bool(slot) and all(p["lessonId"] == "la" for p in slot), str(slot))
+
+# teacher gap caps stay soft: cards still place, gaps reduce.
+def _gaps(sch):
+    sch["teachers"][0]["constraints"] = {"teachers_maxgapsday": 0}
+    sch["lessons"] = [{"id": "la", "subjectId": "games", "teacherIds": ["t1"],
+                       "classIds": ["cA"], "periodsPerWeek": 2}]
+out = solve_with(_gaps)
+ok &= check("gap cap still places every card", out["stats"]["unplaced"] == 0, str(out["stats"]))
+per_day = defaultdict(list)
+for p in out["assignment"]:
+    per_day[p["day"]].append(p["period"])
+ok &= check("gap cap of 0 leaves no isolated hole", all(
+    sorted(ps) == list(range(min(ps), max(ps) + 1)) for ps in per_day.values()), str(dict(per_day)))
+
 print("\n" + ("ALL PASS" if ok else "SOME FAILED"))
 sys.exit(0 if ok else 1)

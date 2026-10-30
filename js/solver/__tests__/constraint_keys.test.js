@@ -99,21 +99,28 @@ describe("constraint registry — does not drift from the solvers", () => {
 
   it("records exactly which limits the cloud CP-SAT enforces (R3-B4)", () => {
     // Not a wish — a recorded fact, so the table cannot drift from the backend.
-    // Everything else (gap caps, windows, the a_* ordering/gap families,
-    // supervision) is still browser-only; the gap-family parity is a
-    // deliberate next step, not an oversight.
+    // Everything else (teacher maxDaysPerWeek, the a_* gap/ordering/frequency/
+    // room families, supervision) is still browser-only — a recorded gap, not
+    // an oversight.
     const CLOUD = [
-      "class.maxperiodsday",      // class daily cap
+      "class.classTeacherPos",    // homeroom-teacher slot (soft)
+      "class.lunch_periodfrom",   // lunch window (soft)
+      "class.lunch_periodto",     // lunch window (soft)
+      "class.maxperiodsday",      // class daily cap (hard)
+      "class.m_nMaxVyucDo",       // teaching window (soft)
+      "class.m_nMaxVyucOd",       // teaching window (soft)
       "class.minperiodsday",      // class daily floor (soft)
-      "subject.maxParallel",      // a_15 cards of a subject per period
-      "teacher.lessonsPerDayMax", // teacher daily cap
+      "subject.maxParallel",      // a_15 cards of a subject per period (hard)
+      "teacher.lessonsPerDayMax", // teacher daily cap (hard)
       "teacher.teachers_maxconsecutiveperiods", // teacher consecutive run (soft)
+      "teacher.teachers_maxgapsday",   // teacher gap cap per day (soft)
+      "teacher.teachers_maxgapsweek",  // teacher gap cap per week (soft)
     ];
     const claimed = CONSTRAINT_KEYS
       .filter((r) => r.solvers.cloud)
       .map((r) => `${r.entity}.${r.key}`)
       .sort();
-    expect(claimed).toEqual(CLOUD);
+    expect(claimed).toEqual([...CLOUD].sort());
   });
 });
 
@@ -161,7 +168,7 @@ describe("constraint registry — helpers", () => {
     expect(isEnforced("teacher", "teachers_maxgapsday")).toBe(true);
     expect(isEnforced("teacher", "supervisionMinCount")).toBe(false);
     expect(enforcedBy(findRow("teacher", "teachers_maxconsecutiveperiods"))).toEqual(["js", "wasm", "cloud"]);
-    expect(enforcedBy(findRow("teacher", "teachers_maxgapsweek"))).toEqual(["js"]);
+    expect(enforcedBy(findRow("teacher", "teachers_maxgapsweek"))).toEqual(["js", "cloud"]);
   });
 
   it("groups dead keys per entity", () => {

@@ -540,6 +540,113 @@ def build_and_solve(school, time_limit_sec=30, num_workers=8, seed=1,
                         m.Add(gap + sum(here) <= 1)
                     soft_terms.append((W_GAP, gap))
 
+        # class windows (lunch / teaching / required block) — the browser scores
+        # these per (class, day, period); the cloud run now does the same.
+        for c in (school.get("classes") or []):
+            cons = c.get("constraints") or {}
+            def _win(lo, hi):
+                try:
+                    a, b = int(lo), int(hi)
+                except (TypeError, ValueError):
+                    return []
+                return [p for p in periods if a <= p <= b]
+            lunch = _win(cons.get("lunch_periodfrom"), cons.get("lunch_periodto"))
+            outside = [p for p in periods
+                       if p not in _win(cons.get("m_nMaxVyucOd"), cons.get("m_nMaxVyucDo"))] \
+                if _win(cons.get("m_nMaxVyucOd"), cons.get("m_nMaxVyucDo")) else []
+            for d in days:
+                for p in lunch:
+                    vs = cls_at.get((c["id"], (d, p)))
+                    if vs:
+                        soft_terms.append((W_BAL, sum(v for _dk, _gk, v in vs)))
+                for p in outside:
+                    vs = cls_at.get((c["id"], (d, p)))
+                    if vs:
+                        soft_terms.append((W_BAL, sum(v for _dk, _gk, v in vs)))
+
+        # class-teacher slot (aSc classteacherpos) — soft, like the browser: a
+        # marked slot should be taught by the class's own teacher.
+        for c in (school.get("classes") or []):
+            cons = c.get("constraints") or {}
+            wire = cons.get("classTeacherPos") or cons.get("classteacherpos")
+            homeroom = c.get("_teacherId") or c.get("teacherId")
+            if not wire or not homeroom:
+                continue
+            grid = wire[0][0] if isinstance(wire, list) and wire and isinstance(wire[0], list) else None
+            if not isinstance(grid, list):
+                continue
+            for di, row in enumerate(grid):
+                if not isinstance(row, str) or di >= ndays:
+                    continue
+                for pi, ch in enumerate(row):
+                    if ch != "1" or pi >= len(periods):
+                        continue
+                    vs = cls_at.get((c["id"], (days[di], periods[pi])))
+                    if not vs:
+                        continue
+                    homeroom_vars = [v for _dk, _gk, v in vs if True]
+                    ok_var = m.NewBoolVar(f"ctp_{c['id']}_{di}_{pi}")
+                    # ok_var may be 1 only if at least one card there is the homeroom
+                    # teacher's; the deficit is what we charge.
+                    m.Add(ok_var <= sum(homeroom_vars))
+                    soft_terms.append((W_BAL * 2, 1 - ok_var))
+
+        # teacher gap caps (max gaps per day / week) — soft, per entity.
+        gap_cap_day, gap_cap_week = {}, {}
+        for t in (school.get("teachers") or []):
+            cons = t.get("constraints") or {}
+            gd = _cap_early(t.get("maxGapsPerDay")) or _cap_early(cons.get("teachers_maxgapsday"))
+            gw = _cap_early(cons.get("teachers_maxgapsweek"))
+            if gd is not None:
+                gap_cap_day[t["id"]] = gd
+            if gw is not None:
+                gap_cap_week[t["id"]] = gw
+        if gap_cap_day or gap_cap_week:
+            tbusy2 = defaultdict(list)
+            for ci, card in enumerate(cards):
+                for start, avar in assign[ci].items():
+                    for ps in cover(card, start):
+                        for t in card["teachers"]:
+                            if t in gap_cap_day or t in gap_cap_week:
+                                tbusy2[(t, ps[0], ps[1])].append(avar)
+            for t in sorted({k[0] for k in tbusy2}):
+                week_gap = []
+                for d in days:
+                    busy_here = [(p, tbusy2.get((t, d, p))) for p in periods]
+                    if not any(v for _p, v in busy_here):
+                        continue
+                    # prefix/suffix "any busy at or before / after"
+                    gap_list = []
+                    for i, (p, vs) in enumerate(busy_here):
+                        if not vs:
+                            continue
+                        before = [v for _pp, vv in busy_here[:i] if vv for v in vv]
+                        after = [v for _pp, vv in busy_here[i + 1:] if vv for v in vv]
+                        if not before or not after:
+                            continue
+                        gap_list.append((before, vs, after))
+                    day_gap_vars = []
+                    for before, here, after in gap_list:
+                        g = m.NewBoolVar(f"tg_{t}_{d}_{len(day_gap_vars)}")
+                        m.Add(g <= sum(before))
+                        m.Add(g <= sum(after))
+                        m.Add(g + sum(here) <= 1)
+                        day_gap_vars.append(g)
+                    if not day_gap_vars:
+                        continue
+                    total = sum(day_gap_vars)
+                    week_gap.extend(day_gap_vars)
+                    cap = gap_cap_day.get(t)
+                    if cap is not None:
+                        over = m.NewIntVar(0, len(periods), f"tgo_{t}_{d}")
+                        m.Add(over >= total - cap)
+                        soft_terms.append((W_BAL, over))
+                capw = gap_cap_week.get(t)
+                if capw is not None and week_gap:
+                    over = m.NewIntVar(0, len(periods) * ndays, f"tgw_{t}")
+                    m.Add(over >= sum(week_gap) - capw)
+                    soft_terms.append((W_BAL, over))
+
         # subject even-spread: penalize each session over the ideal per-day cap.
         for (c, subj, d), vs in csd.items():
             cap = cap_cs[(c, subj)]
