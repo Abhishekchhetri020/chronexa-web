@@ -26,7 +26,11 @@ jobs:
 
       - name: Start container
         run: |
-          docker run -d --name chrx -p 8001:8001 chronexa-web-backend:ci
+          # The image binds $PORT (7860 by default, HF convention). Mapping
+          # 8001:8001 left the published port with nothing behind it, so the
+          # health check got "connection reset" while uvicorn was healthy —
+          # this workflow was red for months because of that mismatch.
+          docker run -d --name chrx -p 8001:7860 chronexa-web-backend:ci
 
       - name: Wait for /health
         run: |
