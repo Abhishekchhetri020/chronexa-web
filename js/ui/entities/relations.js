@@ -179,6 +179,13 @@ import "./dialog_shell.js";
     { code:"a_58", label:"Max different buildings per day", category:"Advanced — rooms",
       param1:{ label:"Max buildings", min:1, max:10, def:1 },
       help:"Stops a class or teacher being shuttled between buildings more than this in a day." },
+    { code:"a_50", label:"Max periods per week in the selected classrooms", category:"Advanced — rooms",
+      param1:{ label:"Max periods", min:0, max:40, def:4 },
+      help:"Caps how many periods of these lessons land in the classrooms picked below." },
+    { code:"a_51", label:"Min periods per week in the selected classrooms", category:"Advanced — rooms",
+      param1:{ label:"Min periods", min:0, max:40, def:2 },
+      help:"Requires at least this many periods of these lessons in the classrooms picked below — e.g. the lab must actually be used." },
+
     { code:"a_39", label:"Max classrooms on one period", category:"Advanced — rooms",
       param1:{ label:"Max rooms in one period", min:1, max:40, def:6 },
       help:"How many of these lessons may run in different rooms at the same time — the lab/ground capacity rule." },
