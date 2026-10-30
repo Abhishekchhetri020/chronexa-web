@@ -91,6 +91,31 @@ import "./dialog_shell.js";
       param1:{ label:"Max gap length", min:1, max:12, def:3 },
       help:"Any gap between these subjects may not be longer than this." },
 
+    { code:"a_0",  label:"Max days per week", category:"Advanced — frequency",
+      param1:{ label:"Max days", min:1, max:6, def:5 },
+      help:"These subjects may run on at most this many days of the week." },
+    { code:"a_74", label:"Max days per all weeks", category:"Advanced — frequency",
+      param1:{ label:"Max days", min:1, max:30, def:5 },
+      help:"Same cap counted across the whole week cycle; on a single-week timetable it matches Max days per week." },
+    { code:"a_9",  label:"Min days per week", category:"Advanced — frequency",
+      param1:{ label:"Min days", min:1, max:6, def:2 },
+      help:"These subjects must be spread over at least this many days." },
+    { code:"a_3",  label:"Min periods per day (empty day is OK)", category:"Advanced — frequency",
+      param1:{ label:"Min periods", min:1, max:12, def:2 },
+      help:"On any day these subjects run, they need at least this many periods. A day with none is not judged." },
+    { code:"a_10", label:"Max periods per day", category:"Advanced — frequency",
+      param1:{ label:"Max periods", min:1, max:12, def:4 },
+      help:"These subjects may not occupy more than this many periods in one day." },
+    { code:"a_12", label:"Min periods per week", category:"Advanced — frequency",
+      param1:{ label:"Min periods", min:1, max:60, def:4 },
+      help:"These subjects need at least this many periods across the week." },
+    { code:"a_13", label:"Max periods per week", category:"Advanced — frequency",
+      param1:{ label:"Max periods", min:1, max:60, def:8 },
+      help:"These subjects may not occupy more than this many periods across the week." },
+    { code:"a_54", label:"Max different subjects per day", category:"Advanced — frequency",
+      param1:{ label:"Max subjects", min:1, max:12, def:6 },
+      help:"A day may not mix more than this many different subjects from the selected set." },
+
     { code:"a_1",  label:"Can not be on the same day (with exceptions)", category:"Advanced — ordering",
       param1:{ label:"Allowed exceptions per week", min:0, max:20, def:1 },
       needsSubject2:true,
@@ -110,7 +135,7 @@ import "./dialog_shell.js";
   ];
   const TYP_BY_CODE = Object.fromEntries(TYP_CATALOGUE.map(t => [t.code, t]));
   const CATEGORY_ORDER = ["Same / different day","Two-subject","Multi-class","Position",
-    "Advanced — day shape","Advanced — ordering"];
+    "Advanced — day shape","Advanced — frequency","Advanced — ordering"];
 
   // Per-typ field requirements.
   const NEEDS_SUBJECT2 = new Set(["n_5","n_6","n_8","n_9","a_1","a_22","a_82","a_83"]);

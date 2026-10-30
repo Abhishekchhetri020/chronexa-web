@@ -50,7 +50,8 @@ function score(sch, placements) {
 
 describe("registry of advanced types", () => {
   it("covers the gap and ordering families", () => {
-    for (const t of ["a_4", "a_5", "a_6", "a_26", "a_27", "a_1", "a_22", "a_82", "a_83"]) {
+    for (const t of ["a_4", "a_5", "a_6", "a_26", "a_27", "a_1", "a_22", "a_82", "a_83",
+      "a_0", "a_3", "a_9", "a_10", "a_12", "a_13", "a_54", "a_74"]) {
       expect(ADV_REL_TYPS.has(t), t).toBe(true);
     }
   });
@@ -157,5 +158,62 @@ describe("a_1 / a_22 / a_82 / a_83 — A/B ordering", () => {
     const sch = school([{ typ: "a_4", subjectids: ["bio"], param1: 0, disabled: true }],
       [L("l1", "bio", 3)]);
     expect((buildModel(sch).advRels || []).length).toBe(0);
+  });
+});
+
+describe("frequency caps — a_0 / a_9 / a_3 / a_10 / a_12 / a_13 / a_54 / a_74", () => {
+  const bio = (n) => [L("l1", "bio", n)];
+  const rel = (typ, p1) => [{ typ, subjectids: ["bio"], param1: p1 }];
+  const day = (d, ps) => ps.map((p) => [0, d, p]);
+
+  it("a_0 penalises using more days than allowed", () => {
+    const sch = school(rel("a_0", 2), bio(3));
+    const threeDays = score(sch, [[0, 0, 0], [1, 1, 0], [2, 2, 0]]);
+    const twoDays = score(sch, [[0, 0, 0], [1, 0, 1], [2, 1, 0]]);
+    expect(threeDays).toBeGreaterThan(twoDays);
+  });
+
+  it("a_9 penalises using fewer days than required", () => {
+    const sch = school(rel("a_9", 3), bio(3));
+    const oneDay = score(sch, [[0, 0, 0], [1, 0, 1], [2, 0, 2]]);
+    const threeDays = score(sch, [[0, 0, 0], [1, 1, 0], [2, 2, 0]]);
+    expect(oneDay).toBeGreaterThan(threeDays);
+  });
+
+  it("a_3 needs a minimum per day but exempts empty days", () => {
+    const sch = school(rel("a_3", 2), bio(3));
+    const thin = score(sch, [[0, 0, 0], [1, 1, 0], [2, 2, 0]]);   // 1 per day
+    const thick = score(sch, [[0, 0, 0], [1, 0, 1], [2, 1, 0]]);  // 2 on day 0
+    expect(thin).toBeGreaterThan(thick);
+  });
+
+  it("a_10 caps periods per day", () => {
+    const sch = school(rel("a_10", 2), bio(4));
+    const heavy = score(sch, [[0, 0, 0], [1, 0, 1], [2, 0, 2], [3, 0, 3]]);
+    const split = score(sch, [[0, 0, 0], [1, 0, 1], [2, 1, 0], [3, 1, 1]]);
+    expect(heavy).toBeGreaterThan(split);
+  });
+
+  it("a_12 demands a minimum weekly total, a_13 caps it", () => {
+    // A weekly total depends on how many cards exist, not on where they sit, so
+    // the comparison is the same placement against different limits.
+    const placement = [[0, 0, 0], [1, 0, 1]];   // 2 cards
+    expect(score(school(rel("a_12", 4), bio(2)), placement))
+      .toBeGreaterThan(score(school(rel("a_12", 1), bio(2)), placement));
+    expect(score(school(rel("a_13", 1), bio(2)), placement))
+      .toBeGreaterThan(score(school(rel("a_13", 5), bio(2)), placement));
+  });
+
+  it("a_54 counts different subjects in a day", () => {
+    const lessons = [L("lb", "bio", 2), L("lp", "phy", 2)];
+    const sch = school([{ typ: "a_54", subjectids: ["bio", "phy"], param1: 1 }], lessons);
+    const mixed = score(sch, [[0, 0, 0], [1, 0, 1], [2, 0, 2], [3, 0, 3]]);      // both subjects, day 0
+    const separated = score(sch, [[0, 0, 0], [1, 0, 1], [2, 1, 0], [3, 1, 1]]);   // day 0 bio, day 1 phy
+    expect(mixed).toBeGreaterThan(separated);
+  });
+
+  it("a_74 behaves like a_0 on a single-week timetable", () => {
+    const sch = school(rel("a_74", 1), bio(2));
+    expect(score(sch, [[0, 0, 0], [1, 1, 0]])).toBeGreaterThan(score(sch, [[0, 0, 0], [1, 0, 1]]));
   });
 });
