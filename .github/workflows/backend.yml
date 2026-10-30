@@ -45,7 +45,7 @@ jobs:
           docker logs chrx
           exit 1
 
-      - name: Smoke test /solve
+      - name: Smoke test /solve (async start + poll)
         run: |
           cat > /tmp/fixture.json <<'JSON'
           {
@@ -67,13 +67,26 @@ jobs:
             "options": {"timeLimitSec": 5, "seed": 1}
           }
           JSON
-          RESP=$(curl -fsS -X POST http://127.0.0.1:8001/solve \
-                  -H 'Content-Type: application/json' \
-                  --data @/tmp/fixture.json)
-          echo "$RESP"
-          echo "$RESP" | grep -q '"status":"OPTIMAL"'
-          echo "$RESP" | grep -q '"placed":2'
+          # The API is async since the job queue landed: /solve/start returns a
+          # job id and /solve/status/{id} carries the result. The old smoke test
+          # posted to /solve, which no longer exists (404).
+          START=$(curl -fsS -X POST http://127.0.0.1:8001/solve/start \
+                  -H 'Content-Type: application/json' --data @/tmp/fixture.json)
+          echo "start: $START"
+          JOB=$(echo "$START" | sed -n 's/.*"jobId"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+          test -n "$JOB" || { echo "no jobId in $START"; exit 1; }
 
+          for i in $(seq 1 40); do
+            BODY=$(curl -fsS "http://127.0.0.1:8001/solve/status/$JOB")
+            echo "poll $i: $BODY" | head -c 400; echo
+            case "$BODY" in
+              *'"state":"done"'*|*'"state": "done"'*) break ;;
+              *'"state":"error"'*|*'"state": "error"'*) echo "job errored"; exit 1 ;;
+            esac
+            sleep 1
+          done
+          echo "$BODY" | grep -q '"placed"'
+          echo "$BODY" | grep -q 'OPTIMAL'
       - name: Print logs on failure
         if: failure()
         run: docker logs chrx || true
