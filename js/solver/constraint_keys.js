@@ -178,15 +178,13 @@ export const CONSTRAINT_KEYS = Object.freeze([
   },
   {
     entity: "class", key: "minperiodsday", label: "Lessons per day — from",
-    kind: "intOrAny", weight: "none", dialog: "class",
-    solvers: { js: null, wasm: null, cloud: null },
-    uiOnly: "The solver reads the class's top-level maxPerDay instead; this dialog field is a no-op.",
+    kind: "intOrAny", weight: "soft", dialog: "class", topLevel: "minPerDay",
+    solvers: { js: "classMinPerDay", wasm: null, cloud: null },
   },
   {
     entity: "class", key: "maxperiodsday", label: "Lessons per day — till",
-    kind: "intOrAny", weight: "none", dialog: "class",
-    solvers: { js: null, wasm: null, cloud: null },
-    uiOnly: "The solver reads the class's top-level maxPerDay instead; this dialog field is a no-op.",
+    kind: "intOrAny", weight: "hard", dialog: "class", topLevel: "maxPerDay",
+    solvers: { js: "classMaxPerDay", wasm: null, cloud: null },
   },
   {
     entity: "class", key: "maxdaysweek", label: "Max days per week",
@@ -232,6 +230,11 @@ export const CONSTRAINT_KEYS = Object.freeze([
   // ── Subject-level scheduling fields (entity fields, not `constraints`) ───
   // Every one of these is stored by the Subject dialog and read by no solver —
   // the R3-B3 pattern, now visible in one place instead of guessed at.
+  {
+    entity: "subject", key: "minParallel", label: "Min at the same time",
+    kind: "int", weight: "soft", dialog: "subject",
+    solvers: { js: "subjectMinParallel", wasm: null, cloud: null },
+  },
   { entity: "subject", key: "maxPerDay", label: "Max per day",
     kind: "intOrAny", weight: "none", dialog: "subject",
     solvers: { js: null, wasm: null, cloud: null },

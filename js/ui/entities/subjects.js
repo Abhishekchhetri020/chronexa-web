@@ -424,6 +424,16 @@ import "../components/time_off_matrix.js";
     parallelRow.appendChild(fParallel);
     parallelRow.appendChild(setForMoreLink("maxParallel", "Max at the same time", () => c.maxParallel));
 
+    // aSc condition a_16 — the floor twin of the cap above: at least N sections
+    // of this subject must share one period somewhere in the week, which is how
+    // a combined Games/Swimming/Lab batch is kept together.
+    const fParallelMin = D.el("input", { type: "number", min: "0", max: "99",
+      value: c.minParallel || "", style: "width:80px", placeholder: "no minimum",
+      oninput: (e) => c.minParallel = e.target.value === "" ? undefined : parseInt(e.target.value, 10) || undefined });
+    const parallelMinRow = D.el("div", { style: "display:flex;align-items:center;gap:4px" });
+    parallelMinRow.appendChild(fParallelMin);
+    parallelMinRow.appendChild(setForMoreLink("minParallel", "Min at the same time", () => c.minParallel));
+
     const fContract = D.el("input", { type: "number", min: "0", max: "99",
       value: c.teacherContractLength || "", style: "width:80px",
       oninput: (e) => c.teacherContractLength = e.target.value });
@@ -477,6 +487,9 @@ import "../components/time_off_matrix.js";
         { label: null,                              control: D.el("div", { style: "border-top:1px solid #e2e8f0;margin:4px 0" }) },
         { label: "Max students on lesson with this subject", control: studentsRow },
         { label: "Max cards of this subject in one period (whole school)", control: parallelRow },
+        { label: "Min cards of this subject in one period (keep the batch together)",
+          helpText: "Soft goal: at least this many sections share one period somewhere in the week. Set it on the subject that must run as one batch (Games, Swimming, Lab).",
+          control: parallelMinRow },
         { label: "Length for teacher's contract",    control: contractRow },
         { label: null,                              control: D.el("div", { style: "border-top:1px solid #e2e8f0;margin:4px 0" }) },
         { label: "Temporary subject",               control: fTemp },
