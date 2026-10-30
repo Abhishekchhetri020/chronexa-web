@@ -64,7 +64,7 @@ export const CONSTRAINT_KEYS = Object.freeze([
   {
     entity: "teacher", key: "lessonsPerDayMax", label: "Number of lessons per day — Till",
     kind: "intOrAny", weight: "hard", dialog: "teacher", topLevel: "maxPerDay",
-    solvers: { js: "teacherMaxPerDay", wasm: "teacherMaxPerDay", cloud: null },
+    solvers: { js: "teacherMaxPerDay", wasm: "teacherMaxPerDay", cloud: "teacher_max_per_day" },
   },
   {
     entity: "teacher", key: "maxDaysPerWeek", label: "Max days per week",
@@ -184,7 +184,7 @@ export const CONSTRAINT_KEYS = Object.freeze([
   {
     entity: "class", key: "maxperiodsday", label: "Lessons per day — till",
     kind: "intOrAny", weight: "hard", dialog: "class", topLevel: "maxPerDay",
-    solvers: { js: "classMaxPerDay", wasm: null, cloud: null },
+    solvers: { js: "classMaxPerDay", wasm: null, cloud: "class_max_per_day" },
   },
   {
     entity: "class", key: "maxdaysweek", label: "Max days per week",
