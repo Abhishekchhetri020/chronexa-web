@@ -170,6 +170,22 @@ import "./dialog_shell.js";
     { code:"a_8",  label:"Max days with lesson on the same period (all weeks)", category:"Advanced — frequency",
       param1:{ label:"Max days", min:1, max:30, def:2 },
       help:"Same cap counted over the whole week cycle; on a single-week timetable it matches the entry above." },
+    { code:"a_24", label:"Max different rooms per day", category:"Advanced — rooms",
+      param1:{ label:"Max rooms", min:1, max:20, def:2 },
+      help:"These lessons may use at most this many different rooms in one day." },
+    { code:"a_25", label:"Max different rooms per week", category:"Advanced — rooms",
+      param1:{ label:"Max rooms", min:1, max:40, def:4 },
+      help:"Same cap counted across the week." },
+    { code:"a_58", label:"Max different buildings per day", category:"Advanced — rooms",
+      param1:{ label:"Max buildings", min:1, max:10, def:1 },
+      help:"Stops a class or teacher being shuttled between buildings more than this in a day." },
+    { code:"a_39", label:"Max classrooms on one period", category:"Advanced — rooms",
+      param1:{ label:"Max rooms in one period", min:1, max:40, def:6 },
+      help:"How many of these lessons may run in different rooms at the same time — the lab/ground capacity rule." },
+    { code:"a_43", label:"Max teachers on one period", category:"Advanced — rooms",
+      param1:{ label:"Max teachers in one period", min:1, max:40, def:8 },
+      help:"Caps how many teachers of this set may teach simultaneously — supervision and load balancing." },
+
     { code:"a_30", label:"A lessons only on positions of B lessons (A before B)", category:"Advanced — ordering",
       needsSubject2:true,
       help:"An A card may only sit where B also runs that day, and before it." },
@@ -204,7 +220,7 @@ import "./dialog_shell.js";
   ];
   const TYP_BY_CODE = Object.fromEntries(TYP_CATALOGUE.map(t => [t.code, t]));
   const CATEGORY_ORDER = ["Same / different day","Two-subject","Multi-class","Position",
-    "Advanced — day shape","Advanced — frequency","Advanced — ordering"];
+    "Advanced — day shape","Advanced — frequency","Advanced — ordering","Advanced — rooms"];
 
   // Per-typ field requirements.
   // Derived from the catalogue (`needsSubject2: true`) plus the four legacy

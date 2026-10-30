@@ -45,6 +45,8 @@ export const ADV_REL_TYPS = new Set([
   "a_11", "a_20", "a_23", "a_37", "a_40", "a_41", "a_42",
   // position family: same-slot counting, A-only-where-B, allowed windows
   "a_7", "a_8", "a_30", "a_34", "a_60",
+  // room / building family
+  "a_24", "a_25", "a_39", "a_43", "a_58",
 ]);
 import { popcount32 } from "./bitmask.js";
 import { createLearningForSchool, SolverLearning } from "./solver_learning.js";
@@ -3585,6 +3587,66 @@ function advancedRelationPenalty(model, state) {
         }
       }
       if (typ === "a_5") for (const [, total] of weekGaps) if (total > p1) penalty += total - p1;
+      continue;
+    }
+
+    if (typ === "a_24" || typ === "a_25" || typ === "a_58" || typ === "a_39" || typ === "a_43") {
+      // Room / building shape. a_24/a_58 count per DAY, a_25 per WEEK, and
+      // a_39/a_43 count simultaneous users of one period.
+      const dayRooms = new Map();   // day -> Set(roomIdx)
+      const dayBuildings = new Map();
+      const weekRooms = new Set();
+      const slotCount = new Map();  // day*ppd+p -> count
+      for (let k = 0; k < rel.lessonIdxs.length; k++) {
+        const i = rel.lessonIdxs[k];
+        if (!state.lessonAssigned[i]) continue;
+        const room = state.lessonAssignedRoom ? state.lessonAssignedRoom[i] : -1;
+        const slotsOf = _slotsOfLesson(model, state, i);
+        if (typ === "a_39" || typ === "a_43") {
+          if (typ === "a_39" && room < 0) continue;
+          for (const slot of slotsOf) {
+            const key = slot;
+            if (typ === "a_39") {
+              let set = slotCount.get(key);
+              if (!set || typeof set === "number") slotCount.set(key, set = new Set());
+              set.add(room);
+            } else {
+              const c = model.lessonTeacherCount[i];
+              const prev = typeof slotCount.get(key) === "number" ? slotCount.get(key) : 0;
+              slotCount.set(key, prev + c);
+            }
+          }
+          continue;
+        }
+        if (room < 0) continue;
+        for (const slot of slotsOf) {
+          const d = model.slotDay[slot];
+          if (typ === "a_24" || typ === "a_25") {
+            let set = dayRooms.get(d);
+            if (!set) dayRooms.set(d, set = new Set());
+            set.add(room);
+            weekRooms.add(room);
+          } else {
+            const b = model.classroomBuilding ? model.classroomBuilding[room] : -1;
+            if (b < 0) continue;
+            let set = dayBuildings.get(d);
+            if (!set) dayBuildings.set(d, set = new Set());
+            set.add(b);
+          }
+        }
+      }
+      if (typ === "a_24") {
+        for (const [, set] of dayRooms) if (set.size > p1) penalty += set.size - p1;
+      } else if (typ === "a_25") {
+        if (weekRooms.size > p1) penalty += weekRooms.size - p1;
+      } else if (typ === "a_58") {
+        for (const [, set] of dayBuildings) if (set.size > p1) penalty += set.size - p1;
+      } else {
+        for (const [, v] of slotCount) {
+          const n = typeof v === "number" ? v : v.size;
+          if (n > p1) penalty += n - p1;
+        }
+      }
       continue;
     }
 

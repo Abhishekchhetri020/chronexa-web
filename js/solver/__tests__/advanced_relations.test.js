@@ -55,7 +55,8 @@ describe("registry of advanced types", () => {
       "a_0", "a_3", "a_9", "a_10", "a_12", "a_13", "a_54", "a_74",
       "a_17", "a_18", "a_19", "a_21", "a_67", "a_68", "a_69", "a_70",
       "a_11", "a_20", "a_23", "a_37", "a_40", "a_41", "a_42",
-      "a_7", "a_8", "a_30", "a_34", "a_60"]) {
+      "a_7", "a_8", "a_30", "a_34", "a_60",
+      "a_24", "a_25", "a_39", "a_43", "a_58"]) {
       expect(ADV_REL_TYPS.has(t), t).toBe(true);
     }
   });
@@ -368,5 +369,81 @@ describe("position family — a_7 / a_8 / a_30 / a_34 / a_60", () => {
   it("a_60 without positions is inert", () => {
     const m = buildModel(school([{ typ: "a_60", subjectids: ["bio"] }], [L("l1", "bio", 2)]));
     expect(m.lessonAllowedStart[0]).toBe(0);
+  });
+});
+
+describe("room and building family — a_24 / a_25 / a_39 / a_43 / a_58", () => {
+  function roomSchool(typ, p1, extraRooms = true) {
+    return {
+      schoolName: "Rooms",
+      daysPerWeek: 5, periodsPerDay: 6, bell: BELL, bells: [BELL],
+      buildings: [{ id: "b1", name: "Main" }, { id: "b2", name: "Annex" }],
+      subjects: [{ id: "bio", name: "Bio" }],
+      teachers: [{ id: "t1", name: "T1", subjects: ["bio"], timeOff: {} },
+                 { id: "t2", name: "T2", subjects: ["bio"], timeOff: {} }],
+      classes: [{ id: "c1", name: "IX A", bellId: "b8" }],
+      classrooms: [
+        { id: "r1", name: "R1", buildingId: "b1", tags: [] },
+        { id: "r2", name: "R2", buildingId: "b1", tags: [] },
+        { id: "r3", name: "R3", buildingId: "b2", tags: [] },
+      ],
+      lessons: [
+        { id: "l1", subjectId: "bio", teacherIds: ["t1"], classIds: ["c1"], periodsPerWeek: 2 },
+        { id: "l2", subjectId: "bio", teacherIds: ["t2"], classIds: ["c1"], periodsPerWeek: 2 },
+      ],
+      relations: [{ typ, subjectids: ["bio"], param1: p1 }],
+      cards: [],
+    };
+  }
+
+  function placeRooms(model, state, rows) {
+    for (const [i, d, p, roomIdx] of rows) {
+      state.lessonAssigned[i] = 1;
+      state.lessonAssignedSlot[i] = d * model.periodsPerDay + p;
+      if (state.lessonAssignedRoom) state.lessonAssignedRoom[i] = roomIdx;
+    }
+    state._scoreDirty = true;
+  }
+
+  const scoreRooms = (sch, rows) => {
+    const m = buildModel(sch);
+    const st = makeState(m);
+    placeRooms(m, st, rows.map(([i, d, p, r]) => [i, d, p, m.roomIds.indexOf(r)]));
+    return softScore(m, st);
+  };
+
+  it("a_24 caps different rooms per day", () => {
+    const sch = roomSchool("a_24", 1);
+    const many = scoreRooms(sch, [[0, 0, 0, "r1"], [1, 0, 1, "r2"]]);
+    const one = scoreRooms(sch, [[0, 0, 0, "r1"], [1, 0, 1, "r1"]]);
+    expect(many).toBeGreaterThan(one);
+  });
+
+  it("a_25 caps different rooms per week", () => {
+    const sch = roomSchool("a_25", 1);
+    const spread = scoreRooms(sch, [[0, 0, 0, "r1"], [1, 1, 0, "r2"]]);
+    const same = scoreRooms(sch, [[0, 0, 0, "r1"], [1, 1, 0, "r1"]]);
+    expect(spread).toBeGreaterThan(same);
+  });
+
+  it("a_58 caps buildings per day", () => {
+    const sch = roomSchool("a_58", 1);
+    const twoBuildings = scoreRooms(sch, [[0, 0, 2, "r1"], [1, 0, 4, "r3"]]);
+    const oneBuilding = scoreRooms(sch, [[0, 0, 2, "r1"], [1, 0, 4, "r2"]]);
+    expect(twoBuildings).toBeGreaterThan(oneBuilding);
+  });
+
+  it("a_39 caps simultaneous rooms in a period", () => {
+    const sch = roomSchool("a_39", 1);
+    const atOnce = scoreRooms(sch, [[0, 0, 2, "r1"], [1, 0, 2, "r2"]]);
+    const apart = scoreRooms(sch, [[0, 0, 2, "r1"], [1, 0, 3, "r2"]]);
+    expect(atOnce).toBeGreaterThan(apart);
+  });
+
+  it("a_43 caps simultaneous teachers in a period", () => {
+    const sch = roomSchool("a_43", 1);
+    const together = scoreRooms(sch, [[0, 0, 2, "r1"], [1, 0, 2, "r2"]]);
+    const separate = scoreRooms(sch, [[0, 0, 2, "r1"], [1, 0, 4, "r2"]]);
+    expect(together).toBeGreaterThan(separate);
   });
 });
