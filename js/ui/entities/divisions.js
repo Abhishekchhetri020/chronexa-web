@@ -69,14 +69,13 @@ import "./dialog_shell.js";
       maxlength:"20", placeholder:"e.g. mu / da",
       oninput:(e)=>draft.divisionTag = e.target.value });
 
-    const fGroups = D.el("select", { multiple:"multiple", size:"6" });
-    ((window.APP.school?.groups) || []).forEach(g => {
-      const opt = D.el("option", { value:g.id }, g.name || g.id);
-      if (draft.groupids.includes(g.id)) opt.selected = true;
-      fGroups.appendChild(opt);
-    });
-    fGroups.addEventListener("change", () => {
-      draft.groupids = Array.from(fGroups.selectedOptions).map(o => o.value);
+    const fGroups = D.buildIdMultiPicker({
+      items: ((window.APP.school?.groups) || []).map(g => ({ id: g.id, label: g.name || g.id })),
+      ids: draft.groupids,
+      label: "Groups",
+      emptyText: "None selected — click Choose…",
+      searchPlaceholder: "Search groups…",
+      onChange: (ids) => { draft.groupids = ids; },
     });
 
     D.buildEditSheet({

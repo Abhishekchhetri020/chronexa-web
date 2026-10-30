@@ -448,6 +448,76 @@ import "../components/help_tooltip.js";
     return wrap;
   }
 
+
+  // ── Multi-select field (chips + Choose…) ────────────────────────────────
+  // A native <select multiple> is a trap: you must know to ctrl-click, the
+  // selection is invisible once the list scrolls, and there is no "nothing is
+  // chosen" affordance. Every module that needs "pick several entities" uses
+  // this instead — chips show the current choice, Choose… opens a searchable
+  // checklist, and each chip has its own × .
+  //
+  //   buildIdMultiPicker({ items:[{id,label}], ids:[], onChange(ids), label,
+  //                        emptyText, searchPlaceholder, maxChips })
+  function buildIdMultiPicker(o) {
+    o = o || {};
+    const items = (o.items || []).filter(Boolean);
+    const byId = new Map(items.map(it => [it.id, it]));
+    let ids = (o.ids || []).filter(id => byId.has(id));
+    const maxChips = o.maxChips == null ? 3 : o.maxChips;
+
+    const host = el("div", { class:"chrx-ent-multi" });
+    const chips = el("div", { class:"chrx-ent-multi__chips" });
+    const choose = el("button", { type:"button", class:"chrx-btn chrx-ent-multi__choose" },
+      o.chooseLabel || "Choose…");
+
+    function emit() {
+      if (typeof o.onChange === "function") o.onChange(ids.slice());
+    }
+    function remove(id) {
+      ids = ids.filter(x => x !== id);
+      render();
+      emit();
+    }
+    function render() {
+      chips.innerHTML = "";
+      if (!ids.length) {
+        chips.appendChild(el("span", { class:"chrx-ent-multi__empty" },
+          o.emptyText || "None selected"));
+      } else {
+        const shown = ids.slice(0, maxChips);
+        for (const id of shown) {
+          const it = byId.get(id);
+          chips.appendChild(el("span", { class:"chrx-ent-chip" },
+            el("span", null, it.label || it.name || id),
+            el("button", { type:"button", class:"chrx-ent-chip__x", "aria-label":"Remove",
+              onclick: () => remove(id) }, "×")));
+        }
+        if (ids.length > shown.length) {
+          chips.appendChild(el("span", { class:"chrx-ent-chip chrx-ent-chip--more" },
+            `+${ids.length - shown.length} more`));
+        }
+      }
+      choose.textContent = ids.length ? `Edit selection (${ids.length})` : "Choose…";
+    }
+    choose.addEventListener("click", () => {
+      openPickEntitiesPopover({
+        title: o.label || "Select",
+        help: o.help,
+        items,
+        preselected: ids,
+        multi: true,
+        searchPlaceholder: o.searchPlaceholder,
+        confirmLabel: "Use selection",
+        onConfirm: (next) => { ids = next.filter(id => byId.has(id)); render(); emit(); },
+      });
+    });
+
+    host.appendChild(chips);
+    host.appendChild(choose);
+    render();
+    return host;
+  }
+
   function buildSwatchPicker(value, onChange) {
     const wrap = el("div", { class:"chrx-ent-swatch" });
     const hex = el("input", { type:"text", value:value||"", maxlength:"7",
@@ -555,7 +625,39 @@ import "../components/help_tooltip.js";
     const multi = o.multi !== false;
     const selected = new Set(o.preselected || []);
 
+    // Live search. With 40+ subjects and 47 classes a bare checkbox list is
+    // unusable, and it was the reason the pickers looked like dead boxes.
+    const search = el("input", { type:"search", class:"chrx-ent-picker__search",
+      placeholder: o.searchPlaceholder || "Search…",
+      oninput: () => applyFilter() });
+    const count = el("span", { class:"chrx-ent-picker__count" });
+
     const list = el("div", { class:"chrx-ent-picker__list" });
+    let rendered = [];
+    function refreshCount() {
+      const q = search.value.trim().toLowerCase();
+      let shown = 0;
+      for (const { node, item } of rendered) {
+        if (node.style.display !== "none") shown++;
+        if (!q) { /* noop */ }
+        void item;
+      }
+      count.textContent = q
+        ? `${shown} of ${items.length} · ${selected.size} selected`
+        : `${items.length} available · ${selected.size} selected`;
+    }
+    function applyFilter() {
+      const q = search.value.trim().toLowerCase();
+      let shown = 0;
+      for (const { node, item } of rendered) {
+        const hit = !q || String(item.label || item.name || item.id).toLowerCase().includes(q);
+        node.style.display = hit ? "" : "none";
+        if (hit) shown++;
+      }
+      count.textContent = q
+        ? `${shown} of ${items.length} · ${selected.size} selected`
+        : `${items.length} available · ${selected.size} selected`;
+    }
     function row(item) {
       const cb = el("input", {
         type: multi ? "checkbox" : "radio",
@@ -576,24 +678,37 @@ import "../components/help_tooltip.js";
         el("span", null, item.label || item.name || item.id),
       );
     }
-    items.forEach(it => list.appendChild(row(it)));
+    items.forEach(it => {
+      const node = row(it);
+      // keep the live count honest: ticking a box must move the number
+      node.querySelector("input").addEventListener("change", () => refreshCount());
+      rendered.push({ node, item: it });
+      list.appendChild(node);
+    });
     if (!items.length) {
       list.appendChild(el("p", { class:"chrx-ent-help" }, o.emptyText || "No other entities."));
     }
 
     // Bulk toggles
     const toolbar = el("div", { class:"chrx-ent-picker__bar" },
+      search, count,
       multi ? el("button", { type:"button", class:"chrx-btn",
         onclick:()=>{
           items.forEach(it => selected.add(it.id));
           list.querySelectorAll("input").forEach(cb => cb.checked = true);
+          refreshCount();
         } }, "Select all") : null,
       multi ? el("button", { type:"button", class:"chrx-btn",
         onclick:()=>{
           selected.clear();
           list.querySelectorAll("input").forEach(cb => cb.checked = false);
+          refreshCount();
         } }, "Clear") : null,
     );
+    // Count is correct before the sheet is even painted; the deferred call only
+    // moves focus.
+    refreshCount();
+    setTimeout(() => { try { search.focus(); } catch {} }, 0);
 
     const foot = el("div", { class:"chrx-ent-form__foot" },
       el("button", { type:"button", class:"chrx-btn", onclick: closeSubSheet }, "Cancel"),
@@ -859,7 +974,7 @@ import "../components/help_tooltip.js";
     open, close, refresh, openSheet, closeSheet,
     openSubSheet, closeSubSheet,
     SWATCHES, SWATCHES_EXTENDED, el, esc, uid,
-    buildField, buildSwatchPicker, buildEditSheet,
+    buildField, buildSwatchPicker, buildEditSheet, buildIdMultiPicker,
     buildTimeOffMini, openTimeOffSheet,
     buildSetForMoreLink, openPickEntitiesPopover, openBatchEditSheet,
     openCopyChooser, autoPickColor,

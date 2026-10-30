@@ -133,17 +133,15 @@ import "./dialog_shell.js";
     return sel;
   }
 
-  function makeMulti(items, curIds, label, onChange, size) {
-    const sel = D.el("select", { multiple:"multiple", size: String(size || 4) });
-    (items || []).forEach(t => {
-      const opt = D.el("option", { value:t.id }, label(t));
-      if ((curIds || []).includes(t.id)) opt.selected = true;
-      sel.appendChild(opt);
+  // Chips + searchable Choose… sheet (shared with every other module).
+  function makeMulti(items, curIds, label, onChange) {
+    return D.buildIdMultiPicker({
+      items: (items || []).map(t => ({ id: t.id, label: label(t) })),
+      ids: curIds || [],
+      label: "Select",
+      emptyText: "None selected — click Choose…",
+      onChange,
     });
-    sel.addEventListener("change", () => {
-      onChange(Array.from(sel.selectedOptions).map(o => o.value));
-    });
-    return sel;
   }
 
   /* Compute the expanded classroom set for a given expansion mode.
@@ -1317,15 +1315,19 @@ import "./dialog_shell.js";
     }
     else if (fieldId === "teachers") {
       body.appendChild(D.el("label", { style: "font-size:13px;margin-bottom:6px;display:block" }, "Set teachers:"));
-      const tSel = makeMulti(s.teachers, [], x => D.formatOptionLabel(x), () => {}, 8);
+      // The shared picker reports through onChange; the old code read
+      // `selectedOptions` off the control, which a chips field does not have.
+      let pickedTeachers = [];
+      const tSel = makeMulti(s.teachers, [], x => D.formatOptionLabel(x), (ids) => {
+        pickedTeachers = ids;
+      });
       body.appendChild(tSel);
       const foot = D.el("div", { style: "display:flex;gap:8px;justify-content:flex-end;margin-top:12px" });
       foot.appendChild(D.el("button", { type: "button", style: "padding:6px 16px;border:1px solid #d1d5db;border-radius:5px;background:#fff;cursor:pointer",
         onclick: () => D.closeSubSheet() }, "Cancel"));
       foot.appendChild(D.el("button", { type: "button", style: "padding:6px 16px;border:none;border-radius:5px;background:#16a34a;color:#fff;cursor:pointer;font-weight:600",
         onclick: () => {
-          const ids = Array.from(tSel.selectedOptions).map(o => o.value);
-          if (ids.length) applyChange(l => { l.teacherIds = ids.slice(); });
+          if (pickedTeachers.length) applyChange(l => { l.teacherIds = pickedTeachers.slice(); });
         }
       }, "OK"));
       body.appendChild(foot);

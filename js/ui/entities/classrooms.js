@@ -128,14 +128,14 @@ import "../components/time_off_matrix.js";
       checked: draft.isShared ? "checked" : null,
       onchange:(e)=>draft.isShared = e.target.checked });
     // Subjects this room is intended for (Lab → Science, Music Room → Music, etc.)
-    const fSubjects = D.el("select", { multiple:"multiple", size:"4" });
-    ((window.APP.school?.subjects) || []).forEach(sub => {
-      const opt = D.el("option", { value:sub.id }, D.formatOptionLabel(sub));
-      if (draft.allowedSubjectIds.includes(sub.id)) opt.selected = true;
-      fSubjects.appendChild(opt);
-    });
-    fSubjects.addEventListener("change", () => {
-      draft.allowedSubjectIds = Array.from(fSubjects.selectedOptions).map(o => o.value);
+    const fSubjects = D.buildIdMultiPicker({
+      items: ((window.APP.school?.subjects) || []).map(sub => ({
+        id: sub.id, label: D.formatOptionLabel(sub) })),
+      ids: draft.allowedSubjectIds,
+      label: "Subjects",
+      emptyText: "Any subject — click Choose… to restrict",
+      searchPlaceholder: "Search subjects…",
+      onChange: (ids) => { draft.allowedSubjectIds = ids; },
     });
     const fBell = D.el("input", { type:"text", value:draft.bell, placeholder:"default",
       oninput:(e)=>draft.bell = e.target.value });

@@ -55,15 +55,14 @@ import "./dialog_shell.js";
     const fShort = D.el("input", { type:"text", value:draft.short, maxlength:"10",
       oninput:(e)=>draft.short = e.target.value });
 
-    const fSubj = D.el("select", { multiple:"multiple", size:"8" });
-    ((window.APP.school?.subjects) || []).forEach(s => {
-      const opt = D.el("option", { value:s.id },
-        s.name + (s.abbr ? ` (${s.abbr})` : ""));
-      if (draft.subjectids.includes(s.id)) opt.selected = true;
-      fSubj.appendChild(opt);
-    });
-    fSubj.addEventListener("change", () => {
-      draft.subjectids = Array.from(fSubj.selectedOptions).map(o => o.value);
+    const fSubj = D.buildIdMultiPicker({
+      items: ((window.APP.school?.subjects) || []).map(s => ({
+        id: s.id, label: s.name + (s.abbr ? ` (${s.abbr})` : "") })),
+      ids: draft.subjectids,
+      label: "Subjects",
+      emptyText: "None selected — click Choose…",
+      searchPlaceholder: "Search subjects…",
+      onChange: (ids) => { draft.subjectids = ids; },
     });
 
     D.buildEditSheet({

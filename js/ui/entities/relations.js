@@ -258,35 +258,37 @@ import "./dialog_shell.js";
   ]; }
 
   // ---------- Multi-pickers (private to this module) ----------
-  function multiPicker(items, curIds, labelFn, onChange, size) {
-    const sel = D.el("select", { multiple:"multiple", size:String(size || 6) });
-    (items || []).forEach(t => {
-      const opt = D.el("option", { value:t.id }, labelFn(t));
-      if ((curIds || []).includes(t.id)) opt.selected = true;
-      sel.appendChild(opt);
+  // Chips + a searchable "Choose…" sheet instead of a ctrl-click listbox —
+  // with 40+ subjects the bare multi-select looked like an empty box and made
+  // building a relation impossible without knowing the ctrl-click trick.
+  function multiPicker(items, curIds, labelFn, onChange, size, label) {
+    return D.buildIdMultiPicker({
+      items: (items || []).map(t => ({ id: t.id, label: labelFn(t) })),
+      ids: curIds || [],
+      label,
+      emptyText: "None selected — click Choose…",
+      searchPlaceholder: "Search " + (label || "items").toLowerCase() + "…",
+      onChange,
     });
-    sel.addEventListener("change", () =>
-      onChange(Array.from(sel.selectedOptions).map(o => o.value)));
-    return sel;
   }
 
   function subjectPicker(curIds, onChange) {
     const s = window.APP.school || {};
     return multiPicker(s.subjects, curIds,
-      x => x.name + (x.abbr ? ` (${x.abbr})` : ""), onChange, 7);
+      x => x.name + (x.abbr ? ` (${x.abbr})` : ""), onChange, 7, "Subjects");
   }
   function classPicker(curIds, onChange) {
     const s = window.APP.school || {};
-    return multiPicker(s.classes, curIds, x => x.name, onChange, 7);
+    return multiPicker(s.classes, curIds, x => x.name, onChange, 7, "Classes");
   }
   function teacherPicker(curIds, onChange) {
     const s = window.APP.school || {};
     return multiPicker(s.teachers, curIds,
-      x => x.name + (x.abbr ? ` (${x.abbr})` : ""), onChange, 5);
+      x => x.name + (x.abbr ? ` (${x.abbr})` : ""), onChange, 5, "Teachers");
   }
   function classroomPicker(curIds, onChange) {
     const s = window.APP.school || {};
-    return multiPicker(s.classrooms, curIds, x => x.name, onChange, 5);
+    return multiPicker(s.classrooms, curIds, x => x.name, onChange, 5, "Classrooms");
   }
 
   // ---------- Typ picker (grouped) ----------

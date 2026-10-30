@@ -510,21 +510,30 @@ import "../ribbon/topbar.js";
       }
       fields.appendChild(field("Group / division", groupSel));
 
-      const teacherSel = el("select", { multiple: "multiple", size: "4",
-        onchange: () => {
-          lesson.teacherIds = Array.from(teacherSel.selectedOptions).map(o => o.value);
-          refreshExpandedRoom(lesson);
-          markDirty(); refreshAll();
-        } });
+      // Shared chips picker: a ctrl-click listbox hid both the current
+      // selection and the qualified/unqualified marker.
       const loads = teacherLoadMap(draft);
-      teachers.slice().sort((a, b) =>
+      const teacherItems = teachers.slice().sort((a, b) =>
         (teacherIsQualified(a, lesson.subjectId) ? 0 : 1) - (teacherIsQualified(b, lesson.subjectId) ? 0 : 1) ||
-        (loads[a.id] || 0) - (loads[b.id] || 0)).forEach(t => {
-          teacherSel.appendChild(el("option", {
-            value: t.id, selected: (lesson.teacherIds || []).includes(t.id),
-          }, `${teacherIsQualified(t, lesson.subjectId) ? "✓" : "!"} ${t.name || t.short || t.id} · ${loads[t.id] || 0} pd/wk`));
-        });
-      fields.appendChild(field("Teachers", teacherSel));
+        (loads[a.id] || 0) - (loads[b.id] || 0)).map(t => ({
+          id: t.id,
+          label: `${teacherIsQualified(t, lesson.subjectId) ? "✓" : "!"} ${t.name || t.short || t.id} · ${loads[t.id] || 0} pd/wk`,
+        }));
+      const picker = global.EntityDialog && global.EntityDialog.buildIdMultiPicker
+        ? global.EntityDialog.buildIdMultiPicker({
+            items: teacherItems,
+            ids: lesson.teacherIds || [],
+            label: "Teachers",
+            emptyText: "No teacher assigned — click Choose…",
+            searchPlaceholder: "Search teachers…",
+            onChange: (ids) => {
+              lesson.teacherIds = ids.slice();
+              refreshExpandedRoom(lesson);
+              markDirty(); refreshAll();
+            },
+          })
+        : el("select", { multiple: "multiple", size: "4" }); // fallback if the shell is absent
+      fields.appendChild(field("Teachers", picker));
 
       const roomSel = el("select", {
         onchange: e => { setRoomMode(lesson, e.target.value); markDirty(); refreshAll(); },
