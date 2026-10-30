@@ -145,7 +145,7 @@ export async function buildAndSolve(school, options = {}) {
         if (lockedList[k].classroomId) fixed_room = lockedList[k].classroomId;
       }
       cards.push({
-        lesson_id: L.id, subject, length, teachers, classes, clsOcc, rooms,
+        lesson_id: L.id, lesson_idx: lessonIdxOf.get(L.id), subject, length, teachers, classes, clsOcc, rooms,
         fixed_day, fixed_period, is_locked, fixed_room,
       });
     }
@@ -154,6 +154,12 @@ export async function buildAndSolve(school, options = {}) {
   const m = new CpModel();
   const tIdxOf = new Map((jm.teacherIds || []).map((id, i) => [id, i]));
   const subjIdx = new Map((jm.subjectIds || []).map((id, i) => [id, i]));
+  // Source lesson id -> first expanded lesson index, so per-lesson masks built
+  // by buildModel (e.g. a_60's allowed-start window) can be applied to cards.
+  const lessonIdxOf = new Map();
+  (jm.lessons || []).forEach((Lx, i) => {
+    if (Lx && Lx.srcId != null && !lessonIdxOf.has(Lx.srcId)) lessonIdxOf.set(Lx.srcId, i);
+  });
   const lockedDaysSet = new Set(school.lockedDays || school.blockedDays || []);
 
   const validStarts = (card) => {
@@ -163,6 +169,11 @@ export async function buildAndSolve(school, options = {}) {
       if (card.fixed_period != null && p !== card.fixed_period) continue;
       if (card.fixed_day == null && lockedDaysSet.has(d)) continue;
       // aSc a_32 / a_33 — subject may not start or end on a banned period.
+      // a_60 — this lesson may only start inside the relation's window.
+      if (jm.lessonAllowedStart && card.lesson_idx != null) {
+        const allowed = jm.lessonAllowedStart[card.lesson_idx];
+        if (allowed && !(allowed & ((1 << p) >>> 0))) continue;
+      }
       if (jm.subjectStartBan || jm.subjectEndBan) {
         const si = subjIdx.get(card.subject);
         if (si != null) {

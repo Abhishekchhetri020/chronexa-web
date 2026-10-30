@@ -49,17 +49,17 @@ export const CONSTRAINT_KEYS = Object.freeze([
   {
     entity: "teacher", key: "teachers_maxgapsweek", label: "Max gaps per week",
     kind: "intOrAny", weight: "soft", dialog: "teacher",
-    solvers: { js: "teacherMaxGapsPerWeek", wasm: null, cloud: null },
+    solvers: { js: "teacherMaxGapsPerWeek", wasm: null, cloud: "gap_cap_week" },
   },
   {
     entity: "teacher", key: "teachers_maxgapsday", label: "Max gaps per day",
     kind: "intOrAny", weight: "soft", dialog: "teacher", topLevel: "maxGapsPerDay",
-    solvers: { js: "teacherMaxGapsPerDay", wasm: null, cloud: null },
+    solvers: { js: "teacherMaxGapsPerDay", wasm: null, cloud: "gap_cap_day" },
   },
   {
     entity: "teacher", key: "teachers_maxconsecutiveperiods", label: "Max consecutive periods",
     kind: "intOrAny", weight: "soft", dialog: "teacher", topLevel: "maxConsecutivePeriods",
-    solvers: { js: "teacherMaxConsec", wasm: "teacherMaxConsec", cloud: null },
+    solvers: { js: "teacherMaxConsec", wasm: "teacherMaxConsec", cloud: "tmax_consec" },
   },
   {
     entity: "teacher", key: "lessonsPerDayMax", label: "Number of lessons per day — Till",
@@ -129,27 +129,27 @@ export const CONSTRAINT_KEYS = Object.freeze([
   {
     entity: "class", key: "classTeacherPos", ascKey: "classteacherpos",
     label: "Class-teacher positions", kind: "mask", weight: "soft", dialog: "class",
-    solvers: { js: "classTeacherPosMask", wasm: "classTeacherPosMask", cloud: null },
+    solvers: { js: "classTeacherPosMask", wasm: "classTeacherPosMask", cloud: "ctp" },
   },
   {
     entity: "class", key: "lunch_periodfrom", label: "Lunch break — from",
     kind: "intOrAny", weight: "soft", dialog: "class",
-    solvers: { js: "classLunchMask", wasm: "classLunchMask", cloud: null },
+    solvers: { js: "classLunchMask", wasm: "classLunchMask", cloud: "lunch" },
   },
   {
     entity: "class", key: "lunch_periodto", label: "Lunch break — to",
     kind: "intOrAny", weight: "soft", dialog: "class",
-    solvers: { js: "classLunchMask", wasm: "classLunchMask", cloud: null },
+    solvers: { js: "classLunchMask", wasm: "classLunchMask", cloud: "lunch" },
   },
   {
     entity: "class", key: "m_nMaxVyucOd", label: "Teaching window — from",
     kind: "intOrAny", weight: "soft", dialog: "class",
-    solvers: { js: "classTeachingMask", wasm: "classTeachingMask", cloud: null },
+    solvers: { js: "classTeachingMask", wasm: "classTeachingMask", cloud: "outside" },
   },
   {
     entity: "class", key: "m_nMaxVyucDo", label: "Teaching window — to",
     kind: "intOrAny", weight: "soft", dialog: "class",
-    solvers: { js: "classTeachingMask", wasm: "classTeachingMask", cloud: null },
+    solvers: { js: "classTeachingMask", wasm: "classTeachingMask", cloud: "outside" },
   },
   {
     entity: "class", key: "m_nMinBlokOd", label: "Required block — from",
@@ -179,7 +179,7 @@ export const CONSTRAINT_KEYS = Object.freeze([
   {
     entity: "class", key: "minperiodsday", label: "Lessons per day — from",
     kind: "intOrAny", weight: "soft", dialog: "class", topLevel: "minPerDay",
-    solvers: { js: "classMinPerDay", wasm: null, cloud: null },
+    solvers: { js: "classMinPerDay", wasm: null, cloud: "cunder" },
   },
   {
     entity: "class", key: "maxperiodsday", label: "Lessons per day — till",
@@ -223,7 +223,7 @@ export const CONSTRAINT_KEYS = Object.freeze([
   {
     entity: "subject", key: "maxParallel", label: "Max cards on one period",
     kind: "int", weight: "hard", dialog: null,
-    solvers: { js: "subjectMaxParallel", wasm: "subjectMaxParallel", cloud: null },
+    solvers: { js: "subjectMaxParallel", wasm: "subjectMaxParallel", cloud: "subject_max_parallel" },
     probes: { wasm: "sj.maxParallel" },
   },
 

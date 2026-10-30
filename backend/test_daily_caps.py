@@ -5,7 +5,7 @@ Kept as a plain script because the backend has no pytest harness and the JS
 suite cannot execute Python.
 """
 import sys
-from collections import Counter
+from collections import Counter, defaultdict
 
 sys.path.insert(0, "backend")
 from solver_cpsat import build_and_solve  # noqa: E402
@@ -64,6 +64,114 @@ out = build_and_solve(sch_cons, time_limit_sec=10, num_workers=4)
 per_day = Counter(p["day"] for p in out["assignment"])
 ok &= check("aSc keys honoured (lessonsPerDayMax / maxperiodsday)",
             all(v <= 2 for v in per_day.values()) and out["stats"]["placed"] == 8, str(dict(per_day)))
+
+
+
+# --- parity with the browser's HARD rules -----------------------------------
+def solve_custom(school, secs=10):
+    out = build_and_solve(school, time_limit_sec=secs, num_workers=4)
+    return out, Counter(p["day"] for p in out["assignment"])
+
+
+def base_school():
+    return {
+        "schoolName": "parity", "daysPerWeek": 5, "periodsPerDay": 6,
+        "bell": {"periods": [{"index": i, "isTeaching": True} for i in range(1, 7)]},
+        "subjects": [{"id": "games", "name": "Games"}],
+        "teachers": [{"id": "t1", "name": "T1"}, {"id": "t2", "name": "T2"}],
+        "classes": [{"id": "cA", "name": "IX A"}, {"id": "cB", "name": "IX B"}],
+        "classrooms": [{"id": "ground", "name": "Ground"}],
+        "lessons": [
+            {"id": "la", "subjectId": "games", "teacherIds": ["t1"], "classIds": ["cA"], "periodsPerWeek": 2},
+            {"id": "lb", "subjectId": "games", "teacherIds": ["t2"], "classIds": ["cB"], "periodsPerWeek": 2},
+        ],
+        "cards": [], "relations": [], "groups": [],
+    }
+
+
+# a_15: subject maxParallel caps cards of one subject in the same period.
+sch = base_school()
+sch["subjects"][0]["maxParallel"] = 1
+out, _ = solve_custom(sch)
+per_slot = Counter((p["day"], p["period"]) for p in out["assignment"])
+ok &= check("a_15 subject cap of 1 never puts two cards in one period",
+            all(v <= 1 for v in per_slot.values()), str(dict(per_slot)))
+
+# a_60: cards may only start inside the marked window.
+sch = base_school()
+sch["relations"] = [{"typ": "a_60", "subjectids": ["games"],
+                     "classids": ["cA", "cB"], "positions": {"from": 3, "to": 4}}]
+out, _ = solve_custom(sch)
+outside = [p for p in out["assignment"] if not (3 <= p["period"] <= 4)]
+ok &= check("a_60 window respected (periods 3-4 only)", not outside, str(outside[:3]))
+ok &= check("a_60 still places the cards", out["stats"]["placed"] >= 1, str(out["stats"]))
+
+# teacher max consecutive is scored, not hard: the run should stay short.
+sch = base_school()
+sch["teachers"][0]["maxConsecutivePeriods"] = 1
+sch["lessons"] = [
+    {"id": "la", "subjectId": "games", "teacherIds": ["t1"], "classIds": ["cA"], "periodsPerWeek": 5},
+]
+out, _ = solve_custom(sch, secs=15)
+per_day = defaultdict(list)
+for p in out["assignment"]:
+    per_day[p["day"]].append(p["period"])
+runs = []
+for d, ps in per_day.items():
+    ps = sorted(ps)
+    run = best = 1
+    for a, b in zip(ps, ps[1:]):
+        run = run + 1 if b == a + 1 else 1
+        best = max(best, run)
+    runs.append(best)
+ok &= check("teacher max-consecutive 1 keeps runs short", all(r <= 2 for r in runs), str(dict(per_day)))
+
+
+
+# --- soft parity: windows, class-teacher slot, gap caps --------------------
+def solve_with(mutate, secs=12):
+    sch = base_school()
+    mutate(sch)
+    out, _ = solve_custom(sch, secs)
+    return out
+
+
+# class lunch window: the solver should avoid it when there is room elsewhere.
+def _lunch(sch):
+    sch["lessons"] = [{"id": "la", "subjectId": "games", "teacherIds": ["t1"],
+                       "classIds": ["cA"], "periodsPerWeek": 2}]
+    sch["classes"][0]["constraints"] = {"lunch_periodfrom": 3, "lunch_periodto": 4}
+out = solve_with(_lunch)
+in_lunch = [p for p in out["assignment"] if p["period"] in (3, 4)]
+ok &= check("lunch window avoided when avoidable", len(in_lunch) <= 1, str(in_lunch))
+
+# class-teacher slot: the marked period should go to the homeroom teacher.
+def _ctp(sch):
+    sch["lessons"] = [
+        {"id": "la", "subjectId": "games", "teacherIds": ["t1"], "classIds": ["cA"], "periodsPerWeek": 2},
+        {"id": "lb", "subjectId": "games", "teacherIds": ["t2"], "classIds": ["cA"], "periodsPerWeek": 2},
+    ]
+    sch["classes"] = [{"id": "cA", "name": "IX A", "_teacherId": "t1",
+                       "constraints": {"classTeacherPos": [[["1"]]]}}]
+    sch["classes"][0]["constraints"]["classTeacherPos"] = [[["1", "0", "0", "0", "0", "0"]]]
+out = solve_with(_ctp)
+# The marked slot is day 0 / period 1 and t1 is the homeroom teacher (lesson la).
+slot = [p for p in out["assignment"] if p["day"] == 0 and p["period"] == 1]
+ok &= check("class-teacher slot gives the marked slot to the homeroom teacher",
+            bool(slot) and all(p["lessonId"] == "la" for p in slot), str(slot))
+
+# teacher gap caps stay soft: cards still place, gaps reduce.
+def _gaps(sch):
+    sch["teachers"][0]["constraints"] = {"teachers_maxgapsday": 0}
+    sch["lessons"] = [{"id": "la", "subjectId": "games", "teacherIds": ["t1"],
+                       "classIds": ["cA"], "periodsPerWeek": 2}]
+out = solve_with(_gaps)
+ok &= check("gap cap still places every card", out["stats"]["unplaced"] == 0, str(out["stats"]))
+per_day = defaultdict(list)
+for p in out["assignment"]:
+    per_day[p["day"]].append(p["period"])
+ok &= check("gap cap of 0 leaves no isolated hole", all(
+    sorted(ps) == list(range(min(ps), max(ps) + 1)) for ps in per_day.values()), str(dict(per_day)))
 
 print("\n" + ("ALL PASS" if ok else "SOME FAILED"))
 sys.exit(0 if ok else 1)
