@@ -51,7 +51,8 @@ function score(sch, placements) {
 describe("registry of advanced types", () => {
   it("covers the gap and ordering families", () => {
     for (const t of ["a_4", "a_5", "a_6", "a_26", "a_27", "a_1", "a_22", "a_82", "a_83",
-      "a_0", "a_3", "a_9", "a_10", "a_12", "a_13", "a_54", "a_74"]) {
+      "a_0", "a_3", "a_9", "a_10", "a_12", "a_13", "a_54", "a_74",
+      "a_17", "a_18", "a_19", "a_21", "a_67", "a_68", "a_69", "a_70"]) {
       expect(ADV_REL_TYPS.has(t), t).toBe(true);
     }
   });
@@ -215,5 +216,52 @@ describe("frequency caps — a_0 / a_9 / a_3 / a_10 / a_12 / a_13 / a_54 / a_74"
   it("a_74 behaves like a_0 on a single-week timetable", () => {
     const sch = school(rel("a_74", 1), bio(2));
     expect(score(sch, [[0, 0, 0], [1, 1, 0]])).toBeGreaterThan(score(sch, [[0, 0, 0], [1, 0, 1]]));
+  });
+});
+
+describe("span, start/end gap counting and same-period bans", () => {
+  const bio4 = [L("l1", "bio", 4)];
+  const rel = (typ, p1) => [{ typ, subjectids: ["bio"], param1: p1 }];
+  const score4 = (typ, p1, placements) => score(school(rel(typ, p1), bio4), placements);
+  // Late start (P3..P4) vs early start (P1..P2) on one day.
+  const LATE = [[0, 0, 2], [1, 0, 3]];
+  const EARLY = [[0, 0, 0], [1, 0, 1]];
+
+  it("a_69 charges a late start as gaps, a_4 does not", () => {
+    expect(score4("a_69", 0, LATE)).toBeGreaterThan(score4("a_69", 0, EARLY));
+    // The plain per-day gap cap sees 0 internal gaps in both.
+    expect(score4("a_4", 0, LATE)).toBe(score4("a_4", 0, EARLY));
+  });
+
+  it("a_70 charges an early finish as gaps", () => {
+    const early = [[0, 0, 0], [1, 0, 1]];      // ends P2 of 8
+    const late = [[0, 0, 6], [1, 0, 7]];       // ends P8
+    expect(score4("a_70", 0, early)).toBeGreaterThan(score4("a_70", 0, late));
+  });
+
+  it("a_67 / a_68 apply the same counting over the week", () => {
+    expect(score4("a_67", 0, LATE)).toBeGreaterThan(score4("a_67", 0, EARLY));
+    expect(score4("a_68", 0, EARLY)).toBeGreaterThan(score4("a_68", 0, [[0, 0, 6], [1, 0, 7]]));
+  });
+
+  it("a_18 / a_19 bound the span of a day", () => {
+    const wide = [[0, 0, 0], [1, 0, 6]];   // span 7
+    const tight = [[0, 0, 0], [1, 0, 1]];  // span 2
+    expect(score4("a_18", 5, tight)).toBeGreaterThan(score4("a_18", 5, wide));
+    expect(score4("a_19", 3, wide)).toBeGreaterThan(score4("a_19", 3, tight));
+  });
+
+  it("a_17 caps how many different period slots a subject may use", () => {
+    const manySlots = [[0, 0, 0], [1, 1, 1], [2, 2, 2], [3, 3, 3]];   // 4 slots
+    const fewSlots = [[0, 0, 0], [1, 1, 0], [2, 2, 0], [3, 3, 0]];    // 1 slot
+    expect(score4("a_17", 2, manySlots)).toBeGreaterThan(score4("a_17", 2, fewSlots));
+  });
+
+  it("a_21 forbids A and B sharing a period on the same day", () => {
+    const lessons = [L("lb", "bio"), L("lp", "phy")];
+    const sch = [{ typ: "a_21", subjectids: ["bio"], subject2ids: ["phy"], param1: 0 }];
+    const same = score(school(sch, lessons), [[0, 0, 2], [1, 0, 2]]);
+    const apart = score(school(sch, lessons), [[0, 0, 2], [1, 0, 4]]);
+    expect(same).toBeGreaterThan(apart);
   });
 });

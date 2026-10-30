@@ -36,6 +36,8 @@ export const ADV_REL_TYPS = new Set([
   "a_1", "a_4", "a_5", "a_6", "a_22", "a_26", "a_27", "a_82", "a_83",
   // frequency caps — how often the watched lessons may (or must) appear
   "a_0", "a_3", "a_9", "a_10", "a_12", "a_13", "a_54", "a_74",
+  // span / position counting
+  "a_17", "a_18", "a_19", "a_21", "a_67", "a_68", "a_69", "a_70",
 ]);
 import { popcount32 } from "./bitmask.js";
 import { createLearningForSchool, SolverLearning } from "./solver_learning.js";
@@ -3374,6 +3376,18 @@ function internalGapRuns(mask, ppd) {
   return runs;
 }
 
+/** Internal gaps plus the empty periods before the first and after the last card. */
+function gapLengths(mask, ppd, countStart, countEnd) {
+  if (!mask) return { internal: [], lead: 0, trail: 0 };
+  const first = 31 - Math.clz32(mask & -mask);
+  const last = 31 - Math.clz32(mask);
+  return {
+    internal: internalGapRuns(mask, ppd),
+    lead: countStart ? first : 0,
+    trail: countEnd ? Math.max(0, ppd - 1 - last) : 0,
+  };
+}
+
 /** Longest consecutive run of set bits. */
 function longestRun(mask, ppd) {
   let best = 0, run = 0;
@@ -3419,6 +3433,66 @@ function advancedRelationPenalty(model, state) {
       }
     }
     if (!masks.size) continue;
+
+    if (typ === "a_69" || typ === "a_70" || typ === "a_67" || typ === "a_68") {
+      // aSc gap variants that also count the empty periods at the START (resp.
+      // END) of a day as gaps — "he comes late / leaves early" counting.
+      const byDay = typ === "a_69" || typ === "a_70";
+      const countStart = typ === "a_69" || typ === "a_67";
+      const countEnd = typ === "a_70" || typ === "a_68";
+      const weekGaps = new Map();
+      for (const [key, e] of masks) {
+        if (!e.all) continue;
+        const g = gapLengths(e.all, ppd, countStart, countEnd);
+        const total = g.internal.reduce((a, b) => a + b, 0) + g.lead + g.trail;
+        if (byDay) {
+          if (total > p1) penalty += total - p1;
+        } else {
+          const c = Math.floor(key / days);
+          weekGaps.set(c, (weekGaps.get(c) || 0) + total);
+        }
+      }
+      if (!byDay) for (const [, total] of weekGaps) if (total > p1) penalty += total - p1;
+      continue;
+    }
+
+    if (typ === "a_18" || typ === "a_19") {
+      // aSc "periods+gaps in a day" = the SPAN from the first to the last card.
+      // a_18 exempts empty days; a_19 has nothing to judge on them either.
+      for (const [, e] of masks) {
+        if (!e.all) continue;
+        const first = 31 - Math.clz32(e.all & -e.all);
+        const last = 31 - Math.clz32(e.all);
+        const span = last - first + 1;
+        if (typ === "a_18" && span < p1) penalty += p1 - span;
+        if (typ === "a_19" && span > p1) penalty += span - p1;
+      }
+      continue;
+    }
+
+    if (typ === "a_17") {
+      // Distinct period numbers the watched lessons use across the week.
+      const perClass = new Map();
+      for (const [key, e] of masks) {
+        if (!e.all) continue;
+        const c = Math.floor(key / days);
+        perClass.set(c, (perClass.get(c) || 0) | e.all);
+      }
+      for (const [, periodMask] of perClass) {
+        const used = popcount32(periodMask >>> 0);
+        if (used > p1) penalty += used - p1;
+      }
+      continue;
+    }
+
+    if (typ === "a_21") {
+      // "Can not be on the same period": A and B may not share a period index
+      // on the same day.
+      for (const [, e] of masks) {
+        if (e.A && e.B && (e.A & e.B)) penalty += 1;
+      }
+      continue;
+    }
 
     if (typ === "a_4" || typ === "a_5" || typ === "a_6" || typ === "a_26" || typ === "a_27") {
       // Week totals are per class, so each class gets its own a_5 budget.
