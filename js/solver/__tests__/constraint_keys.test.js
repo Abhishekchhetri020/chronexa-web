@@ -99,9 +99,16 @@ describe("constraint registry — does not drift from the solvers", () => {
 
   it("records exactly which limits the cloud CP-SAT enforces (R3-B4)", () => {
     // Not a wish — a recorded fact, so the table cannot drift from the backend.
-    // Only the two daily caps exist there today; everything else (gaps,
-    // consecutive, windows, relations, the a_* family) is still browser-only.
-    const CLOUD = ["class.maxperiodsday", "teacher.lessonsPerDayMax"];
+    // Everything else (gap caps, windows, the a_* ordering/gap families,
+    // supervision) is still browser-only; the gap-family parity is a
+    // deliberate next step, not an oversight.
+    const CLOUD = [
+      "class.maxperiodsday",      // class daily cap
+      "class.minperiodsday",      // class daily floor (soft)
+      "subject.maxParallel",      // a_15 cards of a subject per period
+      "teacher.lessonsPerDayMax", // teacher daily cap
+      "teacher.teachers_maxconsecutiveperiods", // teacher consecutive run (soft)
+    ];
     const claimed = CONSTRAINT_KEYS
       .filter((r) => r.solvers.cloud)
       .map((r) => `${r.entity}.${r.key}`)
@@ -153,7 +160,7 @@ describe("constraint registry — helpers", () => {
   it("splits enforced vs inert for teachers", () => {
     expect(isEnforced("teacher", "teachers_maxgapsday")).toBe(true);
     expect(isEnforced("teacher", "supervisionMinCount")).toBe(false);
-    expect(enforcedBy(findRow("teacher", "teachers_maxconsecutiveperiods"))).toEqual(["js", "wasm"]);
+    expect(enforcedBy(findRow("teacher", "teachers_maxconsecutiveperiods"))).toEqual(["js", "wasm", "cloud"]);
     expect(enforcedBy(findRow("teacher", "teachers_maxgapsweek"))).toEqual(["js"]);
   });
 

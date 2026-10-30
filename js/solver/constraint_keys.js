@@ -59,7 +59,7 @@ export const CONSTRAINT_KEYS = Object.freeze([
   {
     entity: "teacher", key: "teachers_maxconsecutiveperiods", label: "Max consecutive periods",
     kind: "intOrAny", weight: "soft", dialog: "teacher", topLevel: "maxConsecutivePeriods",
-    solvers: { js: "teacherMaxConsec", wasm: "teacherMaxConsec", cloud: null },
+    solvers: { js: "teacherMaxConsec", wasm: "teacherMaxConsec", cloud: "tmax_consec" },
   },
   {
     entity: "teacher", key: "lessonsPerDayMax", label: "Number of lessons per day — Till",
@@ -179,7 +179,7 @@ export const CONSTRAINT_KEYS = Object.freeze([
   {
     entity: "class", key: "minperiodsday", label: "Lessons per day — from",
     kind: "intOrAny", weight: "soft", dialog: "class", topLevel: "minPerDay",
-    solvers: { js: "classMinPerDay", wasm: null, cloud: null },
+    solvers: { js: "classMinPerDay", wasm: null, cloud: "cunder" },
   },
   {
     entity: "class", key: "maxperiodsday", label: "Lessons per day — till",
@@ -223,7 +223,7 @@ export const CONSTRAINT_KEYS = Object.freeze([
   {
     entity: "subject", key: "maxParallel", label: "Max cards on one period",
     kind: "int", weight: "hard", dialog: null,
-    solvers: { js: "subjectMaxParallel", wasm: "subjectMaxParallel", cloud: null },
+    solvers: { js: "subjectMaxParallel", wasm: "subjectMaxParallel", cloud: "subject_max_parallel" },
     probes: { wasm: "sj.maxParallel" },
   },
 
