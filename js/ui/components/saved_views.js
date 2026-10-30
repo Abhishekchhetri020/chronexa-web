@@ -292,6 +292,19 @@ import "../entities/dialog_shell.js";
   }
 
   function promptSave() {
+    // Open the in-app manager instead of a native window.prompt: the prompt is
+    // blocked in embedded/PWA contexts, cannot be styled or validated, and made
+    // this menu entry look dead. The manager already owns a name input, so
+    // focus it and let the user press Enter or click Save.
+    if (typeof document !== "undefined") {
+      openManager();
+      const inp = document.querySelector(".chrx-saved-views-manager #chrx-sv-name-input");
+      if (inp && typeof inp.focus === "function") inp.focus();
+      // The manager owns the name input and its own Save button; nothing to
+      // return and no second dialog to open.
+      return null;
+    }
+    if (typeof global.prompt !== "function") return null;
     const name = (global.prompt("Name this view:") || "").trim();
     if (!name) return null;
     return save(name);

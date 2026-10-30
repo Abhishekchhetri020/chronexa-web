@@ -70,12 +70,52 @@ import "./dialog_shell.js";
     { code:"n_17", label:"The selected subjects can be in the afternoon (outside teaching block)",
       category:"Position",
       help:"This subject is allowed in afternoon periods outside the teaching block." },
+
+    // ── aSc advanced conditions (a_*) — scored, not hard ──────────────────
+    // aSc calls these "advanced"; they describe the SHAPE of a day or week
+    // rather than one placement, so Chronexa scores them and the search steers
+    // toward them instead of refusing to place anything.
+    { code:"a_4",  label:"Max gaps per day", category:"Advanced — day shape",
+      param1:{ label:"Max gaps", min:0, max:12, def:1 },
+      help:"For these subjects, how many free periods may sit between the first and last card in one day (per class)." },
+    { code:"a_5",  label:"Max gaps per week", category:"Advanced — day shape",
+      param1:{ label:"Max gaps", min:0, max:60, def:3 },
+      help:"Same as above, counted over the whole week for each class." },
+    { code:"a_6",  label:"Max consecutive periods", category:"Advanced — day shape",
+      param1:{ label:"Max in a row", min:1, max:12, def:2 },
+      help:"These subjects may not run more than this many periods back to back." },
+    { code:"a_26", label:"If a gap exists, it has to be at least this long", category:"Advanced — day shape",
+      param1:{ label:"Min gap length", min:1, max:12, def:2 },
+      help:"No one-period holes: any gap between these subjects must be at least this long." },
+    { code:"a_27", label:"Max gap length", category:"Advanced — day shape",
+      param1:{ label:"Max gap length", min:1, max:12, def:3 },
+      help:"Any gap between these subjects may not be longer than this." },
+
+    { code:"a_1",  label:"Can not be on the same day (with exceptions)", category:"Advanced — ordering",
+      param1:{ label:"Allowed exceptions per week", min:0, max:20, def:1 },
+      needsSubject2:true,
+      help:"Subject A and Subject B should not share a day, but this many days a week may break the rule." },
+    { code:"a_22", label:"Cards can not follow (in specified order)", category:"Advanced — ordering",
+      param1:{ label:"Gap must be greater than", min:1, max:12, def:1 },
+      needsSubject2:true,
+      help:"A may come before B, but never closer than this many periods apart." },
+    { code:"a_82", label:"There must be at least one A before B in a day", category:"Advanced — ordering",
+      param1:{ label:"Allowed exceptions per week", min:0, max:20, def:0 },
+      needsSubject2:true,
+      help:"On every day both run, at least one A card must sit before a B card." },
+    { code:"a_83", label:"There must be at least one B after A in a day", category:"Advanced — ordering",
+      param1:{ label:"Allowed exceptions per week", min:0, max:20, def:0 },
+      needsSubject2:true,
+      help:"On every day both run, at least one B card must sit after an A card." },
   ];
   const TYP_BY_CODE = Object.fromEntries(TYP_CATALOGUE.map(t => [t.code, t]));
-  const CATEGORY_ORDER = ["Same / different day","Two-subject","Multi-class","Position"];
+  const CATEGORY_ORDER = ["Same / different day","Two-subject","Multi-class","Position",
+    "Advanced — day shape","Advanced — ordering"];
 
   // Per-typ field requirements.
-  const NEEDS_SUBJECT2 = new Set(["n_5","n_6","n_8","n_9"]);
+  const NEEDS_SUBJECT2 = new Set(["n_5","n_6","n_8","n_9","a_1","a_22","a_82","a_83"]);
+  // Advanced types carry a numeric limit in `param1`.
+  const NEEDS_PARAM1 = new Set(TYP_CATALOGUE.filter(t => t.param1).map(t => t.code));
   const NEEDS_POSITIONS_FIRSTLAST = new Set(["n_16"]);
   const NEEDS_POSITIONS_RANGE     = new Set(["n_17"]);
 
@@ -332,6 +372,25 @@ import "./dialog_shell.js";
       // Classes — always required.
       wrap.appendChild(D.buildField("Classes",
         classPicker(draft.classids, v => { draft.classids = v; })));
+
+      // Advanced condition limit — aSc stores it in param1.
+      if (NEEDS_PARAM1.has(draft.typ)) {
+        const cfg = typInfo.param1;
+        if (draft.param1 == null || draft.param1 === "") draft.param1 = cfg.def;
+        const num = D.el("input", {
+          type:"number", min:String(cfg.min), max:String(cfg.max),
+          value:String(draft.param1), style:"width:90px;",
+          oninput:(e) => {
+            const raw = e.target.value.trim();
+            draft.param1 = raw === "" ? undefined : parseInt(raw, 10);
+          },
+        });
+        wrap.appendChild(D.buildField(cfg.label, num));
+      } else if (draft.param1 !== undefined && !TYP_BY_CODE[draft.typ]?.param1) {
+        // Switching from an advanced type back to a normal one must not leave a
+        // stale limit behind — the solver would silently keep honouring it.
+        draft.param1 = undefined;
+      }
 
       // Positions (n_16 / n_17).
       if (NEEDS_POSITIONS_FIRSTLAST.has(draft.typ)) {
@@ -725,7 +784,14 @@ import "./dialog_shell.js";
     });
   }
 
-  global.EntityRelations = { open };
+  global.EntityRelations = {
+    open, openWizard,
+    // Introspection hooks: tests and support scripts read the same catalogue the
+    // dialog renders, so a type added here cannot be invisible to verification.
+    catalogue: TYP_CATALOGUE,
+    needsParam1: NEEDS_PARAM1,
+    needsSubject2: NEEDS_SUBJECT2,
+  };
 })(window);
 
 // [vite-esm] exports auto-generated by the 2026-07 Vite migration.
