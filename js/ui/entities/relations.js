@@ -116,6 +116,32 @@ import "./dialog_shell.js";
       param1:{ label:"Max subjects", min:1, max:12, def:6 },
       help:"A day may not mix more than this many different subjects from the selected set." },
 
+    { code:"a_69", label:"Max gaps per day (empty starting periods count)", category:"Advanced — day shape",
+      param1:{ label:"Max gaps", min:0, max:12, def:1 },
+      help:"Like Max gaps per day, but a late start also counts as a gap." },
+    { code:"a_70", label:"Max gaps per day (empty ending periods count)", category:"Advanced — day shape",
+      param1:{ label:"Max gaps", min:0, max:12, def:1 },
+      help:"Like Max gaps per day, but an early finish also counts as a gap." },
+    { code:"a_67", label:"Max gaps per week (empty starting periods count)", category:"Advanced — day shape",
+      param1:{ label:"Max gaps", min:0, max:60, def:4 },
+      help:"Weekly gap budget that also counts a late start on each day." },
+    { code:"a_68", label:"Max gaps per week (empty ending periods count)", category:"Advanced — day shape",
+      param1:{ label:"Max gaps", min:0, max:60, def:4 },
+      help:"Weekly gap budget that also counts an early finish on each day." },
+    { code:"a_18", label:"Min periods+gaps per day (empty day is OK)", category:"Advanced — frequency",
+      param1:{ label:"Min span", min:1, max:12, def:4 },
+      help:"The run from the first to the last lesson of the day must be at least this long." },
+    { code:"a_19", label:"Max periods+gaps per day", category:"Advanced — frequency",
+      param1:{ label:"Max span", min:1, max:12, def:8 },
+      help:"The run from the first to the last lesson of the day may not exceed this." },
+    { code:"a_17", label:"Max different period numbers per week", category:"Advanced — frequency",
+      param1:{ label:"Max period numbers", min:1, max:12, def:6 },
+      help:"These subjects may appear in only this many different period slots across the week." },
+    { code:"a_21", label:"Can not be on the same period", category:"Advanced — ordering",
+      param1:{ label:"Allowed exceptions per week", min:0, max:20, def:0 },
+      needsSubject2:true,
+      help:"A and B may not sit in the same period on the same day." },
+
     { code:"a_1",  label:"Can not be on the same day (with exceptions)", category:"Advanced — ordering",
       param1:{ label:"Allowed exceptions per week", min:0, max:20, def:1 },
       needsSubject2:true,
@@ -138,7 +164,7 @@ import "./dialog_shell.js";
     "Advanced — day shape","Advanced — frequency","Advanced — ordering"];
 
   // Per-typ field requirements.
-  const NEEDS_SUBJECT2 = new Set(["n_5","n_6","n_8","n_9","a_1","a_22","a_82","a_83"]);
+  const NEEDS_SUBJECT2 = new Set(["n_5","n_6","n_8","n_9","a_1","a_22","a_82","a_83","a_21"]);
   // Advanced types carry a numeric limit in `param1`.
   const NEEDS_PARAM1 = new Set(TYP_CATALOGUE.filter(t => t.param1).map(t => t.code));
   const NEEDS_POSITIONS_FIRSTLAST = new Set(["n_16"]);
