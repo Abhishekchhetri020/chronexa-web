@@ -87,7 +87,13 @@ def _lesson_ids_matching(school, rel):
 
 def build_and_solve(school, time_limit_sec=30, num_workers=8, seed=1,
                     progress_fn=None, cancel_check=None, soft=True, gaps=False):
-    days = list(range(school["daysPerWeek"]))
+    # daysPerWeek is optional in the payload; a missing key used to raise
+    # KeyError and surface as a 500 / job error. Fall back to the explicit days
+    # list, then to a 5-day week, mirroring the frontend's default.
+    ndays_req = school.get("daysPerWeek")
+    if not ndays_req:
+        ndays_req = len(school.get("days") or []) or 5
+    days = list(range(int(ndays_req)))
     ndays = len(days)
     periods = _teaching_periods(school)                 # e.g. [1..7]
     pidx = {p: i for i, p in enumerate(periods)}        # period value -> 0-based index

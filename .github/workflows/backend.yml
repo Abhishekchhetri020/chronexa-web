@@ -51,6 +51,7 @@ jobs:
           {
             "school": {
               "schoolName": "CI",
+              "daysPerWeek": 5,
               "bell": {"periods": [
                 {"index": 1, "label": "P1", "startMin": 0, "endMin": 40, "isTeaching": true},
                 {"index": 2, "label": "P2", "startMin": 40, "endMin": 80, "isTeaching": true}
