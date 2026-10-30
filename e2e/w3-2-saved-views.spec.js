@@ -149,13 +149,14 @@ test.describe("W3-2 Named views manager", () => {
     const countAfterUndo = await page.evaluate(() => window.APP.school.savedViews.length);
     expect(countAfterUndo).toBe(2);
 
-    // 11. Test promptSave() method
-    page.once("dialog", async (dialog) => {
-      expect(dialog.message()).toContain("Name this view");
-      await dialog.accept("Prompt Saved View");
-    });
+    // 11. promptSave() opens the in-app manager (no native window.prompt —
+    // that is blocked in embedded/PWA contexts and made the entry look dead).
     await page.evaluate(() => window.SavedViews.promptSave());
+    await page.waitForSelector("#chrx-sv-name-input", { state: "visible" });
+    await page.fill("#chrx-sv-name-input", "Prompt Saved View");
+    await page.click("#chrx-sv-save-btn");
     const countAfterPrompt = await page.evaluate(() => window.APP.school.savedViews.length);
     expect(countAfterPrompt).toBe(3);
+    expect(await page.evaluate(() => window.APP.school.savedViews[2].name)).toBe("Prompt Saved View");
   });
 });

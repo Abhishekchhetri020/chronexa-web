@@ -78,6 +78,14 @@ export async function buildAndSolve(school, options = {}) {
   const progressFn = options.progressFn ?? null;
   const cancelCheck = options.cancelCheck ?? null;
   const jm = jsBuildModel(school);
+  // Source lesson id -> first expanded lesson index. Declared here, before the
+  // card loop: per-lesson masks built by buildModel (a_60's allowed-start
+  // window) are indexed by expanded lesson, and a later `const` would be in the
+  // temporal dead zone when the cards are built.
+  const lessonIdxOf = new Map();
+  (jm.lessons || []).forEach((Lx, i) => {
+    if (Lx && Lx.srcId != null && !lessonIdxOf.has(Lx.srcId)) lessonIdxOf.set(Lx.srcId, i);
+  });
   const jsLessonIndex = new Map();
   jm.lessons.forEach((lesson, i) => { if (!jsLessonIndex.has(lesson.srcId)) jsLessonIndex.set(lesson.srcId, i); });
 
@@ -154,12 +162,6 @@ export async function buildAndSolve(school, options = {}) {
   const m = new CpModel();
   const tIdxOf = new Map((jm.teacherIds || []).map((id, i) => [id, i]));
   const subjIdx = new Map((jm.subjectIds || []).map((id, i) => [id, i]));
-  // Source lesson id -> first expanded lesson index, so per-lesson masks built
-  // by buildModel (e.g. a_60's allowed-start window) can be applied to cards.
-  const lessonIdxOf = new Map();
-  (jm.lessons || []).forEach((Lx, i) => {
-    if (Lx && Lx.srcId != null && !lessonIdxOf.has(Lx.srcId)) lessonIdxOf.set(Lx.srcId, i);
-  });
   const lockedDaysSet = new Set(school.lockedDays || school.blockedDays || []);
 
   const validStarts = (card) => {
