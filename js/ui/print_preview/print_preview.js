@@ -546,16 +546,19 @@ import { prepare as prepareSheets, companionIds } from "./sheet_engine.js";
     return out;
   }
 
-  function printAllPages() {
-    if (!pages.length || !docShell) { window.print(); return; }
-    // Strip the on-screen zoom so the printout uses the true A4 page size,
-    // not whatever magnification the user is previewing at.
+  // ── Print lifecycle ──────────────────────────────────────────────────────
+  // beginPrint() mounts EVERY page (plus companions) and applies the sheet
+  // settings; endPrint() puts the preview back. printAllPages() wraps them
+  // around window.print(), and the before/afterprint listeners do the same for
+  // a browser-initiated print (Cmd+P, menu → Save as PDF). That second path
+  // used to print only the page on screen — the single most common way to get a
+  // poor PDF out of the preview.
+  let printSession = null;
+
+  function beginPrint() {
+    if (printSession || !pages.length || !docShell) return null;
     pages.forEach(p => { p.style.zoom = "1"; });
     const saved = pageIdx;
-    // Must run BEFORE mounting/measuring: the shrink-to-fit pass below reads
-    // real pixel geometry, so measuring inside the squeezed flex row bakes
-    // floor-size fonts (2-4px) and overflow:hidden into every cell even if a
-    // print stylesheet later widens the page.
     const savedStyle = enterPrintLayout();
     let companions = [];
     try { companions = companionPages(); } catch (e) { console.warn("[print] companions:", e && e.message); }
@@ -563,31 +566,46 @@ import { prepare as prepareSheets, companionIds } from "./sheet_engine.js";
     if (printSet.length > 1) {
       while (docShell.firstChild) docShell.removeChild(docShell.firstChild);
       for (const p of printSet) docShell.appendChild(p);
-      // Autofit every page while all of them are mounted AND laid out as full
-      // blocks — showPage() only fits the single on-screen page, so pages 2..N
-      // used to print unfitted (cells carry data-fit marks, so the current page
-      // re-runs as a no-op).
       for (const p of printSet) {
         try { autofitMountedPage(p); } catch (e) { /* never break printing */ }
       }
     }
-    // Sheet settings (paper, N-up/poster, copies, page numbers, hide empties)
-    // are applied only around the print call: the on-screen preview keeps its
-    // own single-page layout.
     let restoreSheets = null;
     try {
       restoreSheets = prepareSheets(printSet, APP.printSettings || {}, docShell);
     } catch (e) { console.warn("[print] sheet engine:", e && e.message); }
-    try { window.print(); }
-    finally {
-      try { if (restoreSheets) restoreSheets(); } catch {}
-      // Companions were only mounted for this print; drop them so the preview
-      // does not accumulate pages from earlier jobs.
-      try { companions.forEach((p) => p.remove()); } catch {}
-      exitPrintLayout(savedStyle);
-      showPage(saved);  // re-mounts current page + re-applies zoom
-    }
+    printSession = { saved, savedStyle, companions, restoreSheets };
+    return printSession;
   }
+
+  function endPrint() {
+    const sess = printSession;
+    printSession = null;
+    if (!sess) return;
+    try { if (sess.restoreSheets) sess.restoreSheets(); } catch {}
+    try { sess.companions.forEach((p) => p.remove()); } catch {}
+    exitPrintLayout(sess.savedStyle);
+    showPage(sess.saved);
+  }
+
+  // Browser-initiated print (Cmd+P / menu → Save as PDF) must produce the same
+  // output as our Print button.
+  if (typeof window !== "undefined") {
+    window.addEventListener("beforeprint", () => {
+      try { if (!printSession) beginPrint(); } catch (e) { console.warn("[print] beforeprint:", e); }
+    });
+    window.addEventListener("afterprint", () => {
+      try { endPrint(); } catch (e) { console.warn("[print] afterprint:", e); }
+    });
+  }
+
+  function printAllPages() {
+    if (!pages.length || !docShell) { window.print(); return; }
+    beginPrint();
+    try { window.print(); }
+    finally { endPrint(); }
+  }
+
   function showPage(i) {
     docShell.innerHTML = "";
     docShell.appendChild(pages[i]);

@@ -5,6 +5,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   sheetSize, sheetPlan, groupIntoSheets, isEmptyRow, emptyColumnIndexes, prepare,
+  cellOrder,
 } from "../js/ui/print_preview/sheet_engine.js";
 
 describe("sheetSize", () => {
@@ -140,5 +141,17 @@ describe("companion reports", () => {
     expect(companionIds({ companionReports: ["ghost"] }, "class", available)).toEqual([]);
     expect(companionIds({}, "class", available)).toEqual([]);
     expect(companionIds({ companionReports: "teacher" }, "class", available)).toEqual([]);
+  });
+});
+
+describe("cellOrder — aSc splitpageorder", () => {
+  it("row-major by default (left to right, then down)", () => {
+    expect(cellOrder(4, 2, 2, false)).toEqual([0, 1, 2, 3]);
+  });
+  it("column-major for a booklet fold (down first, then across)", () => {
+    // 2x2 sheet: slot 0 -> top-left, slot 1 -> bottom-left, slot 2 -> top-right, slot 3 -> bottom-right
+    expect(cellOrder(4, 2, 2, true)).toEqual([0, 2, 1, 3]);
+    // 2x1 strip is a single column: order is unchanged
+    expect(cellOrder(2, 1, 2, true)).toEqual([0, 1]);
   });
 });
