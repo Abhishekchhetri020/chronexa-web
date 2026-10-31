@@ -191,6 +191,7 @@ import "../ui/print_preview/templates/summary_of_classrooms.js";
 import "../ui/print_preview/templates/wall_poster_teachers.js";
 import "../ui/print_preview/templates/list_of_teachers.js";
 import "../ui/print_preview/templates/teacher_workload.js";
+import "../ui/print_preview/templates/supervision_duties.js";
 import "../ui/print_preview/templates/list_of_classes.js";
 import "../ui/print_preview/templates/custom_slots.js";
 import "../ui/print_preview/print_presets.js";
