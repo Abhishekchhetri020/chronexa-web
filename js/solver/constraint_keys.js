@@ -84,9 +84,8 @@ export const CONSTRAINT_KEYS = Object.freeze([
   },
   {
     entity: "teacher", key: "maxOnConditional", label: "Max. on the question marked",
-    kind: "intOrAny", weight: "none", dialog: "teacher",
-    solvers: { js: null, wasm: null, cloud: null },
-    uiOnly: "Needs the question-marked (conditional) card flag, which Chronexa does not have yet.",
+    kind: "intOrAny", weight: "soft", dialog: "teacher",
+    solvers: { js: "teacherMaxOnConditional", wasm: null, cloud: null },
   },
   {
     entity: "teacher", key: "supervisionMinCount", label: "Supervisions: Min Count",

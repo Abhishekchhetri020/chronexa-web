@@ -202,6 +202,7 @@ import "./dialog_shell.js";
           classroomIdsExpansion:null,      // null|"home"|"shared"|"teacher"|"subject"
           wildcardTeacher:false,           // CLASSIC '??' — solver picks any teacher
           wildcardRoom:false,              // CLASSIC '??' — solver picks any room
+          conditional:false,               // aSc question-marked card — optional
           classGroupMap:{},               // { classId: groupId | null }
           daysDefId: defDay,
           weeksDefId: defWk,
@@ -221,6 +222,7 @@ import "./dialog_shell.js";
           classroomIdsExpansion: r._ref.classroomIdsExpansion || null,
           wildcardTeacher: !!r._ref.wildcardTeacher,
           wildcardRoom: !!r._ref.wildcardRoom,
+          conditional: !!r._ref.conditional,
           classGroupMap: r._ref.classGroupMap ? { ...r._ref.classGroupMap } : {},
           daysDefId: r._ref.daysDefId || defDay,
           weeksDefId: r._ref.weeksDefId || defWk,
@@ -625,6 +627,14 @@ import "./dialog_shell.js";
       title:"If checked, the solver assigns any room (CLASSIC '??' pattern)" },
       fWildRoom, D.el("span", null, "Wildcard room (?)"));
 
+    const fConditional = D.el("input", { type:"checkbox",
+      checked: draft.conditional ? "checked" : null,
+      onchange:(e)=>{ draft.conditional = e.target.checked; } });
+    const fConditionalLabel = D.el("label", {
+      style:"display:inline-flex;gap:6px;align-items:center;cursor:pointer",
+      title:"aSc question-marked card: the solver may leave it unplaced, and each teacher has a cap on how many such lessons are placed" },
+      fConditional, D.el("span", null, "Question-marked (may stay unplaced)"));
+
     // ══════════════════════════════════════════════════════════════════════════
     // ── 3. Periods/week + Lesson Length dropdown ──────────────────────────
     // ══════════════════════════════════════════════════════════════════════════
@@ -852,6 +862,7 @@ import "./dialog_shell.js";
         { label:"Lessons/week", control:fCountRow, helpText:"How many periods this lesson needs each week. Length controls single or double-period blocks." },
         { label:"Classroom", control:roomBlock, helpText:"Choose a preferred room, assign rooms per card, or let the solver select from allowed rooms." },
         { label:null, control:fWildRoomLabel },
+        { label:null, control:fConditionalLabel },
         { label:"Day pattern", control:fDaysDef, helpText:"Optional day-set restriction for split schedules or rotating timetables." },
         { label:"Week pattern", control:fWeeksDef, helpText:"Optional week-set restriction for alternating or multi-week schedules." },
         { label:"Term", control:fTermsDef, helpText:"Optional term restriction when this lesson runs only during part of the year." },
@@ -911,6 +922,7 @@ import "./dialog_shell.js";
             l.classroomIdsExpanded = roomFields.classroomIdsExpanded;
             l.wildcardTeacher = draft.wildcardTeacher ? true : undefined;
             l.wildcardRoom = draft.wildcardRoom ? true : undefined;
+            l.conditional = draft.conditional ? true : undefined;
             l.daysDefId = draft.daysDefId || undefined;
             l.weeksDefId = draft.weeksDefId || undefined;
             l.termsDefId = draft.termsDefId || undefined;
@@ -934,6 +946,7 @@ import "./dialog_shell.js";
             classroomIdsExpanded: roomFields.classroomIdsExpanded,
             wildcardTeacher: draft.wildcardTeacher ? true : undefined,
             wildcardRoom: draft.wildcardRoom ? true : undefined,
+            conditional: draft.conditional ? true : undefined,
             daysDefId: draft.daysDefId || undefined,
             weeksDefId: draft.weeksDefId || undefined,
             termsDefId: draft.termsDefId || undefined,

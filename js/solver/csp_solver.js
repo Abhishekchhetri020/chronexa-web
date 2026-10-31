@@ -297,6 +297,7 @@ function buildModel(school) {
         fixedDay,
         fixedPeriod,
         hardLocked,
+        conditional: !!l.conditional,
         isLabDouble: !!l.isLabDouble,
         periodsPerCard,
         lessonLength: periodsPerCard,
@@ -510,6 +511,11 @@ function buildModel(school) {
     return -1;
   }
 
+  // aSc question-marked cards: optional lessons plus a per-teacher cap on how
+  // many of them may actually be placed (teacher.constraints.maxOnConditional).
+  const lessonConditional      = new Uint8Array(lessonCount);
+  const teacherMaxOnConditional = new Int32Array(teacherIds.length).fill(-1);
+
   // Teacher misc caps
   const teacherMaxPerDay      = new Int32Array(teacherIds.length).fill(-1);
   const teacherMaxConsec      = new Int32Array(teacherIds.length).fill(-1);
@@ -530,6 +536,15 @@ function buildModel(school) {
     teacherMaxLastPeriod[t] = gFallback(tt.maxLastPeriodOverflow, "teacherMaxLastPeriod");
     teacherMaxGapsPerDay[t] = gFallback(tt.maxGapsPerDay ?? tcons(tt, "teachers_maxgapsday"), "teacherMaxGapsPerDay");
     teacherMaxGapsPerWeek[t] = gFallback(tcons(tt, "teachers_maxgapsweek"), "teacherMaxGapsPerWeek");
+    const moc = tcons(tt, "maxOnConditional");
+    // "*" and "i" mean "no cap" — parseInt("*") is NaN and NaN|0 is 0, which
+    // would have meant "this teacher may place no question-marked cards".
+    const mocN = (moc != null && moc !== "i" && moc !== "*") ? parseInt(moc, 10) : NaN;
+    teacherMaxOnConditional[t] = Number.isFinite(mocN) ? mocN : -1;
+  }
+
+  for (let i = 0; i < lessonCount; i++) {
+    if (expanded[i] && expanded[i].conditional) lessonConditional[i] = 1;
   }
 
   // Class day caps default to periodsPerDay (effectively unlimited).
@@ -1523,6 +1538,8 @@ function buildModel(school) {
     teacherLastPeriodCap: teacherMaxLastPeriod,
     teacherMaxGapsPerDay,
     teacherMaxGapsPerWeek,
+    lessonConditional,
+    teacherMaxOnConditional,
     subjectMaxParallel,
     subjectMinParallel,
     subjectStartBan,
@@ -2715,6 +2732,7 @@ function softScore(model, state) {
   s += teacherGapCapPenalty(model, state) * (w[0] || 1) * 10;
   s += subjectParallelPenalty(model, state) * (w[0] || 1) * 20;
   s += classMinPerDayPenalty(model, state) * (w[0] || 1);
+  s += conditionalCapPenalty(model, state) * (w[0] || 1) * 5;
   s += supervisionCriteriaSoftPenalty(model, state) * (w[0] || 1);
   s += studentSubjectsConflictPenalty(model, state) * (w[1] || 1);
   state._cachedSoftScore = s;
@@ -2894,6 +2912,28 @@ function subjectParallelPenalty(model, state) {
       if (got < m) penalty += (m - got) * 3;
     }
   }
+  return penalty;
+}
+
+// aSc question-marked cards — the per-teacher cap on how many OPTIONAL lessons
+// may actually be placed. A conditional lesson that cannot fit is not a
+// failure; placing more of them than the teacher allows is.
+function conditionalCapPenalty(model, state) {
+  const cap = model.teacherMaxOnConditional;
+  if (!cap || !cap.some((c) => c >= 0)) return 0;
+  const perTeacher = new Map();
+  for (let i = 0; i < model.lessonCount; i++) {
+    if (!model.lessonConditional || !model.lessonConditional[i]) continue;
+    if (!state.lessonAssigned[i]) continue;
+    const ts = model.lessonTeacherStart[i], tc = model.lessonTeacherCount[i];
+    for (let k = 0; k < tc; k++) {
+      const t = model.lessonTeacherFlat[ts + k];
+      if (cap[t] < 0) continue;
+      perTeacher.set(t, (perTeacher.get(t) || 0) + 1);
+    }
+  }
+  let penalty = 0;
+  for (const [t, n] of perTeacher) if (n > cap[t]) penalty += n - cap[t];
   return penalty;
 }
 
