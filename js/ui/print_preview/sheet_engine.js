@@ -46,6 +46,26 @@ export function sheetPlan(settings) {
   };
 }
 
+/**
+ * Visual order of the cells on one sheet — aSc `splitpageorder`.
+ * `byColumns` fills down a column first (reading order for a fold), the default
+ * `byRows` fills across a row first. Returns, for each page slot i, the visual
+ * position it should occupy.
+ */
+export function cellOrder(perSheet, cols, rows, byColumns) {
+  const out = [];
+  for (let i = 0; i < perSheet; i++) {
+    if (byColumns) {
+      const col = Math.floor(i / rows);
+      const row = i % rows;
+      out.push(row * cols + col);
+    } else {
+      out.push(i);
+    }
+  }
+  return out;
+}
+
 /** Group pages into sheets; pure so the ordering is testable. */
 export function groupIntoSheets(pages, plan) {
   const per = plan.perSheet;
@@ -97,6 +117,22 @@ function styleText(settings) {
   return `
 @page chrx-sheet { size: ${w}mm ${h}mm; margin: ${margin}mm; }
 @media print {
+  /* Refined output: colours must survive, backgrounds stay white, and nothing
+     decorative leaks into the PDF from the app shell. */
+  html, body {
+    background: #fff !important;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    -webkit-font-smoothing: antialiased;
+  }
+  .chrx-preview-page {
+    background: #fff !important;
+    box-shadow: none !important;
+    border: 0 !important;
+  }
+  .chrx-preview-page img { max-width: 100%; }
+  .chrx-preview-page a { color: inherit; text-decoration: none; }
+  .chrx-preview-page p { orphans: 2; widows: 2; }
+  .chrx-preview-page table { break-inside: auto; }
   .chrx-preview-page { page: chrx-sheet; }
   .chrx-print-sheet {
     display: flex; flex-wrap: wrap;
@@ -204,16 +240,24 @@ export function prepare(pages, settings, host) {
     originals.forEach((o) => o.page.remove());
     const sheets = [];
     for (const group of groupIntoSheets(pages, plan)) {
+      const order = cellOrder(plan.perSheet, plan.cols, plan.rows, plan.byColumns);
       for (let copy = 0; copy < plan.copies; copy++) {
         const sheet = document.createElement("div");
         sheet.className = "chrx-print-sheet";
         sheet.dataset.chrxInjected = "1";
-        for (const page of group) {
+        // Cells are placed in VISUAL order: slot i gets the page at order[i],
+        // so "fill down first" (booklet fold) really fills down.
+        const cells = [];
+        for (let slot = 0; slot < order.length; slot++) {
           const cell = document.createElement("div");
           cell.className = "chrx-sheet-cell";
-          cell.appendChild(page);
-          sheet.appendChild(cell);
+          cells.push(cell);
         }
+        group.forEach((page, i) => {
+          const target = cells[order[i]];
+          if (target) target.appendChild(page);
+        });
+        cells.forEach((c) => sheet.appendChild(c));
         sheets.push(sheet);
       }
     }
