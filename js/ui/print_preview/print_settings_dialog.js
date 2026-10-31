@@ -47,6 +47,15 @@ import "./cell_style_dialog.js";
     dozorColor: "#fef3c7",
     headerFont: "system",
     headerAlign: "center",
+    // aSc ttreports: repeatpage / splitpage_w / splitpage_h / splitpageorder /
+    // hideemptyrows / hideemptycolumns / pageheaderprefixenabled
+    splitW: 1,
+    splitH: 1,
+    splitOrder: "columns",
+    repeatCopies: 1,
+    pageNumbers: "none",
+    hideEmptyRows: false,
+    hideEmptyColumns: false,
   };
 
   function load() {
@@ -186,6 +195,37 @@ import "./cell_style_dialog.js";
       row("Show logo",    bool("showLogo")),
       row("Logo URL",     text("logoUrl", 360)));
   }
+  function tabSheet() {
+    const presets = [
+      ["1 x 1 — one page per sheet", 1, 1],
+      ["2 pages per sheet (1 x 2)", 1, 2],
+      ["2 pages per sheet (2 x 1, booklet fold)", 2, 1],
+      ["4 pages per sheet (2 x 2, poster)", 2, 2],
+      ["8 pages per sheet (2 x 4)", 2, 4],
+    ];
+    const sel = el("select", { style: "padding:4px 6px;border:1px solid #cbd5e1;border-radius:4px;font-size:12px",
+      onchange: e => {
+        const [w, h] = e.target.value.split("x").map(n => parseInt(n, 10));
+        APP.printSettings.splitW = w;
+        APP.printSettings.splitH = h;
+      } });
+    const cur = (parseInt(APP.printSettings.splitW, 10) || 1) + "x" + (parseInt(APP.printSettings.splitH, 10) || 1);
+    for (const [label, w, h] of presets) {
+      const opt = el("option", { value: w + "x" + h }, label);
+      if (w + "x" + h === cur) opt.setAttribute("selected", "selected");
+      sel.appendChild(opt);
+    }
+    return el("div", null,
+      el("p", { style: "color:#64748b;font-size:11px;margin:0 0 8px" },
+        "Paper and multi-up for printing and for “Save as PDF”. Paper size and orientation come from the Sizes tab."),
+      row("Pages per sheet", sel),
+      row("Copy order", pick("splitOrder", ["columns", "rows"])),
+      row("Copies of each sheet", num("repeatCopies", 1, 9, 1)),
+      row("Page numbers", pick("pageNumbers", ["none", "page", "of-total"])),
+      row("Hide empty rows", bool("hideEmptyRows")),
+      row("Hide empty columns", bool("hideEmptyColumns")));
+  }
+
   function tabGridText() {
     return el("div", null,
       row("Header font",   pick("headerFont",  ["system","serif","monospace"])),
@@ -194,6 +234,7 @@ import "./cell_style_dialog.js";
 
   const TABS = [
     { id: "sizes",       label: "Sizes",       build: tabSizes },
+    { id: "sheet",       label: "Sheet & PDF", build: tabSheet },
     { id: "globals",     label: "Globals",     build: tabGlobals },
     { id: "structure",   label: "Structure",   build: tabStructure },
     { id: "colors",      label: "Colors",      build: tabColors },
