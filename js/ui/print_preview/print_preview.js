@@ -465,6 +465,8 @@ import { attach as attachContextMenu } from "./preview_context_menu.js";
     
     shell.appendChild(mainArea);
     overlay.classList.add("is-open");
+    // App chrome (onboarding tour, notebook tips) must not sit over the sheet.
+    document.body.classList.add("chrx-previewing");
 
     // Set ribbon mode (other agents may want to know)
     const host = document.getElementById("chrx-ribbon");
@@ -476,6 +478,7 @@ import { attach as attachContextMenu } from "./preview_context_menu.js";
   }
 
   function closePreview() {
+    document.body.classList.remove("chrx-previewing");
     if (!overlay) return;
     overlay.classList.remove("is-open");
     const host = document.getElementById("chrx-ribbon");
@@ -1032,6 +1035,8 @@ import { attach as attachContextMenu } from "./preview_context_menu.js";
     pageIdx = 0;
 
     overlay.classList.add("is-open");
+    // App chrome (onboarding tour, notebook tips) must not sit over the sheet.
+    document.body.classList.add("chrx-previewing");
     const host = document.getElementById("chrx-ribbon");
     if (host) host.setAttribute("data-ribbon-mode", "preview");
 

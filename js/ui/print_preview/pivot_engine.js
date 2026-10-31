@@ -138,7 +138,42 @@ import "../state.js";
       align,
       showTimes,
       twoLines: !!ph.timeTwoLines,
+      // aSc's `time` header element is bold in the school's own report.
+      timeBold: ph.timeBold !== false,
     };
+  }
+
+  /**
+   * The name printed at the top of a report. aSc prints its own school setting
+   * (reg_name / m_strPrintHeaderText); the XML `displayname` is often a
+   * placeholder like "aSc Timetables 2012 XML", so that must never win.
+   */
+  function printTitle(school, settings) {
+    const bad = /aSc Timetables|Chron\.?exa/i;
+    const candidates = [
+      settings && settings.headerText,
+      school && school.printHeaderText,
+      school && school.globals && school.globals.printHeaderText,
+      school && school.regName,
+      school && school.schoolName,
+      school && school.name,
+    ];
+    for (const c of candidates) {
+      const v = c && String(c).trim();
+      if (v && !bad.test(v)) return v;
+    }
+    return "";
+  }
+
+  /** "W.E.F <date>" only when the file actually carries a date — never today's. */
+  function printDateLine(school) {
+    const d = (school && (school.dateFrom
+      || (school.globals && (school.globals.tt_datefrom || school.globals.dateBelowTT))
+      || (school._meta && school._meta.dateFrom))) || null;
+    if (!d) return "";
+    const text = String(d).trim();
+    if (!text) return "";
+    return /^W\.E\.F/i.test(text) ? text : "W.E.F " + text;
   }
 
   function fmtMin(min) {
@@ -377,9 +412,14 @@ import "../state.js";
       }, ""));
       for (const col of summaryCols) {
         if (col.kind === "break") {
+          const b = col.breakItem || {};
+          const bLabel = b.printtext || b.name || "Break";
+          const bTime = (b.starttime && b.endtime) ? (b.starttime + " - " + b.endtime) : "";
           headerRow.appendChild(el("th", {
-            style: "border:0.75px dashed #c5c0b2;padding:2px;background:#f3f0e8;width:" + breakColWidthPx + "px;font-size:8px;text-align:center;color:#7a7568",
-          }, ""));
+            style: "border:0.75px dashed #c5c0b2;padding:2px;background:#f3f0e8;width:" + breakColWidthPx + "px;font-size:8px;text-align:center;color:#4a463c",
+          },
+            el("div", { style: "font-weight:700" }, bLabel),
+            bTime ? el("div", { style: "font-size:6.5px;font-weight:400" }, bTime) : null));
           continue;
         }
         const cc = col.combo;
@@ -503,10 +543,18 @@ import "../state.js";
       style: "background:#fff;color:#111;width:" + pageWidth + ";min-height:" + pageHeight + ";padding:14mm 12mm;box-sizing:border-box;display:flex;flex-direction:column;gap:6px;font-family:system-ui",
     });
 
-    const schoolName = (school.schoolName || school.name || "");
+    const PS = APP.printSettings || {};
+    const schoolName = printTitle(school, PS);
+    // Logo, top-left, like aSc — only when the user asked for it.
+    const logoUrl = PS.showLogo ? (PS.logoUrl || school.logoUrl || school.logo || "") : "";
+    if (logoUrl) {
+      page.appendChild(el("div", { style: "position:relative;height:0" },
+        el("img", { src: logoUrl, alt: "",
+          style: "position:absolute;left:0;top:-2px;height:14mm;width:14mm;object-fit:contain" })));
+    }
     if (schoolName || report.design?.headerText) {
       page.appendChild(el("div", {
-        style: "text-align:center;font-weight:600;font-size:14px;letter-spacing:.005em",
+        style: "text-align:center;font-weight:700;font-size:15px;letter-spacing:.005em",
       }, report.design?.headerText || schoolName));
     }
     if (pageTitle) {
@@ -536,7 +584,7 @@ import "../state.js";
     }
     if (totalPages > 1) {
       page.appendChild(el("div", {
-        style: "text-align:right;font-size:10px;color:#666;font-family:'JetBrains Mono',ui-monospace,monospace",
+        style: "text-align:right;font-size:9px;color:#666;margin-top:-4px",
       }, "Page " + (pageIndex+1) + " of " + totalPages));
     }
 
@@ -573,7 +621,7 @@ import "../state.js";
         });
         th.appendChild(el("div", { style: "font-weight:" + (HS.bold ? "700" : "400") }, labels.join(" · ")));
         if (HS.showTimes && startMin != null && endMin != null) {
-          const timeStyle = "font-size:" + HS.timePx + "px;font-weight:400;color:#555;margin-top:1px;font-family:" + HS.timeFont;
+          const timeStyle = "font-size:" + HS.timePx + "px;font-weight:" + (HS.timeBold !== false ? "700" : "400") + ";color:#333;margin-top:1px;font-family:" + HS.timeFont;
           if (HS.twoLines) {
             th.appendChild(el("div", { style: timeStyle }, fmtMin(startMin)));
             th.appendChild(el("div", { style: timeStyle }, fmtMin(endMin)));
@@ -584,9 +632,13 @@ import "../state.js";
         headerRow.appendChild(th);
         const brk = breakAfterCol(visibleCols, ci, school);
         if (brk) {
+          const bLabel = brk.printtext || brk.name || "Break";
+          const bTime = (brk.starttime && brk.endtime) ? (brk.starttime + " - " + brk.endtime) : "";
           headerRow.appendChild(el("th", {
-            style: "border:0.75px dashed #c5c0b2;padding:2px;background:#f3f0e8;width:28px;font-size:8px;text-align:center;color:#7a7568",
-          }, ""));
+            style: "border:0.75px dashed #c5c0b2;padding:2px;background:#f3f0e8;width:22px;font-size:7px;line-height:1.05;text-align:center;color:#4a463c",
+          },
+            el("div", { style: "font-weight:700" }, bLabel),
+            bTime ? el("div", { style: "font-size:6.5px;font-weight:400" }, bTime) : null));
         }
       }
       thead.appendChild(headerRow);
@@ -598,7 +650,13 @@ import "../state.js";
       const rc = visibleRows[ri];
       const tr = el("tr");
       const rowLabels = [];
-      for (const [, ent] of rc.entries()) rowLabels.push(ent.name || ent.abbr);
+      // Days print short ("Mo") like aSc when the file carries a short name —
+      // a six-row grid reads much better with two letters in the gutter.
+      for (const [dim, ent] of rc.entries()) {
+        const isDay = dim === "day" || ent._dim === "day";
+        const short = ent.abbr || ent.short;
+        rowLabels.push(isDay && short ? short : (ent.name || ent.abbr));
+      }
       tr.appendChild(el("td", {
         style: "border:1px solid #999;padding:4px 5px;background:#fafafa;font-weight:600;text-align:center;font-family:'Fraunces',serif;font-size:" + report._layout.rowFontPx + "px",
       }, rowLabels.join(" · ")));
@@ -794,8 +852,8 @@ import "../state.js";
     page.appendChild(el("div", {
       style: "display:flex;justify-content:space-between;font-size:10px;color:#666;font-family:'JetBrains Mono',ui-monospace,monospace;border-top:1px solid #eee;padding-top:6px",
     },
-      el("span", null, "W.E.F " + new Date().toLocaleDateString("en-GB")),
-      el("span", null, "Chronexa Web · " + (window.APP_VER || "dev"))));
+      el("span", null, printDateLine(school)),
+      el("span", null, "Chronexa")));
 
     return page;
   }
@@ -880,5 +938,5 @@ import "../state.js";
     return renderReport(report, school, periods);
   }
 
-  APP.PrintPivot = { renderReport, renderPreset, axisCombinations, entitiesFor, periodHeaderStyle };
+  APP.PrintPivot = { renderReport, renderPreset, axisCombinations, entitiesFor, periodHeaderStyle, printTitle, printDateLine };
 })();

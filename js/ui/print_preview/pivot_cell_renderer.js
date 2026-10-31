@@ -206,9 +206,12 @@ import "../state.js";
     const ceilingPx = Math.max(7, Math.round((style.size || 14) * 0.6));
     const floorPx = 6;
     fontStyle.push("font-size:clamp(" + floorPx + "px, " + Math.max(6, Math.round((style.size || 14) * 0.35)) + "cqi, " + ceilingPx + "px)");
-    fontStyle.push("overflow-wrap:break-word");
-    fontStyle.push("word-break:break-word");
-    fontStyle.push("hyphens:auto");
+    // Long subject names used to run under the classroom label (both anchored
+    // in the same corner), printing "Sleeping Time" and "Sleeping Room" on top
+    // of each other. Ellipsis keeps each element inside its own box.
+    fontStyle.push("overflow:hidden");
+    fontStyle.push("text-overflow:ellipsis");
+    fontStyle.push("white-space:nowrap");
     fontStyle.push("max-width:100%");
     return el("div", {
       // data-chrx-el lets the print preview answer "style the thing I clicked"
@@ -636,11 +639,31 @@ import "../state.js";
 
     for (const [anchorKey, items] of byAnchor) {
       const anchor = ANCHOR_TO_FLEX[anchorKey] || ANCHOR_TO_FLEX["middle-center"];
+      // Opposite corners must not share the same horizontal band: a long subject
+      // on the left used to print straight through the classroom label on the
+      // right ("Sleeping Time" over "Sleeping Room"). Each side keeps to its own
+      // share of the cell.
+      // Three non-overlapping horizontal BANDS, because the subject is centred
+      // and the classroom sits top-right: a full-width centre box ran straight
+      // into the room label ("Sleeping Time" + "Room" printed on top of each
+      // other). Left band keeps the right 55%, right band keeps the left 55%,
+      // centre keeps 22% on both sides.
+      // The top band is shared by the subject (centred) and the classroom
+      // (right). Give the right-hand element a fixed 34% slice and reserve that
+      // slice on the centred element, so a long subject is never cut short and
+      // the room label can never print over it. Left-aligned elements keep the
+      // full cell; they sit in the bottom band with the teacher.
+      const hasRightNeighbour = [...byAnchor.keys()].some((k) => (ANCHOR_TO_FLEX[k] || {}).text === "right");
+      const sideInset = anchor.text === "right"
+        ? "right:2%;width:32%;left:auto"
+        : (anchor.text === "center" && hasRightNeighbour)
+          ? "left:2%;right:36%"
+          : "left:2%;right:2%";
       const wrap = el("div", {
-        style: "position:absolute;inset:0;display:flex;flex-direction:column;justify-content:" + anchor.justify +
+        style: "position:absolute;top:0;bottom:0;" + sideInset + ";display:flex;flex-direction:column;justify-content:" + anchor.justify +
           ";align-items:" + anchor.align +
           ";text-align:" + anchor.text +
-          ";padding:2px 4px;pointer-events:none",
+          ";padding:2px 4px;pointer-events:none;overflow:hidden",
       });
       for (const { text, style } of items) {
         const elNode = renderElement(text, style);

@@ -69,6 +69,19 @@ import "./cell_style_dialog.js";
   }
   function save() {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(APP.printSettings)); } catch {}
+    // The printed school name belongs to the FILE (aSc keeps it in the report
+    // settings; an imported aSc XML only carries a placeholder displayname), so
+    // write it onto the school too.
+    try {
+      if (APP.printSettings.headerText && APP.school) {
+        APP.printSettings.headerText = String(APP.printSettings.headerText).trim();
+        if (typeof APP.mutate === "function") {
+          APP.mutate("Set print header name", (sch) => { sch.printHeaderText = APP.printSettings.headerText; });
+        } else {
+          APP.school.printHeaderText = APP.printSettings.headerText;
+        }
+      }
+    } catch {}
     window.dispatchEvent(new CustomEvent("app:print-settings-changed", { detail: APP.printSettings }));
     (window._chrxNotify || function () {})("Print settings saved", "info");
   }
