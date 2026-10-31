@@ -716,3 +716,47 @@ describe("cycle aliases stay consistent", () => {
     expect(withRooms("a_80")).toBeGreaterThan(0);
   });
 });
+
+describe("question-marked (conditional) cards", () => {
+  const { buildModel, makeState, softScore } = __test_internals;
+  const mk = (lessons, tcons) => ({
+    schoolName: "conditional", daysPerWeek: 5, periodsPerDay: 6, bell: BELL, bells: [BELL],
+    subjects: [{ id: "bio", name: "Bio" }],
+    teachers: [{ id: "t1", name: "T1", subjects: ["bio"], timeOff: {}, constraints: tcons }],
+    classes: [{ id: "c1", name: "IX A", bellId: "b8" }],
+    classrooms: [{ id: "r1", name: "R1", tags: [] }],
+    lessons, relations: [], cards: [],
+  });
+  const conditionalLessons = [
+    { id: "l1", subjectId: "bio", teacherIds: ["t1"], classIds: ["c1"], periodsPerWeek: 1, conditional: true },
+    { id: "l2", subjectId: "bio", teacherIds: ["t1"], classIds: ["c1"], periodsPerWeek: 1, conditional: true },
+    { id: "l3", subjectId: "bio", teacherIds: ["t1"], classIds: ["c1"], periodsPerWeek: 1 },
+  ];
+
+  it("carries the flag into the model", () => {
+    const m = buildModel(mk(conditionalLessons, {}));
+    expect(Array.from(m.lessonConditional)).toEqual([1, 1, 0]);
+  });
+
+  it("reads the per-teacher cap from the Constraints dialog key", () => {
+    expect(buildModel(mk(conditionalLessons, { maxOnConditional: 1 })).teacherMaxOnConditional[0]).toBe(1);
+    expect(buildModel(mk(conditionalLessons, { maxOnConditional: "*" })).teacherMaxOnConditional[0]).toBe(-1);
+  });
+
+  it("penalises placing more optional lessons than the cap allows", () => {
+    const scoreWith = (cap, placedCount) => {
+      const m = buildModel(mk(conditionalLessons, cap == null ? {} : { maxOnConditional: cap }));
+      const st = makeState(m);
+      for (let i = 0; i < placedCount; i++) {
+        st.lessonAssigned[i] = 1;
+        st.lessonAssignedSlot[i] = i;
+      }
+      st._scoreDirty = true;
+      return softScore(m, st);
+    };
+    // cap 1: placing both optional cards costs, placing one does not.
+    expect(scoreWith(1, 2)).toBeGreaterThan(scoreWith(1, 1));
+    // no cap: identical
+    expect(scoreWith(null, 2)).toBe(scoreWith(null, 1));
+  });
+});
