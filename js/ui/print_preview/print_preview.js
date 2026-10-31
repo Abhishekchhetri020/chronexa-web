@@ -3,6 +3,7 @@ import "../state.js";
 import "../ribbon/topbar.js";
 import "./cell_style_dialog.js";
 import "./print_settings_dialog.js";
+import "./saved_reports.js";
 
 /* Print preview — swaps the ribbon into preview mode, renders one of 5
  * starter report templates onto A4 pages, prints via window.print().
@@ -62,6 +63,13 @@ import "./print_settings_dialog.js";
 
     const sel = el("select", { class: "chrx-tb-btn", "aria-label": "Report template",
       onchange: (e) => {
+        if (String(e.target.value).startsWith("layout:") && window.SavedReports) {
+          const id = String(e.target.value).slice("layout:".length);
+          window.SavedReports.apply(id);
+          const row = window.SavedReports.find(id);
+          if (row) { render(row.baseTemplate); sel.value = "layout:" + row.id; }
+          return;
+        }
         // Reset any per-report customisations when switching reports
         if (APP.activePrintReport && APP.activePrintReport._presetId !== e.target.value) {
           const wasColor = APP.activePrintReport.colors?.cardOn;
@@ -83,6 +91,30 @@ import "./print_settings_dialog.js";
     ];
     templates.forEach(t => sel.appendChild(el("option", { value: t.id }, t.name)));
     sel.value = currentTemplate;
+
+    // Saved layouts live on the school (aSc stores these as ttreports), so the
+    // picker lists them next to the built-in reports.
+    if (window.SavedReports) {
+      try {
+        const layouts = window.SavedReports.list();
+        if (layouts.length) {
+          const group = el("optgroup", { label: "Saved layouts (this file)" });
+          for (const r of layouts) {
+            group.appendChild(el("option", { value: "layout:" + r.id }, r.name));
+          }
+          sel.appendChild(group);
+        }
+      } catch {}
+    }
+    const layoutsBtn = el("button", {
+      class: "chrx-tb-btn", type: "button",
+      title: "Save this print setup inside the timetable file, or load a saved one",
+      onclick: () => {
+        if (!window.SavedReports) return;
+        window.SavedReports.migrateFromLocalStorage();
+        window.SavedReports.openManager();
+      },
+    }, "\ud83d\udcbe Layouts");
 
     const colorToggleBtn = el("button", {
       class: "chrx-tb-btn",
@@ -267,7 +299,7 @@ import "./print_settings_dialog.js";
     const close = el("button", { class: "chrx-tb-btn chrx-tb-btn--danger", type: "button",
       style: "margin-left:auto", onclick: closePreview }, "✕ Close preview");
 
-    [prev, next, print, indicator, sel, colorToggleBtn, zoomOut, zoomReadout, zoomIn, fitBtn, filterBtn, tuningBtn, structBtn, extraBtn, styleBtn, sizeBtn, designBtn, colorBtn, globalBtn, close]
+    [prev, next, print, indicator, sel, layoutsBtn, colorToggleBtn, zoomOut, zoomReadout, zoomIn, fitBtn, filterBtn, tuningBtn, structBtn, extraBtn, styleBtn, sizeBtn, designBtn, colorBtn, globalBtn, close]
       .forEach(c => bar.appendChild(c));
     bar._indicator = indicator;
     return bar;
