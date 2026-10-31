@@ -33,7 +33,7 @@ import { DEFAULT_SOFT_WEIGHTS, FAIL, FAIL_NAME, Weight } from "./constraints.js"
 // classids = classes to watch (empty = every class the lessons touch),
 // param1 = the limit. A row without a usable param1 is inert, as in aSc.
 // Types that carry no numeric limit — they are positional, not counted.
-export const ADV_NO_PARAM = new Set(["a_30", "a_34", "a_49", "a_60", "a_76"]);
+export const ADV_NO_PARAM = new Set(["a_30", "a_34", "a_49", "a_55", "a_60", "a_76"]);
 
 export const ADV_REL_TYPS = new Set([
   "a_1", "a_4", "a_5", "a_6", "a_22", "a_26", "a_27", "a_82", "a_83",
@@ -52,6 +52,8 @@ export const ADV_REL_TYPS = new Set([
   // remaining counted families: day/week minimum variants, batch minimums,
   // gap filling, distinct-subject runs, unordered adjacency, building changes
   "a_29", "a_31", "a_38", "a_36", "a_49", "a_56", "a_76", "a_85",
+  // last buildable group: symmetry, block shapes, simultaneity, distances
+  "a_14", "a_55", "a_59", "a_75", "a_77", "a_78", "a_79", "a_80", "a_81", "a_84",
 ]);
 import { popcount32 } from "./bitmask.js";
 import { createLearningForSchool, SolverLearning } from "./solver_learning.js";
@@ -1316,8 +1318,10 @@ function buildModel(school) {
       flags.push((isA ? 1 : 0) | (isB ? 2 : 0));
     }
     if (!lessonIdxs.length) continue;
+    const rawP2 = rel.param2;
+    const p2 = rawP2 == null || rawP2 === "" ? null : parseInt(rawP2, 10);
     advRels.push({
-      typ, p1,
+      typ, p1, p2: Number.isNaN(p2) ? null : p2,
       lessonIdxs: Int32Array.from(lessonIdxs),
       flags: Uint8Array.from(flags),
       positions: rel.positions,
@@ -3470,6 +3474,8 @@ function advancedRelationPenalty(model, state) {
     const wantSubjects = typ === "a_54";
     // a_56 needs to know WHICH subject sits in each period of the day.
     const subjAt = (typ === "a_56") ? new Map() : null;
+    // a_55 needs to know whether a 4-period block is two doubles.
+    const spanAt = (typ === "a_55") ? new Map() : null;
     const touch = (key, bit) => {
       let e = masks.get(key);
       if (!e) masks.set(key, e = { all: 0, A: 0, B: 0, subj: wantSubjects ? new Set() : null });
@@ -3491,6 +3497,13 @@ function advancedRelationPenalty(model, state) {
           if (flag & 1) e.A |= bit;
           if (flag & 2) e.B |= bit;
           if (e.subj) e.subj.add(model.lessonSubject[i]);
+          if (spanAt) {
+            const key = c * days + d;
+            let row = spanAt.get(key);
+            if (!row) spanAt.set(key, row = new Map());
+            row.set(model.slotPeriod[slot],
+              model.lessonSpan ? (model.lessonSpan[i] | 0) || 1 : 1);
+          }
           if (subjAt) {
             const key = c * days + d;
             let row = subjAt.get(key);
@@ -3498,7 +3511,7 @@ function advancedRelationPenalty(model, state) {
             row.set(model.slotPeriod[slot], model.lessonSubject[i]);
           }
           if (typ === "a_11" || typ === "a_20" || typ === "a_23" ||
-              typ === "a_40" || typ === "a_41" || typ === "a_42") {
+              typ === "a_40" || typ === "a_41" || typ === "a_42" || typ === "a_77") {
             const w = weekOf(c);
             const slotIdx = d * ppd + model.slotPeriod[slot];
             w.dayMask |= (1 << d);
@@ -3632,12 +3645,14 @@ function advancedRelationPenalty(model, state) {
       continue;
     }
 
-    if (typ === "a_24" || typ === "a_25" || typ === "a_58" || typ === "a_39" || typ === "a_43") {
+    if (typ === "a_24" || typ === "a_25" || typ === "a_80" || typ === "a_58" || typ === "a_79" ||
+        typ === "a_39" || typ === "a_43") {
       // Room / building shape. a_24/a_58 count per DAY, a_25 per WEEK, and
       // a_39/a_43 count simultaneous users of one period.
       const dayRooms = new Map();   // day -> Set(roomIdx)
       const dayBuildings = new Map();
       const weekRooms = new Set();
+      const weekBuildings = new Set();
       const slotCount = new Map();  // day*ppd+p -> count
       for (let k = 0; k < rel.lessonIdxs.length; k++) {
         const i = rel.lessonIdxs[k];
@@ -3663,7 +3678,7 @@ function advancedRelationPenalty(model, state) {
         if (room < 0) continue;
         for (const slot of slotsOf) {
           const d = model.slotDay[slot];
-          if (typ === "a_24" || typ === "a_25") {
+          if (typ === "a_24" || typ === "a_25" || typ === "a_80") {
             let set = dayRooms.get(d);
             if (!set) dayRooms.set(d, set = new Set());
             set.add(room);
@@ -3674,15 +3689,18 @@ function advancedRelationPenalty(model, state) {
             let set = dayBuildings.get(d);
             if (!set) dayBuildings.set(d, set = new Set());
             set.add(b);
+            weekBuildings.add(b);
           }
         }
       }
       if (typ === "a_24") {
         for (const [, set] of dayRooms) if (set.size > p1) penalty += set.size - p1;
-      } else if (typ === "a_25") {
+      } else if (typ === "a_25" || typ === "a_80") {
         if (weekRooms.size > p1) penalty += weekRooms.size - p1;
       } else if (typ === "a_58") {
         for (const [, set] of dayBuildings) if (set.size > p1) penalty += set.size - p1;
+      } else if (typ === "a_79") {
+        if (weekBuildings.size > p1) penalty += weekBuildings.size - p1;
       } else {
         for (const [, v] of slotCount) {
           const n = typeof v === "number" ? v : v.size;
@@ -3750,7 +3768,7 @@ function advancedRelationPenalty(model, state) {
     }
 
     // Frequency family — counting only, on the same per (class, day) masks.
-    if (typ === "a_0" || typ === "a_74" || typ === "a_9" || typ === "a_3" ||
+    if (typ === "a_0" || typ === "a_74" || typ === "a_78" || typ === "a_9" || typ === "a_3" ||
         typ === "a_10" || typ === "a_12" || typ === "a_13") {
       const perClass = new Map(); // c -> { dayMask, periods }
       for (const [key, e] of masks) {
@@ -3766,14 +3784,123 @@ function advancedRelationPenalty(model, state) {
           if (typ === "a_10" && n > p1) penalty += n - p1;
         }
       }
-      if (typ === "a_0" || typ === "a_74" || typ === "a_9" || typ === "a_12" || typ === "a_13") {
+      if (typ === "a_0" || typ === "a_74" || typ === "a_78" || typ === "a_9" || typ === "a_12" || typ === "a_13") {
         for (const [, acc] of perClass) {
           const usedDays = popcount32(acc.dayMask >>> 0);
-          if ((typ === "a_0" || typ === "a_74") && usedDays > p1) penalty += usedDays - p1;
+          if ((typ === "a_0" || typ === "a_74" || typ === "a_78") && usedDays > p1) penalty += usedDays - p1;
           if (typ === "a_9" && usedDays < p1) penalty += p1 - usedDays;
           if (typ === "a_12" && acc.periods < p1) penalty += p1 - acc.periods;
           if (typ === "a_13" && acc.periods > p1) penalty += acc.periods - p1;
         }
+      }
+      continue;
+    }
+
+    if (typ === "a_14") {
+      // A and B must sit on the same positions; `param1` days a week may differ.
+      let bad = 0;
+      for (const [, e] of masks) {
+        if (!e.A && !e.B) continue;
+        if (e.A !== e.B) bad += 1;
+      }
+      if (bad > p1) penalty += bad - p1;
+      continue;
+    }
+
+    if (typ === "a_55") {
+      // Max 3 consecutive periods — or 4 when the run is two doubles.
+      if (!spanAt) continue;
+      for (const [key, row] of spanAt) {
+        const mask = 0;
+        void mask;
+        const ps = [...row.keys()].sort((a, b) => a - b);
+        let run = 0, start = 0;
+        const flush = (endIdx) => {
+          if (run > 3) {
+            const fourAsTwoDoubles = run === 4
+              && row.get(start) === 2 && row.get(start + 2) === 2
+              && row.get(start) !== undefined;
+            if (!fourAsTwoDoubles) penalty += run - 3;
+          }
+          void endIdx;
+        };
+        for (let i = 0; i < ps.length; i++) {
+          if (i === 0 || ps[i] !== ps[i - 1] + 1) {
+            flush(i);
+            run = 1;
+            start = ps[i];
+          } else {
+            run += 1;
+          }
+        }
+        flush(ps.length);
+        void key;
+      }
+      continue;
+    }
+
+    if (typ === "a_59") {
+      // Periods where EVERY scoped class has a watched lesson.
+      const perSlot = new Map();     // day*ppd+period -> Set(class)
+      for (const [key, e] of masks) {
+        if (!e.all) continue;
+        for (let p = 0; p < ppd; p++) {
+          if (!(e.all & (1 << p))) continue;
+          const c = Math.floor(key / days), d = key % days;
+          const slotKey = d * ppd + p;
+          let set = perSlot.get(slotKey);
+          if (!set) perSlot.set(slotKey, set = new Set());
+          set.add(c);
+        }
+      }
+      const scoped = new Set();
+      for (let k = 0; k < rel.lessonIdxs.length; k++) {
+        const i = rel.lessonIdxs[k];
+        const cs = model.lessonClassStart[i], cc = model.lessonClassCount[i];
+        for (let j = 0; j < cc; j++) scoped.add(model.lessonClassFlat[cs + j]);
+      }
+      let together = 0;
+      for (const [, set] of perSlot) if (set.size >= scoped.size) together += 1;
+      if (scoped.size && together < p1) penalty += (p1 - together) * 3;
+      continue;
+    }
+
+    if (typ === "a_75") {
+      // Minimum distance between two lessons of the set in one day.
+      for (const [, e] of masks) {
+        if (!e.all) continue;
+        let prev = -1;
+        for (let p = 0; p < ppd; p++) {
+          if (!(e.all & (1 << p))) continue;
+          if (prev >= 0 && p - prev < p1) penalty += 1;
+          prev = p;
+        }
+      }
+      continue;
+    }
+
+    if (typ === "a_77") {
+      // Minimum FREE days between two used days (the weekend is not a gap).
+      for (const [, w] of week) {
+        const used = [];
+        for (let d = 0; d < days; d++) if ((w.dayMask >> d) & 1) used.push(d);
+        for (let i = 1; i < used.length; i++) {
+          const free = used[i] - used[i - 1] - 1;
+          if (free < p1) penalty += p1 - free;
+        }
+      }
+      continue;
+    }
+
+    if (typ === "a_84") {
+      // Max consecutive periods, optionally only on days that already carry at
+      // least `param2` periods (aSc's "extended" variant).
+      for (const [, e] of masks) {
+        if (!e.all) continue;
+        const n = popcount32(e.all >>> 0);
+        if (rel.p2 != null && n < rel.p2) continue;
+        const run = longestRun(e.all, ppd);
+        if (run > p1) penalty += run - p1;
       }
       continue;
     }
@@ -3878,7 +4005,9 @@ function advancedRelationPenalty(model, state) {
       continue;
     }
 
-    if (typ === "a_85") {
+    if (typ === "a_85" || typ === "a_81") {
+      // a_85 = building transitions between consecutive periods;
+      // a_81 = classroom transitions (a room swap inside one building counts).
       // Classroom changes per day: consecutive occupied periods in different
       // buildings. Needs the room of each card, so it walks placements.
       const perDay = new Map();     // day -> Map(period -> building)
@@ -3886,13 +4015,15 @@ function advancedRelationPenalty(model, state) {
         const i = rel.lessonIdxs[k];
         if (!state.lessonAssigned[i]) continue;
         const room = state.lessonAssignedRoom ? state.lessonAssignedRoom[i] : -1;
-        const b = room >= 0 && model.classroomBuilding ? model.classroomBuilding[room] : -1;
-        if (b < 0) continue;
+        if (room < 0) continue;
+        const b = model.classroomBuilding ? model.classroomBuilding[room] : -1;
+        const value = typ === "a_81" ? room : b;
+        if (value < 0) continue;
         for (const slot of _slotsOfLesson(model, state, i)) {
           const d = model.slotDay[slot];
           let row = perDay.get(d);
           if (!row) perDay.set(d, row = new Map());
-          row.set(model.slotPeriod[slot], b);
+          row.set(model.slotPeriod[slot], value);
         }
       }
       for (const [, row] of perDay) {

@@ -179,6 +179,38 @@ import "./dialog_shell.js";
     { code:"a_58", label:"Max different buildings per day", category:"Advanced — rooms",
       param1:{ label:"Max buildings", min:1, max:10, def:1 },
       help:"Stops a class or teacher being shuttled between buildings more than this in a day." },
+    { code:"a_14", label:"Must be on the same positions (A = B)", category:"Advanced — ordering",
+      param1:{ label:"Allowed exceptions per week", min:0, max:20, def:0 },
+      needsSubject2:true,
+      help:"A and B must occupy exactly the same periods; this many days a week may differ." },
+    { code:"a_55", label:"Max 3 consecutive periods, or 2 doubles", category:"Advanced — day shape",
+      help:"Caps a block at three periods — a four-period block is allowed only as two doubles." },
+    { code:"a_59", label:"Min periods per week where ALL selected classes run the lesson", category:"Advanced — frequency",
+      param1:{ label:"Min periods together", min:1, max:40, def:2 },
+      help:"How often the selected classes must have these lessons at the same time — combined games/lab batches." },
+    { code:"a_75", label:"Min distance between lessons in one day", category:"Advanced — day shape",
+      param1:{ label:"Min periods apart", min:1, max:12, def:2 },
+      help:"Two lessons of the set must be at least this many periods apart on the same day." },
+    { code:"a_77", label:"Min free days between lessons", category:"Advanced — frequency",
+      param1:{ label:"Min free days", min:0, max:6, def:1 },
+      help:"Between two days that carry these lessons there must be at least this many empty days." },
+    { code:"a_78", label:"Max different days per week (all weeks)", category:"Advanced — frequency",
+      param1:{ label:"Max days", min:1, max:30, def:5 },
+      help:"Whole-cycle form of Max days per week; identical on a single-week timetable." },
+    { code:"a_79", label:"Max different buildings per week", category:"Advanced — rooms",
+      param1:{ label:"Max buildings", min:1, max:10, def:2 },
+      help:"Weekly cap on how many buildings these lessons may use." },
+    { code:"a_80", label:"Max different rooms per all weeks/terms", category:"Advanced — rooms",
+      param1:{ label:"Max rooms", min:1, max:40, def:4 },
+      help:"Whole-cycle form of Max different rooms per week." },
+    { code:"a_81", label:"Max classroom changes per day", category:"Advanced — rooms",
+      param1:{ label:"Max changes", min:0, max:12, def:3 },
+      help:"Counts room-to-room moves between consecutive periods, even inside one building." },
+    { code:"a_84", label:"Max consecutive periods (extended)", category:"Advanced — day shape",
+      param1:{ label:"Max in a row", min:1, max:12, def:3 },
+      param2:{ label:"Only on days with at least", min:0, max:12, def:0 },
+      help:"Caps a run of periods for the whole selected set; optionally only on days that already carry at least this many." },
+
     { code:"a_29", label:"Min periods per day (every day counts)", category:"Advanced — frequency",
       param1:{ label:"Min periods", min:1, max:12, def:2 },
       help:"Like Min periods per day, but days with none are charged too — use only when these lessons must appear every day." },
@@ -264,6 +296,7 @@ import "./dialog_shell.js";
   ]);
   // Advanced types carry a numeric limit in `param1`.
   const NEEDS_PARAM1 = new Set(TYP_CATALOGUE.filter(t => t.param1).map(t => t.code));
+  const NEEDS_PARAM2 = new Set(TYP_CATALOGUE.filter(t => t.param2).map(t => t.code));
   const NEEDS_POSITIONS_FIRSTLAST = new Set(["n_16"]);
   const NEEDS_POSITIONS_RANGE     = new Set(["n_17", "a_60"]);
 
@@ -536,6 +569,19 @@ import "./dialog_shell.js";
           },
         });
         wrap.appendChild(D.buildField(cfg.label, num));
+        if (NEEDS_PARAM2.has(draft.typ)) {
+          const cfg2 = typInfo.param2;
+          if (draft.param2 == null || draft.param2 === "") draft.param2 = cfg2.def;
+          const num2 = D.el("input", {
+            type:"number", min:String(cfg2.min), max:String(cfg2.max),
+            value:String(draft.param2), style:"width:90px;",
+            oninput:(e) => {
+              const raw = e.target.value.trim();
+              draft.param2 = raw === "" ? undefined : parseInt(raw, 10);
+            },
+          });
+          wrap.appendChild(D.buildField(cfg2.label, num2));
+        }
       } else if (draft.param1 !== undefined && !TYP_BY_CODE[draft.typ]?.param1) {
         // Switching from an advanced type back to a normal one must not leave a
         // stale limit behind — the solver would silently keep honouring it.
