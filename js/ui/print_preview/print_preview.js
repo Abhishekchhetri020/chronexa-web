@@ -4,6 +4,7 @@ import "../ribbon/topbar.js";
 import "./cell_style_dialog.js";
 import "./print_settings_dialog.js";
 import "./saved_reports.js";
+import { prepare as prepareSheets } from "./sheet_engine.js";
 
 /* Print preview — swaps the ribbon into preview mode, renders one of 5
  * starter report templates onto A4 pages, prints via window.print().
@@ -551,8 +552,16 @@ import "./saved_reports.js";
         try { autofitMountedPage(p); } catch (e) { /* never break printing */ }
       }
     }
+    // Sheet settings (paper, N-up/poster, copies, page numbers, hide empties)
+    // are applied only around the print call: the on-screen preview keeps its
+    // own single-page layout.
+    let restoreSheets = null;
+    try {
+      restoreSheets = prepareSheets(pages, APP.printSettings || {}, docShell);
+    } catch (e) { console.warn("[print] sheet engine:", e && e.message); }
     try { window.print(); }
     finally {
+      try { if (restoreSheets) restoreSheets(); } catch {}
       exitPrintLayout(savedStyle);
       showPage(saved);  // re-mounts current page + re-applies zoom
     }
