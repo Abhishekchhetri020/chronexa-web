@@ -366,13 +366,30 @@ import "../state.js";
     function onAnyChange() { preview.refresh(); }
 
     const ORDER = ["subject","teacher","class","group","classroom","count","bellTimes"];
+    const panels = {};
     for (const key of ORDER) {
       let style = draft.elementStyles.find(s => s.key === key);
       if (!style) {
         style = Schema.makeElementStyle(key, draft.context);
         draft.elementStyles.push(style);
       }
-      body.appendChild(elementPanel(key, style, onAnyChange));
+      const panel = elementPanel(key, style, onAnyChange);
+      // Right-clicking a card in the preview opens this dialog at that element
+      // (aSc's "style the area you clicked"), so each panel is addressable.
+      try { panel.setAttribute("data-chrx-panel", key); } catch {}
+      panels[key] = panel;
+      body.appendChild(panel);
+    }
+    if (opts.focusElement && panels[opts.focusElement]) {
+      const focus = panels[opts.focusElement];
+      setTimeout(() => {
+        try {
+          focus.scrollIntoView({ block: "center", behavior: "smooth" });
+          const prev = focus.style.boxShadow;
+          focus.style.boxShadow = "0 0 0 2px #2563eb inset";
+          setTimeout(() => { focus.style.boxShadow = prev; }, 1600);
+        } catch {}
+      }, 40);
     }
 
     const footer = el("div", {
