@@ -5,6 +5,7 @@ import "./cell_style_dialog.js";
 import "./print_settings_dialog.js";
 import "./saved_reports.js";
 import { prepare as prepareSheets, companionIds } from "./sheet_engine.js";
+import { attach as attachContextMenu } from "./preview_context_menu.js";
 
 /* Print preview — swaps the ribbon into preview mode, renders one of 5
  * starter report templates onto A4 pages, prints via window.print().
@@ -428,6 +429,8 @@ import { prepare as prepareSheets, companionIds } from "./sheet_engine.js";
     
     const mainArea = el("div", { class: "chrx-preview-main-area", style: "display:flex; flex:1; overflow:hidden;" });
     docShell = el("div", { class: "chrx-preview-doc", style: "flex:1; overflow:auto;" });
+    // aSc's gesture: right-click a card or a table header to style it.
+    try { attachContextMenu(docShell); } catch (e) { console.warn("[print] context menu:", e); }
     // Ctrl/⌘ + wheel zooms the preview (like a PDF viewer); plain wheel scrolls.
     docShell.addEventListener("wheel", (e) => {
       if (e.ctrlKey || e.metaKey) { e.preventDefault(); setZoom(zoom + (e.deltaY < 0 ? 0.08 : -0.08)); }
@@ -722,6 +725,7 @@ import { prepare as prepareSheets, companionIds } from "./sheet_engine.js";
 
   function render(template) {
     currentTemplate = template;
+    try { APP.activePrintTemplate = template; } catch {}
     pageIdx = 0;
     pages = [];
     const s = APP.school;
@@ -1057,6 +1061,13 @@ import { prepare as prepareSheets, companionIds } from "./sheet_engine.js";
   window.addEventListener("app:preview-prev",  () => stepPage(-1));
   window.addEventListener("app:preview-next",  () => stepPage(1));
   window.addEventListener("app:preview-template", (e) => render(e.detail?.template || "class"));
+  // A style edit from the right-click menu edits the active PrintReport; the
+  // preview must re-render it or the change looks ignored.
+  window.addEventListener("app:print-report-updated", () => {
+    if (overlay && overlay.classList.contains("is-open")) {
+      try { render(currentTemplate); } catch (e) { console.warn("[print] re-render:", e); }
+    }
+  });
   window.addEventListener("app:print-scope", (e) => printScope(e.detail?.scope || e.detail));
   window.addEventListener("keydown", (e) => {
     if ((e.metaKey || e.ctrlKey) && (e.key === "p" || e.key === "P") && !overlay?.classList.contains("is-open")) {

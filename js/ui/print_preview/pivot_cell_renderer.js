@@ -211,6 +211,8 @@ import "../state.js";
     fontStyle.push("hyphens:auto");
     fontStyle.push("max-width:100%");
     return el("div", {
+      // data-chrx-el lets the print preview answer "style the thing I clicked"
+      "data-chrx-el": style.key || null,
       style: "line-height:1.15;" + fontStyle.join(";"),
     }, text);
   }
