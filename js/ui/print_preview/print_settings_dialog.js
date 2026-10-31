@@ -56,6 +56,8 @@ import "./cell_style_dialog.js";
     pageNumbers: "none",
     hideEmptyRows: false,
     hideEmptyColumns: false,
+    cellText: "subject",
+    headerPrefix: "",
   };
 
   function load() {
@@ -131,6 +133,8 @@ import "./cell_style_dialog.js";
   }
   function tabGlobals() {
     return el("div", null,
+      row("What a cell shows", pick("cellText",
+        ["subject", "subject-abbr", "subject-teacher", "teacher", "subject-room", "group"])),
       row("Show bell times",       bool("showBellTimes")),
       row("Show teacher names",    bool("showTeacherNames")),
       row("Show classroom names",  bool("showClassroomNames")),
@@ -190,6 +194,7 @@ import "./cell_style_dialog.js";
   }
   function tabHeader() {
     return el("div", null,
+      row("Page prefix (above the title)", text("headerPrefix", 360)),
       row("Header text",  text("headerText", 360)),
       row("Footer text",  text("footerText", 360)),
       row("Show logo",    bool("showLogo")),

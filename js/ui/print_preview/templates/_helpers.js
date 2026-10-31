@@ -35,10 +35,15 @@ import "../../state.js";
   }
 
   function header(title, subtitle) {
+    // aSc "print prefix": a line above the report title, typically the school.
+    const s = (typeof window !== "undefined" && window.APP && window.APP.printSettings) || {};
+    const prefix = s.headerPrefix ? String(s.headerPrefix) : "";
     return el("div", {
       style: "display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid #333;padding-bottom:4px;margin-bottom:8px",
     },
-      el("h2", { style: "margin:0;font-size:14px" }, title || ""),
+      el("div", null,
+        prefix ? el("div", { style: "font-size:8.5px;letter-spacing:.06em;text-transform:uppercase;color:#666;margin-bottom:2px" }, prefix) : null,
+        el("h2", { style: "margin:0;font-size:14px" }, title || "")),
       el("div", { style: "font-size:9.5px;color:#555" }, subtitle || ""));
   }
 
@@ -57,9 +62,33 @@ import "../../state.js";
     return (list || []).find(c => c.day === day && c.period === period) || null;
   }
 
+  /**
+   * What a printed cell shows — aSc's `ttreports.celltype`, driven by the
+   * "What a cell shows" setting:
+   *   subject (default) · subject-abbr · subject-teacher · teacher ·
+   *   subject-room · group
+   * One helper, so every template that prints a card follows the choice.
+   */
+  function cellTextMode() {
+    const s = (typeof window !== "undefined" && window.APP && window.APP.printSettings) || {};
+    return s.cellText || "subject";
+  }
+
   function subjectLabel(card) {
     if (!card) return "";
-    return card.subjectAbbr || card.subject || "";
+    const subj = card.subjectAbbr || card.subject || "";
+    const teacher = card.teacher || card.teacherName ||
+      (Array.isArray(card.teachers) ? card.teachers.join(", ") : "");
+    const room = card.classroom || card.classroomName || "";
+    switch (cellTextMode()) {
+      case "subject-abbr":  return card.subjectAbbr || card.subject || "";
+      case "teacher":       return teacher || subj;
+      case "subject-teacher": return teacher ? `${subj} · ${teacher}` : subj;
+      case "subject-room":  return room ? `${subj} · ${room}` : subj;
+      case "group":         return (Array.isArray(card.groups) && card.groups.length)
+        ? card.groups.join(", ") : subj;
+      default:              return subj;
+    }
   }
 
   function teacherList(card) {
@@ -115,7 +144,7 @@ import "../../state.js";
 
   APP.printTemplateUtils = {
     DAYS, el, page, header, footer, emptyPage,
-    cardAtFor, subjectLabel, teacherList,
+    cardAtFor, subjectLabel, teacherList, cellTextMode,
     tableCSS, gridCSS, gridCols, thCSS, tdCSS,
     structureFor,
   };
