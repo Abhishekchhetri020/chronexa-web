@@ -463,3 +463,12 @@
   color: var(--chrx-fg);
   border: 1px solid var(--chrx-line);
 }
+
+/* While the print preview is open, app chrome that floats (onboarding tour,
+   notebook tips, toasts) must not cover the sheet the user is judging. */
+body.chrx-previewing .chrx-tour,
+body.chrx-previewing [class*="onboarding"],
+body.chrx-previewing [class*="tour-"],
+body.chrx-previewing .chrx-notebook-tip {
+  display: none !important;
+}

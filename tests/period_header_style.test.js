@@ -59,3 +59,31 @@ describe("periodHeaderStyle", () => {
     expect(s.timePx).toBeGreaterThanOrEqual(5);
   });
 });
+
+describe("report title and date line", () => {
+  const P = () => window.APP.PrintPivot;
+
+  it("never prints the XML placeholder as the school name", () => {
+    expect(P().printTitle({ schoolName: "aSc Timetables 2012 XML" }, {}))
+      .toBe("");
+    expect(P().printTitle({ schoolName: "aSc Timetables 2012 XML", regName: "G.D. Goenka, Darbhanga" }, {}))
+      .toBe("G.D. Goenka, Darbhanga");
+  });
+
+  it("lets the print header text win over the file", () => {
+    expect(P().printTitle({ schoolName: "File School" }, { headerText: "Printed Header" }))
+      .toBe("Printed Header");
+  });
+
+  it("prints W.E.F only when the file carries a date", () => {
+    expect(P().printDateLine({})).toBe("");
+    expect(P().printDateLine({ dateFrom: "12.05.2026" })).toBe("W.E.F 12.05.2026");
+    expect(P().printDateLine({ globals: { dateBelowTT: "W.E.F  12.05.2026" } }))
+      .toBe("W.E.F  12.05.2026");
+  });
+
+  it("does not print today's date as if it were the effective date", () => {
+    const today = new Date().toLocaleDateString("en-GB");
+    expect(P().printDateLine({ schoolName: "x" })).not.toContain(today);
+  });
+});
