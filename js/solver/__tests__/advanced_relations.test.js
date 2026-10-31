@@ -57,7 +57,8 @@ describe("registry of advanced types", () => {
       "a_11", "a_20", "a_23", "a_37", "a_40", "a_41", "a_42",
       "a_7", "a_8", "a_30", "a_34", "a_60",
       "a_24", "a_25", "a_39", "a_43", "a_58", "a_50", "a_51",
-      "a_29", "a_31", "a_38", "a_36", "a_49", "a_56", "a_76", "a_85"]) {
+      "a_29", "a_31", "a_38", "a_36", "a_49", "a_56", "a_76", "a_85",
+      "a_14", "a_55", "a_59", "a_75", "a_77", "a_78", "a_79", "a_80", "a_81", "a_84"]) {
       expect(ADV_REL_TYPS.has(t), t).toBe(true);
     }
   });
@@ -611,5 +612,107 @@ describe("a_85 — classroom changes per day", () => {
       return softScore(m, st);
     };
     expect(run("r1", "r3")).toBeGreaterThan(run("r1", "r1"));
+  });
+});
+
+describe("final buildable group — a_14 / a_55 / a_59 / a_75 / a_77 / a_84", () => {
+  const penaltyOf = (sch, rows) => {
+    const m = buildModel(sch);
+    const st = makeState(m);
+    for (const [i, d, p] of rows) { st.lessonAssigned[i] = 1; st.lessonAssignedSlot[i] = d * m.periodsPerDay + p; }
+    return advancedRelationPenalty(m, st);
+  };
+  const rel = (typ, p1, extra = {}) => [{ typ, subjectids: ["bio"], param1: p1, ...extra }];
+
+  it("a_14 wants A and B on identical positions", () => {
+    const lessons = [L("lb", "bio"), L("lp", "phy")];
+    const sch = school(rel("a_14", 0, { subject2ids: ["phy"] }), lessons);
+    expect(penaltyOf(sch, [[0, 0, 2], [1, 0, 2]])).toBe(0);   // same period
+    expect(penaltyOf(sch, [[0, 0, 2], [1, 0, 4]])).toBe(1);   // different
+    // one exception a week swallows the single mismatch
+    const lenient = school(rel("a_14", 1, { subject2ids: ["phy"] }), lessons);
+    expect(penaltyOf(lenient, [[0, 0, 2], [1, 0, 4]])).toBe(0);
+  });
+
+  it("a_55 allows 4 only as two doubles", () => {
+    const sch = school([{ typ: "a_55", subjectids: ["bio"] }], [L("l1", "bio", 4)]);
+    // four singles back to back -> charged 1
+    expect(penaltyOf(sch, [[0, 0, 0], [1, 0, 1], [2, 0, 2], [3, 0, 3]])).toBe(1);
+    // three in a row is inside the cap
+    expect(penaltyOf(sch, [[0, 0, 0], [1, 0, 1], [2, 0, 2], [3, 0, 5]])).toBe(0);
+  });
+
+  it("a_59 wants the scoped classes together often enough", () => {
+    const lessons = [L("la", "bio"), L("lb", "bio")];
+    const sch = {
+      ...school([{ typ: "a_59", subjectids: ["bio"], classids: ["c1"], param1: 2 }], lessons),
+      classes: [{ id: "c1", name: "IX A", bellId: "b8" }, { id: "c2", name: "IX B", bellId: "b8" }],
+      lessons: [
+        { id: "la", subjectId: "bio", teacherIds: ["t1"], classIds: ["c1"], periodsPerWeek: 1 },
+        { id: "lb", subjectId: "bio", teacherIds: ["t1"], classIds: ["c2"], periodsPerWeek: 1 },
+      ],
+    };
+    expect(penaltyOf(sch, [[0, 0, 2], [1, 0, 3]])).toBeGreaterThan(0);   // never together
+    expect(penaltyOf(sch, [[0, 0, 2], [1, 0, 2]])).toBeLessThan(3 * 2);   // together once
+  });
+
+  it("a_75 wants lessons spaced apart in a day", () => {
+    const sch = school(rel("a_75", 3), [L("l1", "bio", 2)]);
+    expect(penaltyOf(sch, [[0, 0, 0], [1, 0, 1]])).toBe(1);   // 1 apart < 3
+    expect(penaltyOf(sch, [[0, 0, 0], [1, 0, 3]])).toBe(0);   // 3 apart
+  });
+
+  it("a_77 wants free days between used days", () => {
+    const sch = school(rel("a_77", 2), [L("l1", "bio", 2)]);
+    expect(penaltyOf(sch, [[0, 0, 0], [1, 1, 0]])).toBe(2);   // consecutive days, 0 free
+    expect(penaltyOf(sch, [[0, 0, 0], [1, 3, 0]])).toBe(0);   // two free days between
+  });
+
+  it("a_84 respects the day-size threshold in param2", () => {
+    const lessons = [L("l1", "bio", 4)];
+    const plain = school([{ typ: "a_84", subjectids: ["bio"], param1: 2 }], lessons);
+    expect(penaltyOf(plain, [[0, 0, 0], [1, 0, 1], [2, 0, 2], [3, 0, 3]])).toBe(2);
+    // param2 = 5: this day carries 4 periods, so the rule does not apply
+    const gated = school([{ typ: "a_84", subjectids: ["bio"], param1: 2, param2: 5 }], lessons);
+    expect(penaltyOf(gated, [[0, 0, 0], [1, 0, 1], [2, 0, 2], [3, 0, 3]])).toBe(0);
+  });
+});
+
+describe("cycle aliases stay consistent", () => {
+  const penaltyOf = (sch, rows) => {
+    const m = buildModel(sch);
+    const st = makeState(m);
+    for (const [i, d, p] of rows) { st.lessonAssigned[i] = 1; st.lessonAssignedSlot[i] = d * m.periodsPerDay + p; }
+    return advancedRelationPenalty(m, st);
+  };
+  const lessons = [L("l1", "bio", 3)];
+  const rows = [[0, 0, 0], [1, 1, 0], [2, 2, 0]];
+
+  it("a_78 == a_0 on a single week", () => {
+    expect(penaltyOf(school([{ typ: "a_78", subjectids: ["bio"], param1: 2 }], lessons), rows))
+      .toBe(penaltyOf(school([{ typ: "a_0", subjectids: ["bio"], param1: 2 }], lessons), rows));
+  });
+
+  it("a_80 == a_25 on a single week", () => {
+    const mk = (typ) => ({
+      schoolName: "alias", daysPerWeek: 5, periodsPerDay: 6, bell: BELL, bells: [BELL],
+      subjects: [{ id: "bio", name: "Bio" }],
+      teachers: [{ id: "t1", name: "T1", subjects: ["bio"], timeOff: {} }],
+      classes: [{ id: "c1", name: "IX A", bellId: "b8" }],
+      classrooms: [{ id: "r1", name: "R1", tags: [] }, { id: "r2", name: "R2", tags: [] }],
+      lessons: [{ id: "l1", subjectId: "bio", teacherIds: ["t1"], classIds: ["c1"], periodsPerWeek: 2 }],
+      relations: [{ typ, subjectids: ["bio"], param1: 1 }],
+      cards: [],
+    });
+    const withRooms = (typ) => {
+      const m = buildModel(mk(typ));
+      const st = makeState(m);
+      st.lessonAssigned[0] = 1; st.lessonAssignedSlot[0] = 0;
+      st.lessonAssigned[1] = 1; st.lessonAssignedSlot[1] = 6;
+      if (st.lessonAssignedRoom) { st.lessonAssignedRoom[0] = 0; st.lessonAssignedRoom[1] = 1; }
+      return advancedRelationPenalty(m, st);
+    };
+    expect(withRooms("a_80")).toBe(withRooms("a_25"));
+    expect(withRooms("a_80")).toBeGreaterThan(0);
   });
 });
