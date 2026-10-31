@@ -110,6 +110,37 @@ import "../state.js";
     }
   }
 
+
+  /**
+   * aSc `gridheadertexts`: the period label and the bell-time line have their own
+   * anchor / size / font / bold. `PrintHeaderDialog` has been editing
+   * report.periodHeader all along — this is what reads it, so the dialog is no
+   * longer decorative. Global `showBellTimes: false` wins over the per-report
+   * switch (it is the "no times anywhere" setting).
+   */
+  function periodHeaderStyle(report, settings) {
+    const ph = (report && report.periodHeader) || {};
+    const sizePct = Number.isFinite(ph.size) ? ph.size : 40;
+    const timePct = Number.isFinite(ph.timeSize) ? ph.timeSize : 17;
+    const anchor = ph.anchor || "top-center";
+    const align = anchor.endsWith("left") ? "left" : anchor.endsWith("right") ? "right" : "center";
+    const showTimes = settings && settings.showBellTimes === false
+      ? false
+      : ph.showTimeIntervals !== false;
+    return {
+      labelPx: Math.max(7, Math.round(sizePct * 0.45)),
+      timePx: Math.max(5, Math.round(timePct * 0.45)),
+      font: ph.font && ph.font !== "system-ui" ? "'" + ph.font + "', system-ui" : "system-ui",
+      timeFont: ph.timeFont && ph.timeFont !== "system-ui" ? "'" + ph.timeFont + "', system-ui" : "system-ui",
+      bold: ph.bold !== false,
+      italic: !!ph.italic,
+      underline: !!ph.underline,
+      align,
+      showTimes,
+      twoLines: !!ph.timeTwoLines,
+    };
+  }
+
   function fmtMin(min) {
     if (min == null || min < 0) return "";
     return Math.floor(min / 60) + ":" + String(min % 60).padStart(2, "0");
@@ -361,8 +392,14 @@ import "../state.js";
             if (ent._endMin   != null) endMin   = ent._endMin;
           }
         }
+        const HS = periodHeaderStyle(report, APP.printSettings);
         headerRow.appendChild(el("th", {
-          style: "border:1px solid #999;padding:2px;background:#fafafa;font-weight:700;font-size:" + report._layout.headerFontPx + "px;text-align:center;font-family:system-ui;width:" + periodColWidthPx + "px",
+          style: "border:1px solid #999;padding:2px;background:#fafafa;" +
+            "font-weight:" + (HS.bold ? "700" : "400") + ";" +
+            (HS.italic ? "font-style:italic;" : "") +
+            (HS.underline ? "text-decoration:underline;" : "") +
+            "font-size:" + HS.labelPx + "px;text-align:" + HS.align + ";font-family:" + HS.font +
+            ";width:" + periodColWidthPx + "px",
         }, labels.join(" · ")));
       }
       thead.appendChild(headerRow);
@@ -526,13 +563,23 @@ import "../state.js";
           if (ent._startMin != null) startMin = ent._startMin;
           if (ent._endMin   != null) endMin   = ent._endMin;
         }
+        const HS = periodHeaderStyle(report, APP.printSettings);
         const th = el("th", {
-          style: "border:1px solid #999;padding:3px 2px;background:#fafafa;font-weight:700;font-size:" + report._layout.headerFontPx + "px;text-align:center;font-family:system-ui",
+          style: "border:1px solid #999;padding:3px 2px;background:#fafafa;" +
+            "font-weight:" + (HS.bold ? "700" : "400") + ";" +
+            (HS.italic ? "font-style:italic;" : "") +
+            (HS.underline ? "text-decoration:underline;" : "") +
+            "font-size:" + HS.labelPx + "px;text-align:" + HS.align + ";font-family:" + HS.font,
         });
-        th.appendChild(el("div", { style: "font-weight:700" }, labels.join(" · ")));
-        if (startMin != null && endMin != null) {
-          th.appendChild(el("div", { style: "font-size:8.5px;font-weight:400;color:#555;margin-top:1px" },
-            fmtMin(startMin) + "–" + fmtMin(endMin)));
+        th.appendChild(el("div", { style: "font-weight:" + (HS.bold ? "700" : "400") }, labels.join(" · ")));
+        if (HS.showTimes && startMin != null && endMin != null) {
+          const timeStyle = "font-size:" + HS.timePx + "px;font-weight:400;color:#555;margin-top:1px;font-family:" + HS.timeFont;
+          if (HS.twoLines) {
+            th.appendChild(el("div", { style: timeStyle }, fmtMin(startMin)));
+            th.appendChild(el("div", { style: timeStyle }, fmtMin(endMin)));
+          } else {
+            th.appendChild(el("div", { style: timeStyle }, fmtMin(startMin) + "–" + fmtMin(endMin)));
+          }
         }
         headerRow.appendChild(th);
         const brk = breakAfterCol(visibleCols, ci, school);
@@ -833,5 +880,5 @@ import "../state.js";
     return renderReport(report, school, periods);
   }
 
-  APP.PrintPivot = { renderReport, renderPreset, axisCombinations, entitiesFor };
+  APP.PrintPivot = { renderReport, renderPreset, axisCombinations, entitiesFor, periodHeaderStyle };
 })();
