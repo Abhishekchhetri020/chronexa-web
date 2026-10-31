@@ -58,6 +58,7 @@ import "./cell_style_dialog.js";
     hideEmptyColumns: false,
     cellText: "subject",
     headerPrefix: "",
+    companionReports: [],
   };
 
   function load() {
@@ -228,7 +229,21 @@ import "./cell_style_dialog.js";
       row("Copies of each sheet", num("repeatCopies", 1, 9, 1)),
       row("Page numbers", pick("pageNumbers", ["none", "page", "of-total"])),
       row("Hide empty rows", bool("hideEmptyRows")),
-      row("Hide empty columns", bool("hideEmptyColumns")));
+      row("Hide empty columns", bool("hideEmptyColumns")),
+      el("p", { style: "color:#64748b;font-size:11px;margin:10px 0 4px" },
+        "Also print (appended to the same job — aSc only offers the classroom timetable, ours takes any report):"),
+      (function () {
+        const list = (APP.printTemplates && APP.printTemplates.list && APP.printTemplates.list()) || [];
+        if (!D.buildIdMultiPicker) return el("div");
+        return D.buildIdMultiPicker({
+          items: list.map((t) => ({ id: t.id, label: t.name || t.id })),
+          ids: APP.printSettings.companionReports || [],
+          label: "Companion reports",
+          emptyText: "This report only",
+          searchPlaceholder: "Search reports…",
+          onChange: (ids) => { APP.printSettings.companionReports = ids; },
+        });
+      })());
   }
 
   function tabGridText() {

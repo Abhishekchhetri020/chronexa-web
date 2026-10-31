@@ -236,4 +236,13 @@ export function prepare(pages, settings, host) {
   };
 }
 
-export default { PAPER_MM, sheetSize, sheetPlan, groupIntoSheets, isEmptyRow, emptyColumnIndexes, prepare };
+
+/** Which companion reports to append (aSc `withclassroomtt`, generalised). */
+export function companionIds(settings, ownTemplate, available) {
+  const s = settings || {};
+  const raw = Array.isArray(s.companionReports) ? s.companionReports : [];
+  const known = new Set((available || []).map((t) => (typeof t === "string" ? t : t.id)));
+  return raw.filter((id) => id && id !== ownTemplate && (!known.size || known.has(id)));
+}
+
+export default { PAPER_MM, sheetSize, sheetPlan, groupIntoSheets, isEmptyRow, emptyColumnIndexes, prepare, companionIds };

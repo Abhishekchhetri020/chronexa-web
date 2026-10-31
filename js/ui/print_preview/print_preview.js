@@ -4,7 +4,7 @@ import "../ribbon/topbar.js";
 import "./cell_style_dialog.js";
 import "./print_settings_dialog.js";
 import "./saved_reports.js";
-import { prepare as prepareSheets } from "./sheet_engine.js";
+import { prepare as prepareSheets, companionIds } from "./sheet_engine.js";
 
 /* Print preview — swaps the ribbon into preview mode, renders one of 5
  * starter report templates onto A4 pages, prints via window.print().
@@ -530,6 +530,22 @@ import { prepare as prepareSheets } from "./sheet_engine.js";
     else docShell.setAttribute("style", saved);
   }
 
+  /**
+   * Companion reports (aSc `withclassroomtt`, generalised to any template):
+   * extra reports appended to THIS print job — class pages followed by teacher
+   * or classroom pages, in one PDF. They are rendered fresh, printed, and
+   * removed again, so the preview keeps showing the report the user chose.
+   */
+  function companionPages() {
+    const list = (APP.printTemplates && APP.printTemplates.list) ? APP.printTemplates.list() : [];
+    const ids = companionIds(APP.printSettings || {}, currentTemplate, list);
+    const out = [];
+    for (const id of ids) {
+      try { out.push(...pagesFor(id)); } catch (e) { console.warn("[print] companion", id, e); }
+    }
+    return out;
+  }
+
   function printAllPages() {
     if (!pages.length || !docShell) { window.print(); return; }
     // Strip the on-screen zoom so the printout uses the true A4 page size,
@@ -541,14 +557,17 @@ import { prepare as prepareSheets } from "./sheet_engine.js";
     // floor-size fonts (2-4px) and overflow:hidden into every cell even if a
     // print stylesheet later widens the page.
     const savedStyle = enterPrintLayout();
-    if (pages.length > 1) {
+    let companions = [];
+    try { companions = companionPages(); } catch (e) { console.warn("[print] companions:", e && e.message); }
+    const printSet = pages.concat(companions);
+    if (printSet.length > 1) {
       while (docShell.firstChild) docShell.removeChild(docShell.firstChild);
-      for (const p of pages) docShell.appendChild(p);
+      for (const p of printSet) docShell.appendChild(p);
       // Autofit every page while all of them are mounted AND laid out as full
       // blocks — showPage() only fits the single on-screen page, so pages 2..N
       // used to print unfitted (cells carry data-fit marks, so the current page
       // re-runs as a no-op).
-      for (const p of pages) {
+      for (const p of printSet) {
         try { autofitMountedPage(p); } catch (e) { /* never break printing */ }
       }
     }
@@ -557,11 +576,14 @@ import { prepare as prepareSheets } from "./sheet_engine.js";
     // own single-page layout.
     let restoreSheets = null;
     try {
-      restoreSheets = prepareSheets(pages, APP.printSettings || {}, docShell);
+      restoreSheets = prepareSheets(printSet, APP.printSettings || {}, docShell);
     } catch (e) { console.warn("[print] sheet engine:", e && e.message); }
     try { window.print(); }
     finally {
       try { if (restoreSheets) restoreSheets(); } catch {}
+      // Companions were only mounted for this print; drop them so the preview
+      // does not accumulate pages from earlier jobs.
+      try { companions.forEach((p) => p.remove()); } catch {}
       exitPrintLayout(savedStyle);
       showPage(saved);  // re-mounts current page + re-applies zoom
     }
@@ -653,6 +675,33 @@ import { prepare as prepareSheets } from "./sheet_engine.js";
   }
 
   // ─── Render templates ────────────────────────────────────────────────────
+  /** Pages for one template id, without touching the preview state. */
+  function pagesFor(template) {
+    const s = APP.school;
+    const periods = (s && s.bell && s.bell.periods) || [];
+    let out = [];
+    const reg = APP.printTemplates;
+    const def = reg ? reg.get(template) : null;
+    if (def && !def.builtin && typeof def.render === "function") {
+      try {
+        const res = def.render(s, periods);
+        if (Array.isArray(res)) out = res.filter(Boolean);
+        else if (res instanceof Node) out = [res];
+      } catch (err) {
+        console.error("[print_preview] template", template, "threw:", err);
+        out = [];
+      }
+    }
+    if (!out.length && s) {
+      if (template === "class")        out = perEntityPages(s, "class",   periods, s.classes,    s._idx?.cardsByClass);
+      else if (template === "teacher") out = perEntityPages(s, "teacher", periods, s.teachers,   s._idx?.cardsByTeacher);
+      else if (template === "room")    out = perEntityPages(s, "room",    periods, s.classrooms, s._idx?.cardsByRoom);
+      else if (template === "summary") out = [summaryPage(s, periods)];
+      else if (template === "poster")  out = [posterPage(s, periods)];
+    }
+    return out;
+  }
+
   function render(template) {
     currentTemplate = template;
     pageIdx = 0;
@@ -664,34 +713,7 @@ import { prepare as prepareSheets } from "./sheet_engine.js";
     // IDs as the legacy 5 builtins (class/teacher/room/summary/poster) and
     // win. `builtin:true` registry entries are placeholders without a real
     // render fn, so we only honour registry when a non-builtin render exists.
-    const reg = APP.printTemplates;
-    const def = reg ? reg.get(template) : null;
-    if (def && !def.builtin && typeof def.render === "function") {
-      try {
-        // Pass `periods` so the pivot engine can honor the school's actual
-        // bell schedule. Without this, periods defaulted to 8 regardless,
-        // and break periods (gaps in the bell) silently mismatched cards.
-        const out = def.render(s, periods);
-        if (Array.isArray(out))      pages = out.filter(Boolean);
-        else if (out instanceof Node) pages = [out];
-      } catch (err) {
-        console.error("[print_preview] template", template, "threw:", err);
-        pages = [el("div", { class: "chrx-preview-page" },
-          el("h2", null, "Template error"),
-          el("pre", { style: "white-space:pre-wrap;color:#900;font-size:11px" }, String(err && err.message || err)))];
-      }
-    }
-
-    // Fallback to legacy hardcoded renderers for the 5 builtins when no
-    // pivot preset has claimed the same ID (e.g., during transition).
-    if (!pages.length) {
-      if (template === "class")        pages = perEntityPages(s, "class",   periods, s.classes,    s._idx?.cardsByClass);
-      else if (template === "teacher") pages = perEntityPages(s, "teacher", periods, s.teachers,   s._idx?.cardsByTeacher);
-      else if (template === "room")    pages = perEntityPages(s, "room",    periods, s.classrooms, s._idx?.cardsByRoom);
-      else if (template === "summary") pages = [summaryPage(s, periods)];
-      else if (template === "poster")  pages = [posterPage(s, periods)];
-    }
-
+    pages = pagesFor(template);
     if (!pages.length) pages = [el("div", { class: "chrx-preview-page" }, el("h2", null, "No data"))];
     showPage(0);
   }

@@ -127,3 +127,18 @@ describe("prepare", () => {
     expect([...host.children]).toEqual(before);
   });
 });
+
+describe("companion reports", () => {
+  it("drops the current template and unknown ids", async () => {
+    const { companionIds } = await import("../js/ui/print_preview/sheet_engine.js");
+    const available = [{ id: "class" }, { id: "teacher" }, { id: "room" }];
+    expect(companionIds({ companionReports: ["teacher", "room"] }, "class", available))
+      .toEqual(["teacher", "room"]);
+    // asking for the report you are already printing is a no-op
+    expect(companionIds({ companionReports: ["class", "room"] }, "class", available)).toEqual(["room"]);
+    // a stale id from another file must not crash the print
+    expect(companionIds({ companionReports: ["ghost"] }, "class", available)).toEqual([]);
+    expect(companionIds({}, "class", available)).toEqual([]);
+    expect(companionIds({ companionReports: "teacher" }, "class", available)).toEqual([]);
+  });
+});
