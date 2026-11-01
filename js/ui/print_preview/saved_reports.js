@@ -106,7 +106,10 @@ import "../state.js";
       ? ((APP.printSettings && APP.printSettings.structure) || "rows-days")
       : perTemplate;
     const row = {
-      id: (opts && opts.id) || "prep_" + Date.now(),
+      // Date.now() alone collides when two layouts are saved in the same
+      // millisecond (batch scripts, "save all"), and the second silently
+      // replaced the first.
+      id: (opts && opts.id) || ("prep_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7)),
       name: trimmed,
       baseTemplate: base,
       structure,
@@ -219,6 +222,19 @@ import "../state.js";
     saveBox.appendChild(saveRow);
     host.appendChild(saveBox);
 
+    const bulk = document.createElement("div");
+    bulk.style.cssText = "display:flex;gap:8px;align-items:center";
+    const printAllBtn = document.createElement("button");
+    printAllBtn.type = "button";
+    printAllBtn.className = "chrx-btn";
+    printAllBtn.textContent = "🖨 Print all layouts (one job)";
+    printAllBtn.onclick = () => {
+      if (typeof D.closeSubSheet === "function") D.closeSubSheet();
+      printAll();
+    };
+    bulk.appendChild(printAllBtn);
+    host.appendChild(bulk);
+
     const listBox = document.createElement("div");
     listBox.id = "chrx-print-layouts-list";
     listBox.style.cssText = "display:flex;flex-direction:column;gap:6px;max-height:280px;overflow:auto";
@@ -268,7 +284,19 @@ import "../state.js";
     D.openSubSheet(host, { title: "Saved print layouts" });
   }
 
-  const SavedReports = { list, find, save, apply, rename, remove, ensure, migrateFromLocalStorage, openManager, ascFromTemplate };
+  /**
+   * Print several saved layouts as ONE job — each layout applied in turn, its
+   * report rendered, all pages sent to the printer together. aSc has nothing
+   * like this: there you print one report at a time.
+   */
+  function printAll(ids) {
+    const chosen = Array.isArray(ids) && ids.length ? ids : list().map((r) => r.id);
+    if (!chosen.length) { notify("No saved layouts to print", "warn"); return false; }
+    global.dispatchEvent(new CustomEvent("app:print-layouts", { detail: { ids: chosen } }));
+    return true;
+  }
+
+  const SavedReports = { list, find, save, apply, rename, remove, ensure, migrateFromLocalStorage, openManager, ascFromTemplate, printAll };
   global.SavedReports = SavedReports;
   if (APP) APP.SavedReports = SavedReports;
 })(window);

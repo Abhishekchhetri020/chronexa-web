@@ -100,3 +100,33 @@ describe("SavedReports migration", () => {
     expect(SavedReports.list()).toHaveLength(1);
   });
 });
+
+describe("SavedReports batch print", () => {
+  beforeEach(reset);
+
+  it("dispatches one event carrying the chosen layout ids", () => {
+    const a = SavedReports.save("Class set");
+    const b = SavedReports.save("Teacher set");
+    const seen = [];
+    window.addEventListener("app:print-layouts", (e) => seen.push(e.detail.ids));
+    expect(SavedReports.printAll([a.id, b.id])).toBe(true);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toEqual([a.id, b.id]);
+  });
+
+  it("defaults to every saved layout when none are given", () => {
+    SavedReports.save("One");
+    SavedReports.save("Two");
+    const seen = [];
+    window.addEventListener("app:print-layouts", (e) => seen.push(e.detail.ids));
+    expect(SavedReports.printAll()).toBe(true);
+    expect(seen[0]).toHaveLength(2);
+  });
+
+  it("refuses politely when the file has no layouts", () => {
+    const seen = [];
+    window.addEventListener("app:print-layouts", (e) => seen.push(e));
+    expect(SavedReports.printAll()).toBe(false);
+    expect(seen).toHaveLength(0);
+  });
+});

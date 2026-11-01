@@ -200,6 +200,24 @@ import "../state.js";
     twoLineToggle.appendChild(el("span", null, "Print time in two lines (start / end on separate lines)"));
     body.appendChild(twoLineToggle);
 
+    // aSc styles the day gutter and the break column separately
+    // (gridheadertexts.days). Same control set, its own section.
+    draft.dayHeader = draft.dayHeader || { anchor:"middle-center", size:40, font:"system-ui", bold:true, italic:false, underline:false };
+    body.appendChild(subSection("Day labels", () => draft.dayHeader, () => {}, ""));
+    draft.breakStyle = draft.breakStyle || { size:16, bold:true, uppercase:true };
+    const breakSize = el("input", { type: "number", min: "6", max: "40", value: String(draft.breakStyle.size),
+      style: "width:70px;padding:3px 6px;border:1px solid #d8cfbb;border-radius:5px",
+      oninput: (e) => { draft.breakStyle.size = parseInt(e.target.value, 10) || 16; } });
+    const breakRow = el("div", { style: "display:flex;gap:8px;align-items:center;font-size:13px" },
+      el("span", null, "Break label size"), breakSize);
+    body.appendChild(breakRow);
+    const bUpper = el("label", { style: "display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer" },
+      el("input", { type: "checkbox", style: "accent-color:#0d4f54;width:16px;height:16px",
+        checked: draft.breakStyle.uppercase ? "checked" : null,
+        onchange: (e) => { draft.breakStyle.uppercase = e.target.checked; } }),
+      el("span", null, "Print break label in capitals"));
+    body.appendChild(bUpper);
+
     dlg.appendChild(body);
 
     const footer = el("div", {
@@ -215,6 +233,8 @@ import "../state.js";
       style: "padding:6px 18px;border:0;background:#0d4f54;color:#fff;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600",
       onclick: () => {
         report.periodHeader = draft.periodHeader;
+        report.dayHeader = draft.dayHeader;
+        report.breakStyle = draft.breakStyle;
         close();
         if (typeof onSave === "function") onSave(report);
       },

@@ -87,3 +87,36 @@ describe("report title and date line", () => {
     expect(P().printDateLine({ schoolName: "x" })).not.toContain(today);
   });
 });
+
+describe("day gutter and break label styles", () => {
+  const style = (rep) => window.APP.PrintPivot.periodHeaderStyle(rep, {});
+
+  it("days default to the period size", () => {
+    const rep = window.APP.PrintReportSchema.create({ context: "class" });
+    const s = style(rep);
+    expect(s.dayPx).toBe(s.labelPx);
+    expect(s.dayBold).toBe(true);
+  });
+
+  it("a day style overrides size, font and weight without touching periods", () => {
+    const rep = window.APP.PrintReportSchema.create({ context: "class" });
+    const before = style(rep).labelPx;
+    rep.dayHeader = { size: 80, font: "Bahnschrift", bold: false, italic: true };
+    const s = style(rep);
+    expect(s.dayPx).toBe(36);              // 80 * .45
+    expect(s.dayFont).toContain("Bahnschrift");
+    expect(s.dayBold).toBe(false);
+    expect(s.dayItalic).toBe(true);
+    expect(s.labelPx).toBe(before);        // period row untouched
+  });
+
+  it("break label has its own size and capitalisation", () => {
+    const rep = window.APP.PrintReportSchema.create({ context: "class" });
+    expect(style(rep).breakUpper).toBe(true);
+    rep.breakStyle = { size: 30, bold: false, uppercase: false };
+    const s = style(rep);
+    expect(s.breakPx).toBe(15);
+    expect(s.breakBold).toBe(false);
+    expect(s.breakUpper).toBe(false);
+  });
+});

@@ -160,6 +160,22 @@ import "../state.js";
       },
 
       // Header (Periods) sub-config (Phase 8)
+      // aSc `gridheadertexts.days` — the day gutter is styled separately from the
+      // period row, so a six-row grid can carry big two-letter day labels.
+      dayHeader: {
+        anchor: "middle-center",
+        size: 40,
+        font: "system-ui",
+        bold: true,
+        italic: false,
+        underline: false,
+      },
+      // aSc styles the break column too; ours was a hardcoded 7px label.
+      breakStyle: {
+        size: 16,
+        bold: true,
+        uppercase: true,
+      },
       periodHeader: {
         anchor: "top-center",
         size: 40,

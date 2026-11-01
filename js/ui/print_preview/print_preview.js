@@ -605,6 +605,51 @@ import { attach as attachContextMenu } from "./preview_context_menu.js";
     });
   }
 
+  /**
+   * Batch print: one job made of several saved layouts. Each layout is applied,
+   * its report rendered, and every page goes to the printer together — a class
+   * set, a teacher set and the duty roster in a single PDF.
+   */
+  function printLayouts(ids) {
+    const Sr = window.SavedReports;
+    if (!Sr || !docShell) return;
+    const layouts = (ids || []).map((id) => Sr.find(id)).filter(Boolean);
+    if (!layouts.length) return;
+    const collected = [];
+    const savedSettings = JSON.parse(JSON.stringify(APP.printSettings || {}));
+    const savedTemplate = currentTemplate;
+    try {
+      for (const L of layouts) {
+        try {
+          Sr.apply(L.id);
+          collected.push(...pagesFor(L.baseTemplate));
+        } catch (e) { console.warn("[print] layout", L.name, e); }
+        APP.printSettings = JSON.parse(JSON.stringify(savedSettings));
+      }
+    } finally {
+      APP.printSettings = savedSettings;
+    }
+    if (!collected.length) return;
+
+    // Stand-in print run over the collected pages, then put the preview back.
+    const previous = [...docShell.childNodes];
+    const savedStyle = enterPrintLayout();
+    while (docShell.firstChild) docShell.removeChild(docShell.firstChild);
+    for (const p of collected) { p.style.zoom = "1"; docShell.appendChild(p); }
+    for (const p of collected) { try { autofitMountedPage(p); } catch {} }
+    let restore = null;
+    try { restore = prepareSheets(collected, APP.printSettings || {}, docShell); } catch {}
+    try { window.print(); }
+    finally {
+      try { if (restore) restore(); } catch {}
+      collected.forEach((p) => p.remove());
+      while (docShell.firstChild) docShell.removeChild(docShell.firstChild);
+      previous.forEach((n) => docShell.appendChild(n));
+      exitPrintLayout(savedStyle);
+      currentTemplate = savedTemplate;
+    }
+  }
+
   function printAllPages() {
     if (!pages.length || !docShell) { window.print(); return; }
     beginPrint();
@@ -1074,6 +1119,14 @@ import { attach as attachContextMenu } from "./preview_context_menu.js";
     }
   });
   window.addEventListener("app:print-scope", (e) => printScope(e.detail?.scope || e.detail));
+  window.addEventListener("app:print-layouts", (e) => {
+    const ids = (e.detail && e.detail.ids) || [];
+    if (!overlay || !overlay.classList.contains("is-open")) {
+      // Nothing rendered yet — open the preview on the first layout, then print.
+      try { openPreview(); } catch {}
+    }
+    try { printLayouts(ids); } catch (err) { console.warn("[print] layouts:", err); }
+  });
   window.addEventListener("keydown", (e) => {
     if ((e.metaKey || e.ctrlKey) && (e.key === "p" || e.key === "P") && !overlay?.classList.contains("is-open")) {
       e.preventDefault(); openPreview();
