@@ -178,3 +178,59 @@ describe("sheet preview helpers", () => {
     expect(cellOrder(2, 2, 1, false)).toEqual([0, 1]);
   });
 });
+
+describe("page numbers", () => {
+  it("formats in every supported mode", async () => {
+    const { formatPageNumber } = await import("../js/ui/print_preview/sheet_engine.js");
+    expect(formatPageNumber({ pageNumberFormat: "page" }, 3, 12)).toBe("Page 3");
+    expect(formatPageNumber({ pageNumberFormat: "of-total" }, 3, 12)).toBe("Page 3 of 12");
+    expect(formatPageNumber({ pageNumberFormat: "slash" }, 3, 12)).toBe("3 / 12");
+    expect(formatPageNumber({ pageNumberFormat: "none" }, 3, 12)).toBe("");
+    // the old key still works for files saved before this change
+    expect(formatPageNumber({ pageNumbers: "of-total" }, 2, 5)).toBe("Page 2 of 5");
+  });
+
+  it("substitutes tokens in a custom template", async () => {
+    const { formatPageNumber } = await import("../js/ui/print_preview/sheet_engine.js");
+    const out = formatPageNumber(
+      { pageNumberFormat: "custom", pageNumberTemplate: "{school} · sheet {page}/{pages} · {date}" },
+      2, 9, { school: "GDG", date: "12.05.2026" });
+    expect(out).toBe("GDG · sheet 2/9 · 12.05.2026");
+  });
+
+  it("maps a corner to absolute offsets", async () => {
+    const { pageNumberOffset } = await import("../js/ui/print_preview/sheet_engine.js");
+    expect(pageNumberOffset("bottom-right")).toMatchObject({ bottom: "2mm", right: "6mm", textAlign: "right" });
+    expect(pageNumberOffset("top-center")).toMatchObject({ top: "3mm", left: "0", right: "0", textAlign: "center" });
+    expect(pageNumberOffset("bottom-left")).toMatchObject({ left: "6mm", textAlign: "left" });
+  });
+
+  it("stamps the chosen text and position, and can skip page one", () => {
+    const mk = () => {
+      const host = document.createElement("div");
+      document.body.appendChild(host);
+      const pages = [0, 1, 2].map(() => {
+        const p = document.createElement("div");
+        p.className = "chrx-preview-page";
+        host.appendChild(p);
+        return p;
+      });
+      return { host, pages };
+    };
+    document.body.innerHTML = "";
+    const a = mk();
+    const restoreA = prepare(a.pages, { pageNumberFormat: "slash", pageNumberPos: "top-left" }, a.host);
+    const stamp = a.pages[1].querySelector(".chrx-print-pagenum");
+    expect(stamp.textContent).toBe("2 / 3");
+    expect(stamp.style.top).toBe("3mm");
+    expect(stamp.style.textAlign).toBe("left");
+    restoreA();
+
+    document.body.innerHTML = "";
+    const b = mk();
+    const restoreB = prepare(b.pages, { pageNumberFormat: "of-total", pageNumberSkipFirst: true }, b.host);
+    expect(b.pages[0].querySelector(".chrx-print-pagenum")).toBeNull();
+    expect(b.pages[1].querySelector(".chrx-print-pagenum").textContent).toBe("Page 2 of 3");
+    restoreB();
+  });
+});

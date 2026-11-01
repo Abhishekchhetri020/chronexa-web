@@ -151,22 +151,55 @@ function styleText(settings) {
     page-break-after: auto; break-after: auto;
   }
   .chrx-print-pagenum {
-    position: absolute; right: 4mm; bottom: 2mm;
+    position: absolute;
     font-size: 8px; color: #555;
   }
 }`;
 }
 
-/** Stamp "Page X of Y" (aSc pageheaderprefixenabled) onto a page node. */
-function stampPageNumber(pageEl, index, total, mode) {
-  if (!mode || mode === "none") return null;
+/**
+ * Page-number text for a mode/template pair. Pure so the formats are testable.
+ * `{page}` / `{pages}` / `{date}` / `{school}` are substituted in custom mode.
+ */
+export function formatPageNumber(settings, page, total, ctx) {
+  const s = settings || {};
+  const mode = s.pageNumberFormat || s.pageNumbers || "none";
+  if (!mode || mode === "none") return "";
+  const c = ctx || {};
+  if (mode === "custom") {
+    return String(s.pageNumberTemplate || "Page {page} of {pages}")
+      .replace(/\{page\}/g, String(page))
+      .replace(/\{pages\}/g, String(total))
+      .replace(/\{date\}/g, c.date || new Date().toLocaleDateString("en-GB"))
+      .replace(/\{school\}/g, c.school || "");
+  }
+  if (mode === "slash") return `${page} / ${total}`;
+  if (mode === "of-total") return `Page ${page} of ${total}`;
+  return `Page ${page}`;
+}
+
+/** Absolute placement for the chosen corner. */
+export function pageNumberOffset(pos) {
+  const vertical = String(pos || "bottom-right").startsWith("top") ? { top: "3mm", bottom: "auto" }
+    : { bottom: "2mm", top: "auto" };
+  const horizontal = String(pos || "bottom-right").endsWith("left") ? { left: "6mm", right: "auto", textAlign: "left" }
+    : String(pos || "bottom-right").endsWith("center") ? { left: "0", right: "0", textAlign: "center" }
+    : { right: "6mm", left: "auto", textAlign: "right" };
+  return Object.assign(vertical, horizontal);
+}
+
+/** Stamp the page number onto a page node (format + placement from settings). */
+function stampPageNumber(pageEl, index, total, settings, ctx) {
+  const s = settings || {};
   if (!pageEl || !pageEl.appendChild) return null;
+  if (s.pageNumberSkipFirst && index === 0) return null;
+  const text = formatPageNumber(s, index + 1, total, ctx);
+  if (!text) return null;
   const stamp = document.createElement("div");
   stamp.className = "chrx-print-pagenum";
   stamp.dataset.chrxInjected = "1";
-  stamp.textContent = mode === "of-total"
-    ? `Page ${index + 1} of ${total}`
-    : `Page ${index + 1}`;
+  stamp.textContent = text;
+  Object.assign(stamp.style, pageNumberOffset(s.pageNumberPos));
   if (getComputedStyle(pageEl).position === "static") pageEl.style.position = "relative";
   pageEl.appendChild(stamp);
   return stamp;
@@ -179,6 +212,10 @@ function stampPageNumber(pageEl, index, total, mode) {
 export function prepare(pages, settings, host) {
   const s = settings || {};
   const plan = sheetPlan(s);
+  const ctx = {
+    date: (host && host.dataset && host.dataset.printDate) || undefined,
+    school: (host && host.dataset && host.dataset.printSchool) || undefined,
+  };
   const restoreFns = [];
 
   // 1. the @page rule — without this "Save as PDF" ignores size/orientation
@@ -197,7 +234,7 @@ export function prepare(pages, settings, host) {
   // 2. page numbers + empty row/column hiding
   const stamps = [];
   pages.forEach((p, i) => {
-    const stamp = stampPageNumber(p, i, pages.length, s.pageNumbers);
+    const stamp = stampPageNumber(p, i, pages.length, s, ctx);
     if (stamp) stamps.push(stamp);
     if (s.hideEmptyRows) {
       p.querySelectorAll("tbody tr").forEach((tr) => {
@@ -289,4 +326,4 @@ export function companionIds(settings, ownTemplate, available) {
   return raw.filter((id) => id && id !== ownTemplate && (!known.size || known.has(id)));
 }
 
-export default { PAPER_MM, sheetSize, sheetPlan, groupIntoSheets, isEmptyRow, emptyColumnIndexes, prepare, companionIds };
+export default { PAPER_MM, formatPageNumber, pageNumberOffset, sheetSize, sheetPlan, groupIntoSheets, isEmptyRow, emptyColumnIndexes, prepare, companionIds };
