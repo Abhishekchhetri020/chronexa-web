@@ -140,6 +140,18 @@ import "../state.js";
       twoLines: !!ph.timeTwoLines,
       // aSc's `time` header element is bold in the school's own report.
       timeBold: ph.timeBold !== false,
+      // Day gutter (gridheadertexts.days) and break label get their own styles,
+      // defaulting to the period values so an untouched report looks unchanged.
+      dayPx: Math.max(7, Math.round(((report && report.dayHeader && Number.isFinite(report.dayHeader.size))
+        ? report.dayHeader.size : sizePct) * 0.45)),
+      dayFont: (report && report.dayHeader && report.dayHeader.font && report.dayHeader.font !== "system-ui")
+        ? "'" + report.dayHeader.font + "', system-ui" : "system-ui",
+      dayBold: !(report && report.dayHeader && report.dayHeader.bold === false),
+      dayItalic: !!(report && report.dayHeader && report.dayHeader.italic),
+      breakPx: Math.max(5, Math.round(((report && report.breakStyle && Number.isFinite(report.breakStyle.size))
+        ? report.breakStyle.size : 16) * 0.5)),
+      breakBold: !(report && report.breakStyle && report.breakStyle.bold === false),
+      breakUpper: !(report && report.breakStyle && report.breakStyle.uppercase === false),
     };
   }
 
@@ -420,6 +432,7 @@ import "../state.js";
           },
             el("div", { style: "font-weight:700" }, bLabel),
             bTime ? el("div", { style: "font-size:6.5px;font-weight:400" }, bTime) : null));
+
           continue;
         }
         const cc = col.combo;
@@ -639,6 +652,7 @@ import "../state.js";
           },
             el("div", { style: "font-weight:700" }, bLabel),
             bTime ? el("div", { style: "font-size:6.5px;font-weight:400" }, bTime) : null));
+
         }
       }
       thead.appendChild(headerRow);
@@ -657,8 +671,14 @@ import "../state.js";
         const short = ent.abbr || ent.short;
         rowLabels.push(isDay && short ? short : (ent.name || ent.abbr));
       }
+      const DHS = periodHeaderStyle(report, APP.printSettings);
+      const rowIsDay = rc.entries().every(([dim, ent]) => dim === "day" || ent._dim === "day");
       tr.appendChild(el("td", {
-        style: "border:1px solid #999;padding:4px 5px;background:#fafafa;font-weight:600;text-align:center;font-family:'Fraunces',serif;font-size:" + report._layout.rowFontPx + "px",
+        style: "border:1px solid #999;padding:4px 5px;background:#fafafa;text-align:center;" +
+          (rowIsDay
+            ? "font-family:" + DHS.dayFont + ";font-size:" + DHS.dayPx + "px;font-weight:" + (DHS.dayBold ? "700" : "400") + ";" +
+              (DHS.dayItalic ? "font-style:italic;" : "")
+            : "font-weight:600;font-family:'Fraunces',serif;font-size:" + report._layout.rowFontPx + "px;"),
       }, rowLabels.join(" · ")));
       const summaryCols = (report.cells === "summary-class-day-period" || isDayPeriodGrid)
         ? report._layout.summaryDayColumns
@@ -673,8 +693,12 @@ import "../state.js";
               rowspan: String(visibleRows.length),
               style: "border:0.75px dashed #c5c0b2;padding:2px;background:#f3f0e8;width:" + report._layout.summaryDayBreakColWidthPx + "px;vertical-align:middle;text-align:center",
             });
+            const BS = periodHeaderStyle(report, APP.printSettings);
             const brkInner = el("div", {
-              style: "writing-mode:vertical-lr;transform:rotate(180deg);font-weight:700;font-size:8.5px;text-transform:uppercase;letter-spacing:.1em;color:#555;margin:0 auto",
+              style: "writing-mode:vertical-lr;transform:rotate(180deg);margin:0 auto;" +
+                "font-weight:" + (BS.breakBold ? "700" : "400") + ";font-size:" + BS.breakPx + "px;" +
+                (BS.breakUpper ? "text-transform:uppercase;" : "") +
+                "letter-spacing:.1em;color:#555",
             }, brkText);
             brkTd.appendChild(brkInner);
             tr.appendChild(brkTd);
@@ -722,8 +746,12 @@ import "../state.js";
               rowspan: String(visibleRows.length),
               style: "border:0.75px dashed #c5c0b2;padding:2px;background:#f3f0e8;width:28px;vertical-align:middle;text-align:center",
             });
+            const BS = periodHeaderStyle(report, APP.printSettings);
             const brkInner = el("div", {
-              style: "writing-mode:vertical-lr;transform:rotate(180deg);font-weight:700;font-size:8.5px;text-transform:uppercase;letter-spacing:.1em;color:#555;margin:0 auto",
+              style: "writing-mode:vertical-lr;transform:rotate(180deg);margin:0 auto;" +
+                "font-weight:" + (BS.breakBold ? "700" : "400") + ";font-size:" + BS.breakPx + "px;" +
+                (BS.breakUpper ? "text-transform:uppercase;" : "") +
+                "letter-spacing:.1em;color:#555",
             }, brkText);
             brkTd.appendChild(brkInner);
             tr.appendChild(brkTd);
