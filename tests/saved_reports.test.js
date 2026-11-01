@@ -4,6 +4,8 @@
 // the one-time localStorage migration that stops an existing setup vanishing.
 import { describe, it, expect, beforeEach } from "vitest";
 import { SavedReports } from "../js/ui/print_preview/saved_reports.js";
+import "../js/ui/print_preview/print_report_schema.js";
+import "../js/ui/print_preview/print_presets.js";
 
 function reset() {
   window.APP = window.APP || {};
@@ -128,5 +130,53 @@ describe("SavedReports batch print", () => {
     window.addEventListener("app:print-layouts", (e) => seen.push(e));
     expect(SavedReports.printAll()).toBe(false);
     expect(seen).toHaveLength(0);
+  });
+});
+
+describe("SavedReports captures the report style", () => {
+  beforeEach(reset);
+
+  it("stores element styles, header and break styles with the layout", () => {
+    window.APP.activePrintReport = {
+      _presetId: "class",
+      context: "class",
+      elementStyles: [{ key: "subject", size: 22, anchor: "top-left", enabled: true }],
+      periodHeader: { size: 60, showTimeIntervals: true },
+      dayHeader: { size: 70 },
+      breakStyle: { size: 24, uppercase: false },
+      colors: { cardOn: true },
+    };
+    const row = SavedReports.save("Big labels");
+    expect(row.reportSnapshot).toBeTruthy();
+    expect(row.reportSnapshot.style.elementStyles[0].size).toBe(22);
+    expect(row.reportSnapshot.style.periodHeader.size).toBe(60);
+    expect(row.reportSnapshot.style.breakStyle.uppercase).toBe(false);
+  });
+
+  it("restores those styles onto a fresh report on apply", () => {
+    window.APP.activePrintReport = {
+      _presetId: "class", context: "class",
+      elementStyles: [{ key: "subject", size: 30, anchor: "top-left", enabled: true }],
+      periodHeader: { size: 44 }, dayHeader: { size: 50 }, breakStyle: { size: 20 },
+      colors: { cardOn: false },
+    };
+    const row = SavedReports.save("Restore me");
+    // simulate another report being active, then apply the layout
+    window.APP.activePrintReport = { _presetId: "teacher", context: "teacher", elementStyles: [], periodHeader: {}, dayHeader: {}, breakStyle: {}, colors: {} };
+    SavedReports.apply(row.id);
+    const rep = window.APP.activePrintReport;
+    expect(rep._presetId).toBe("class");
+    expect(rep.elementStyles[0].size).toBe(30);
+    expect(rep.periodHeader.size).toBe(44);
+    expect(rep.breakStyle.size).toBe(20);
+  });
+
+  it("still applies a layout saved from an older version without a snapshot", () => {
+    window.APP.school.printReports = [{
+      id: "old", name: "Old layout", baseTemplate: "class", structure: "rows-days",
+      settings: { pageSize: "A3" }, asc: {},
+    }];
+    expect(SavedReports.apply("old")).toBe(true);
+    expect(window.APP.printSettings.pageSize).toBe("A3");
   });
 });

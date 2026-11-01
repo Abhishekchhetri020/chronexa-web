@@ -6,6 +6,7 @@ import "./print_settings_dialog.js";
 import "./saved_reports.js";
 import { prepare as prepareSheets, companionIds, sheetPlan, groupIntoSheets, cellOrder, sheetSize } from "./sheet_engine.js";
 import { attach as attachContextMenu } from "./preview_context_menu.js";
+import { checkPage } from "./fit_check.js";
 
 /* Print preview — swaps the ribbon into preview mode, renders one of 5
  * starter report templates onto A4 pages, prints via window.print().
@@ -62,6 +63,8 @@ import { attach as attachContextMenu } from "./preview_context_menu.js";
     const print  = el("button", { class: "chrx-tb-btn chrx-tb-btn--primary", type: "button",
       onclick: printAllPages }, "🖨 Print");
     const indicator = el("span", { class: "chrx-pp-indicator", style: "min-width:80px;text-align:center;font-variant-numeric:tabular-nums" }, "Page 1 / 1");
+    // Print-area fit readout — turns red when the page is bigger than the paper.
+    const fitBadge = el("span", { class: "chrx-pp-fit", style: "font-size:11px;white-space:nowrap;color:#047857" }, "");
 
     const sel = el("select", { class: "chrx-tb-btn", "aria-label": "Report template",
       onchange: (e) => {
@@ -301,7 +304,7 @@ import { attach as attachContextMenu } from "./preview_context_menu.js";
     const close = el("button", { class: "chrx-tb-btn chrx-tb-btn--danger", type: "button",
       style: "margin-left:auto", onclick: closePreview }, "✕ Close preview");
 
-    [prev, next, print, indicator, sel, layoutsBtn, colorToggleBtn, zoomOut, zoomReadout, zoomIn, fitBtn, filterBtn, tuningBtn, structBtn, extraBtn, styleBtn, sizeBtn, designBtn, colorBtn, globalBtn, close]
+    [prev, next, print, indicator, fitBadge, sel, layoutsBtn, colorToggleBtn, zoomOut, zoomReadout, zoomIn, fitBtn, filterBtn, tuningBtn, structBtn, extraBtn, styleBtn, sizeBtn, designBtn, colorBtn, globalBtn, close]
       .forEach(c => bar.appendChild(c));
     bar._indicator = indicator;
     return bar;
@@ -599,6 +602,15 @@ import { attach as attachContextMenu } from "./preview_context_menu.js";
       }
     }
     try { stampContext(); } catch {}
+    // Warn before the paper is spent: count pages that overflow the printable area.
+    try {
+      const bad = printSet.map((p) => checkPage(p, APP.printSettings || {})).filter((r) => r && !r.ok);
+      if (bad.length) {
+        (window._chrxNotify || function () {})(
+          bad.length + " page" + (bad.length > 1 ? "s" : "") + " are larger than the printable area and may be clipped.",
+          "warn");
+      }
+    } catch {}
     let restoreSheets = null;
     try {
       restoreSheets = prepareSheets(printSet, APP.printSettings || {}, docShell);
@@ -661,6 +673,15 @@ import { attach as attachContextMenu } from "./preview_context_menu.js";
     for (const p of collected) { p.style.zoom = "1"; docShell.appendChild(p); }
     for (const p of collected) { try { autofitMountedPage(p); } catch {} }
     try { stampContext(); } catch {}
+    // Warn before the paper is spent: count pages that overflow the printable area.
+    try {
+      const bad = printSet.map((p) => checkPage(p, APP.printSettings || {})).filter((r) => r && !r.ok);
+      if (bad.length) {
+        (window._chrxNotify || function () {})(
+          bad.length + " page" + (bad.length > 1 ? "s" : "") + " are larger than the printable area and may be clipped.",
+          "warn");
+      }
+    } catch {}
     let restore = null;
     try { restore = prepareSheets(collected, APP.printSettings || {}, docShell); } catch {}
     try { window.print(); }
@@ -686,6 +707,35 @@ import { attach as attachContextMenu } from "./preview_context_menu.js";
    * same sheet grid the printer will produce, instead of a single page with the
    * split only appearing after Ctrl+P.
    */
+  /**
+   * Print-area fit badge: does the page on screen fit the chosen paper inside
+   * the margins? A page that spills would otherwise only reveal itself after the
+   * paper is spent.
+   */
+  function updateFitBadge() {
+    const badge = overlay && overlay.querySelector(".chrx-pp-fit");
+    if (!badge) return;
+    const page = pages[pageIdx];
+    if (!page) { badge.textContent = ""; badge.style.color = "#666"; return; }
+    let res = null;
+    try { res = checkPage(page, APP.printSettings || {}); } catch { res = null; }
+    if (!res) { badge.textContent = ""; return; }
+    const paper = (APP.printSettings || {}).pageSize || "A4";
+    if (res.ok) {
+      badge.textContent = "Fits " + paper;
+      badge.style.color = "#047857";
+      badge.title = "Content fits the printable area of this paper.";
+    } else {
+      const parts = [];
+      if (!res.okX) parts.push("width +" + res.overflowXMm + "mm");
+      if (!res.okY) parts.push("height +" + res.overflowYMm + "mm");
+      badge.textContent = "⚠ overflows " + parts.join(", ");
+      badge.style.color = "#b91c1c";
+      badge.title = "This page is larger than the printable area of " + paper +
+        ". Reduce the cell size, choose a bigger paper, or turn on fit-to-page.";
+    }
+  }
+
   function sheetMode() {
     const plan = sheetPlan(APP.printSettings || {});
     return plan.multi && APP.printSettings && APP.printSettings.previewSheets !== false ? plan : null;
@@ -719,6 +769,7 @@ import { attach as attachContextMenu } from "./preview_context_menu.js";
     });
     cells.forEach((c) => view.appendChild(c));
     docShell.appendChild(view);
+    try { updateFitBadge(); } catch {}
     const ind = overlay.querySelector(".chrx-pp-indicator");
     if (ind) {
       const first = sheetIndex * plan.perSheet + 1;
@@ -738,6 +789,7 @@ import { attach as attachContextMenu } from "./preview_context_menu.js";
     // and-fit pass so cell text shrinks to fit instead of ballooning rows.
     try { autofitMountedPage(pages[i]); } catch (e) { /* never break preview */ }
     applyZoom();
+    try { updateFitBadge(); } catch {}
   }
 
   /* Preview zoom (screen only — the actual print uses the real A4 page size).

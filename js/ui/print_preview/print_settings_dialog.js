@@ -33,7 +33,7 @@ import "./cell_style_dialog.js";
   const DEFAULTS = {
     pageSize: "A4",
     orientation: "portrait",
-    marginMM: 10,
+    marginMM: 0,
     scalePct: 100,
     showBellTimes: true,
     showTeacherNames: true,
@@ -204,6 +204,8 @@ import "./cell_style_dialog.js";
       row("Page size",     pick("pageSize",    ["A4","A3","Letter","Legal","Tabloid"])),
       row("Orientation",   pick("orientation", ["portrait","landscape"])),
       row("Margin (mm)",   num("marginMM", 0, 40, 1)),
+      el("p", { style: "color:#64748b;font-size:11px;margin:2px 0 0" },
+        "Pages already carry their own margins as page padding — keep this at 0 unless you want the printer to add more."),
       row("Scale (%)",     num("scalePct", 50, 200, 5)));
   }
   function tabGlobals() {

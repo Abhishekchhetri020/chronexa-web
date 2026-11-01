@@ -105,6 +105,22 @@ import "../state.js";
     const structure = perTemplate === "inherit"
       ? ((APP.printSettings && APP.printSettings.structure) || "rows-days")
       : perTemplate;
+    // The report's OWN style travels with the layout: two layouts of the same
+    // report ("big labels" vs "compact") differ only here, and without this a
+    // restored layout brought back the paper but not the look.
+    const STYLE_KEYS = ["elementStyles", "periodHeader", "dayHeader", "breakStyle",
+      "colors", "extraCols", "extraRows", "cells", "fitWidth", "fitHeight",
+      "hideEmptyCols", "hideEmptyRows"];
+    const active = APP.activePrintReport;
+    let reportSnapshot = null;
+    if (active) {
+      reportSnapshot = { _presetId: active._presetId || base, context: active.context, style: {} };
+      for (const k of STYLE_KEYS) {
+        if (active[k] !== undefined) {
+          try { reportSnapshot.style[k] = JSON.parse(JSON.stringify(active[k])); } catch {}
+        }
+      }
+    }
     const row = {
       // Date.now() alone collides when two layouts are saved in the same
       // millisecond (batch scripts, "save all"), and the second silently
@@ -115,6 +131,7 @@ import "../state.js";
       structure,
       settings: JSON.parse(JSON.stringify(APP.printSettings || {})),
       asc: ascFromTemplate(base, structure),
+      reportSnapshot,
       savedAt: new Date().toISOString(),
     };
     if (typeof APP.mutate === "function") {
@@ -142,6 +159,30 @@ import "../state.js";
     if (row.structure) APP.printTemplateStructure[row.baseTemplate] = row.structure;
     else delete APP.printTemplateStructure[row.baseTemplate];
     APP.activePrintTemplate = row.baseTemplate;
+    // Restore the report's style snapshot (layouts must carry the look too).
+    if (row.reportSnapshot && row.reportSnapshot.style) {
+      const Schema = APP.PrintReportSchema;
+      const Presets = APP.PrintPresets;
+      let rep = APP.activePrintReport;
+      const wanted = row.reportSnapshot._presetId || row.baseTemplate;
+      if (!rep || rep._presetId !== wanted) {
+        const preset = Presets && Presets.get ? Presets.get(wanted) : null;
+        if (Schema) {
+          // Works even when the presets registry has not loaded yet: build a bare
+          // report from the snapshot's context instead of silently keeping the
+          // wrong one.
+          rep = Schema.create({ context: (preset && preset.context) || row.reportSnapshot.context || "class" });
+          if (preset) Schema.applyPreset(rep, preset);
+          rep._presetId = wanted;
+        }
+      }
+      if (rep) {
+        for (const [k, v] of Object.entries(row.reportSnapshot.style)) {
+          try { rep[k] = JSON.parse(JSON.stringify(v)); } catch {}
+        }
+        APP.activePrintReport = rep;
+      }
+    }
     try { localStorage.setItem("chronexa.printSettings", JSON.stringify(APP.printSettings)); } catch {}
     global.dispatchEvent(new CustomEvent("app:print-settings-changed", { detail: APP.printSettings }));
     global.dispatchEvent(new CustomEvent("app:print-template", { detail: { template: row.baseTemplate } }));

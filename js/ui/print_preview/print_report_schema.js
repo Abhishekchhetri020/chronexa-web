@@ -174,7 +174,7 @@ import "../state.js";
       },
       // aSc styles the break column too; ours was a hardcoded 7px label.
       breakStyle: {
-        size: 16,
+        size: 26,
         bold: true,
         uppercase: true,
       },

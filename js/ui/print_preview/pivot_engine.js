@@ -118,6 +118,34 @@ import "../state.js";
    * longer decorative. Global `showBellTimes: false` wins over the per-report
    * switch (it is the "no times anywhere" setting).
    */
+  /** Break column header: sized from `breakStyle`, rotated when the name is long. */
+  function breakHeaderCell(report, bLabel, bTime) {
+    const BS = periodHeaderStyle(report, APP.printSettings);
+    const fontSize = Math.max(7.5, Math.round(BS.breakPx * 0.8));
+    // Width follows the LABEL, not a guess: "Break" needs ~37px at 10px type.
+    // If the label cannot fit even at the widest allowed column it is rotated —
+    // the previous rule rotated only long names, so "Break" printed as BR/EA/K
+    // stacked one letter per line.
+    const labelLen = String(bLabel).length;
+    const wantW = Math.round(labelLen * fontSize * 0.62) + 6;
+    const colW = Math.max(24, Math.min(46, wantW));
+    const rotate = wantW > colW;
+    const base = "border:0.75px dashed #c5c0b2;padding:1px;background:#f3f0e8;width:" + colW + "px;" +
+      "font-size:" + fontSize + "px;line-height:1.05;text-align:center;" +
+      "color:#4a463c;word-break:keep-all;overflow-wrap:normal;white-space:nowrap;vertical-align:middle";
+    if (rotate) {
+      return el("th", { style: base },
+        el("div", { style: "writing-mode:vertical-lr;transform:rotate(180deg);margin:0 auto;" +
+          "font-weight:" + (BS.breakBold ? "700" : "400") + ";" +
+          (BS.breakUpper ? "text-transform:uppercase;" : "") + "letter-spacing:.06em" },
+          bLabel + (bTime ? " · " + bTime : "")));
+    }
+    return el("th", { style: base },
+      el("div", { style: "font-weight:" + (BS.breakBold ? "700" : "400") + ";" +
+        (BS.breakUpper ? "text-transform:uppercase;" : "") }, bLabel),
+      bTime ? el("div", { style: "font-size:6.5px;font-weight:400" }, bTime) : null);
+  }
+
   function periodHeaderStyle(report, settings) {
     const ph = (report && report.periodHeader) || {};
     const sizePct = Number.isFinite(ph.size) ? ph.size : 40;
@@ -444,14 +472,8 @@ import "../state.js";
       for (const col of summaryCols) {
         if (col.kind === "break") {
           const b = col.breakItem || {};
-          const bLabel = b.printtext || b.name || "Break";
-          const bTime = (b.starttime && b.endtime) ? (b.starttime + " - " + b.endtime) : "";
-          headerRow.appendChild(el("th", {
-            style: "border:0.75px dashed #c5c0b2;padding:2px;background:#f3f0e8;width:" + breakColWidthPx + "px;font-size:8px;text-align:center;color:#4a463c",
-          },
-            el("div", { style: "font-weight:700" }, bLabel),
-            bTime ? el("div", { style: "font-size:6.5px;font-weight:400" }, bTime) : null));
-
+          headerRow.appendChild(breakHeaderCell(report, b.printtext || b.name || "Break",
+            (b.starttime && b.endtime) ? (b.starttime + " - " + b.endtime) : ""));
           continue;
         }
         const cc = col.combo;
@@ -675,12 +697,7 @@ import "../state.js";
         if (brk) {
           const bLabel = brk.printtext || brk.name || "Break";
           const bTime = (brk.starttime && brk.endtime) ? (brk.starttime + " - " + brk.endtime) : "";
-          headerRow.appendChild(el("th", {
-            style: "border:0.75px dashed #c5c0b2;padding:1px;background:#f3f0e8;width:26px;font-size:7.5px;line-height:1.1;text-align:center;color:#4a463c;word-break:break-word",
-          },
-            el("div", { style: "font-weight:700" }, bLabel),
-            bTime ? el("div", { style: "font-size:6.5px;font-weight:400" }, bTime) : null));
-
+          headerRow.appendChild(breakHeaderCell(report, bLabel, bTime));
         }
       }
       thead.appendChild(headerRow);
