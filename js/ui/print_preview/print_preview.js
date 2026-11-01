@@ -4,7 +4,7 @@ import "../ribbon/topbar.js";
 import "./cell_style_dialog.js";
 import "./print_settings_dialog.js";
 import "./saved_reports.js";
-import { prepare as prepareSheets, companionIds } from "./sheet_engine.js";
+import { prepare as prepareSheets, companionIds, sheetPlan, groupIntoSheets, cellOrder, sheetSize } from "./sheet_engine.js";
 import { attach as attachContextMenu } from "./preview_context_menu.js";
 
 /* Print preview — swaps the ribbon into preview mode, renders one of 5
@@ -498,6 +498,13 @@ import { attach as attachContextMenu } from "./preview_context_menu.js";
 
   function stepPage(delta) {
     if (!pages.length) return;
+    const plan = sheetMode();
+    if (plan) {
+      const groups = groupIntoSheets(pages, plan);
+      pageIdx = Math.max(0, Math.min(groups.length - 1, Math.floor(pageIdx / plan.perSheet) + delta)) * plan.perSheet;
+      showSheet(pageIdx / plan.perSheet, plan);
+      return;
+    }
     pageIdx = Math.max(0, Math.min(pages.length - 1, pageIdx + delta));
     showPage(pageIdx);
   }
@@ -657,7 +664,55 @@ import { attach as attachContextMenu } from "./preview_context_menu.js";
     finally { endPrint(); }
   }
 
+  /**
+   * N-up sheet view — when the user prints 2-up / 2×2 the preview now shows the
+   * same sheet grid the printer will produce, instead of a single page with the
+   * split only appearing after Ctrl+P.
+   */
+  function sheetMode() {
+    const plan = sheetPlan(APP.printSettings || {});
+    return plan.multi && APP.printSettings && APP.printSettings.previewSheets !== false ? plan : null;
+  }
+
+  function showSheet(sheetIndex, plan) {
+    const groups = groupIntoSheets(pages, plan);
+    const group = groups[Math.max(0, Math.min(groups.length - 1, sheetIndex))] || [];
+    docShell.innerHTML = "";
+    const { w, h } = sheetSize((APP.printSettings || {}).pageSize, (APP.printSettings || {}).orientation);
+    const planRows = plan.rows, planCols = plan.cols;
+    const view = el("div", {
+      class: "chrx-sheet-preview",
+      style: "width:" + w + "mm;height:" + h + "mm;background:#fff;box-sizing:border-box;" +
+        "display:grid;grid-template-columns:repeat(" + planCols + ",1fr);grid-template-rows:repeat(" + planRows + ",1fr);" +
+        "gap:0;box-shadow:0 8px 30px rgba(0,0,0,.18);margin:0 auto",
+    });
+    const order = cellOrder(plan.perSheet, planCols, planRows, plan.byColumns);
+    const cells = [];
+    for (let i = 0; i < plan.perSheet; i++) {
+      cells.push(el("div", { style: "position:relative;overflow:hidden;outline:1px dashed #cbd5e1" }));
+    }
+    group.forEach((pg, i) => {
+      const slot = order[i];
+      const cell = cells[slot];
+      if (!cell) return;
+      cell.appendChild(pg);
+      pg.style.transformOrigin = "top left";
+      pg.style.transform = "scale(" + (1 / planCols) + "," + (1 / planRows) + ")";
+      pg.style.margin = "0";
+    });
+    cells.forEach((c) => view.appendChild(c));
+    docShell.appendChild(view);
+    const ind = overlay.querySelector(".chrx-pp-indicator");
+    if (ind) {
+      const first = sheetIndex * plan.perSheet + 1;
+      const last = Math.min(pages.length, first + group.length - 1);
+      ind.textContent = `Sheet ${sheetIndex + 1} / ${groups.length} · pages ${first}–${last}`;
+    }
+  }
+
   function showPage(i) {
+    const plan = sheetMode();
+    if (plan) { showSheet(Math.floor(i / plan.perSheet), plan); return; }
     docShell.innerHTML = "";
     docShell.appendChild(pages[i]);
     const ind = overlay.querySelector(".chrx-pp-indicator");
@@ -767,6 +822,12 @@ import { attach as attachContextMenu } from "./preview_context_menu.js";
       else if (template === "room")    out = perEntityPages(s, "room",    periods, s.classrooms, s._idx?.cardsByRoom);
       else if (template === "summary") out = [summaryPage(s, periods)];
       else if (template === "poster")  out = [posterPage(s, periods)];
+    }
+    // "Skip pages with no lessons" — applied last so the legacy fallback above
+    // cannot repopulate what we just removed.
+    if (APP.printSettings && APP.printSettings.skipEmptyPages) {
+      const kept = out.filter((p) => !(p && p.dataset && p.dataset.chrxEmpty === "1"));
+      if (kept.length) out = kept;
     }
     return out;
   }
@@ -1113,6 +1174,9 @@ import { attach as attachContextMenu } from "./preview_context_menu.js";
   window.addEventListener("app:preview-template", (e) => render(e.detail?.template || "class"));
   // A style edit from the right-click menu edits the active PrintReport; the
   // preview must re-render it or the change looks ignored.
+  window.addEventListener("app:print-settings-changed", () => {
+    if (overlay && overlay.classList.contains("is-open") && pages.length) showPage(pageIdx);
+  });
   window.addEventListener("app:print-report-updated", () => {
     if (overlay && overlay.classList.contains("is-open")) {
       try { render(currentTemplate); } catch (e) { console.warn("[print] re-render:", e); }

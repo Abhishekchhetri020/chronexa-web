@@ -555,6 +555,9 @@ import "../state.js";
       class: "chrx-preview-page chrx-print-page chrx-pivot-page",
       style: "background:#fff;color:#111;width:" + pageWidth + ";min-height:" + pageHeight + ";padding:14mm 12mm;box-sizing:border-box;display:flex;flex-direction:column;gap:6px;font-family:system-ui",
     });
+    // A page whose scope holds no placed cards prints as an empty grid; the
+    // preview and the printer can skip it (aSc prints the blank page).
+    if (!pageCards.length) page.dataset.chrxEmpty = "1";
 
     const PS = APP.printSettings || {};
     const schoolName = printTitle(school, PS);
