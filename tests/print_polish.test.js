@@ -62,3 +62,31 @@ describe("logo printing", () => {
     expect(img.getAttribute("style")).not.toMatch(/width:14mm/);
   });
 });
+
+describe("footer tokens", () => {
+  const render = (tpl, ctx) => window.APP.PrintPivot.renderFooterTokens(tpl, ctx);
+
+  it("substitutes every documented token", () => {
+    const ctx = { school: "GDG", date: "W.E.F 12.05.2026", scope: "IX A",
+      classTeacher: "Ms. Rao", room: "R12", report: "Timetable for each class" };
+    expect(render("{school} · {scope}", ctx)).toBe("GDG · IX A");
+    expect(render("{classTeacher} / {room}", ctx)).toBe("Ms. Rao / R12");
+    expect(render("{date}", ctx)).toBe("W.E.F 12.05.2026");
+    expect(render("{report}", ctx)).toBe("Timetable for each class");
+  });
+
+  it("leaves unknown tokens visible instead of swallowing them", () => {
+    expect(render("{nope}", {})).toBe("{nope}");
+  });
+
+  it("does not offer page tokens — the sheet engine owns those", () => {
+    expect(render("{page}/{pages}", { page: 1, pages: 9 })).toBe("{page}/{pages}");
+  });
+
+  it("renders the three footer slots with the old defaults", () => {
+    const pages = renderClass();
+    const foot = pages[0].querySelectorAll("span");
+    const texts = [...foot].map((s) => s.textContent);
+    expect(texts).toContain("Chronexa");           // right slot default
+  });
+});

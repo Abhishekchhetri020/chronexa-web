@@ -272,6 +272,11 @@ import "./cell_style_dialog.js";
       row("Page prefix (above the title)", text("headerPrefix", 360)),
       row("Header text",  text("headerText", 360)),
       row("Footer text",  text("footerText", 360)),
+      row("Footer left",   text("footerLeft", 300)),
+      row("Footer centre", text("footerCenter", 300)),
+      row("Footer right",  text("footerRight", 300)),
+      el("p", { style: "color:#64748b;font-size:11px;margin:2px 0 0" },
+        "Tokens: {school} {date} {scope} {classTeacher} {room} {report}. Page numbers live on the Sheet & PDF tab."),
       row("Show logo",    bool("showLogo")),
       row("Logo URL",     text("logoUrl", 360)),
       logoUploadRow());
