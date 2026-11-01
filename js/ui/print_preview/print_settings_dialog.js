@@ -60,6 +60,10 @@ import "./cell_style_dialog.js";
     headerPrefix: "",
     companionReports: [],
     skipEmptyPages: false,
+    pageNumberFormat: "of-total",
+    pageNumberPos: "bottom-right",
+    pageNumberTemplate: "Page {page} of {pages}",
+    pageNumberSkipFirst: false,
     previewSheets: true,
   };
 
@@ -298,7 +302,11 @@ import "./cell_style_dialog.js";
       row("Pages per sheet", sel),
       row("Copy order", pick("splitOrder", ["columns", "rows"])),
       row("Copies of each sheet", num("repeatCopies", 1, 9, 1)),
-      row("Page numbers", pick("pageNumbers", ["none", "page", "of-total"])),
+      row("Page numbers", pick("pageNumberFormat", ["none", "page", "of-total", "slash", "custom"])),
+      row("Number position", pick("pageNumberPos", ["bottom-right", "bottom-center", "bottom-left",
+        "top-right", "top-center", "top-left"])),
+      row("Custom format", text("pageNumberTemplate", 240)),
+      row("Skip the first page", bool("pageNumberSkipFirst")),
       row("Hide empty rows", bool("hideEmptyRows")),
       row("Hide empty columns", bool("hideEmptyColumns")),
       row("Skip pages with no lessons", bool("skipEmptyPages")),

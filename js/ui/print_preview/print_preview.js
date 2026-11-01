@@ -568,6 +568,21 @@ import { attach as attachContextMenu } from "./preview_context_menu.js";
   // poor PDF out of the preview.
   let printSession = null;
 
+  /** Tokens for the page-number/footer template: the printed school name and date. */
+  function stampContext() {
+    const Pivot = APP.PrintPivot;
+    const school = APP.school || {};
+    const PS = APP.printSettings || {};
+    const title = (Pivot && Pivot.printTitle) ? Pivot.printTitle(school, PS)
+      : (PS.headerText || school.schoolName || "");
+    const d = (Pivot && Pivot.printDateLine) ? Pivot.printDateLine(school) : "";
+    if (docShell) {
+      docShell.dataset.printSchool = title || "";
+      docShell.dataset.printDate = (d || "").replace(/^W\.E\.F\.?\s*/i, "")
+        || new Date().toLocaleDateString("en-GB");
+    }
+  }
+
   function beginPrint() {
     if (printSession || !pages.length || !docShell) return null;
     pages.forEach(p => { p.style.zoom = "1"; });
@@ -583,6 +598,7 @@ import { attach as attachContextMenu } from "./preview_context_menu.js";
         try { autofitMountedPage(p); } catch (e) { /* never break printing */ }
       }
     }
+    try { stampContext(); } catch {}
     let restoreSheets = null;
     try {
       restoreSheets = prepareSheets(printSet, APP.printSettings || {}, docShell);
@@ -644,6 +660,7 @@ import { attach as attachContextMenu } from "./preview_context_menu.js";
     while (docShell.firstChild) docShell.removeChild(docShell.firstChild);
     for (const p of collected) { p.style.zoom = "1"; docShell.appendChild(p); }
     for (const p of collected) { try { autofitMountedPage(p); } catch {} }
+    try { stampContext(); } catch {}
     let restore = null;
     try { restore = prepareSheets(collected, APP.printSettings || {}, docShell); } catch {}
     try { window.print(); }
