@@ -177,6 +177,25 @@ import "../state.js";
     return "";
   }
 
+
+  /**
+   * Footer tokens. aSc lets a report carry its own header/footer text; ours were
+   * two fixed strings. Tokens: {school} {date} {scope} {classTeacher} {room}
+   * {report}. Deliberately NO {page}/{pages} — page numbers have a single owner
+   * (the sheet engine), and putting them here would print them twice.
+   * Unknown tokens are left untouched so a typo is visible rather than silent.
+   */
+  function renderFooterTokens(template, ctx) {
+    const c = ctx || {};
+    return String(template == null ? "" : template)
+      .replace(/\{school\}/g, c.school || "")
+      .replace(/\{date\}/g, c.date || "")
+      .replace(/\{scope\}/g, c.scope || "")
+      .replace(/\{classTeacher\}/g, c.classTeacher || "")
+      .replace(/\{room\}/g, c.room || "")
+      .replace(/\{report\}/g, c.report || "");
+  }
+
   /** "W.E.F <date>" only when the file actually carries a date — never today's. */
   function printDateLine(school) {
     const d = (school && (school.dateFrom
@@ -580,14 +599,19 @@ import "../state.js";
     }
     // Sub-header: school name left + class teacher right (only for class-paged reports)
     const classEnt = pageBindings && pageBindings.get("class");
+    // Hoisted for the footer tokens: these were block-scoped inside the sub-header.
+    let pageClassTeacher = "";
+    let pageHomeRoom = "";
     if (classEnt) {
       const cls = (school.classes || []).find(c => c.id === classEnt.id);
       const tid = cls && (cls._teacherId || cls.teacherId || cls.classTeacherId);
       const tObj = tid && (school.teachers || []).find(t => t.id === tid);
       const ctName = tObj ? (tObj.name || tObj.abbreviation || "") : "";
+      pageClassTeacher = ctName;
       const rid = cls && (cls.homeRoomId || cls.classroomId || (cls._classroomIds || [])[0]);
       const rObj = rid && (school.classrooms || []).find(r => r.id === rid);
       const roomName = rObj ? (rObj.name || rObj.abbreviation || "") : "";
+      pageHomeRoom = roomName;
       const sub = el("div", {
         style: "display:flex;justify-content:space-between;font-size:9.5px;color:#555;border-bottom:1px solid #bbb;padding-bottom:4px;margin-bottom:2px",
       });
@@ -881,11 +905,25 @@ import "../state.js";
 
     page.appendChild(tableWrap);
 
+    // Footer: three slots fed by token templates. Defaults reproduce the old
+    // "W.E.F date … Chronexa" line, so an untouched report is unchanged.
+    const footerCtx = {
+      school: schoolName,
+      date: printDateLine(school),
+      scope: pageTitle || "",
+      classTeacher: pageClassTeacher,
+      room: pageHomeRoom,
+      report: report.name || "",
+    };
+    const fLeft = renderFooterTokens(PS.footerLeft != null ? PS.footerLeft : "{date}", footerCtx);
+    const fMid = renderFooterTokens(PS.footerCenter || "", footerCtx);
+    const fRight = renderFooterTokens(PS.footerRight != null ? PS.footerRight : "Chronexa", footerCtx);
     page.appendChild(el("div", {
-      style: "display:flex;justify-content:space-between;font-size:10px;color:#666;font-family:'JetBrains Mono',ui-monospace,monospace;border-top:1px solid #eee;padding-top:6px",
+      style: "display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:10px;color:#666;font-family:'JetBrains Mono',ui-monospace,monospace;border-top:1px solid #eee;padding-top:6px",
     },
-      el("span", null, printDateLine(school)),
-      el("span", null, "Chronexa")));
+      el("span", { style: "flex:1 1 0;text-align:left" }, fLeft),
+      el("span", { style: "flex:1 1 0;text-align:center" }, fMid),
+      el("span", { style: "flex:1 1 0;text-align:right" }, fRight)));
 
     return page;
   }
@@ -970,5 +1008,5 @@ import "../state.js";
     return renderReport(report, school, periods);
   }
 
-  APP.PrintPivot = { renderReport, renderPreset, axisCombinations, entitiesFor, periodHeaderStyle, printTitle, printDateLine };
+  APP.PrintPivot = { renderReport, renderPreset, axisCombinations, entitiesFor, periodHeaderStyle, printTitle, printDateLine, renderFooterTokens };
 })();
