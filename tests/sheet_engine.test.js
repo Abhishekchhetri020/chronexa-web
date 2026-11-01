@@ -155,3 +155,26 @@ describe("cellOrder — aSc splitpageorder", () => {
     expect(cellOrder(2, 1, 2, true)).toEqual([0, 1]);
   });
 });
+
+describe("sheet preview helpers", () => {
+  it("grouping used by the preview matches what prints", () => {
+    const pages = Array.from({ length: 7 }, (_, i) => "p" + i);
+    const plan = { perSheet: 4 };
+    const groups = groupIntoSheets(pages, plan);
+    expect(groups).toHaveLength(2);
+    expect(groups[0]).toHaveLength(4);
+    expect(groups[1]).toHaveLength(3);
+  });
+
+  it("a 2-up landscape sheet is exactly two A4-landscape pages wide", () => {
+    const { w, h } = sheetSize("A4", "landscape");
+    expect(w).toBe(297);
+    expect(h).toBe(210);
+    // each cell of a 2-up sheet is half the sheet
+    expect(w / 2).toBe(148.5);
+  });
+
+  it("visual order for 2-up: page 1 left, page 2 right", () => {
+    expect(cellOrder(2, 2, 1, false)).toEqual([0, 1]);
+  });
+});

@@ -59,6 +59,8 @@ import "./cell_style_dialog.js";
     cellText: "subject",
     headerPrefix: "",
     companionReports: [],
+    skipEmptyPages: false,
+    previewSheets: true,
   };
 
   function load() {
@@ -299,6 +301,8 @@ import "./cell_style_dialog.js";
       row("Page numbers", pick("pageNumbers", ["none", "page", "of-total"])),
       row("Hide empty rows", bool("hideEmptyRows")),
       row("Hide empty columns", bool("hideEmptyColumns")),
+      row("Skip pages with no lessons", bool("skipEmptyPages")),
+      row("Preview as printed sheets", bool("previewSheets")),
       el("p", { style: "color:#64748b;font-size:11px;margin:10px 0 4px" },
         "Also print (appended to the same job — aSc only offers the classroom timetable, ours takes any report):"),
       (function () {
