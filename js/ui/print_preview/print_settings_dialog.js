@@ -138,6 +138,61 @@ import "./cell_style_dialog.js";
   }
 
   // ─── Tabs (each returns a Node of form controls) ─────────────────────
+
+  /**
+   * Logo upload — a school crest is a file, not a URL. Reads it locally into a
+   * data URL and stores it ON THE FILE (school.logoUrl via APP.mutate) so the
+   * next person who opens the timetable prints the same crest.
+   */
+  function logoUploadRow() {
+    const wrap = el("div", { style: "display:flex;gap:8px;align-items:center;flex-wrap:wrap" });
+    const preview = el("img", {
+      alt: "", src: APP.printSettings.logoUrl || "",
+      style: "height:34px;max-width:90px;object-fit:contain;border:1px solid #e2e8f0;border-radius:4px;background:#fff;padding:2px" });
+    if (!APP.printSettings.logoUrl) preview.style.display = "none";
+
+    const input = el("input", { type: "file", accept: "image/png,image/jpeg,image/svg+xml,image/webp",
+      style: "font-size:11px;max-width:220px",
+      onchange: (e) => {
+        const f = e.target.files && e.target.files[0];
+        if (!f) return;
+        if (f.size > 400 * 1024) {
+          (window._chrxNotify || function () {})("Logo must be under 400 KB — it is stored inside the timetable file.", "warn");
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => {
+          const dataUrl = String(reader.result || "");
+          APP.printSettings.logoUrl = dataUrl;
+          APP.printSettings.showLogo = true;
+          preview.src = dataUrl;
+          preview.style.display = "";
+          try {
+            if (typeof APP.mutate === "function") {
+              APP.mutate("Set school logo", (sch) => { sch.logoUrl = dataUrl; });
+            } else if (APP.school) {
+              APP.school.logoUrl = dataUrl;
+            }
+          } catch {}
+          (window._chrxNotify || function () {})("Logo stored with this timetable", "success");
+        };
+        reader.readAsDataURL(f);
+      } });
+    const clear = el("button", {
+      type: "button", style: "padding:4px 10px;border:1px solid #cbd5e1;background:#fff;border-radius:6px;font-size:11px;cursor:pointer",
+      onclick: () => {
+        APP.printSettings.logoUrl = "";
+        preview.src = "";
+        preview.style.display = "none";
+        try {
+          if (typeof APP.mutate === "function") APP.mutate("Clear school logo", (sch) => { sch.logoUrl = ""; });
+        } catch {}
+      },
+    }, "Clear");
+    wrap.append(preview, input, clear);
+    return row("Logo image", wrap);
+  }
+
   function tabSizes() {
     return el("div", null,
       row("Page size",     pick("pageSize",    ["A4","A3","Letter","Legal","Tabloid"])),
@@ -212,7 +267,8 @@ import "./cell_style_dialog.js";
       row("Header text",  text("headerText", 360)),
       row("Footer text",  text("footerText", 360)),
       row("Show logo",    bool("showLogo")),
-      row("Logo URL",     text("logoUrl", 360)));
+      row("Logo URL",     text("logoUrl", 360)),
+      logoUploadRow());
   }
   function tabSheet() {
     const presets = [

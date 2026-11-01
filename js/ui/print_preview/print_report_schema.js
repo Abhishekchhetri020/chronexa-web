@@ -66,7 +66,9 @@ import "../state.js";
   };
   // Default anchor per element + context (Class report has Subject top-center, Teacher report has Subject top-left).
   const DEFAULT_ANCHOR = {
-    "class":     { subject:"top-center",  teacher:"bottom-left",  class:"middle-center", group:"middle-center", classroom:"top-right",  count:"middle-center", bellTimes:"middle-center" },
+    // Class pages follow aSc: the subject sits top-LEFT (so a long name has the
+    // whole width) and the teacher bottom-left; the room keeps the top-right.
+    "class":     { subject:"top-left",    teacher:"bottom-left",  class:"middle-center", group:"middle-center", classroom:"top-right",  count:"middle-center", bellTimes:"middle-center" },
     "teacher":   { subject:"top-left",    teacher:"middle-center", class:"bottom-center", group:"middle-center", classroom:"top-right",  count:"middle-center", bellTimes:"middle-center" },
     "classroom": { subject:"middle-center", teacher:"top-left",   class:"bottom-center", group:"middle-center", classroom:"middle-center", count:"middle-center", bellTimes:"middle-center" },
     "subject":   { subject:"middle-center", teacher:"top-left",   class:"bottom-left",   group:"middle-center", classroom:"middle-center", count:"top-right", bellTimes:"middle-center" },

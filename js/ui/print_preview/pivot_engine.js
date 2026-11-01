@@ -563,7 +563,7 @@ import "../state.js";
     if (logoUrl) {
       page.appendChild(el("div", { style: "position:relative;height:0" },
         el("img", { src: logoUrl, alt: "",
-          style: "position:absolute;left:0;top:-2px;height:14mm;width:14mm;object-fit:contain" })));
+          style: "position:absolute;left:0;top:-2px;max-height:16mm;max-width:32mm;width:auto;height:auto;object-fit:contain" })));
     }
     if (schoolName || report.design?.headerText) {
       page.appendChild(el("div", {
@@ -588,18 +588,19 @@ import "../state.js";
       const sub = el("div", {
         style: "display:flex;justify-content:space-between;font-size:9.5px;color:#555;border-bottom:1px solid #bbb;padding-bottom:4px;margin-bottom:2px",
       });
-      sub.appendChild(el("span", null, schoolName));
+      // School name already printed above; repeat it only when a scope name
+      // replaced it in the header (kept for the aSc "small name" cue).
+      if (pageTitle && schoolName) sub.appendChild(el("span", null, schoolName));
       const meta = [];
       if (roomName) meta.push("Home classroom: " + roomName);
       if (ctName) meta.push("Class teacher: " + ctName);
       if (meta.length) sub.appendChild(el("span", null, meta.join(" · ")));
       page.appendChild(sub);
     }
-    if (totalPages > 1) {
-      page.appendChild(el("div", {
-        style: "text-align:right;font-size:9px;color:#666;margin-top:-4px",
-      }, "Page " + (pageIndex+1) + " of " + totalPages));
-    }
+    // Page numbers are stamped by the sheet engine, which is the only layer that
+    // knows the real total (companions and batch layouts included). Printing a
+    // second counter here produced two "Page x of y" lines on every sheet.
+    void totalPages; void pageIndex;
 
     const tableWrap = el("div", { style: "flex:1;overflow:visible;display:flex;gap:6px" });
     const table = el("table", {
@@ -648,7 +649,7 @@ import "../state.js";
           const bLabel = brk.printtext || brk.name || "Break";
           const bTime = (brk.starttime && brk.endtime) ? (brk.starttime + " - " + brk.endtime) : "";
           headerRow.appendChild(el("th", {
-            style: "border:0.75px dashed #c5c0b2;padding:2px;background:#f3f0e8;width:22px;font-size:7px;line-height:1.05;text-align:center;color:#4a463c",
+            style: "border:0.75px dashed #c5c0b2;padding:1px;background:#f3f0e8;width:26px;font-size:7.5px;line-height:1.1;text-align:center;color:#4a463c;word-break:break-word",
           },
             el("div", { style: "font-weight:700" }, bLabel),
             bTime ? el("div", { style: "font-size:6.5px;font-weight:400" }, bTime) : null));
