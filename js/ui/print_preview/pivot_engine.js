@@ -322,6 +322,8 @@ import "../state.js";
 
     const mmToPx = 3.779527559;
     const pageHeightPx = (orientation === "portrait" ? 297 : 210) * mmToPx;
+    // (cell sizing still works off the full paper height; the page's own padding
+    // is what keeps content inside it)
     const paddingPx = 28 * mmToPx;
     const headerFooterReservePx = 72;
     const fitCellHeightPx = Math.max(20, Math.floor((pageHeightPx - paddingPx - headerFooterReservePx) / Math.max(1, denseRows)));
@@ -576,8 +578,22 @@ import "../state.js";
     const denseRows = visibleRows.length;
     const compactLevel = denseCols > 34 || denseRows > 22 ? 2 : (denseCols > 16 || denseRows > 10 ? 1 : 0);
     const orientation = report.pageSetup?.orientation || (denseCols > 10 ? "landscape" : "portrait");
-    const pageWidth = orientation === "portrait" ? "210mm" : "297mm";
-    const pageHeight = orientation === "portrait" ? "297mm" : "210mm";
+    // Margin-aware authoring. A page carries its own padding, so an extra
+    // @page margin would make the page BIGGER than the printable box and every
+    // sheet would report a phantom overflow (and get clipped or browser-scaled).
+    // Author the page at the printable size instead: paper minus both margins.
+    const PS0 = APP.printSettings || {};
+    // Orientation belongs to the REPORT (aSc keeps `landscape` on the ttreports
+    // row). Without this the paper stayed portrait while a landscape report
+    // rendered 297mm wide, and the fit check reported an 87mm overflow on every
+    // page of a perfectly normal class timetable.
+    const repOrientation = (report.pageSetup && report.pageSetup.orientation) || report.orientation;
+    if (repOrientation) PS0.orientation = (repOrientation === "landscape") ? "landscape" : "portrait";
+    const userMargin = Math.max(0, Math.min(40, parseInt(PS0.marginMM, 10) || 0));
+    const paperW = orientation === "portrait" ? 210 : 297;
+    const paperH = orientation === "portrait" ? 297 : 210;
+    const pageWidth = (paperW - userMargin * 2) + "mm";
+    const pageHeight = (paperH - userMargin * 2) + "mm";
     const isDayPeriodGrid = colsAreDayPeriod(report);
     const summaryDayLayout = report.cells === "summary-class-day" || report.cells === "summary-class-day-period" || isDayPeriodGrid
       ? computeSummaryDayLayout(visibleRows, visibleCols, pageBindings, pageCards, denseRows, compactLevel, orientation, school, report.cells, isDayPeriodGrid)
@@ -616,6 +632,8 @@ import "../state.js";
     }
     if (pageTitle) {
       page.appendChild(el("div", {
+        // data-chrx-scope names the page for warnings and jump-lists
+        "data-chrx-scope": pageTitle,
         style: "text-align:center;font-weight:700;font-size:18px;font-family:'Fraunces',serif;font-style:italic;letter-spacing:-.01em",
       }, pageTitle));
     }
