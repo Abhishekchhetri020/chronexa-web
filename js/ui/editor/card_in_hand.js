@@ -5,6 +5,7 @@ import "./pending_strip.js";
 import "./placement_validator.js";
 import "./placement_suggestions.js";
 import "./availability_shading.js";
+import { entityShort } from "../../util/entity_label.js";
 
 /**
  * CardInHand — cursor-following ghost overlay.
@@ -57,6 +58,10 @@ import "./availability_shading.js";
               blockLen: Math.max(1, parseInt(d.blockLen, 10) || (lesson && (lesson.lessonLength || (lesson.isLabDouble ? 2 : 1))) || 1),  // double-period block moves as one
               rowKey: d.rowKey,
               sourceRetained: !!d.sourceRetained,
+              // Set when this card was pushed off the grid by a swap. cancel()
+              // then leaves it OFF the grid (Unplaced) instead of returning it
+              // to the slot the dragged card just took (B1).
+              fromSwap: !!d.fromSwap,
               mode: mode };
 
     // Baseline for the post-commit cell-diff patch: grid mutators send their
@@ -957,7 +962,14 @@ import "./availability_shading.js";
         }
       : null;
     const before = pickupSnap; pickupSnap = null;
-    if (!inHand.fromPending && Number.isFinite(inHand.originDay) && Number.isFinite(inHand.originPeriod)) {
+    // B1 — this card only sits in the cursor because a swap pushed it off the
+    // grid. Sending it back to `origin` would drop it on the very slot the
+    // dragged card just took: two cards in one cell, a hard conflict created by
+    // pressing Escape. A displaced card therefore stays OFF the grid and becomes
+    // Unplaced, which is what the collision menu promises and what the tray and
+    // the unplaced chip both count.
+    const displacedBySwap = !!inHand.fromSwap;
+    if (!displacedBySwap && !inHand.fromPending && Number.isFinite(inHand.originDay) && Number.isFinite(inHand.originPeriod)) {
       const S = window.APP && window.APP.school;
       if (S) {
         const lesson = S._idx.lessonById[inHand.lessonId];
@@ -968,6 +980,22 @@ import "./availability_shading.js";
             S.cards.push({ lessonId: inHand.lessonId, day: inHand.originDay, period: inHand.originPeriod + k, classroomId: cid });
         }
       }
+    }
+    if (displacedBySwap) {
+      const S = window.APP && window.APP.school;
+      const lesson = S && S._idx ? S._idx.lessonById[inHand.lessonId] : null;
+      const subject = lesson && S._idx.subjectById ? S._idx.subjectById[lesson.subjectId] : null;
+      const name = entityShort(subject) || (subject && subject.name) || "That card";
+      (window._chrxNotify || function () {})(
+        `${name} is now Unplaced — place it again from the pending tray.`, "warn");
+    }
+    // A displaced card has nowhere to fly back to: finalise synchronously. The
+    // animated path below delays finalise() by 240ms, and finalise() nulls
+    // cardInHand — which wiped a pickup the user started in the meantime and
+    // left the newly picked card unaccounted for.
+    if (displacedBySwap) {
+      finalise();
+      return;
     }
     if (ghost) {
       const target = !inHand.fromPending ? document.querySelector(
@@ -987,14 +1015,23 @@ import "./availability_shading.js";
       finalise();
     }
     function finalise() {
+      // Capture before cleanup(): cleanup() clears `inHand`, and reading it
+      // afterwards threw (Cannot read properties of null) on the Escape path.
+      const unplacedDetail = displacedBySwap
+        ? { lessonId: inHand.lessonId, day: inHand.originDay, period: inHand.originPeriod }
+        : null;
       if (window.APP.editor) window.APP.editor.cardInHand = null;
       cleanup();
       if (!sourceWasRetained) {
         rerender(null, before);
         // The editor render refreshes its own count, but the shell/curtain
         // count is event-driven. A cancelled click pickup must publish the
-        // restoration just like a normal placement so both counters agree.
-        if (restoredDetail) {
+        // restoration just like a normal placement so both counters agree —
+        // and a card left Unplaced by a swap is published as an UNPLACE, not as
+        // a restoration, or the tray and chip keep claiming it is on the grid.
+        if (unplacedDetail) {
+          document.dispatchEvent(new CustomEvent("editor:unplace", { detail: unplacedDetail }));
+        } else if (restoredDetail) {
           document.dispatchEvent(new CustomEvent("editor:place", { detail: restoredDetail }));
         }
       }
@@ -1693,11 +1730,32 @@ import "./availability_shading.js";
         mode: reMode,
       };
       if (reMode === "drag" && dropXY) { detail.sourceX = dropXY.x; detail.sourceY = dropXY.y; }
+      // This card is now off the grid because a swap pushed it out. Mark it so
+      // no later gesture (Escape, a second pickup) returns it to the slot the
+      // dragged card took — that produced two cards in one cell (B1). A
+      // displaced card is Unplaced; the tray and the chip both count it there.
+      detail.fromSwap = true;
       // Tear down the picked card's in-hand visuals (old ghost / highlights /
       // listeners) before carrying the displaced one. cleanup() does not touch
       // school.cards — the swap was already committed by applyDisplacement().
       cleanup();
-      pickup(detail);
+      // Route through the `editor:pickup` EVENT, not pickup() directly. The
+      // event is the seam that also raises the inspector curtain and refreshes
+      // the counts; calling pickup() on its own built the "Card in hand" panel
+      // inside a COLLAPSED curtain, so a drag-swap showed the card leaving the
+      // grid and nothing anywhere saying where it went — B1 read as data loss.
+      document.dispatchEvent(new CustomEvent("editor:pickup", { detail }));
+      // Name the card that moved. Without this the drop is silent: the ghost
+      // re-attaches under the pointer, over the card it just displaced, and a
+      // user whose pointer never moves again sees one card where there were two.
+      const S2 = window.APP && window.APP.school;
+      const lessonB = S2 && S2._idx ? S2._idx.lessonById[lessonIdB] : null;
+      const subjectB = lessonB && S2._idx.subjectById ? S2._idx.subjectById[lessonB.subjectId] : null;
+      const nameB = entityShort(subjectB) || (subjectB && subjectB.name) || "That card";
+      (window._chrxNotify || function () {})(
+        `${nameB} moved to your hand — click a slot to place it, or press Esc to leave it Unplaced.`,
+        "info"
+      );
     }
 
     // Diff baseline from the original pickup — pickUpDisplaced() → pickup()

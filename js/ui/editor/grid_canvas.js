@@ -2466,7 +2466,10 @@ window.Editor = (function () {
 
     const held = window.APP.editor.cardInHand;
     if (held) {
-      if (!held.sourceRetained) placeCardOnSchool(held.lessonId, held.originDay, held.originPeriod);
+      // A card a swap pushed off the grid is already Unplaced — returning it to
+      // its old slot now would drop it on the cell the dragged card took (B1),
+      // so it simply stays unplaced while the user picks up the next card.
+      if (!held.sourceRetained && !held.fromSwap) placeCardOnSchool(held.lessonId, held.originDay, held.originPeriod);
       window.APP.editor.cardInHand = null;
       dispatch("editor:restore", { cardId: held.cardId, lessonId: held.lessonId,
         day: held.originDay, period: held.originPeriod, reason: "second-pickup" });

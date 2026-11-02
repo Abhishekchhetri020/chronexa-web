@@ -34,13 +34,18 @@ function pickUniqueCard(page) {
 }
 
 /** An occupied slot in another single-period lesson's place — dropping on it
- *  swaps (or, when the swap cannot fit, offers the collision menu). */
+ *  swaps (or, when the swap cannot fit, offers the collision menu). The slot
+ *  must hold exactly ONE card that is not the dragged lesson: a cell that
+ *  already contains the dragged card (or a multi-card cell) turns the drop
+ *  into a no-op, and a no-op is correctly not a new version. */
 async function pickTarget(page, excludeLessonId) {
   return page.evaluate((exclude) => {
     const slots = [...document.querySelectorAll("#editor-root .chrx-slot:not(.out-of-bell)")];
     for (const slot of slots) {
-      const card = slot.querySelector(".chrx-vkarta");
-      if (!card || card.dataset.lessonId === exclude) continue;
+      const cards = [...slot.querySelectorAll(".chrx-vkarta")];
+      if (cards.length !== 1) continue;
+      const card = cards[0];
+      if (card.dataset.lessonId === exclude) continue;
       if (card.dataset.blockLen && card.dataset.blockLen !== "1") continue;
       return { day: slot.dataset.day, period: slot.dataset.period };
     }
