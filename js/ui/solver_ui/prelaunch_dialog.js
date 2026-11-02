@@ -366,6 +366,12 @@ import "./backend_client.js";
     }
   }
 
+  /** Default run mode by size: tiny schools generate instantly, big ones polish. */
+  function suggestDefaultMode(periodLoad) {
+    const load = Number(periodLoad) || 0;
+    return load > 0 && load <= 120 ? "generate" : "best";
+  }
+
   function suggestComplexity(school) {
     if (!school) return null;
     const lessons  = (school.lessons  && school.lessons.length)  || 0;
@@ -388,7 +394,14 @@ import "./backend_client.js";
   function open(opts) {
     current = opts || {};
     if (!host) build();
-    setMode(current.defaultMode || "best");
+    // A tiny school should not be offered a five-minute "Best" run first: 12
+    // periods solve in about a second. Big schools keep the thorough default.
+    const sch = current.school || (global.APP && global.APP.school) || null;
+    const periodLoad = sch
+      ? (sch.lessons || []).reduce((n, l) => n + (l.periodsPerWeek || 0), 0)
+      : 0;
+    const smallSchool = periodLoad > 0 && periodLoad <= 120;
+    setMode(current.defaultMode || suggestDefaultMode(periodLoad));
     selectGeneratorMode(current.generatorMode || current.defaultGeneratorMode || (current.defaultMode === "improve" ? "improve_only" : "rebuild"));
     const targetSchool = current.school || (global.APP && global.APP.school) || null;
     setSummary(targetSchool);
@@ -407,5 +420,5 @@ import "./backend_client.js";
   }
 
   global.SolverUI = global.SolverUI || {};
-  global.SolverUI.PreLaunch = { open, close };
+  global.SolverUI.PreLaunch = { open, close, suggestDefaultMode };
 })(typeof window !== "undefined" ? window : globalThis);

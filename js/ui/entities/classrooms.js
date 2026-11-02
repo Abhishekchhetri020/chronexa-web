@@ -193,8 +193,12 @@ import "../components/time_off_matrix.js";
       fields:[
         { label:"Name", control:fName, helpText:"The room name shown in schedules and reports, such as Chemistry Lab." },
         { label:"Short", control:fShort, helpText:"Compact room code used in timetable cells, such as LAB-2." },
-        { label:"Building (text)", control:fBuilding, helpText:"Free-text building or floor label for quick organization." },
-        { label:"Building (entity)", control:fBuildingId, helpText:"Link this room to a formal building record when your school uses multiple buildings." },
+        // One control, not two. When the school has building records the entity
+        // picker is the whole answer; the free-text label only appears for files
+        // that still carry one without an entity (the importer's `building`).
+        ((window.APP.school?.buildings) || []).length
+          ? { label:"Building", control:fBuildingId, helpText:"Which building this room is in — used for teacher travel time." }
+          : { label:"Building", control:fBuilding, helpText:"No building records yet — type a name here, or add buildings under Structure → Buildings." },
         { label:"Allowed tags", control:fAllowedTags, helpText:"Only lessons carrying one of these activity tags may use this room." },
         { label:"Capacity", control:fCap, helpText:"Maximum students the room can safely hold." },
         { label:"Color", control:fColor, helpText:"Used when the editor or printout is colored by classroom." },

@@ -183,7 +183,12 @@ import "../components/teacher_constraints_dialog.js";
       oninput: e => draft.printColor = e.target.value });
 
     function save() {
-      if (!draft.firstName.trim() && !draft.lastName.trim()) { fFirst.focus(); return false; }
+      if (!draft.firstName.trim() && !draft.lastName.trim()) {
+        // Save used to fail silently: focus moved and nothing said why.
+        (window._chrxNotify || function () {})("A teacher needs a first or last name.", "warn");
+        try { fFirst.style.outline = "2px solid #b91c1c"; fFirst.focus(); } catch {}
+        return false;
+      }
       // Auto-assign abbreviation if empty
       if (!draft.abbr.trim()) draft.abbr = autoAbbr(draft.firstName, draft.lastName);
       // Auto-assign unique color if none selected

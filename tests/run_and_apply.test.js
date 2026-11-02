@@ -76,3 +76,15 @@ describe("runAndApply", () => {
     expect(res.status).toBe("boom");
   });
 });
+
+describe("pre-launch default mode", () => {
+  it("tiny schools default to Generate, big schools to Best", async () => {
+    await import("../js/ui/solver_ui/prelaunch_dialog.js");
+    const f = window.SolverUI.PreLaunch.suggestDefaultMode;
+    expect(f(12)).toBe("generate");
+    expect(f(120)).toBe("generate");
+    expect(f(121)).toBe("best");
+    expect(f(700)).toBe("best");
+    expect(f(0)).toBe("best");
+  });
+});
