@@ -793,6 +793,24 @@ import "./availability_shading.js";
         { detail: { cardId, lessonId, day, period, forced } }));
     }
     if (window.APP.editor) window.APP.editor.cardInHand = null;
+    // A drop that displaced cards used to leave the header saying "0 unplaced"
+    // while a card had quietly left the timetable. Say what happened, and force
+    // the counts to re-derive from (lessons × periodsPerWeek) − placed.
+    if (targetRemoved.length) {
+      const n = targetRemoved.length;
+      (window._chrxNotify || function () {})(
+        n + " card" + (n > 1 ? "s" : "") + " moved to Unplaced — re-place " +
+        (n > 1 ? "them" : "it") + " from the pending tray.", "warn");
+      try {
+        if (window.PendingStrip && typeof window.PendingStrip.refresh === "function") window.PendingStrip.refresh();
+        if (window.Editor && typeof window.Editor.patchCells === "function" && window.APP.school) {
+          // patchCells redraws from the current school state, so the displaced
+          // card leaves the grid and the chip count updates.
+          const root = document.querySelector(".chrx-editor") || document.body;
+          window.Editor.render(root);
+        }
+      } catch (e) { console.warn("[drop] refresh after displacement:", e); }
+    }
     cleanup();
   }
 
