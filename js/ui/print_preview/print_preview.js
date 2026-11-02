@@ -4,7 +4,7 @@ import "../ribbon/topbar.js";
 import "./cell_style_dialog.js";
 import "./print_settings_dialog.js";
 import "./saved_reports.js";
-import { prepare as prepareSheets, companionIds, sheetPlan, groupIntoSheets, cellOrder, sheetSize } from "./sheet_engine.js";
+import { prepare as prepareSheets, companionIds, sheetPlan, groupIntoSheets, cellOrder, sheetSize, orderedPages } from "./sheet_engine.js";
 import { attach as attachContextMenu } from "./preview_context_menu.js";
 import { checkPage } from "./fit_check.js";
 
@@ -773,7 +773,8 @@ import { checkPage } from "./fit_check.js";
 
   function showSheet(sheetIndex, plan) {
     if (!docShell || !overlay) return;
-    const groups = groupIntoSheets(pages, plan);
+    // Same imposition order as the printer, so the preview is the booklet.
+    const groups = groupIntoSheets(orderedPages(pages, APP.printSettings || {}), plan);
     const group = groups[Math.max(0, Math.min(groups.length - 1, sheetIndex))] || [];
     docShell.innerHTML = "";
     const { w, h } = sheetSize((APP.printSettings || {}).pageSize, (APP.printSettings || {}).orientation);
@@ -792,7 +793,7 @@ import { checkPage } from "./fit_check.js";
     group.forEach((pg, i) => {
       const slot = order[i];
       const cell = cells[slot];
-      if (!cell) return;
+      if (!cell || !pg) return;
       cell.appendChild(pg);
       pg.style.transformOrigin = "top left";
       pg.style.transform = "scale(" + (1 / planCols) + "," + (1 / planRows) + ")";

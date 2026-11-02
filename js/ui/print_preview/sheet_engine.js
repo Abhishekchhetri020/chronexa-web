@@ -34,8 +34,10 @@ export function sheetSize(pageSize, orientation) {
 /** How many mini-pages fit on one sheet, and in what order. */
 export function sheetPlan(settings) {
   const s = settings || {};
-  const cols = Math.max(1, Math.min(4, parseInt(s.splitW, 10) || 1));
-  const rows = Math.max(1, Math.min(4, parseInt(s.splitH, 10) || 1));
+  let cols = Math.max(1, Math.min(4, parseInt(s.splitW, 10) || 1));
+  let rows = Math.max(1, Math.min(4, parseInt(s.splitH, 10) || 1));
+  // Booklet imposition is a fold: two pages side by side, nothing else works.
+  if (s.imposition === "booklet") { cols = 2; rows = 1; }
   const copies = Math.max(1, Math.min(9, parseInt(s.repeatCopies, 10) || 1));
   return {
     cols, rows,
@@ -64,6 +66,43 @@ export function cellOrder(perSheet, cols, rows, byColumns) {
     }
   }
   return out;
+}
+
+
+/**
+ * Saddle-stitch (booklet) imposition order — aSc's print options have no
+ * equivalent; this is the piece that makes "2 pages per sheet" usable as an
+ * actual folded booklet instead of just two pages side by side.
+ *
+ * For N pages padded to a multiple of 4, the sequence of page indices in sheet
+ * order is:  N, 1, 2, N-1,  N-2, 3, 4, N-3, …
+ * `null` marks a blank side (when the page count is not a multiple of 4).
+ *
+ * @param {number} count
+ * @returns {Array<number|null>} 1-based page numbers in imposition order
+ */
+export function bookletOrder(count) {
+  const n = Math.max(1, parseInt(count, 10) || 0);
+  const padded = Math.ceil(n / 4) * 4;
+  const out = [];
+  for (let i = 0; i < padded / 4; i++) {
+    const front1 = padded - 2 * i;
+    const front2 = 1 + 2 * i;
+    const back1 = 2 + 2 * i;
+    const back2 = padded - 1 - 2 * i;
+    for (const idx of [front1, front2, back1, back2]) {
+      out.push(idx <= n ? idx : null);
+    }
+  }
+  return out;
+}
+
+
+/** Pages in imposition order (booklet) or natural order. Shared by print + preview. */
+export function orderedPages(pages, settings) {
+  const s = settings || {};
+  if (s.imposition !== "booklet") return pages.slice();
+  return bookletOrder(pages.length).map((n) => (n == null ? null : pages[n - 1]));
 }
 
 /** Group pages into sheets; pure so the ordering is testable. */
@@ -275,8 +314,10 @@ export function prepare(pages, settings, host) {
     // "the originals" afterwards would pull them straight back out of the
     // sheets and print a stack of empty ones.
     originals.forEach((o) => o.page.remove());
+    // Imposition: booklet order re-sequences the pages before they are grouped.
+    const ordered = orderedPages(pages, s);
     const sheets = [];
-    for (const group of groupIntoSheets(pages, plan)) {
+    for (const group of groupIntoSheets(ordered, plan)) {
       const order = cellOrder(plan.perSheet, plan.cols, plan.rows, plan.byColumns);
       for (let copy = 0; copy < plan.copies; copy++) {
         const sheet = document.createElement("div");
@@ -292,7 +333,7 @@ export function prepare(pages, settings, host) {
         }
         group.forEach((page, i) => {
           const target = cells[order[i]];
-          if (target) target.appendChild(page);
+          if (target && page) target.appendChild(page);
         });
         cells.forEach((c) => sheet.appendChild(c));
         sheets.push(sheet);
@@ -326,4 +367,4 @@ export function companionIds(settings, ownTemplate, available) {
   return raw.filter((id) => id && id !== ownTemplate && (!known.size || known.has(id)));
 }
 
-export default { PAPER_MM, formatPageNumber, pageNumberOffset, sheetSize, sheetPlan, groupIntoSheets, isEmptyRow, emptyColumnIndexes, prepare, companionIds };
+export default { PAPER_MM, formatPageNumber, pageNumberOffset, bookletOrder, orderedPages, sheetSize, sheetPlan, groupIntoSheets, isEmptyRow, emptyColumnIndexes, prepare, companionIds };

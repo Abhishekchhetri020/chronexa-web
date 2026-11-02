@@ -234,3 +234,56 @@ describe("page numbers", () => {
     restoreB();
   });
 });
+
+describe("booklet imposition", () => {
+  it("orders pages for a folded booklet", async () => {
+    const { bookletOrder } = await import("../js/ui/print_preview/sheet_engine.js");
+    // 8 pages -> sheet1 front 8|1, back 2|7; sheet2 front 6|3, back 4|5
+    expect(bookletOrder(8)).toEqual([8, 1, 2, 7, 6, 3, 4, 5]);
+  });
+
+  it("pads a short booklet with blank sides", async () => {
+    const { bookletOrder } = await import("../js/ui/print_preview/sheet_engine.js");
+    // 6 pages -> padded to 8; the blanks are the outer sheet's outer slots
+    // (front is "8|1" and page 8 does not exist), which is what a fold needs.
+    expect(bookletOrder(6)).toEqual([null, 1, 2, null, 6, 3, 4, 5]);
+  });
+
+  it("keeps a 4-page booklet trivial", async () => {
+    const { bookletOrder } = await import("../js/ui/print_preview/sheet_engine.js");
+    expect(bookletOrder(4)).toEqual([4, 1, 2, 3]);
+  });
+
+  it("forces two pages per sheet", async () => {
+    const { sheetPlan } = await import("../js/ui/print_preview/sheet_engine.js");
+    const plan = sheetPlan({ imposition: "booklet", splitW: 2, splitH: 2 });
+    expect(plan).toMatchObject({ cols: 2, rows: 1, perSheet: 2 });
+  });
+
+  it("builds sheets in booklet order with blanks left empty", async () => {
+    const { prepare } = await import("../js/ui/print_preview/sheet_engine.js");
+    document.head.innerHTML = "";
+    document.body.innerHTML = "";
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const pages = [];
+    for (let i = 0; i < 6; i++) {
+      const p = document.createElement("div");
+      p.className = "chrx-preview-page";
+      p.textContent = "P" + (i + 1);
+      host.appendChild(p);
+      pages.push(p);
+    }
+    const restore = prepare(pages, { imposition: "booklet", splitW: 2, splitH: 1 }, host);
+    // each printed SIDE is one sheet node: front 1, back 1, front 2, back 2
+    const sheets = host.querySelectorAll(".chrx-print-sheet");
+    expect(sheets).toHaveLength(4);
+    const text = (i) => [...sheets[i].querySelectorAll(".chrx-preview-page")].map((n) => n.textContent);
+    expect(text(0)).toEqual(["P1"]);           // outer front: blank | 1
+    expect(text(1)).toEqual(["P2"]);           // outer back: 2 | blank
+    expect(text(2)).toEqual(["P6", "P3"]);     // inner front: 6 | 3
+    expect(text(3)).toEqual(["P4", "P5"]);     // inner back: 4 | 5
+    restore();
+    expect(host.querySelectorAll(".chrx-print-sheet")).toHaveLength(0);
+  });
+});
