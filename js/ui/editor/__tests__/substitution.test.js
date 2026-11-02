@@ -140,9 +140,16 @@ describe("Lane W2-4: Saved substitutions and dated views", () => {
     const extrasTable = firstPage.querySelector(".chrx-pivot-extras");
     expect(extrasTable).not.toBeNull();
 
-    // The covered column should NOT be 0 for the subject that was substituted
+    // The covered column should NOT be 0 for the subject that was substituted.
+    // The extras column prints the SHORT form when the subject has one (that is
+    // the print vocabulary), so match either spelling.
     const rows = Array.from(extrasTable.querySelectorAll("tbody tr"));
-    const subjectRow = rows.find(r => r.cells[0]?.textContent?.includes(school._idx.subjectById[subjectId]?.name || ""));
+    const subj = school._idx.subjectById[subjectId] || {};
+    const labels = [subj.name, subj.abbr, subj.abbreviation, subj.short].filter(Boolean);
+    const subjectRow = rows.find((r) => {
+      const t = r.cells[0]?.textContent || "";
+      return labels.some((l) => t.includes(l));
+    });
     expect(subjectRow).toBeDefined();
     const coveredCountText = subjectRow.cells[1]?.textContent;
     expect(Number(coveredCountText)).toBeGreaterThan(0);
