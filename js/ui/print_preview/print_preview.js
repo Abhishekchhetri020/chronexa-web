@@ -604,10 +604,23 @@ import { checkPage } from "./fit_check.js";
     try { stampContext(); } catch {}
     // Warn before the paper is spent: count pages that overflow the printable area.
     try {
-      const bad = printSet.map((p) => checkPage(p, APP.printSettings || {})).filter((r) => r && !r.ok);
-      if (bad.length) {
+      const checked = printSet.map((p) => ({ page: p, res: checkPage(p, APP.printSettings || {}) }))
+        .filter((x) => x.res && !x.res.ok);
+      if (checked.length && !(APP.printSettings || {}).fitToPage) {
+        const worst = checked.slice(0, 3).map(({ page, res }) => {
+          // Prefer the page's scope ("IX B", "Ms. Rao") over the school header,
+          // which every page shares and therefore identifies nothing.
+          const scope = page.querySelector("[data-chrx-scope]");
+          const title = (scope ? scope.getAttribute("data-chrx-scope") : "").slice(0, 28)
+            || (page.querySelector("h2") ? page.querySelector("h2").textContent : "").trim().slice(0, 28)
+            || (page.textContent || "").trim().split("\n")[0].slice(0, 28);
+          const why = [!res.okX ? "+" + res.overflowXMm + "mm wide" : null,
+                       !res.okY ? "+" + res.overflowYMm + "mm tall" : null].filter(Boolean).join(", ");
+          return `${title || "page"} (${why})`;
+        });
         (window._chrxNotify || function () {})(
-          bad.length + " page" + (bad.length > 1 ? "s" : "") + " are larger than the printable area and may be clipped.",
+          checked.length + " page" + (checked.length > 1 ? "s" : "") + " exceed the printable area: " +
+          worst.join("; ") + (checked.length > 3 ? " …" : "") + ". Turn on Fit to page to shrink them.",
           "warn");
       }
     } catch {}
@@ -712,6 +725,18 @@ import { checkPage } from "./fit_check.js";
    * the margins? A page that spills would otherwise only reveal itself after the
    * paper is spent.
    */
+  /** Scale a page down to the printable area when "fit to page" is on. */
+  function applyFitToPage(page, res) {
+    if (!page || !res) return null;
+    if (!(APP.printSettings || {}).fitToPage) {
+      page.style.zoom = "1";
+      return null;
+    }
+    const scale = Math.max(0.5, Math.min(1, res.scale || 1));
+    page.style.zoom = String(scale);
+    return scale;
+  }
+
   function updateFitBadge() {
     const badge = overlay && overlay.querySelector(".chrx-pp-fit");
     if (!badge) return;
@@ -721,10 +746,15 @@ import { checkPage } from "./fit_check.js";
     try { res = checkPage(page, APP.printSettings || {}); } catch { res = null; }
     if (!res) { badge.textContent = ""; return; }
     const paper = (APP.printSettings || {}).pageSize || "A4";
+    const appliedScale = applyFitToPage(page, res);
     if (res.ok) {
       badge.textContent = "Fits " + paper;
       badge.style.color = "#047857";
       badge.title = "Content fits the printable area of this paper.";
+    } else if (appliedScale && appliedScale < 1) {
+      badge.textContent = "Scaled to " + Math.round(appliedScale * 100) + "% for " + paper;
+      badge.style.color = "#b45309";
+      badge.title = "Fit to page is on, so this page is shrunk to the printable area.";
     } else {
       const parts = [];
       if (!res.okX) parts.push("width +" + res.overflowXMm + "mm");
@@ -742,6 +772,7 @@ import { checkPage } from "./fit_check.js";
   }
 
   function showSheet(sheetIndex, plan) {
+    if (!docShell || !overlay) return;
     const groups = groupIntoSheets(pages, plan);
     const group = groups[Math.max(0, Math.min(groups.length - 1, sheetIndex))] || [];
     docShell.innerHTML = "";
@@ -779,6 +810,7 @@ import { checkPage } from "./fit_check.js";
   }
 
   function showPage(i) {
+    if (!docShell) return;            // preview shell not mounted yet
     const plan = sheetMode();
     if (plan) { showSheet(Math.floor(i / plan.perSheet), plan); return; }
     docShell.innerHTML = "";
@@ -907,7 +939,14 @@ import { checkPage } from "./fit_check.js";
     pageIdx = 0;
     pages = [];
     const s = APP.school;
-    const periods = s.bell?.periods || [];
+    // Guard: the preview can be opened (or re-rendered from a settings change)
+    // before a school is loaded — this used to throw on `s.bell`.
+    if (!s) {
+      pages = [el("div", { class: "chrx-preview-page" }, el("h2", null, "No school loaded"))];
+      showPage(0);
+      return;
+    }
+    const periods = (s.bell && s.bell.periods) || [];
 
     // Registry-first dispatch: pivot-engine presets register with the same
     // IDs as the legacy 5 builtins (class/teacher/room/summary/poster) and
@@ -1244,7 +1283,12 @@ import { checkPage } from "./fit_check.js";
   // A style edit from the right-click menu edits the active PrintReport; the
   // preview must re-render it or the change looks ignored.
   window.addEventListener("app:print-settings-changed", () => {
-    if (overlay && overlay.classList.contains("is-open") && pages.length) showPage(pageIdx);
+    // A full re-render, not just re-show: page size, margins and headers are
+    // baked into the page nodes at render time, so re-mounting the old pages
+    // kept the previous geometry (a margin change looked ignored).
+    if (overlay && overlay.classList.contains("is-open")) {
+      try { render(currentTemplate); } catch (e) { console.warn("[print] re-render:", e); }
+    }
   });
   window.addEventListener("app:print-report-updated", () => {
     if (overlay && overlay.classList.contains("is-open")) {

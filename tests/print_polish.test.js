@@ -25,7 +25,7 @@ const school = () => ({
 
 beforeEach(() => {
   window.APP = window.APP || {};
-  window.APP.printSettings = { pageNumbers: "none" };
+  window.APP.printSettings = { pageNumbers: "none", marginMM: 0, orientation: "portrait" };
 });
 
 function renderClass() {
@@ -88,5 +88,34 @@ describe("footer tokens", () => {
     const foot = pages[0].querySelectorAll("span");
     const texts = [...foot].map((s) => s.textContent);
     expect(texts).toContain("Chronexa");           // right slot default
+  });
+});
+
+describe("margin-aware page authoring", () => {
+  it("authors the page at paper minus the margins, so nothing phantom-overflows", () => {
+    window.APP.printSettings = { marginMM: 10 };
+    const pages = renderClass();
+    const style = pages[0].getAttribute("style");
+    // the class preset is landscape A4 (297x210); 10mm margins → 277x190
+    expect(style).toContain("width:277mm");
+    expect(style).toContain("min-height:190mm");
+  });
+
+  it("keeps the full paper size when the margin is zero", () => {
+    window.APP.printSettings = { marginMM: 0, orientation: "portrait" };
+    const pages = renderClass();
+    const style = pages[0].getAttribute("style");
+    // landscape width regardless of the app default — the report decides
+    expect(style).toMatch(/width:(297|210)mm/);
+    expect(style).toContain("width:297mm");
+  });
+});
+
+describe("page identity for warnings", () => {
+  it("tags each page with its scope so a warning can name it", () => {
+    const pages = renderClass();
+    const scope = pages[0].querySelector("[data-chrx-scope]");
+    expect(scope).toBeTruthy();
+    expect(scope.getAttribute("data-chrx-scope")).toBe("IX A");
   });
 });
