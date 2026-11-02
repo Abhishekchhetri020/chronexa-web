@@ -255,6 +255,9 @@ import "../components/help_tooltip.js";
       aside.appendChild(el("button", {
         class: cls.join(" "), "data-act": b.id,
         "data-needs-row": b.needRow ? "1" : null,
+        // Row-dependent actions are disabled with no selection; say why, instead
+        // of leaving a button that looks clickable and does nothing.
+        title: b.needRow ? "Select a row first" : null,
         onclick: () => fireAction(b.id),
       }, b.label, b.kbd ? el("span", { class:"chrx-kbd" }, b.kbd) : null));
     });

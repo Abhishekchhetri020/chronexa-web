@@ -145,8 +145,31 @@ import "./dialog_shell.js";
       D.el("div", { class:"chrx-ent-form__foot" },
         D.el("button", { type:"button", class:"chrx-btn chrx-btn--primary",
           onclick:()=>{
-            window.APP.mutate("Edit bell periods", () => {
+            window.APP.mutate("Edit bell periods", (school) => {
+              // (do NOT stash APP.audit on the school — undo deep-clones the
+              // school and its functions cannot be structured-cloned)
               window.APP.audit.append({ entity:"bells", op:"periods", id:ref.id, after: ref.periods.slice() });
+              // The editor writes school.bells[]; the solver and the print engine
+              // read school.bell.periods (startMin/endMin). Without this sync an
+              // edited period time saved correctly and changed nothing anywhere.
+              const isDefault = (school.bells || []).length === 1
+                || (school.bells || [])[0] && (school.bells || [])[0].id === ref.id
+                || !school.bell;
+              if (isDefault) {
+                const toMin = (t) => {
+                  const m = String(t || "").match(/^(\d{1,2}):(\d{2})$/);
+                  return m ? parseInt(m[1], 10) * 60 + parseInt(m[2], 10) : null;
+                };
+                school.bell = school.bell || {};
+                school.bell.periods = ref.periods.map((p, i) => ({
+                  index: p.index || i + 1,
+                  label: p.label || String(i + 1),
+                  startMin: toMin(p.starttime) != null ? toMin(p.starttime) : (i * 40),
+                  endMin: toMin(p.endtime) != null ? toMin(p.endtime) : (i * 40 + 40),
+                  isTeaching: p.isTeaching !== false,
+                }));
+                school.periodsPerDay = school.bell.periods.length;
+              }
             });
             D.closeSheet(); D.refresh(rows());
           } }, "Done"),
@@ -159,7 +182,7 @@ import "./dialog_shell.js";
     D.open({
       entity:"bells", title:"Bell schedules",
       columns:columns(), rows:rows(),
-      extras:[ { id:"periods", label:"Periods" } ],
+      extras:[ { id:"periods", label:"Periods", needRow:false } ],
       onAction:(cmd, row) => {
         if (cmd === "new") return openEdit(null);
         if (cmd === "edit" && row) return openEdit(row);
@@ -175,7 +198,16 @@ import "./dialog_shell.js";
           }
           return;
         }
-        if (cmd === "periods" && row) return openPeriods(row);
+        if (cmd === "periods") {
+          // The button silently did nothing with no row selected — a user presses
+          // "Periods" on a single-bell school and concludes the app is broken.
+          // With exactly one bell there is no ambiguity; otherwise say what to do.
+          const only = ensure();
+          const targetRow = row || (only.length === 1 ? rows()[0] : null);
+          if (targetRow) return openPeriods(targetRow);
+          (window._chrxNotify || function () {})("Select a bell schedule first, then press Periods.", "warn");
+          return;
+        }
       },
     });
   }
