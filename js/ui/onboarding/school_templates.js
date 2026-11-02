@@ -40,7 +40,12 @@ import "./data_library.js";
     if (!choice) return { error: "no such template: " + id };
     const APP = global.APP || (global.APP = {});
     if (!global.CreateNew?.createBlank) return { error: "CreateNew not loaded" };
-    global.CreateNew.createBlank({ schoolName: opts.schoolName || choice.label });
+    // Do NOT use the picker label as the school name: it turned "Blank — I'll set
+    // up everything" (and "CBSE school (India)") into the school's name, which
+    // then printed on every report. Only an explicit name is passed through;
+    // otherwise createBlank's neutral default applies and the user sets it in
+    // School settings.
+    global.CreateNew.createBlank(opts.schoolName ? { schoolName: opts.schoolName } : {});
     const school = APP.school;
     school.schemaVersion = school.schemaVersion || 1;
     if (choice.id === "blank") {
