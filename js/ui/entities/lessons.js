@@ -224,9 +224,14 @@ import "./dialog_shell.js";
           wildcardRoom: !!r._ref.wildcardRoom,
           conditional: !!r._ref.conditional,
           classGroupMap: r._ref.classGroupMap ? { ...r._ref.classGroupMap } : {},
-          daysDefId: r._ref.daysDefId || defDay,
-          weeksDefId: r._ref.weeksDefId || defWk,
-          termsDefId: r._ref.termsDefId || defTerm,
+          // NEVER default these on an existing lesson. A lesson without a
+          // pattern means "every day / all weeks / whole year"; substituting
+          // the default pattern made the dialog claim a restriction the lesson
+          // did not have, and saving then PERSISTED it — an edit that rewrote
+          // scheduling data the user never chose (B2).
+          daysDefId: r._ref.daysDefId || "",
+          weeksDefId: r._ref.weeksDefId || "",
+          termsDefId: r._ref.termsDefId || "",
           maxstudents: r._ref.maxstudents != null ? r._ref.maxstudents : "",
           tags: Array.isArray(r._ref.tags) ? r._ref.tags.join(", ") : (r._ref.tags || ""),
           fixedDay: r._ref.fixedDay != null ? r._ref.fixedDay : "",
@@ -842,15 +847,18 @@ import "./dialog_shell.js";
     const dayPatterns  = (window.EntityDays  && window.EntityDays.ensure()  || s.daysDefs  || s.days  || []);
     const weekPatterns = (window.EntityWeeks && window.EntityWeeks.ensure() || s.weeksDefs || s.weeks || []);
     const termPatterns = (window.EntityTerms && window.EntityTerms.ensure() || s.termsDefs || s.terms || []);
+    // allowEmpty: a lesson with NO pattern must read "—", not silently show the
+    // first pattern in the list. Without it the browser selects option 1, so a
+    // lesson that runs every day displayed "Monday" (B2).
     const fDaysDef  = makeSelect(dayPatterns,  draft.daysDefId,
       d => D.formatOptionLabel(d),
-      v => { draft.daysDefId = v || ""; }, false);
+      v => { draft.daysDefId = v || ""; }, true);
     const fWeeksDef = makeSelect(weekPatterns, draft.weeksDefId,
       w => D.formatOptionLabel(w),
-      v => { draft.weeksDefId = v || ""; }, false);
+      v => { draft.weeksDefId = v || ""; }, true);
     const fTermsDef = makeSelect(termPatterns, draft.termsDefId,
       t => D.formatOptionLabel(t),
-      v => { draft.termsDefId = v || ""; }, false);
+      v => { draft.termsDefId = v || ""; }, true);
 
     D.buildEditSheet({
       title: isNew ? "New lesson" : "Edit lesson",

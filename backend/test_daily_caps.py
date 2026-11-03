@@ -32,6 +32,28 @@ def check(name, cond, detail=""):
     return cond
 
 
+
+def solve_day_pattern(days, bits, ppw=6, days_defs=None):
+    defs = days_defs if days_defs is not None else [
+        {"id": "d-mo", "name": "Monday", "bits": "100000"},
+        {"id": "d-any", "name": "Any day", "bits": "100000,010000,001000,000100,000010"},
+    ]
+    sch = {
+        "schoolName": "daypattern", "daysPerWeek": days, "periodsPerDay": 6,
+        "bell": {"periods": [{"index": i, "isTeaching": True} for i in range(1, 7)]},
+        "daysDefs": defs,
+        "subjects": [{"id": "bio", "name": "Bio"}],
+        "teachers": [{"id": "t1", "name": "T1"}],
+        "classes": [{"id": "c1", "name": "IX A"}],
+        "classrooms": [{"id": "r1", "name": "R1"}],
+        "lessons": [{"id": "l1", "subjectId": "bio", "teacherIds": ["t1"],
+                     "classIds": ["c1"], "periodsPerWeek": ppw, "daysDefId": bits}],
+        "cards": [], "relations": [], "groups": [],
+    }
+    out = build_and_solve(sch, time_limit_sec=10, num_workers=4)
+    return out, sorted({p["day"] for p in out["assignment"]})
+
+
 ok = True
 
 # 1. teacher daily cap binds
@@ -173,5 +195,16 @@ for p in out["assignment"]:
 ok &= check("gap cap of 0 leaves no isolated hole", all(
     sorted(ps) == list(range(min(ps), max(ps) + 1)) for ps in per_day.values()), str(dict(per_day)))
 
-print("\n" + ("ALL PASS" if ok else "SOME FAILED"))
+# ── day pattern (aSc daysdefid) — parity with js/solver/csp_solver.js ────────
+out, used_days = solve_day_pattern(5, "d-mo")
+ok &= check("Monday-only lesson is placed on Monday only", used_days == [0], str(used_days))
+ok &= check("Monday-only lesson still places every period", out["stats"]["placed"] == 6, str(out["stats"]))
+
+out, used_days = solve_day_pattern(5, "d-any")
+ok &= check("two-day pattern stays inside Mon-Fri", all(d <= 4 for d in used_days), str(used_days))
+
+out, used_days = solve_day_pattern(5, "missing-id")
+ok &= check("unknown day pattern fails open (any day)", len(used_days) >= 1, str(used_days))
+
+print("\n" + ("ALL BACKEND CHECKS PASSED" if ok else "BACKEND CHECKS FAILED"))
 sys.exit(0 if ok else 1)

@@ -102,6 +102,31 @@ def build_and_solve(school, time_limit_sec=30, num_workers=8, seed=1,
 
     groups_by_id = {g["id"]: g for g in school.get("groups", [])}
 
+    # aSc daysdefid — a lesson's day pattern restricts which weekdays it may use
+    # (see js/solver/csp_solver.js, added with B2). Bits are one per weekday,
+    # comma-separated for combined day groups ("100000,010000" = Mon or Tue);
+    # the union is the allowed set. Absent/empty means "no restriction".
+    daysdef_by_id = {}
+    for _dd in (school.get("daysDefs") or school.get("days") or []):
+        if isinstance(_dd, dict) and _dd.get("id"):
+            daysdef_by_id[_dd["id"]] = _dd
+
+    def allowed_days_for(L):
+        did = L.get("daysDefId")
+        dd = daysdef_by_id.get(did) if did else None
+        if not dd:
+            return None
+        bits = str(dd.get("bits") if dd.get("bits") is not None else (dd.get("days") or "")).strip()
+        if not bits:
+            return None
+        out = set()
+        for group in bits.split(","):
+            g = group.strip()
+            for i, ch in enumerate(g):
+                if ch == "1":
+                    out.add(i)
+        return out or None
+
     # Index locked cards by lessonId and normalized baseId
     locked_cards_by_lesson = defaultdict(list)
     for c in (school.get("cards") or []):
@@ -155,6 +180,7 @@ def build_and_solve(school, time_limit_sec=30, num_workers=8, seed=1,
                 "teachers": teachers, "classes": classes, "cls_occ": cls_occ,
                 "rooms": rooms, "fixed_day": fday, "fixed_period": fper,
                 "is_locked": is_locked, "fixed_room": fixed_room,
+                "allowed_days": allowed_days_for(L),
             })
 
     m = cp_model.CpModel()
@@ -220,6 +246,8 @@ def build_and_solve(school, time_limit_sec=30, num_workers=8, seed=1,
             if allowed is not None and p not in allowed:
                 continue
             if card["fixed_day"] is not None and d != card["fixed_day"]:
+                continue
+            if card.get("allowed_days") is not None and d not in card["allowed_days"]:
                 continue
             if card["fixed_period"] is not None and p != card["fixed_period"]:
                 continue
@@ -391,8 +419,22 @@ def build_and_solve(school, time_limit_sec=30, num_workers=8, seed=1,
     for card in cards:
         for c in card["classes"]:
             ncards_cs[(c, card["subject"])] += 1
-    cap_cs = {k: max(1, math.ceil(v / ndays)) for k, v in ncards_cs.items()}
-    min_cs = {k: math.floor(v / ndays) for k, v in ncards_cs.items()}
+    # Spread over the days the (class, subject) pair may actually use. A day
+    # pattern can shrink that week to one day, and ceil(6 / 5) = 2 would then
+    # leave four cards unplaced for a reason nobody asked for — the JS draft
+    # places them, so the polish stage must not call it infeasible (B2).
+    # Widest pattern among the lessons contributing to the pair.
+    avail_days_cs = defaultdict(int)
+    for L in school["lessons"]:
+        allowed = allowed_days_for(L)
+        width = ndays if allowed is None else max(1, len(allowed & set(days)))
+        for c in (L.get("classIds") or []):
+            k = (c, L.get("subjectId"))
+            avail_days_cs[k] = max(avail_days_cs.get(k, 0), width)
+    cap_cs = {k: max(1, math.ceil(v / (avail_days_cs.get(k) or ndays)))
+              for k, v in ncards_cs.items()}
+    min_cs = {k: math.floor(v / (avail_days_cs.get(k) or ndays))
+              for k, v in ncards_cs.items()}
     csd = defaultdict(list)                 # (class, subject, day) -> [start vars]
     for ci, card in enumerate(cards):
         for c in card["classes"]:

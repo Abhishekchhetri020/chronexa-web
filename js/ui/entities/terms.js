@@ -21,9 +21,24 @@ import "./dialog_shell.js";
     const s = window.APP.school = window.APP.school || {};
     if (!Array.isArray(s.terms)) {
       s.terms = [];
-      seedDefaults(s.terms);
-    } else if (s.terms.length === 0) {
-      seedDefaults(s.terms);
+    }
+    if (s.terms.length === 0) {
+      // Adopt the patterns the file already carries before inventing new ones.
+      // Imported aSc/EduPage files keep their term patterns in school.termsDefs, and a
+      // lesson's termsDefId points at THOSE ids. Seeding fresh defaults gave
+      // the dialog a list that could not resolve the lesson's own pattern, so it
+      // displayed the first entry instead (a lesson with no pattern read
+      // "Monday"), and editing a lesson could not select its real pattern (B2).
+      const imported = Array.isArray(s.termsDefs) ? s.termsDefs : [];
+      if (imported.length) {
+        for (const d of imported) {
+          if (!d || !d.id) continue;
+          const bits = d.bits != null ? d.bits : (d.terms != null ? d.terms : "");
+          s.terms.push({ id: d.id, name: d.name || d.short || d.id,
+                               short: d.short || undefined, terms: String(bits || "") });
+        }
+      }
+      if (s.terms.length === 0) seedDefaults(s.terms);
     }
     return s.terms;
   }

@@ -244,6 +244,31 @@ function buildModel(school) {
     }
   }
 
+  // aSc daysdefid — a lesson may be restricted to a SET of weekdays (its day
+  // pattern). "Monday" (days="100000") means the lesson may only sit on Monday;
+  // "Every day" / absent means no restriction. The pattern was editable, saved,
+  // exported to XML and shown in the Lessons table, but neither solver read it,
+  // so a "Monday only" lesson was happily timetabled on Friday (B2).
+  const daysDefById = Object.create(null);
+  for (const dd of (school.daysDefs || school.days || [])) {
+    if (dd && dd.id) daysDefById[dd.id] = dd;
+  }
+  // aSc packs a pattern as one bit per weekday, comma-separated for combined
+  // day groups ("100000,010000" = Any day = Mon or Tue). The union is the
+  // allowed set. Returns 0 for "no restriction" so the hot path stays cheap.
+  const allowedDayMaskFor = (l) => {
+    const def = l && l.daysDefId ? daysDefById[l.daysDefId] : null;
+    if (!def) return 0;
+    const bits = String(def.bits != null ? def.bits : (def.days != null ? def.days : "")).trim();
+    if (!bits) return 0;
+    let mask = 0;
+    for (const group of bits.split(",")) {
+      const g = group.trim();
+      for (let i = 0; i < g.length; i++) if (g[i] === "1") mask |= (1 << i);
+    }
+    return mask >>> 0;
+  };
+
   const expanded = [];
   for (const l of school.lessons) {
     const periodsPerCard = l.periodsPerCard || (l.isLabDouble ? 2 : 1) || 1;
@@ -298,6 +323,8 @@ function buildModel(school) {
         fixedPeriod,
         hardLocked,
         conditional: !!l.conditional,
+        // 0 = every day; otherwise a weekday bitmask from the lesson's day pattern.
+        allowedDays: allowedDayMaskFor(l),
         isLabDouble: !!l.isLabDouble,
         periodsPerCard,
         lessonLength: periodsPerCard,
@@ -378,6 +405,7 @@ function buildModel(school) {
   const lessonLabDouble = new Int32Array(lessonCount);
   const lessonSpan = new Int32Array(lessonCount);
   const lessonFixedSlot = new Int32Array(lessonCount).fill(-1);
+  const lessonAllowedDays = new Uint32Array(lessonCount);   // weekday bitmask, 0 = any
   const lessonHardLock = new Uint8Array(lessonCount);
 
   const lessonClassFlat = [];
@@ -386,6 +414,7 @@ function buildModel(school) {
 
   for (let i = 0; i < lessonCount; i++) {
     const l = expanded[i];
+    lessonAllowedDays[i] = l.allowedDays || 0;
     lessonClassStart[i] = lessonClassFlat.length;
     for (const cid of l.classIds) {
       const ix = classIdx.get(cid);
@@ -958,6 +987,11 @@ function buildModel(school) {
   // lab-doubles that's 2 per session (one per slot).
   // So we must count in period units, not session units.
   const _sessionsByClassSubject = new Int32Array(classIds.length * subjectIds.length);
+  // Days this (class, subject) pair may actually use. A day pattern can shrink
+  // the usable week to one day, and spreading 6 periods over ceil(6/5)=2 would
+  // then leave four cards unplaced for a cap the user never asked for. Widest
+  // pattern among the lessons contributing to the pair (B2).
+  const _usableDaysByClassSubject = new Int32Array(classIds.length * subjectIds.length);
   // Max periods-per-card for each (class, subject). Lab-doubles have ppc=2;
   // idealMax must be at least ppc, otherwise even a single placement overflows.
   const _maxPpcByClassSubject = new Int32Array(classIds.length * subjectIds.length);
@@ -969,28 +1003,47 @@ function buildModel(school) {
     const ppc = l.periodsPerCard || (l.isLabDouble ? 2 : (l.lessonLength || 1)) || 1;
     // Count in PERIOD units (matching classSubjectDayCount increments).
     // For a regular lesson with ppw=7: total=7. For lab-double ppw=2: total=2.
+    // Days the lesson may use, from its day pattern (0 mask = every day).
+    let usableDays = days;
+    const dayMask = allowedDayMaskFor(l);
+    if (dayMask) {
+      let n = 0;
+      for (let d = 0; d < days; d++) if ((dayMask >>> d) & 1) n++;
+      if (n > 0) usableDays = n;
+    }
     for (const cid of (l.classIds || [])) {
       const cIdx = classIdx.get(cid);
       if (cIdx == null) continue;
-      _sessionsByClassSubject[cIdx * subjectIds.length + sIdx] += ppw;
-      if (ppc > _maxPpcByClassSubject[cIdx * subjectIds.length + sIdx]) {
-        _maxPpcByClassSubject[cIdx * subjectIds.length + sIdx] = ppc;
+      const pair = cIdx * subjectIds.length + sIdx;
+      _sessionsByClassSubject[pair] += ppw;
+      if (ppc > _maxPpcByClassSubject[pair]) _maxPpcByClassSubject[pair] = ppc;
+      if (usableDays > _usableDaysByClassSubject[pair]) {
+        _usableDaysByClassSubject[pair] = usableDays;
       }
     }
   }
   for (let c = 0; c < classIds.length; c++) {
     for (let s = 0; s < subjectIds.length; s++) {
-      const totalPeriods = _sessionsByClassSubject[c * subjectIds.length + s];
+      const pair = c * subjectIds.length + s;
+      const totalPeriods = _sessionsByClassSubject[pair];
       if (totalPeriods <= 0) continue;
-      const maxPPC = _maxPpcByClassSubject[c * subjectIds.length + s] || 1;
+      const maxPPC = _maxPpcByClassSubject[pair] || 1;
+      // Spread over the days the pair may use, not the calendar week.
+      const usableDays = _usableDaysByClassSubject[pair] || days;
       // idealMax must be at least maxPPC so a single lab-double can fit.
-      const idealMax = Math.max(maxPPC, Math.ceil(totalPeriods / days));
+      const idealMax = Math.max(maxPPC, Math.ceil(totalPeriods / usableDays));
+      // A day pattern can leave fewer days than the calendar week. In that case
+      // the cap must be able to rise as well as fall, or the school-wide
+      // default of 2 silently caps a Monday-only subject at 2 periods a week
+      // and leaves the rest unplaced (B2). Schools without patterns keep the
+      // old "lower only" behaviour exactly.
+      const narrowedWeek = usableDays < days;
       for (let d = 0; d < days; d++) {
         const key = ((c * subjectIds.length) + s) * days + d;
         // Never tighten over an explicit user choice.
         if (!sdlIsAutoGenesis[key]) continue;
         const current = subjectDailyLimit[key];
-        if (current < 0 || idealMax < current) {
+        if (current < 0 || idealMax < current || (narrowedWeek && idealMax > current)) {
           subjectDailyLimit[key] = idealMax;
         }
       }
@@ -1005,9 +1058,11 @@ function buildModel(school) {
   const subjectDailyMin = new Int32Array(classIds.length * subjectIds.length);
   for (let c = 0; c < classIds.length; c++) {
     for (let s = 0; s < subjectIds.length; s++) {
-      const sessions = _sessionsByClassSubject[c * subjectIds.length + s];
-      if (sessions >= days) {
-        subjectDailyMin[c * subjectIds.length + s] = Math.floor(sessions / days);
+      const pair = c * subjectIds.length + s;
+      const sessions = _sessionsByClassSubject[pair];
+      const usableDays = _usableDaysByClassSubject[pair] || days;
+      if (sessions >= usableDays) {
+        subjectDailyMin[pair] = Math.floor(sessions / usableDays);
       }
       // else: sessions < days → some days will be empty, min stays 0.
     }
@@ -1499,7 +1554,7 @@ function buildModel(school) {
     lessonClassGroupMask: Uint32Array.from(lessonClassGroupMask),
     classGroupCount, classFullGroupMask,
     lessonTeacherStart, lessonTeacherCount, lessonTeacherFlat: Int32Array.from(lessonTeacherFlat),
-    lessonSubject, lessonLabDouble, lessonSpan, lessonFixedSlot, lessonHardLock,
+    lessonSubject, lessonLabDouble, lessonSpan, lessonFixedSlot, lessonAllowedDays, lessonHardLock,
     lessonCandidateStart, lessonCandidateCount,
     candidateSlot: candidateSlotArr, candidateRoom: candidateRoomArr,
     teacherAvailabilityMask, teacherConditionalMask, teacherMaxPerDay, teacherMaxConsec,
@@ -2011,6 +2066,13 @@ function _canPlaceJS(model, state, lessonIdx, slot, roomIdx) {
   const fixed = model.lessonFixedSlot[lessonIdx];
   if (fixed >= 0 && fixed !== slot) return FAIL.FIXED_SLOT_MISMATCH;
 
+  // aSc daysdefid — the lesson's day pattern restricts which weekdays it may
+  // use at all. Hard: a Monday-only lesson cannot be nudged to Tuesday.
+  if (model.lessonAllowedDays) {
+    const dayMask = model.lessonAllowedDays[lessonIdx];
+    if (dayMask && !((dayMask >>> d) & 1)) return FAIL.DAY_PATTERN_BANNED;
+  }
+
   // Blocked / locked day check: if the school has lockedDays and this lesson is NOT fixed to this slot
   if (model.lockedDays && model.lockedDays.has(d)) {
     if (fixed !== slot) return FAIL.DAY_LOCKED;
@@ -2274,6 +2336,12 @@ function _canPlaceJS(model, state, lessonIdx, slot, roomIdx) {
 }
 
 function canPlaceSecond(model, state, lessonIdx, slot, roomIdx) {
+  // aSc daysdefid — same rule as canPlace: a day the pattern excludes is
+  // excluded for the whole block, not just its first period.
+  if (model.lessonAllowedDays && model.lessonAllowedDays[lessonIdx] &&
+      !((model.lessonAllowedDays[lessonIdx] >>> model.slotDay[slot]) & 1)) {
+    return FAIL.DAY_PATTERN_BANNED;
+  }
   const sjCap = model.subjectMaxParallel ? model.subjectMaxParallel[model.lessonSubject[lessonIdx]] : -1;
   if (sjCap > 0 && state.subjectSlotCount &&
       state.subjectSlotCount[model.lessonSubject[lessonIdx] * model.totalSlots + slot] >= sjCap) {

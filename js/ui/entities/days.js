@@ -45,9 +45,24 @@ import "./dialog_shell.js";
     const s = window.APP.school = window.APP.school || {};
     if (!Array.isArray(s.days)) {
       s.days = [];
-      seedDefaults(s.days);
-    } else if (s.days.length === 0) {
-      seedDefaults(s.days);
+    }
+    if (s.days.length === 0) {
+      // Adopt the patterns the file already carries before inventing new ones.
+      // Imported aSc/EduPage files keep their day patterns in school.daysDefs, and a
+      // lesson's daysDefId points at THOSE ids. Seeding fresh defaults gave
+      // the dialog a list that could not resolve the lesson's own pattern, so it
+      // displayed the first entry instead (a lesson with no pattern read
+      // "Monday"), and editing a lesson could not select its real pattern (B2).
+      const imported = Array.isArray(s.daysDefs) ? s.daysDefs : [];
+      if (imported.length) {
+        for (const d of imported) {
+          if (!d || !d.id) continue;
+          const bits = d.bits != null ? d.bits : (d.days != null ? d.days : "");
+          s.days.push({ id: d.id, name: d.name || d.short || d.id,
+                               short: d.short || undefined, days: String(bits || "") });
+        }
+      }
+      if (s.days.length === 0) seedDefaults(s.days);
     }
     return s.days;
   }

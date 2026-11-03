@@ -58,6 +58,7 @@ export const FAIL = Object.freeze({
   DAY_LOCKED: 33,
   SUBJECT_PARALLEL_CAP: 34,
   POSITION_BANNED: 35,
+  DAY_PATTERN_BANNED: 36,
 });
 
 /** Numeric ID → name string. */
@@ -98,6 +99,7 @@ export const FAIL_NAME = Object.freeze({
   33: "day_locked",
   34: "subject_parallel_cap",
   35: "position_banned",
+  36: "day_pattern_banned",
 });
 
 /** Catalog rows (UI uses these for the violations list). */
