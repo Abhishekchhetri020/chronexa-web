@@ -533,26 +533,58 @@ import "./planner_model.js";
     });
   }
 
-  function cancelSubstitution(school, { date, cardId, slotKey: key }) {
+  function cancelSubstitution(school, { id, date, cardId, slotKey: key }) {
     const s = school || window.APP?.school;
     if (!s) return null;
     const plan = loadPlan(s, date);
-    const slot = (plan.slots || []).find(
-      (x) => (key && x.slotKey === key) || (cardId && x.cardId === cardId)
-    );
+    const slot = findSlot(plan, s, { id, date, cardId, slotKey: key });
     if (!slot) return null;
     setCancelled(plan, slot.slotKey, true);
     persistPlan(s, plan, "Cancel substitution");
     return slot;
   }
 
-  function reassignSubstitution(school, { date, cardId, slotKey: key, substituteTeacherId }) {
+  /**
+   * Locate a slot from whichever handle the caller has: the persisted row id,
+   * a cardId, a slotKey, or the (period, class, absent teacher) triple.
+   * Callers historically passed only `id`, so ignoring it silently cancelled
+   * nothing (the dated-grid test caught exactly that).
+   */
+  function findSlot(plan, school, { id, date, cardId, slotKey: key, period, classId, absentTeacherId }) {
+    if (key) {
+      const byKey = (plan.slots || []).find((x) => x.slotKey === key);
+      if (byKey) return byKey;
+    }
+    if (cardId) {
+      const byCard = (plan.slots || []).find((x) => x.cardId === cardId);
+      if (byCard) return byCard;
+    }
+    if (id) {
+      const row = (school.substitutions || []).find((x) => x.id === id);
+      if (row) {
+        const byRow = (plan.slots || []).find(
+          (x) => (row.slotKey && x.slotKey === row.slotKey) ||
+                 (row.cardId && x.cardId === row.cardId) ||
+                 (+x.period === +row.period && x.classId === row.classId && x.absentTeacherId === row.absentTeacherId)
+        );
+        if (byRow) return byRow;
+      }
+    }
+    if (period != null) {
+      return (plan.slots || []).find(
+        (x) => +x.period === +period &&
+               (!classId || x.classId === classId) &&
+               (!absentTeacherId || x.absentTeacherId === absentTeacherId)
+      ) || null;
+    }
+    return null;
+  }
+
+  function reassignSubstitution(school, { id, date, cardId, slotKey: key, substituteTeacherId }) {
     const s = school || window.APP?.school;
     if (!s) return null;
     const plan = loadPlan(s, date);
-    const slot = (plan.slots || []).find(
-      (x) => (key && x.slotKey === key) || (cardId && x.cardId === cardId)
-    );
+    const slot = findSlot(plan, s, { id, date, cardId, slotKey: key });
     if (!slot) return null;
     setSubstitute(plan, slot.slotKey, substituteTeacherId || null);
     persistPlan(s, plan, substituteTeacherId ? "Reassign substitution" : "Clear substitute");
