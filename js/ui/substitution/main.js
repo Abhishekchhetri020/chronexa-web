@@ -196,9 +196,11 @@ import "./planner_model.js";
     // it. Older code used objects here and every consumer had to know which.
     plan.absent = absentIds.slice();
     plan.absentTypes = Object.create(null);
+    plan.absentPeriods = Object.create(null);
     for (const teacherId of absentIds) {
       const row = absenceRows.find((a) => a.teacherId === teacherId);
       plan.absentTypes[teacherId] = (row && row.type) || "Sick";
+      plan.absentPeriods[teacherId] = (row && row.periods) || "all";
     }
 
     plan.dutyPool = (s.dutyPool || [])
@@ -208,8 +210,18 @@ import "./planner_model.js";
     const saved = (s.substitutions || []).filter((x) => x.date === date);
 
     const rows = window.SmartPlanner ? window.SmartPlanner.timetableRows(s) : [];
+    // "all" or "3-5" (aSc absent-periods).
+    const periodRange = (teacherId) => {
+      const row = absenceRows.find((a) => a.teacherId === teacherId);
+      const spec = String((row && row.periods) || "all");
+      const m = /^(\d+)\s*-\s*(\d+)$/.exec(spec);
+      if (!m) return null;
+      return { from: Number(m[1]), to: Number(m[2]) };
+    };
+
     for (const teacherId of absentIds) {
       const teacher = idx.teacherById?.[teacherId];
+      const range = periodRange(teacherId);
       // Timetable rows, not the `_idx` index: recording the absence itself is a
       // mutation, and the undo layer rebuilds `_idx` without the per-card lesson
       // context (see planner_model.timetableRows).
@@ -217,6 +229,7 @@ import "./planner_model.js";
       for (const row of teacherRows) {
         const card = row.card;
         if (card.day !== day) continue;
+        if (range && (card.period < range.from || card.period > range.to)) continue;
         const lesson = row.lesson || {};
         const classId = (lesson.classIds || [])[0] || "";
         const cardId = card.cardId || card.id || `placed_${card.lessonId}_${card.day}_${card.period}`;
@@ -304,12 +317,15 @@ import "./planner_model.js";
       sc.absences = (sc.absences || []).filter((a) => a.date !== date);
       const absentIds = P().absentIdsOf(plan);
       const types = plan.absentTypes || {};
+      const periods = plan.absentPeriods || {};
       for (const teacherId of absentIds) {
         sc.absences.push({
           id: `abs_${date}_${teacherId}`,
           date,
           teacherId,
-          periods: "all",
+          // Keep the absent-period range: rewriting it to "all" here silently
+          // widened a partial absence back to the whole day.
+          periods: periods[teacherId] || "all",
           type: types[teacherId] || "Sick",
           reason: "",
         });
@@ -415,6 +431,18 @@ import "./planner_model.js";
     slot.smartReason = "";
     syncMerge(plan, slot);
     return slot;
+  }
+
+  /** Does this class already have a lesson in `period` on the plan's day? */
+  function periodClash(school, plan, slot, period) {
+    const rows = window.SmartPlanner ? window.SmartPlanner.timetableRows(school) : [];
+    for (const row of rows) {
+      if (row.card.day !== plan.day) continue;
+      if (+row.card.period !== +period) continue;
+      if (!row.classIds.includes(slot.classId)) continue;
+      return { subject: (school._idx?.subjectById?.[row.subjectId]?.name) || "a lesson" };
+    }
+    return null;
   }
 
   function movePeriod(plan, slotKeyValue, period) {
@@ -795,6 +823,7 @@ import "./planner_model.js";
     buildPlan, loadPlan, persistPlan, projectAssignments,
     setSubstitute, setCancelled, movePeriod, mergeSlots, unmergeSlots,
     planSmartFill, applySmartFill, undoSmartFill,
+    periodClash,
   };
 })();
 

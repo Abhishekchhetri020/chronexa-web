@@ -47,6 +47,15 @@ import "./candidate_ranker.js";
         if (school && school.absences) {
           state.absent = school.absences.filter(a => a.date === state.date).map(a => a.teacherId);
         }
+        // Rebuild the plan for the NEW day. Without this the previous day's
+        // slots stayed on the board and the next action saved substitutes
+        // against the wrong date (B-fix: date change left stale slots).
+        if (S.loadPlan) {
+          const fresh = S.loadPlan(school, state.date);
+          state.slots = fresh.slots || [];
+          state.assignments = fresh.assignments || [];
+          state.dutyPool = fresh.dutyPool || [];
+        }
         const d = S.ymdToDay(state.date);
         dayBadge.textContent = d < 0
           ? "Sunday (no school)"
@@ -116,7 +125,19 @@ import "./candidate_ranker.js";
           onclick: () => {
             if (!state.absent.includes(t.id)) {
               state.absent.push(t.id);
-              if (S.recordAbsence) S.recordAbsence(school, { date: state.date, teacherId: t.id });
+              if (S.recordAbsence) {
+                // Carry the reason AND the absent-periods selection made before
+                // the teacher was added; otherwise the day is covered in full.
+                const spec = (!state.absentFrom && !state.absentTo)
+                  ? "all"
+                  : `${state.absentFrom || 1}-${state.absentTo || 99}`;
+                S.recordAbsence(school, {
+                  date: state.date,
+                  teacherId: t.id,
+                  type: state.absentType || "Sick",
+                  periods: spec,
+                });
+              }
             }
             search.value = "";
             dropdown.classList.add("is-hidden");
@@ -158,6 +179,34 @@ import "./candidate_ranker.js";
       const t = new Date(y, m - 1, d + n);
       return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
     };
+    // aSc lets an absence cover PART of the day ("absent periods 3-5"); a whole
+    // day is the default. The selection is stored on the absence row and honoured
+    // by the plan, so a teacher out for two periods is not replaced all day.
+    const periodsPerDay = (school.bell?.periods || []).length || school.periodsPerDay || 8;
+    state.absentFrom = state.absentFrom || "";
+    state.absentTo = state.absentTo || "";
+    const periodOptions = [""].concat(Array.from({ length: periodsPerDay }, (_, i) => String(i + 1)));
+    const fromSel = el("select", { class: "chrx-sub-type", id: "chrx-sub-absent-from", "aria-label": "Absent from period",
+      onchange: (e) => { state.absentFrom = e.target.value; applyPeriods(); } },
+      ...periodOptions.map((p) => el("option", { value: p, selected: p === state.absentFrom ? "selected" : null }, p ? `P${p}` : "all day")));
+    const toSel = el("select", { class: "chrx-sub-type", id: "chrx-sub-absent-to", "aria-label": "Absent to period",
+      onchange: (e) => { state.absentTo = e.target.value; applyPeriods(); } },
+      ...periodOptions.map((p) => el("option", { value: p, selected: p === state.absentTo ? "selected" : null }, p ? `P${p}` : "end")));
+
+    function applyPeriods() {
+      const from = state.absentFrom, to = state.absentTo;
+      const spec = !from && !to ? "all" : `${from || 1}-${to || periodsPerDay}`;
+      for (const tid of state.absent) {
+        const row = (APP.school.absences || []).find(a => a.date === state.date && a.teacherId === tid);
+        if (row) row.periods = spec;
+      }
+      if (S.loadPlan) {
+        const fresh = S.loadPlan(APP.school, state.date);
+        state.slots = fresh.slots || [];
+        state.assignments = fresh.assignments || [];
+      }
+    }
+
     const copyPrev = el("button", { type: "button", class: "chrx-sub-btn", id: "chrx-sub-copy-prev",
       title: "Mark everyone absent on the previous school day as absent today",
       onclick: () => {
@@ -208,6 +257,8 @@ import "./candidate_ranker.js";
     host.appendChild(el("div", { class: "chrx-sub-row" },
       el("label", { class: "chrx-sub-lbl" }, "Reason"),
       typeSelect,
+      el("label", { class: "chrx-sub-lbl", for: "chrx-sub-absent-from" }, "Absent periods"),
+      fromSel, el("span", { class: "chrx-sub-hint" }, "to"), toSel,
     ));
 
     function persistTypes() {

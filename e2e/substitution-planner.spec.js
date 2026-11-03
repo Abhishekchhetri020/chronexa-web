@@ -194,3 +194,73 @@ test("the on-duty pool is offered first, and a reason is recorded", async ({ pag
     expect(result.reasons.join(" ")).toMatch(/on duty/i);
   }
 });
+
+// Three bugs found by walking the board like a coordinator, not by reading code.
+test("a date change rebuilds the day, a partial absence stays partial, and a clashing move warns", async ({ page }) => {
+  await loadDemoSchool(page);
+  const day = await pickDay(page);
+  const next = await page.evaluate((d) => {
+    const x = new Date(d); x.setDate(x.getDate() + 1);
+    while (x.getDay() === 0) x.setDate(x.getDate() + 1);
+    return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`;
+  }, day.date);
+
+  await openPlanner(page);
+
+  // ── partial absence: P2–P3 only ────────────────────────────────────────
+  await page.locator(".chrx-sub-date").fill(day.date);
+  await page.locator(".chrx-sub-date").dispatchEvent("change");
+  await page.selectOption("#chrx-sub-absent-from", "2");
+  await page.selectOption("#chrx-sub-absent-to", "3");
+  await page.locator("#chrx-sub-absent-search").click();
+  await page.locator("#chrx-sub-absent-search").fill(day.name);
+  await page.locator(".chrx-sub-opt").first().click();
+  await page.getByRole("button", { name: /Generate substitutions/i }).click();
+  await expect(page.locator(".chrx-sub-tab.is-active")).toHaveText(/Class-wise/i);
+
+  const partial = await page.evaluate((tid) => ({
+    row: (window.APP.school.absences || []).find((a) => a.teacherId === tid),
+    periods: (window.APP.substitution?.slots || []).map((s) => s.period),
+  }), day.teacherId);
+  expect(partial.row.periods, "the absent-period range was not stored").toBe("2-3");
+  expect(partial.periods.length, "a partial absence produced no slots").toBeGreaterThan(0);
+  for (const p of partial.periods) {
+    expect(p >= 2 && p <= 3, `a partial absence (P2–P3) produced a slot at P${p}`).toBe(true);
+  }
+
+  // ── changing the date must not keep the previous day's board ───────────
+  await page.locator('.chrx-sub-tab[data-tab="absence"]').click();
+  await page.locator(".chrx-sub-date").fill(next);
+  await page.locator(".chrx-sub-date").dispatchEvent("change");
+  await page.waitForTimeout(300);
+  const afterDate = await page.evaluate((d) => ({
+    planDate: window.APP.substitution?.date,
+    days: [...new Set((window.APP.substitution?.slots || []).map((s) => s.day))],
+    expectedDay: new Date(d).getDay() - 1,
+  }), next);
+  expect(afterDate.planDate).toBe(next);
+  for (const d of afterDate.days) {
+    expect(d, "the board still shows the previous day's slots").toBe(afterDate.expectedDay);
+  }
+
+  // ── moving onto a period the class already occupies warns first ────────
+  await page.locator(".chrx-sub-date").fill(day.date);
+  await page.locator(".chrx-sub-date").dispatchEvent("change");
+  await page.waitForTimeout(300);
+  await page.getByRole("button", { name: /Generate substitutions/i }).click();
+  await expect(page.locator(".chrx-sub-tab.is-active")).toHaveText(/Class-wise/i);
+  await page.locator(".chrx-sub-table tbody tr").first().getByRole("button", { name: /⏱ move/ }).click();
+  await expect(page.locator(".chrx-sub-sheet")).toBeVisible({ timeout: 10_000 });
+
+  const clash = page.locator(".chrx-sub-sheet button", { hasText: /⚠/ }).first();
+  if (await clash.count()) {
+    await clash.click();
+    await expect(page.locator(".chrx-sub-sheet")).toBeVisible();          // not moved yet
+    await expect(page.locator(".chrx-sub-sheet")).toContainText(/already has/i);
+    await clash.click();                                                   // second click moves
+    await expect(page.locator(".chrx-sub-sheet")).toHaveCount(0);
+    const moved = await page.evaluate(() =>
+      (window.APP.substitution?.slots || []).filter((s) => s.movedFrom != null).length);
+    expect(moved, "the confirmed move did not happen").toBeGreaterThan(0);
+  }
+});

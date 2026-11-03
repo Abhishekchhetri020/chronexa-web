@@ -424,18 +424,30 @@ import "./planner_model.js";
     const periodsPerDay = (APP.school.bell?.periods || []).length || (APP.school.periodsPerDay || 8);
     for (let p = 1; p <= periodsPerDay; p++) periods.push(p);
 
+    const warn = el("div", { style: "padding:0 16px;color:#b45309;font-size:12px;min-height:18px" });
     const row = el("div", { style: "display:flex;gap:6px;flex-wrap:wrap;padding:8px 16px 16px" });
+    let armed = null;
     for (const p of periods) {
-      row.appendChild(el("button", {
+      const clash = p === slot.period ? null : S.periodClash(APP.school, plan, slot, p);
+      const btn = el("button", {
         class: `chrx-sub-btn ${p === slot.period ? "chrx-sub-btn--primary" : ""}`,
         onclick: () => {
+          if (clash && armed !== p) {
+            // Moving onto a period the class already occupies would double-book
+            // it; the app must not do that silently.
+            armed = p;
+            warn.textContent = `${slot.classSection} already has ${clash.subject} in P${p} — click P${p} again to move anyway.`;
+            return;
+          }
           S.movePeriod(plan, slot.slotKey, p);
           S.persistPlan(APP.school, plan, "Move period");
           scrim.remove();
           refresh();
         },
-      }, `P${p}`));
+      }, clash ? `P${p} ⚠` : `P${p}`);
+      row.appendChild(btn);
     }
+    sheet.appendChild(warn);
     sheet.appendChild(row);
     if (slot.movedFrom != null) {
       sheet.appendChild(el("div", { style: "padding:0 16px 14px" },
