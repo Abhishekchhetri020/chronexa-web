@@ -78,8 +78,8 @@ test("the substitution planner runs absence → candidates → outputs from the 
   await expect(page.locator(".chrx-sub-daybadge")).not.toHaveText(/Sunday/i);
 
   // Mark the teacher absent through the search box, the way a coordinator does.
-  await page.locator(".chrx-sub-search").click();
-  await page.locator(".chrx-sub-search").fill(setup.teacherName);
+  await page.locator("#chrx-sub-absent-search").click();
+  await page.locator("#chrx-sub-absent-search").fill(setup.teacherName);
   const option = page.locator(".chrx-sub-opt").first();
   await expect(option).toBeVisible({ timeout: 10_000 });
   await option.click();
@@ -131,8 +131,8 @@ test("closing and reopening the planner keeps the day's absences and plan", asyn
   await openSubstitutions(page);
   await page.locator(".chrx-sub-date").fill(setup.date);
   await page.locator(".chrx-sub-date").dispatchEvent("change");
-  await page.locator(".chrx-sub-search").click();
-  await page.locator(".chrx-sub-search").fill(setup.teacherName);
+  await page.locator("#chrx-sub-absent-search").click();
+  await page.locator("#chrx-sub-absent-search").fill(setup.teacherName);
   await page.locator(".chrx-sub-opt").first().click();
   await page.getByRole("button", { name: /Generate substitutions/i }).click();
   await expect(page.locator(".chrx-sub-tab.is-active")).toHaveText(/Class-wise/i);

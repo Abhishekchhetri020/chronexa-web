@@ -363,3 +363,12 @@
   background: var(--chrx-red-bg);
   color: var(--chrx-red);
 }
+
+/* ---- Plan board (ported from the standalone planner) -------------------- */
+.chrx-sub-type{padding:5px 8px;border-radius:6px;border:1px solid var(--line-soft,#e2e8f0);background:#fff;font:500 12px/1.2 inherit;color:inherit}
+.chrx-sub-tr.is-tier-3 .chrx-sub-subcell{border-left:3px solid #10b981}
+.chrx-sub-tr.is-tier-2 .chrx-sub-subcell{border-left:3px solid #3b82f6}
+.chrx-sub-tr.is-tier-1 .chrx-sub-subcell{border-left:3px solid #eab308}
+.chrx-sub-tr.is-tier-none .chrx-sub-subcell{border-left:3px solid #ef4444}
+.chrx-sub-cand__why{font-size:11px;color:#64748b;grid-column:1/-1}
+.chrx-sub-table td .chrx-sub-btn{white-space:nowrap}

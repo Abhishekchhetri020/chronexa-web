@@ -120,6 +120,37 @@ import "./main.js";
     });
     table.appendChild(tbody);
     host.appendChild(el("div", { class: "chrx-sub-tablewrap" }, table));
+
+    // Workload — today and the rolling 7 days, straight from the planner policy.
+    // A coordinator's real question is "who have I leaned on", not "who scored
+    // highest", and this is the number the fairness penalties are built on.
+    const planner = window.SmartPlanner;
+    const plan = APP.substitution || {};
+    if (planner && plan.slots) {
+      const rows = planner.teacherLoad(APP.school, plan);
+      if (rows.length) {
+        host.appendChild(el("h3", { style: "margin:14px 0 6px;font-size:13px" },
+          "Workload — today & past 7 days"));
+        const wl = el("table", { class: "chrx-sub-table" },
+          el("thead", null, el("tr", null,
+            el("th", null, "Teacher"),
+            el("th", null, "Today"),
+            el("th", null, "Last 7 days"),
+            el("th", null, "Combined"),
+          )));
+        const wb = el("tbody");
+        for (const r of rows.slice(0, 40)) {
+          wb.appendChild(el("tr", null,
+            el("td", null, r.teacher),
+            el("td", { class: "chrx-sub-score" }, String(r.today)),
+            el("td", { class: "chrx-sub-score" }, String(r.week)),
+            el("td", { class: "chrx-sub-score" }, String(r.load)),
+          ));
+        }
+        wl.appendChild(wb);
+        host.appendChild(el("div", { class: "chrx-sub-tablewrap" }, wl));
+      }
+    }
   }
 
   /**
