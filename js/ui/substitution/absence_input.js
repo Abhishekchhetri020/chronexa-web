@@ -90,6 +90,8 @@ import "./candidate_ranker.js";
     // ---- autocomplete ----
     const search = el("input", { type: "search",
       class: "chrx-sub-search",
+      id: "chrx-sub-absent-search",
+      "aria-label": "Search absent teachers",
       placeholder: "Type a teacher name…",
       autocomplete: "off",
     });
@@ -196,6 +198,82 @@ import "./candidate_ranker.js";
       el("div", { class: "chrx-sub-row" }, copyPrev, untilInput, applyRange),
     ));
 
+    // ---- absence type (the standalone planner records why someone is out;
+    // it is what the memo and the log show, and it drives nothing else) ----
+    const ABSENCE_TYPES = ["Sick", "Leave", "Training", "Personal", "Other"];
+    state.absentType = state.absentType || "Sick";
+    const typeSelect = el("select", { class: "chrx-sub-type", "aria-label": "Absence type",
+      onchange: (e) => { state.absentType = e.target.value; persistTypes(); } },
+      ...ABSENCE_TYPES.map((t) => el("option", { value: t, selected: t === state.absentType ? "selected" : null }, t)));
+    host.appendChild(el("div", { class: "chrx-sub-row" },
+      el("label", { class: "chrx-sub-lbl" }, "Reason"),
+      typeSelect,
+    ));
+
+    function persistTypes() {
+      const school2 = APP.school;
+      for (const tid of state.absent) {
+        const row = (school2.absences || []).find(a => a.date === state.date && a.teacherId === tid);
+        if (row) row.type = state.absentType;
+      }
+    }
+
+    // ---- on-duty pool: teachers already on duty that day are the cheapest,
+    // best substitutes (the standalone planner pays them +200) ----
+    if (!Array.isArray(state.dutyPool)) state.dutyPool = [];
+    const dutyChips = el("div", { class: "chrx-sub-chips" });
+    function renderDutyChips() {
+      dutyChips.innerHTML = "";
+      if (!state.dutyPool.length) {
+        dutyChips.appendChild(el("span", { class: "chrx-sub-hint" }, "Nobody marked on duty for this day."));
+        return;
+      }
+      for (const tid of state.dutyPool) {
+        const t = school._idx?.teacherById?.[tid];
+        dutyChips.appendChild(el("span", { class: "chrx-sub-chip" },
+          el("span", { class: "chrx-sub-chip__nm" }, t?.name || tid),
+          el("button", { class: "chrx-sub-chip__x", "aria-label": "Remove", type: "button",
+            onclick: () => {
+              state.dutyPool = state.dutyPool.filter(x => x !== tid);
+              renderDutyChips();
+            } }, "×"),
+        ));
+      }
+    }
+    const dutySearch = el("input", { type: "search", class: "chrx-sub-search", id: "chrx-sub-duty-search",
+      placeholder: "Type a teacher on duty…", autocomplete: "off" });
+    const dutyDropdown = el("div", { class: "chrx-sub-dropdown is-hidden" });
+    function buildDutyOptions(q) {
+      const ql = String(q || "").toLowerCase();
+      const out = teachers.filter(t => !state.dutyPool.includes(t.id) &&
+        (!ql || (t.name || "").toLowerCase().includes(ql) || (t.abbr || "").toLowerCase().includes(ql))).slice(0, 25);
+      dutyDropdown.innerHTML = "";
+      if (!out.length) {
+        dutyDropdown.appendChild(el("div", { class: "chrx-sub-opt is-empty" }, "No matches."));
+        return;
+      }
+      for (const t of out) {
+        dutyDropdown.appendChild(el("div", { class: "chrx-sub-opt",
+          onclick: () => {
+            if (!state.dutyPool.includes(t.id)) state.dutyPool.push(t.id);
+            dutySearch.value = "";
+            dutyDropdown.classList.add("is-hidden");
+            renderDutyChips();
+          } },
+          el("span", { class: "chrx-sub-opt__nm" }, t.name || t.id),
+          t.abbr ? el("span", { class: "chrx-sub-opt__abbr" }, t.abbr) : null,
+        ));
+      }
+    }
+    dutySearch.addEventListener("focus", () => { buildDutyOptions(dutySearch.value); dutyDropdown.classList.remove("is-hidden"); });
+    dutySearch.addEventListener("input", () => buildDutyOptions(dutySearch.value));
+    host.appendChild(el("div", { class: "chrx-sub-row chrx-sub-row--col" },
+      el("label", { class: "chrx-sub-lbl" }, "🛡 On-duty pool"),
+      dutyChips,
+      el("div", { class: "chrx-sub-search-wrap" }, dutySearch, dutyDropdown),
+    ));
+    renderDutyChips();
+
     // ---- generate button ----
     const generateBtn = el("button", { class: "chrx-sub-btn chrx-sub-btn--primary",
       onclick: () => generate(state, onGenerate, summary),
@@ -225,11 +303,25 @@ import "./candidate_ranker.js";
     if (!state.absent.length) return;
 
     const school = APP.school;
-    if (S.assignSubstitutions) {
-      S.assignSubstitutions(school, state.date, state.absent);
-    } else {
-      const ranker = window.SubstitutionRanker;
-      state.assignments = ranker.rankAll(school, state.absent, day);
+    // Build the day's plan (one slot per absent card), then let the policy fill
+    // what it safely can. Both steps live in main.js/planner_model.js so the
+    // class-wise board, the toolbar and this button all drive the same engine.
+    const plan = S.buildPlan(school, state.date, { absentIds: state.absent });
+    plan.absent = state.absent.slice();
+    plan.absentTypes = Object.fromEntries(
+      state.absent.map((teacherId) => [teacherId, state.absentType || "Sick"])
+    );
+    plan.dutyPool = (state.dutyPool || []).slice();
+    state.dutyPool = plan.dutyPool;
+
+    const preview = S.planSmartFill(school, plan);
+    S.applySmartFill(school, plan, preview);
+    // applySmartFill published the FILLED plan; re-publishing `plan` here would
+    // put the pre-fill (all-PENDING) copy back and erase the assignments.
+    state.slots = preview.plan.slots;
+    if (summaryEl) {
+      const counts = window.SmartPlanner.planCounts(plan);
+      summaryEl.textContent = `${counts.filled} filled · ${counts.pending + counts.reschedule} open`;
     }
 
     if (window.APP?.editor) {

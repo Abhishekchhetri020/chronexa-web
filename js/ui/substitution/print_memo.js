@@ -108,6 +108,14 @@ import "./teacherwise_output.js";
         el("b", null, "Absent: "), names));
     }
 
+    // Acting class teachers (role cover, not period cover).
+    const acting = (school.actingCT || []).filter((r) => r && r.date === state.date);
+    if (acting.length) {
+      memo.appendChild(el("div", { class: "chrx-sub-memo__absent" },
+        el("b", null, "Acting class teacher: "),
+        acting.map((r) => `${school._idx?.classById?.[r.classId]?.name || r.classId} — ${school._idx?.teacherById?.[r.teacherId]?.name || r.teacherId}`).join(" · ")));
+    }
+
     // Class-wise table
     memo.appendChild(el("h2", { class: "chrx-sub-memo__h2" }, "Class-wise substitutions"));
     const cwTable = el("table", { class: "chrx-sub-memo__table" });
@@ -116,7 +124,8 @@ import "./teacherwise_output.js";
       el("th", null, "Period"),
       el("th", null, "Subject"),
       el("th", null, "Original"),
-      el("th", null, "Substitute"),
+      el("th", null, "Substitute / action"),
+      el("th", null, "Sign"),
     )));
     const cwBody = el("tbody");
     state.assignments.forEach(a => {
@@ -125,7 +134,13 @@ import "./teacherwise_output.js";
         el("td", null, `P${a.period}`),
         el("td", null, a.subject || "—"),
         el("td", null, a.originalTeacher || "—"),
-        el("td", null, a.cancelled ? "— CANCELLED —" : (a.chosen ? a.chosen.teacher : "— UNCOVERED —")),
+        el("td", null,
+          a.status === "CANCELLED" ? "— CANCELLED (free period) —"
+            : a.status === "SUPERVISED" && a.chosen ? `${a.chosen.teacher} (supervision)`
+            : a.status === "RESCHEDULE" ? "— RESCHEDULE, do not substitute —"
+            : a.chosen ? a.chosen.teacher
+            : "— NOT ASSIGNED —"),
+        el("td", null, ""),
       ));
     });
     cwTable.appendChild(cwBody);

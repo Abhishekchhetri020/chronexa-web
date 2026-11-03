@@ -21,7 +21,7 @@ test("mark a teacher absent for a date, assign a substitute, see it on the grid 
   await dateInput.dispatchEvent("change");
 
   // 3. Search and select the first teacher in absent autocomplete
-  const searchInput = page.locator(".chrx-sub-search");
+  const searchInput = page.locator("#chrx-sub-absent-search");
   await searchInput.click();
   await searchInput.fill("");
   const firstTeacherOpt = page.locator(".chrx-sub-opt:not(.is-empty)").first();

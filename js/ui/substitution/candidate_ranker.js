@@ -217,7 +217,19 @@ import "./main.js";
     a.cancelled = false;
   }
 
-  window.SubstitutionRanker = { rankAll, reassign };
+  /**
+   * Rank the candidates for ONE slot of a plan, with the full policy (duty pool,
+   * co-teacher, class teacher, continuity, 7-day load, daily/consecutive caps,
+   * early-years protection). Thin delegate: the policy itself lives in
+   * planner_model.js so it can be unit-tested without a browser.
+   */
+  function rankSlot(school, plan, slot, opts) {
+    const planner = window.SmartPlanner;
+    if (!planner || !plan) return [];
+    return planner.rankCandidates(school, plan, slot, opts || {});
+  }
+
+  window.SubstitutionRanker = { rankAll, rankSlot, reassign };
 })();
 
 // Chronexa Web
