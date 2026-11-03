@@ -223,8 +223,14 @@ test("the ranker stays sound on the school's real timetable XML", async ({ page 
 
   const audit = await page.evaluate(async () => {
     const res = await fetch("/__school.xml");
-    if (!res.ok) return { skipped: true };
+    if (!res.ok) return { skipped: true, reason: "no /__school.xml" };
     const xml = await res.text();
+    // The preview server (and GitHub Pages) answer unknown paths with
+    // index.html, so a missing fixture arrives as HTML. Parsing that throws
+    // "Invalid XML" — skip instead, this test needs the school's real file.
+    if (!/^\s*(<\?xml|<timetable)/i.test(xml)) {
+      return { skipped: true, reason: "fixture is not XML (served index.html)" };
+    }
     const parser = window.parseTimetableXml;
     if (!parser) return { skipped: true, reason: "parser not loaded on this page" };
     const school = typeof parser.parseText === "function"
