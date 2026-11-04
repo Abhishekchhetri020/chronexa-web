@@ -317,6 +317,43 @@ import { checkPage } from "./fit_check.js";
     drawer.style.display = isHidden ? "flex" : "none";
   }
 
+  /**
+   * Push the Tuning drawer's values onto the REPORT being previewed.
+   *
+   * The drawer used to write only APP.printTuning, which the legacy
+   * cellFromCard() reads — but the class/teacher/room reports render through
+   * the PIVOT engine, whose cells never looked at it. So every control moved a
+   * number nothing read: the panel "did nothing". Per-report state lives on the
+   * report (see print_report_schema.js), so that is where these belong, and the
+   * pivot renderer reads them back as cellTuning.
+   */
+  function pushTuningToReport(t) {
+    const rep = currentTemplate;
+    if (!rep || typeof rep !== "object") return;
+    rep.cellTuning = {
+      padding: t.padding,
+      fontSize: t.fontSize,
+      borderWidth: t.borderWidth,
+      theme: t.theme,
+    };
+    // "Visible Elements" map onto the report's own element list — toggling an
+    // element the report does not print is a no-op rather than an invention.
+    const map = { showSubject: "subject", showTeacher: "teacher", showClass: "class", showRoom: "classroom" };
+    const live = {};
+    for (const [flag, key] of Object.entries(map)) {
+      const row = (rep.elementStyles || []).find((x) => x.key === key);
+      if (!row) continue;                 // the report does not print this element
+      row.enabled = !!t[flag];
+      live[key] = !!t[flag];              // and tell the renderer, which may hold a copy
+    }
+    APP.printTuningElements = live;
+  }
+
+  function applyTuning(t) {
+    pushTuningToReport(t);
+    render(currentTemplate);
+  }
+
   function buildTuningDrawer() {
     const defaults = {
       padding: 6,
@@ -380,7 +417,7 @@ import { checkPage } from "./fit_check.js";
       style: "width:100%; font-size:12px; padding:4px 6px;",
       onchange: (e) => {
         t.theme = e.target.value;
-        render(currentTemplate);
+        applyTuning(t);
       }
     });
     [
@@ -405,7 +442,7 @@ import { checkPage } from "./fit_check.js";
         style: "cursor:pointer; accent-color:var(--teal); margin:0;",
         onchange: (e) => {
           t[key] = e.target.checked;
-          render(currentTemplate);
+          applyTuning(t);
         }
       });
       row.appendChild(cb);

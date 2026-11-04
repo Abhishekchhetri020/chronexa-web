@@ -49,7 +49,19 @@ import { entityLabel } from "./entity_label.js";
 
   function elementStyleFor(report, key) {
     const styles = report?.elementStyles || [];
-    return styles.find(s => s.key === key) || { enabled: false };
+    const style = styles.find(s => s.key === key) || { enabled: false };
+    // The Tuning panel's "Visible Elements" must win over the report copy the
+    // preview re-derives; it publishes exactly the keys it manages.
+    const live = (typeof window !== "undefined" && window.APP && window.APP.printTuningElements) || null;
+    if (live && Object.prototype.hasOwnProperty.call(live, key)) {
+      // Hiding always wins. Showing only applies where the report already
+      // prints that element, so a class report is not forced to invent a
+      // "class" label it never had.
+      if (!live[key]) return { ...style, enabled: false };
+      if (style.enabled) return style;
+      return style;                       // not configured for this report → leave it
+    }
+    return style;
   }
 
   function entityName(school, kind, id, fmt) {
@@ -194,7 +206,7 @@ import { entityLabel } from "./entity_label.js";
     return Math.floor(min / 60) + ":" + String(min % 60).padStart(2, "0");
   }
 
-  function renderElement(text, style) {
+  function renderElement(text, style, fontPx) {
     if (!text || !style.enabled) return null;
     const fontStyle = [];
     if (style.bold)      fontStyle.push("font-weight:700");
@@ -205,9 +217,12 @@ import { entityLabel } from "./entity_label.js";
     // when supported, clamped between a 6px floor and the configured % as
     // the ceiling. Browsers that don't support container queries gracefully
     // fall back to the second clamp arg.
-    const ceilingPx = Math.max(7, Math.round((style.size || 14) * 0.6));
-    const floorPx = 6;
-    fontStyle.push("font-size:clamp(" + floorPx + "px, " + Math.max(6, Math.round((style.size || 14) * 0.35)) + "cqi, " + ceilingPx + "px)");
+    // The Tuning panel's font size scales the same clamp, so the control has a
+    // visible effect without overriding per-element styling.
+    const scale = Number.isFinite(fontPx) ? Math.max(0.6, Math.min(1.8, fontPx / 9.5)) : 1;
+    const ceilingPx = Math.max(7, Math.round((style.size || 14) * 0.6 * scale));
+    const floorPx = Math.max(4, Math.round(6 * scale));
+    fontStyle.push("font-size:clamp(" + floorPx + "px, " + Math.max(6, Math.round((style.size || 14) * 0.35 * scale)) + "cqi, " + ceilingPx + "px)");
     // Long subject names used to run under the classroom label (both anchored
     // in the same corner), printing "Sleeping Time" and "Sleeping Room" on top
     // of each other. Ellipsis keeps each element inside its own box.
@@ -608,13 +623,34 @@ import { entityLabel } from "./entity_label.js";
     return cell;
   }
 
+  /** Cell metrics the Tuning panel writes onto the report. */
+  function cellTuning(report) {
+    // The report is the durable home (saved with the file), but the preview
+    // rebuilds its pages and does not always hand this renderer the same report
+    // object the Tuning drawer edited — so fall back to the live tuning state
+    // the drawer writes. Without the fallback the panel moved numbers nothing
+    // read, which is exactly the "tuning does nothing" bug.
+    const t = (report && report.cellTuning) ||
+      (typeof window !== "undefined" && window.APP && window.APP.printTuning) || {};
+    return {
+      padding: Number.isFinite(t.padding) ? t.padding : 4,
+      fontSize: Number.isFinite(t.fontSize) ? t.fontSize : 9.5,
+      borderWidth: Number.isFinite(t.borderWidth) ? t.borderWidth : 0,
+      theme: t.theme || "",
+    };
+  }
+
   function renderCell(cards, report, school) {
     cards = cards || [];
     const layout = report?._layout || {};
     const minHeight = Math.max(18, layout.cellMinHeightPx || 48);
+    const tune = cellTuning(report);
     const cell = el("div", {
       class: "chrx-pivot-cell",
-      style: "width:100%;height:100%;min-height:" + minHeight + "px;position:relative;container-type:inline-size",
+      style: "width:100%;height:100%;min-height:" + minHeight + "px;position:relative;container-type:inline-size;box-sizing:border-box" +
+        (tune.theme === "mono" ? ";background:#f3f4f6" : "") +
+        (tune.theme === "neon" ? ";background:#f5f3ff" : "") +
+        (tune.borderWidth > 0 ? ";border:" + tune.borderWidth + "px solid " + (tune.theme === "neon" ? "#a78bfa" : "#d1d5db") : ""),
     });
     if (cards.length === 0) return cell;
 
@@ -665,10 +701,10 @@ import { entityLabel } from "./entity_label.js";
         style: "position:absolute;top:0;bottom:0;" + sideInset + ";display:flex;flex-direction:column;justify-content:" + anchor.justify +
           ";align-items:" + anchor.align +
           ";text-align:" + anchor.text +
-          ";padding:2px 4px;pointer-events:none;overflow:hidden",
+          ";padding:" + tune.padding + "px;pointer-events:none;overflow:hidden",
       });
       for (const { text, style } of items) {
-        const elNode = renderElement(text, style);
+        const elNode = renderElement(text, style, tune.fontSize);
         if (elNode) wrap.appendChild(elNode);
       }
       cell.appendChild(wrap);
