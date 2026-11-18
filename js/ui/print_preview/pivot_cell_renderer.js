@@ -48,20 +48,7 @@ import { entityLabel } from "./entity_label.js";
   }
 
   function elementStyleFor(report, key) {
-    const styles = report?.elementStyles || [];
-    const style = styles.find(s => s.key === key) || { enabled: false };
-    // The Tuning panel's "Visible Elements" must win over the report copy the
-    // preview re-derives; it publishes exactly the keys it manages.
-    const live = (typeof window !== "undefined" && window.APP && window.APP.printTuningElements) || null;
-    if (live && Object.prototype.hasOwnProperty.call(live, key)) {
-      // Hiding always wins. Showing only applies where the report already
-      // prints that element, so a class report is not forced to invent a
-      // "class" label it never had.
-      if (!live[key]) return { ...style, enabled: false };
-      if (style.enabled) return style;
-      return style;                       // not configured for this report → leave it
-    }
-    return style;
+    return (report?.elementStyles || []).find(s => s.key === key) || { enabled: false };
   }
 
   function entityName(school, kind, id, fmt) {
