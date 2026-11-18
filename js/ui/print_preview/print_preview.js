@@ -328,8 +328,18 @@ import { checkPage } from "./fit_check.js";
    * pivot renderer reads them back as cellTuning.
    */
   function pushTuningToReport(t) {
-    const rep = currentTemplate;
-    if (!rep || typeof rep !== "object") return;
+    const Schema = window.APP && window.APP.PrintReportSchema;
+    const Presets = window.APP && window.APP.PrintPresets;
+    if (!Schema || !Presets) return;
+    if (!APP.activePrintReport || APP.activePrintReport._presetId !== currentTemplate) {
+      const preset = Presets.get(currentTemplate);
+      if (!preset) return;
+      const report = Schema.create({ context: preset.context });
+      Schema.applyPreset(report, preset);
+      report._presetId = preset.id;
+      APP.activePrintReport = report;
+    }
+    const rep = APP.activePrintReport;
     rep.cellTuning = {
       padding: t.padding,
       fontSize: t.fontSize,
@@ -339,14 +349,11 @@ import { checkPage } from "./fit_check.js";
     // "Visible Elements" map onto the report's own element list — toggling an
     // element the report does not print is a no-op rather than an invention.
     const map = { showSubject: "subject", showTeacher: "teacher", showClass: "class", showRoom: "classroom" };
-    const live = {};
     for (const [flag, key] of Object.entries(map)) {
       const row = (rep.elementStyles || []).find((x) => x.key === key);
       if (!row) continue;                 // the report does not print this element
       row.enabled = !!t[flag];
-      live[key] = !!t[flag];              // and tell the renderer, which may hold a copy
     }
-    APP.printTuningElements = live;
   }
 
   function applyTuning(t) {
@@ -399,7 +406,7 @@ import { checkPage } from "./fit_check.js";
         oninput: (e) => {
           t[key] = parseFloat(e.target.value);
           valueSpan.textContent = e.target.value + unit;
-          render(currentTemplate);
+          applyTuning(t);
         }
       });
       group.appendChild(slider);
