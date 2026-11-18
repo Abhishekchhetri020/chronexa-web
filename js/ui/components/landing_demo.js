@@ -33,9 +33,9 @@
   const STAGE_STATUS = {
     lessons:  ["Reading lessons…", "working"],
     solve:    ["Solver placing cards…", "working"],
-    conflict: ["Conflict found — Tue P3 double-booked", "conflict"],
+    conflict: ["Conflict found — Wed P2 double-booked", "conflict"],
     reassign: ["Reassigning the clashing card…", "working"],
-    ready:    ["Ready — same shape for your data", "done"],
+    ready:    ["Ready — the week is scheduled", "done"],
   };
   const LOOP_MS = 12000;
 
@@ -100,6 +100,7 @@
       gotoStage(container, "conflict");
       place(container, CONFLICT_CELL, 0);
       place(container, CONFLICT_CELL, 3, true);
+      setProgress(container, placedLabel(ALL_CARDS.length + 2));
       container.querySelector(`[data-cell="${CONFLICT_CELL}"]`)?.classList.add("is-conflict");
     });
 
@@ -107,6 +108,7 @@
     later(state, 6800, () => {
       gotoStage(container, "reassign");
       container.querySelector(".is-conflict-card")?.remove();
+      place(container, 13, 3);
       container.querySelector(`[data-cell="${CONFLICT_CELL}"]`)?.classList.remove("is-conflict");
     });
 
@@ -122,7 +124,7 @@
   function gotoStage(container, stage) {
     const [text, tone] = STAGE_STATUS[stage] || ["", ""];
     setStatus(container, text, tone);
-    if (stage === "conflict") setProgress(container, placedLabel(ALL_CARDS.length));
+    if (stage === "ready") setProgress(container, placedLabel(SOLVED.flat().length));
     emit(container, stage);
   }
 
@@ -142,6 +144,7 @@
       place(container, CONFLICT_CELL, 3, true);
       container.querySelector(`[data-cell="${CONFLICT_CELL}"]`)?.classList.add("is-conflict");
     } else if (stage === "reassign") {
+      place(container, 13, 3);
       ALL_CARDS.forEach(([cell, subject]) => place(container, cell, subject));
       place(container, CONFLICT_CELL, 0);
       container.querySelector(`[data-cell="${CONFLICT_CELL}"]`)?.classList.add("is-solved");
@@ -150,7 +153,7 @@
     }
     const [text, tone] = STAGE_STATUS[stage] || ["", ""];
     setStatus(container, text, tone);
-    setProgress(container, placedLabel(stage === "lessons" ? 3 : ALL_CARDS.length));
+    setProgress(container, placedLabel(container.querySelectorAll(".chrx-landing-demo__card").length));
   }
 
   function emit(container, stage) {
@@ -193,7 +196,7 @@
   }
 
   function placedLabel(count) {
-    return `${count} of ${ALL_CARDS.length} cards placed`;
+    return `${count} of ${SOLVED.flat().length} lessons placed`;
   }
 
   function panelOf(container) {

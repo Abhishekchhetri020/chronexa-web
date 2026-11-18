@@ -1,8 +1,6 @@
-/* Chronexa Time Lattice — approved Diagonal Assembly + Timetable Horizon. */
-
 body.chrx-landing-active {
-  background: #05070a;
-  color: #f2f0e9;
+  background: #f8f7f2;
+  color: #172b22;
   overflow-x: hidden;
 }
 
@@ -11,7 +9,7 @@ body.chrx-landing-active .chrx-shell {
   display: block;
   min-height: 100vh;
   height: auto;
-  background: #05070a;
+  background: #f8f7f2;
 }
 body.chrx-landing-active .chrx-wordmark,
 body.chrx-landing-active .chrx-topbar,
@@ -28,7 +26,7 @@ body.chrx-landing-active .chrx-main {
   height: auto;
   min-height: 100vh;
   overflow: visible;
-  background: #05070a;
+  background: #f8f7f2;
 }
 body.chrx-landing-active .chrx-main > main {
   width: 100%;
@@ -38,725 +36,202 @@ body.chrx-landing-active .chrx-main > main {
 }
 body.chrx-landing-active #step-1 { width: 100%; }
 
+@font-face {
+  font-family: "Studio Sans";
+  src: url("../src/fonts/dm-sans.woff2") format("woff2");
+  font-weight: 400 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Instrument Serif";
+  src: url("../src/fonts/instrument-serif.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Instrument Serif";
+  src: url("../src/fonts/instrument-serif-italic.woff2") format("woff2");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
 #step-1 .chrx-landing {
-  --lattice-black: #05070a;
-  --signal-cyan: #7df0f0;
-  --lattice-field: #121417;
-  --lattice-card: #292a30;
-  --lattice-card-raised: #35383f;
-  --lattice-cyan: #9fe7e7;
-  --lattice-red: #ec6753;
-  --lattice-white: #f2f0e9;
-  --lattice-muted: #a9adb0;
+  --ink: #152d23;
+  --muted: #4d6055;
+  --rule: #cdd4c9;
+  --paper: #f8f7f2;
+  --pine: #214e39;
+  --lime: #d7f292;
+  --display: "Instrument Serif", Georgia, serif;
   position: relative;
-  width: 100%;
-  min-height: 100vh;
-  overflow: clip;
-  color: var(--lattice-white);
-  background: var(--lattice-black);
-  font-family: var(--chrx-font-sans, "Inter Tight", sans-serif);
-  isolation: isolate;
+  background: var(--paper);
+  color: var(--ink);
+  font: 400 16px/1.5 "Studio Sans", sans-serif;
 }
-
-#step-1 .chrx-lattice-hero {
-  position: relative;
-  min-height: max(760px, 100svh);
-  overflow: hidden;
-  background:
-    radial-gradient(120% 95% at 62% 40%, transparent 52%, rgba(0, 0, 0, .45) 100%),
-    linear-gradient(90deg, rgba(5, 7, 10, .96) 0%, rgba(5, 7, 10, .72) 34%, transparent 62%),
-    var(--lattice-black);
+.chrx-landing *, .chrx-landing *::before, .chrx-landing *::after { box-sizing: border-box; }
+.chrx-landing ::selection { color: var(--ink); background: var(--lime); }
+.chrx-landing :is(a, button, label):focus-visible { outline: 3px solid #49844c; outline-offset: 4px; }
+.chrx-landing :is(a, button, label) { -webkit-tap-highlight-color: transparent; }
+.studio-width { width: min(1360px, 90%); margin-inline: auto; }
+.studio-nav, .studio-nav nav, .chrx-lattice-brand, .studio-actions, .studio-button,
+.studio-specs, .studio-close, .chrx-start-links, .studio-preview-head, .studio-preview-foot {
+  display: flex; align-items: center;
 }
-
-#step-1 .chrx-lattice-hero::after {
-  content: "";
-  position: absolute;
-  inset: auto 0 0;
-  z-index: 2;
-  height: 13%;
-  pointer-events: none;
-  background: linear-gradient(180deg, transparent, rgba(5, 7, 10, .48) 72%, #05070a);
+.studio-nav { height: 86px; justify-content: space-between; border-bottom: 1px solid var(--rule); }
+.studio-nav nav { gap: clamp(16px, 2.4vw, 38px); }
+.chrx-landing a { color: inherit; text-decoration: none; }
+.studio-nav nav a, .studio-nav-demo { font-size: 14px; font-weight: 600; }
+.studio-nav nav a:hover, .chrx-start-links a:hover { text-decoration: underline; text-underline-offset: 4px; }
+.chrx-lattice-brand { gap: 11px; font-size: 29px; font-weight: 700; letter-spacing: -.065em; line-height: 1; }
+.studio-mark { display: grid; gap: 3px; width: 29px; transform: skewY(-18deg); }
+.studio-mark i { height: 6px; border-radius: 1.5px; background: var(--pine); }
+.studio-mark i:nth-child(2) { width: 72%; }
+.studio-nav-demo { background: var(--ink); color: white; border-radius: 100px; padding: 10px 17px; }
+.studio-nav-demo:hover { background: var(--pine); }
+.studio-nav-demo span, .studio-docs span { margin-left: 5px; }
+.chrx-lattice-hero {
+  position: relative; display: grid; grid-template-columns: .9fr 1.1fr; gap: clamp(22px, 3.7vw, 70px);
+  align-items: center; padding-block: clamp(42px, 4.4vw, 74px);
 }
-
-#step-1 .chrx-lattice-scene,
-#step-1 .chrx-lattice-scene canvas,
-#step-1 .chrx-lattice-scene__fallback {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
+.studio-copy { min-width: 0; }
+#step-1 .studio-copy h1, #step-1 .studio-feature h2, #step-1 .studio-close h2 {
+  margin: 0; color: inherit; font: 400 clamp(78px, 8.4vw, 126px)/.92 var(--display); letter-spacing: -.043em;
 }
-
-#step-1 .chrx-lattice-scene { z-index: 0; }
-#step-1 .chrx-lattice-scene canvas { display: block; }
-#step-1 .chrx-lattice-scene__labels { z-index: 1; pointer-events: none; }
-#step-1 .chrx-lattice-scene__fallback {
-  z-index: 0;
-  opacity: .78;
-  background:
-    linear-gradient(162deg, transparent 0 41%, rgba(159, 231, 231, .08) 41.1% 41.25%, transparent 41.4%),
-    repeating-linear-gradient(165deg, transparent 0 27px, rgba(159, 231, 231, .05) 28px 29px, transparent 30px 58px);
-  transform: perspective(900px) rotateX(58deg) rotateZ(-9deg) translate3d(31%, 51%, 0) scale(1.45);
-  transform-origin: 58% 72%;
+#step-1 .studio-copy h1 em { color: #427244; font-weight: 400; }
+.studio-lead { max-width: 39ch; font-size: clamp(16px, 1.25vw, 19px); line-height: 1.54; color: var(--muted); margin: 26px 0; }
+.studio-actions { gap: 10px; flex-wrap: wrap; }
+.studio-button { position: relative; justify-content: center; gap: 10px; padding: 0 21px; min-height: 48px; border-radius: 9px; font-size: 14px; font-weight: 650; cursor: pointer; transition: background .18s, transform .18s; }
+.studio-primary { color: #fff; background: var(--pine); border: 1px solid var(--pine); }
+.studio-primary:hover { background: #163c2a; }
+.studio-primary span { font-size: 20px; line-height: 1; }
+.studio-secondary { color: var(--ink); border: 1px solid #b7c3b5; background: transparent; }
+.studio-secondary:hover { background: #e7ecdf; }
+.studio-secondary svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.5; }
+.studio-file { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.studio-template, .studio-about { padding: 7px 0; background: transparent; color: var(--muted); font-weight: 550; font-size: 13px; margin-top: 9px; }
+.studio-template:hover, .studio-about:hover { text-decoration: underline; text-underline-offset: 4px; }
+.studio-template span, .studio-about span { margin-left: 6px; }
+.studio-drop { display: none; }
+.is-file-over .studio-drop {
+  position: absolute; z-index: 5; inset: 0; display: grid; place-content: center; gap: 10px; text-align: center;
+  border: 2px dashed var(--pine); background: #f2f5eefa; font: 46px/1 var(--display); pointer-events: none;
 }
-#step-1 .chrx-lattice-scene.is-ready .chrx-lattice-scene__fallback { opacity: 0; }
-
-#step-1 .chrx-lattice-nav {
-  position: absolute;
-  z-index: 5;
-  top: clamp(24px, 4vw, 54px);
-  left: clamp(24px, 5vw, 78px);
-  right: clamp(24px, 5vw, 78px);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
+.studio-drop span { font: 600 14px "Studio Sans", sans-serif; }
+.studio-model {
+  container-type: inline-size; position: relative; width: 100%; margin: 0; overflow: hidden; border-radius: 18px;
+  background-color: #dfebd5;
+  background-image: linear-gradient(130deg, #fff5, transparent 50%), radial-gradient(#82977560 .8px, transparent .9px);
+  background-size: 100% 100%, 12px 12px;
+  border: 1px solid #cddac2;
 }
-
-#step-1 .chrx-lattice-brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 12px;
-  color: var(--lattice-white);
-  font-size: clamp(19px, 2vw, 25px);
-  font-weight: 650;
-  letter-spacing: -.025em;
-  text-decoration: none;
+.model-head, .studio-model figcaption { position: absolute; z-index: 2; display: flex; align-items: center; left: 5%; right: 5%; }
+.model-head { top: 4%; justify-content: space-between; font-size: 13px; font-weight: 650; }
+.model-head > span { display: flex; align-items: center; gap: 8px; }
+.model-head > span::before { content: ""; width: 7px; height: 7px; background: #3d6146; border-radius: 50%; }
+.model-head button { background: #f8fbf0c9; border: 1px solid #b4c6ac; border-radius: 5px; padding: 5px 9px; font-size: 11px; font-weight: 600; }
+.model-head button:hover, .model-head button[aria-pressed="true"] { background: var(--pine); color: white; }
+.studio-model figcaption { bottom: 4.2%; gap: 17px; font-size: 11px; font-weight: 550; }
+.studio-model figcaption span { display: inline-flex; align-items: center; gap: 6px; }
+.studio-model figcaption i { width: 8px; height: 8px; border-radius: 2px; border: 1px solid #173c3430; }
+.class-key { background: #f5f6ec; }
+.teacher-key { background: #d8eea1; }
+.room-key { background: #25503e; }
+.studio-assembly { aspect-ratio: 1.22; position: relative; }
+.model-drawing { position: absolute; inset: 0; }
+.model-plane, .model-shadow {
+  position: absolute; left: 50%; top: 50%; width: 65%; height: 46%;
+  transform: translate(-50%, calc(-50% + var(--lift))) matrix(.86, .36, -.72, .49, 0, 0);
 }
-#step-1 .chrx-lattice-brand svg {
-  width: 28px;
-  height: 28px;
-  fill: none;
-  stroke: var(--signal-cyan);
-  stroke-width: 1.6;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+.model-plane { transition: transform .9s cubic-bezier(.2,.75,.18,1); }
+.plane-rooms { --lift: 14cqw; --face: #346951; --edge: #193e2f; --letter: #e2f1df; --tile: #70947e; --slot: #52816a; --line: #a3c0ad; }
+.plane-teachers { --lift: 0cqw; --face: #d5eaa7; --edge: #93a86e; --letter: #354a29; --tile: #bedb90; --slot: #e3efc4; --line: #a4be87; }
+.plane-classes { --lift: -14cqw; --face: #f9f9eb; --edge: #bdc3a9; --letter: #314736; --tile: #ccdfa9; --slot: #eff1df; --line: #bfccb1; }
+.is-stacked .plane-rooms { --lift: 2cqw; }
+.is-stacked .plane-classes { --lift: -2cqw; }
+.model-shadow { --lift: 17cqw; background: #345a354d; filter: blur(2.4cqw); border-radius: 9%; }
+.model-surface {
+  display: flex; flex-direction: column; height: 100%; padding: 3.2% 4%; border: 1px solid var(--line); border-radius: 1.6cqw;
+  background: linear-gradient(130deg, #ffffff1a, transparent 80%), var(--face); color: var(--letter);
+  box-shadow: 1px 1px 0 var(--edge), 2px 2px 0 var(--edge), 3px 3px 0 var(--edge), 4px 4px 0 var(--edge), 7px 10px 12px #28452e24;
 }
-#step-1 .chrx-lattice-nav p {
-  margin: 0;
-  color: #c9cece;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: .16em;
-  text-transform: uppercase;
-}
-
-#step-1 .chrx-lattice-copy {
-  position: absolute;
-  z-index: 5;
-  left: clamp(24px, 5vw, 78px);
-  bottom: clamp(96px, 13vh, 150px);
-  width: min(610px, 47vw);
-}
-/* The hero statement is an <h1> for document outline; match the element, not a
-   guessed tag, so a heading-level rename cannot silently strip the display
-   scale (and with it the only reason the hero type reads at all). */
-#step-1 .chrx-lattice-copy h1,
-#step-1 .chrx-lattice-copy h2 {
-  max-width: 10.5ch;
-  margin: 0;
-  color: var(--lattice-white);
-  font-family: var(--chrx-font-sans, "Inter Tight", sans-serif);
-  font-size: clamp(52px, 6.7vw, 96px);
-  font-weight: 600;
-  letter-spacing: -.04em;
-  line-height: .91;
-  text-wrap: balance;
-}
-#step-1 .chrx-lattice-copy__lead {
-  max-width: 49ch;
-  margin: 28px 0 0;
-  color: #c2c6c5;
-  font-size: clamp(14px, 1.2vw, 17px);
-  line-height: 1.55;
-}
-#step-1 .chrx-lattice-copy__signal {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  margin: 18px 0 0;
-  color: #d8dddd;
-  font-family: var(--chrx-font-mono, "JetBrains Mono", monospace);
-  font-size: 10px;
-  font-style: normal;
-  font-weight: 500;
-  letter-spacing: .12em;
-  text-transform: uppercase;
-}
-#step-1 .chrx-lattice-copy__signal span {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--signal-cyan);
-  box-shadow: 0 0 10px var(--signal-cyan), 0 2px 12px rgba(125, 240, 240, .46);
-}
-#step-1 .chrx-lattice-copy__signal i {
-  width: 18px;
-  height: 1px;
-  background: #5b6264;
-}
-
-#step-1 .chrx-lattice-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 28px;
-}
-#step-1 .chrx-lattice-action {
-  min-height: 48px;
-  border: 1px solid rgba(242, 240, 233, .28);
-  border-radius: 3px;
-  padding: 0 20px;
-  color: var(--lattice-white);
-  background: rgba(18, 20, 23, .72);
-  font: inherit;
-  font-size: 13px;
-  font-weight: 650;
-  letter-spacing: -.01em;
-  cursor: pointer;
-  transition: transform 160ms cubic-bezier(.2, .9, .25, 1.15), border-color 160ms ease, background 160ms ease, color 160ms ease, box-shadow 160ms ease;
-}
-#step-1 .chrx-lattice-action--primary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 28px;
-  min-width: 184px;
-  color: #060809;
-  border-color: var(--lattice-white);
-  background: var(--lattice-white);
-  box-shadow: 0 12px 36px rgba(0, 0, 0, .34);
-}
-#step-1 .chrx-lattice-action svg {
-  width: 18px;
-  height: 18px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.5;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-#step-1 .chrx-lattice-action__input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-  pointer-events: none;
-}
-#step-1 .chrx-lattice-action:hover,
-#step-1 .chrx-lattice-action:focus-visible {
-  transform: translateY(-2px);
-  border-color: var(--signal-cyan);
-  outline: none;
-  box-shadow: 0 14px 34px rgba(0, 0, 0, .42), 0 0 0 2px rgba(125, 240, 240, .25);
-}
-#step-1 .chrx-lattice-action--primary:hover,
-#step-1 .chrx-lattice-action--primary:focus-visible {
-  color: #041214;
-  background: var(--signal-cyan);
-}
-#step-1 .chrx-lattice-info {
-  display: grid;
-  place-items: center;
-  width: 48px;
-  height: 48px;
-  border: 1px solid rgba(242, 240, 233, .22);
-  border-radius: 50%;
-  color: #c8cecd;
-  background: transparent;
-  font: 600 13px var(--chrx-font-mono, monospace);
-  cursor: pointer;
-}
-#step-1 .chrx-lattice-info:hover,
-#step-1 .chrx-lattice-info:focus-visible { color: #041214; background: var(--signal-cyan); border-color: var(--signal-cyan); outline: none; }
-#step-1 .chrx-lattice-new {
-  margin-top: 15px;
-  padding: 3px 0;
-  border: 0;
-  border-bottom: 1px solid #5d6263;
-  /* css/style.css #cta-build-new (an ID selector, so it outranks nothing here for
-     the properties this rule declares but leaks the ones it does not) still
-     paints a blue #007aff glow and a 10px radius on this control. On a page whose
-     palette bans blue that reads as a rendering bug, and 10px contradicts the
-     committed 3px landing radius. */
-  border-radius: 0;
-  box-shadow: none;
-  color: #aeb4b4;
-  background: none;
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-}
-#step-1 .chrx-lattice-new:hover,
-#step-1 .chrx-lattice-new:focus-visible { color: var(--lattice-white); border-color: var(--signal-cyan); outline: none; }
-
-/* Focus that reads as focus. The links previously fell through to the browser's
-   default blue outline (off-palette), and the primary CTA's focus state was
-   byte-identical to its hover state, so a keyboard user got no signal that focus
-   — not hover — is what moved it. Focus now always carries a cyan ring, and only
-   hover fills the button. */
-#step-1 .chrx-lattice-brand:focus-visible,
-#step-1 .chrx-lattice-scroll:focus-visible,
-#step-1 .chrx-lattice-new:focus-visible {
-  outline: 2px solid var(--signal-cyan);
-  outline-offset: 4px;
-}
-#step-1 .chrx-lattice-action--primary:focus-visible {
-  color: #060809;
-  background: var(--lattice-white);
-  outline: 3px solid var(--signal-cyan);
-  outline-offset: 3px;
-}
-/* The secondary action and the "?" previously signalled focus with only a soft
-   2px shadow ring (or, for the "?", the same cyan fill as :hover). Every action
-   now carries the identical unmistakable cyan ring. */
-#step-1 .chrx-lattice-action--secondary:focus-visible,
-#step-1 .chrx-lattice-info:focus-visible {
-  outline: 3px solid var(--signal-cyan);
-  outline-offset: 3px;
-}
-
-/* The privacy guarantee is the fact that unlocks institutional adoption, so it
-   is set as a claim (cyan marker, brighter ink, same family as
-   .chrx-lattice-copy__signal) rather than as footnotes. It used to render at
-   #898f90 and was display:none below 980px — i.e. absent on every phone and
-   tablet, which is exactly where a school buyer checks before clicking. */
-#step-1 .chrx-lattice-privacy {
-  position: absolute;
-  z-index: 5;
-  right: clamp(24px, 5vw, 78px);
-  bottom: 34px;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  margin: 0;
-  color: #d8dddd;
-  font: 500 10px/1.4 var(--chrx-font-mono, "JetBrains Mono", monospace);
-  letter-spacing: .06em;
-}
-#step-1 .chrx-lattice-privacy::before {
-  content: "";
-  flex: none;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--signal-cyan);
-  box-shadow: 0 0 10px var(--signal-cyan), 0 2px 12px rgba(125, 240, 240, .46);
-}#step-1 .chrx-lattice-scroll {
-  position: absolute;
-  z-index: 5;
-  left: clamp(24px, 5vw, 78px);
-  bottom: 31px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: #8f9696;
-  font: 500 10px var(--chrx-font-mono, "JetBrains Mono", monospace);
-  letter-spacing: .08em;
-  text-decoration: none;
-  text-transform: uppercase;
-}
-#step-1 .chrx-lattice-scroll span { width: 28px; height: 1px; background: var(--signal-cyan); }
-
-/* ── The hero as a drop target ────────────────────────────────────────────
-   The lattice is the product's argument, so a dropped file lands on the board
-   itself rather than only on the small button. Echoes the scene's own cyan
-   guide rails instead of introducing a panel or a glass overlay. The JS guards
-   this to real file drags only, so dragging selected text never triggers it. */
-#step-1 .chrx-lattice-hero::before {
-  content: "";
-  position: absolute;
-  inset: clamp(10px, 1.3vw, 20px);
-  z-index: 6;
-  pointer-events: none;
-  border: 1px solid transparent;
-  opacity: 0;
-  transition: opacity 190ms ease, border-color 190ms ease;
-}
-#step-1 .chrx-lattice-hero.is-file-over::before {
-  border-color: var(--signal-cyan);
-  opacity: 1;
-}
-#step-1 .chrx-lattice-drop {
-  position: absolute;
-  z-index: 7;
-  left: 50%;
-  top: 50%;
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  margin: 0;
-  padding: 13px 20px;
-  transform: translate(-50%, -50%);
-  border: 1px solid var(--signal-cyan);
-  border-radius: 3px;
-  color: #060809;
-  background: var(--signal-cyan);
-  font: 500 11px var(--chrx-font-mono, "JetBrains Mono", monospace);
-  letter-spacing: .06em;
-  white-space: nowrap;
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 190ms ease, visibility 190ms;
-}
-#step-1 .chrx-lattice-drop b { font-weight: 650; letter-spacing: .1em; text-transform: uppercase; }
-#step-1 .chrx-lattice-drop span { color: rgba(6, 8, 9, .72); }
-#step-1 .chrx-lattice-hero.is-file-over .chrx-lattice-drop { opacity: 1; visibility: visible; }
-/* The copy recedes so the drop state reads as a mode, not an addition. */
-#step-1 .chrx-lattice-hero.is-file-over .chrx-lattice-copy { opacity: .34; }
-#step-1 .chrx-lattice-copy { transition: opacity 190ms ease; }
-
-#step-1 .chrx-proof {
-  position: relative;
-  z-index: 4;
-  padding: clamp(110px, 15vw, 210px) clamp(24px, 8vw, 120px);
-  color: #17191a;
-  background: var(--lattice-white);
-}
-#step-1 .chrx-proof__intro {
-  display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(280px, .55fr);
-  gap: clamp(44px, 8vw, 130px);
-  align-items: end;
-}
-#step-1 .chrx-proof__intro h2,
-#step-1 .chrx-proof__intro h3 {
-  margin: 0;
-  max-width: 16ch;
-  font-family: var(--chrx-font-sans, "Inter Tight", sans-serif);
-  font-size: clamp(42px, 5.6vw, 82px);
-  font-weight: 560;
-  letter-spacing: -.04em;
-  line-height: .98;
-  text-wrap: balance;
-}
-#step-1 .chrx-proof__intro > p {
-  max-width: 43ch;
-  margin: 0;
-  color: #45494a;
-  font-size: 15px;
-  line-height: 1.65;
-}
-#step-1 .chrx-proof__sequence {
-  display: grid;
-  grid-template-columns: 1fr 86px 1fr 86px 1fr;
-  gap: 26px;
-  align-items: center;
-  margin-top: clamp(80px, 10vw, 150px);
-  padding-top: 24px;
-  border-top: 1px solid #b7b8b4;
-}
-#step-1 .chrx-proof__sequence article { min-height: 120px; }
-#step-1 .chrx-proof__sequence strong { font-size: 18px; font-weight: 650; letter-spacing: -.02em; }
-#step-1 .chrx-proof__sequence p { max-width: 27ch; margin: 13px 0 0; color: #595e5e; font-size: 13px; line-height: 1.55; }
-#step-1 .chrx-proof__sequence svg { width: 86px; fill: none; stroke: #99a1a1; stroke-width: 1; }
-
-#step-1 .chrx-landing-demo {
-  position: relative;
-  z-index: 4;
-  display: grid;
-  grid-template-columns: minmax(250px, .6fr) minmax(460px, 1.4fr);
-  gap: clamp(50px, 8vw, 130px);
-  align-items: center;
-  margin: 0;
-  padding: clamp(110px, 14vw, 190px) clamp(24px, 8vw, 120px);
-  border: 0;
-  border-radius: 0;
-  color: var(--lattice-white);
-  background: #070809;
-  box-shadow: none;
-}
-#step-1 .chrx-landing-demo__copy h2,
-#step-1 .chrx-landing-demo__copy h3 {
-  margin: 0;
-  max-width: 12ch;
-  color: var(--lattice-white);
-  font-family: var(--chrx-font-sans, "Inter Tight", sans-serif);
-  font-size: clamp(40px, 4.6vw, 68px);
-  font-weight: 560;
-  letter-spacing: -.04em;
-  line-height: 1;
-}
-#step-1 .chrx-landing-demo__copy p { max-width: 38ch; margin: 24px 0; color: #aeb4b4; font-size: 14px; line-height: 1.6; }
-#step-1 .chrx-landing-demo__status {
-  display: inline-block;
-  border: 1px solid #34383a;
-  border-radius: 2px;
-  padding: 7px 10px;
-  color: #cbd0d0;
-  background: transparent;
-  font: 500 10px var(--chrx-font-mono, "JetBrains Mono", monospace);
-  letter-spacing: .05em;
-}
-#step-1 .chrx-landing-demo__status[data-tone="conflict"] { color: #ff8b7d; border-color: rgba(236, 103, 83, .5); background: rgba(236, 103, 83, .08); }
-#step-1 .chrx-landing-demo__status[data-tone="done"] { color: var(--lattice-cyan); border-color: rgba(159, 231, 231, .4); background: rgba(159, 231, 231, .06); }
-#step-1 .chrx-appwindow { overflow: hidden; border: 1px solid #303438; border-radius: 5px; background: #111315; box-shadow: 0 28px 80px rgba(0, 0, 0, .48); }
-#step-1 .chrx-appwindow__stages { display: flex; gap: 3px; padding: 10px; border-bottom: 1px solid #303438; background: #0c0e10; }
-#step-1 .chrx-appwindow__stage {
-  flex: 1;
-  min-height: 36px;
-  border: 1px solid transparent;
-  border-radius: 2px;
-  padding: 0 8px;
-  color: #7e8586;
-  background: none;
-  font: 500 10px var(--chrx-font-mono, "JetBrains Mono", monospace);
-  letter-spacing: .03em;
-  cursor: pointer;
-}
-#step-1 .chrx-appwindow__stage:hover { color: var(--lattice-white); background: #181b1e; }
-#step-1 .chrx-appwindow__stage[aria-selected="true"] { color: var(--lattice-cyan); border-color: #435052; background: #181c1e; box-shadow: none; }
-#step-1 .chrx-appwindow__viewport { min-height: 320px; display: grid; place-items: center; padding: 28px; background: #0a0c0e; }
-#step-1 .chrx-appwindow__footer { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-top: 1px solid #303438; background: #0c0e10; }
-#step-1 .chrx-appwindow__title { flex: 1; color: #747b7c; font: 500 10px var(--chrx-font-mono, "JetBrains Mono", monospace); letter-spacing: .05em; }
-#step-1 .chrx-appwindow__mode { border: 1px solid #34393b; border-radius: 2px; padding: 5px 9px; color: #abb1b1; background: transparent; font: 500 10px var(--chrx-font-mono, monospace); cursor: pointer; }
-#step-1 .chrx-appwindow__mode:hover,
-#step-1 .chrx-appwindow__mode:focus-visible { color: var(--lattice-cyan); border-color: var(--lattice-cyan); outline: none; }
-#step-1 .chrx-landing-demo__mount { overflow-x: auto; width: 100%; }
-#step-1 .chrx-landing-demo__days,
-#step-1 .chrx-landing-demo__grid { width: min(100%, 570px); }
-
-#step-1 .chrx-capabilities {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: clamp(32px, 6vw, 90px);
-  padding: clamp(80px, 10vw, 140px) clamp(24px, 8vw, 120px);
-  color: #17191a;
-  background: var(--lattice-cyan);
-}
-#step-1 .chrx-capabilities p { margin: 0; }
-#step-1 .chrx-capabilities strong { display: block; margin-bottom: 13px; font-size: 19px; font-weight: 700; letter-spacing: -.025em; }
-#step-1 .chrx-capabilities span { display: block; color: #263031; font-size: 13px; line-height: 1.55; }
-
-/* ── Closing move ─────────────────────────────────────────────────────────────
-   The page used to end on two 11px utility links ~3,200px below the primary
-   CTA, so a reader persuaded by the demo had nothing to act on. This is a
-   closing statement, not another band: the same ink-black ground as the hero,
-   the largest type on the page after the hero, and the hero's own action
-   cluster — the `.chrx-lattice-action` rules above already reach these buttons
-   through the `#step-1` descendant scope, so `#start-open-card-2` is the hero
-   primary byte for byte. Its `for="xml-file"` does the work natively; no
-   script is attached, so the picker can never open twice. */
-#step-1 .chrx-closing {
-  position: relative;
-  z-index: 4;
-  padding: clamp(120px, 16vw, 220px) clamp(24px, 8vw, 120px) clamp(96px, 12vw, 170px);
-  background:
-    radial-gradient(58% 62% at 16% 46%, rgba(125, 240, 240, .05), transparent 72%),
-    var(--lattice-black);
-}
-#step-1 .chrx-closing__line {
-  max-width: 17ch;
-  margin: 0;
-  color: var(--lattice-white);
-  font-family: var(--chrx-font-sans, "Inter Tight", sans-serif);
-  font-size: clamp(36px, 5.2vw, 76px);
-  font-weight: 600;
-  letter-spacing: -.04em;
-  line-height: .96;
-  text-wrap: balance;
-}
-#step-1 .chrx-closing__actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: clamp(30px, 4vw, 46px);
-}
-
-#step-1 .chrx-start-recent {
-  padding: 70px clamp(24px, 8vw, 120px);
-  color: var(--lattice-white);
-  background: #070809;
-}
+.model-plate-title { display: flex; align-items: center; justify-content: space-between; padding: 0 0 2.3%; border-bottom: 1px solid var(--line); }
+.model-plate-title strong { font-size: 4.5cqw; font-weight: 650; line-height: 1; letter-spacing: -.055em; }
+.model-plate-title span, .model-grid { font-family: ui-monospace, monospace; }
+.model-plate-title span { font-size: 1.45cqw; letter-spacing: .06em; }
+.model-grid { display: grid; grid-template-columns: .52fr repeat(5, 1fr); grid-template-rows: .6fr repeat(3, 1fr); gap: .72cqw; flex: 1; min-height: 0; margin-top: .7cqw; }
+.model-grid :is(i, b, small) { display: grid; place-items: center; font-style: normal; }
+.model-grid b, .model-grid small { font-size: 1.45cqw; font-weight: 550; text-transform: uppercase; }
+.model-grid i { border-radius: .44cqw; font-size: 1.75cqw; font-weight: 650; }
+.model-slot { background: var(--slot); border: 1px solid var(--line); }
+.model-tile { background: var(--tile); border: 1px solid var(--line); box-shadow: 1px 1.5px 0 var(--line); }
+.plane-classes .model-tile:nth-of-type(3n + 1) { background: #d8dfd0; }
+.plane-classes .model-tile:nth-of-type(4n + 1) { background: #ebd4ac; }
+.studio-specs { justify-content: space-between; gap: 24px; border-top: 1px solid var(--rule); padding: 25px 0 29px; }
+.studio-specs p { margin: 0; display: flex; align-items: baseline; gap: 12px; font-size: 13px; color: var(--muted); }
+.studio-specs strong { color: var(--ink); font-weight: 650; }
+#step-1 .chrx-landing-demo { margin: 0; padding: 0; border: 0; border-radius: 0; box-shadow: none; background: #183b2c; color: #f6f6e8; }
+.studio-feature { display: grid; grid-template-columns: .82fr 1.18fr; align-items: center; gap: 8%; padding-block: clamp(56px, 7vw, 100px); }
+#step-1 .studio-feature h2 { font-size: clamp(57px, 5.8vw, 86px); }
+.studio-feature h2 em { color: var(--lime); }
+.studio-feature-copy p, .studio-close p { margin: 20px 0 0; max-width: 40ch; line-height: 1.6; }
+.studio-feature-copy p { color: #cddacc; font-size: 16px; }
+.studio-about { color: #e2efcc; }
+.studio-preview { min-width: 0; background: #f7f8ef; color: var(--ink); border-radius: 13px; padding: clamp(16px, 2.2vw, 32px); }
+.studio-preview-head, .studio-preview-foot { justify-content: space-between; gap: 14px; }
+.studio-preview-head strong { font: 400 33px/1 var(--display); }
+.studio-preview-head button { font-size: 12px; border: 1px solid var(--rule); padding: 5px 12px; border-radius: 5px; }
+.chrx-appwindow__stages { display: flex; gap: 3px; padding: 16px 0; }
+.chrx-appwindow__stage { flex: 1; min-height: 34px; font-size: 12px; border-radius: 4px; color: var(--muted); }
+.chrx-appwindow__stage[aria-pressed="true"] { background: var(--pine); color: #fff; }
+.chrx-appwindow__stage:hover:not([aria-pressed="true"]) { background: #e2e9d9; }
+#step-1 .chrx-landing-demo__days, #step-1 .chrx-landing-demo__grid { min-width: 0; width: 100%; grid-template-columns: repeat(5, minmax(0,1fr)); }
+#step-1 .chrx-landing-demo__cell { background: #e9eee0; border-radius: 4px; }
+.studio-preview-foot { font-size: 11px; min-height: 38px; padding-top: 8px; }
+[data-landing-demo-progress] { text-align: right; color: var(--muted); }
+.studio-close { justify-content: space-between; gap: 22px; padding-block: clamp(56px, 6vw, 95px); }
+#step-1 .studio-close h2 { font-size: clamp(45px, 4.9vw, 70px); }
+.studio-close p { color: var(--muted); max-width: 48ch; }
+.studio-close .studio-button { flex: none; }
+#step-1 .chrx-start-recent { margin-block: 0 32px; }
 #step-1 .chrx-start-recent__head { display: flex; align-items: center; gap: 16px; }
-#step-1 .chrx-start-recent__head h3 { margin: 0; font-size: 25px; font-weight: 600; letter-spacing: -.03em; }
-#step-1 .chrx-start-recent__head > span { flex: 1; }
-#step-1 .chrx-start-recent__filter { width: 180px; border: 1px solid #353a3c; border-radius: 2px; padding: 8px 10px; color: var(--lattice-white); background: #111315; }
-#step-1 .chrx-start-recent__filter:focus { border-color: var(--lattice-cyan); outline: 2px solid rgba(159, 231, 231, .2); }
-#step-1 .chrx-start-recent__list { margin-top: 22px; }
-
-#step-1 .chrx-start-links {
-  display: flex;
-  justify-content: space-between;
-  gap: 20px;
-  padding: 28px clamp(24px, 8vw, 120px) 42px;
-  border-top: 1px solid #24272a;
-  background: #070809;
-}
-#step-1 .chrx-start-links a { color: #9ca3a3; font-size: 11px; letter-spacing: .08em; text-decoration: none; text-transform: uppercase; }
-#step-1 .chrx-start-links a:hover,
-#step-1 .chrx-start-links a:focus-visible { color: var(--lattice-cyan); outline: none; }
+#step-1 .chrx-start-recent__filter { padding: 6px 10px; border-radius: 5px; border: 1px solid var(--rule); }
+.chrx-start-links { border-top: 1px solid var(--rule); padding-block: 18px; gap: 24px; color: var(--muted); font-size: 13px; }
+.studio-footer-name { margin-right: auto; font-size: 19px; font-weight: 650; letter-spacing: -.05em; color: var(--ink); }
 #step-1 .chrx-start-status { position: fixed; z-index: 80; left: 50%; bottom: 22px; width: min(560px, calc(100% - 32px)); transform: translateX(-50%); }
 #step-1 .chrx-start-status:empty { display: none; }
-
-#step-1 ::selection { color: #000102; background: var(--lattice-cyan); }
-#step-1 * { scrollbar-color: #475051 #111315; scrollbar-width: thin; }
-
-@media (max-width: 980px) {
-  #step-1 .chrx-proof__intro { grid-template-columns: 1fr; align-items: start; }
-  #step-1 .chrx-proof__sequence { grid-template-columns: 1fr; gap: 18px; }
-  #step-1 .chrx-proof__sequence article { min-height: 0; padding: 10px 0 26px; border-bottom: 1px solid #c7c8c4; }
-  #step-1 .chrx-proof__sequence svg { display: none; }
-  #step-1 .chrx-landing-demo { grid-template-columns: 1fr; }
+@media (max-width: 920px) {
+  .studio-width { width: 92%; }
+  .chrx-lattice-hero { grid-template-columns: 1fr 1fr; gap: 22px; }
+  #step-1 .studio-copy h1 { font-size: clamp(64px, 9.2vw, 84px); }
+  .studio-specs p { display: grid; gap: 3px; }
+  .studio-button { padding-inline: 14px; }
+}
+@media (max-width: 700px) {
+  .studio-width { width: calc(100% - 36px); }
+  .studio-nav { height: 65px; }
+  .chrx-lattice-brand { font-size: 24px; gap: 8px; }
+  .studio-mark { width: 22px; gap: 2px; }
+  .studio-mark i { height: 5px; }
+  .studio-nav nav { gap: 14px; }
+  .studio-nav nav a, .studio-nav-demo { font-size: 12px; }
+  .studio-nav-demo { padding: 8px 12px; }
+  .studio-docs { display: none; }
+  .chrx-lattice-hero { grid-template-columns: 1fr; gap: 25px; padding: 38px 0 23px; }
+  #step-1 .studio-copy h1 { font-size: clamp(68px, 14vw, 88px); }
+  .studio-lead { margin: 16px 0 19px; }
+  .studio-model { max-width: 530px; justify-self: center; }
+  .studio-template { margin-top: 6px; }
+  .studio-feature { grid-template-columns: 1fr; gap: 24px; padding-block: 48px; }
+  .studio-specs { gap: 12px; align-items: start; padding: 18px 0 22px; }
+  .studio-specs p { flex: 1; font-size: 11px; line-height: 1.45; }
+  .studio-specs strong { font-size: 13px; }
+  .studio-close { align-items: flex-start; flex-direction: column; }
 }
 
-/* ── Below 1100px the copy and the board cannot share a band ──────────────────
-   The board's leftmost tiles reach x ≈ 0.40 × width (origin at 0.585w minus the
-   diagonal skew) while the copy column is min(610px, 47vw): the two boxes
-   overlap at every width under roughly 1700px, so the only honest separation
-   left below the approved desktop composition is vertical.
-
-   The hero therefore becomes a four-row grid — nav / copy / scroll cue / board —
-   and the board gets its own band under the copy. Overlap is impossible by
-   construction, not merely dimmed: the previous treatment leaned on a
-   rgba(5,7,10,.72) scrim at 34% opacity, which left white tile glyphs cutting
-   straight through the headline at 1.03–1.06:1. No scrim can fix that at an
-   acceptable strength — clearing 4.5:1 against a lit cyan tile needs ~93% black,
-   which would erase the lattice entirely — so the scene is banded instead and
-   still composes its full diagonal assembly, just below the type.
-
-   min-height is viewport-relative with no fixed pixel floor: the old
-   `max(760px, 100svh)` / `780px` pair pushed the scroll cue off-screen on short
-   viewports (200% zoom lands at 752×523). */
-@media (max-width: 1100px) {
-  #step-1 .chrx-lattice-hero {
-    display: grid;
-    grid-template-rows: auto auto auto minmax(clamp(84px, 16vh, 180px), 1fr);
-    align-content: stretch;
-    min-height: 100svh;
-    padding-bottom: clamp(16px, 3vh, 34px);
-  }
-  #step-1 .chrx-lattice-nav {
-    position: static;
-    grid-row: 1;
-    margin: clamp(22px, 4vw, 44px) clamp(24px, 5vw, 78px) 0;
-  }
-  #step-1 .chrx-lattice-copy {
-    position: static;
-    grid-row: 2;
-    width: min(650px, calc(100% - 2 * clamp(24px, 5vw, 78px)));
-    margin: clamp(20px, 4vh, 56px) 0 0 clamp(24px, 5vw, 78px);
-  }
-  #step-1 .chrx-lattice-copy h1,
-  #step-1 .chrx-lattice-copy h2 { font-size: clamp(50px, 11vw, 82px); }
-  #step-1 .chrx-lattice-copy__lead { max-width: 42ch; }
-  /* Cue and privacy share row 3, so the cue is always above the board band and
-     the privacy line keeps the first viewport's trust statement. */
-  #step-1 .chrx-lattice-scroll {
-    position: static;
-    grid-row: 3;
-    justify-self: start;
-    margin: 26px 0 0 clamp(24px, 5vw, 78px);
-  }
-  #step-1 .chrx-lattice-privacy {
-    position: static;
-    grid-row: 3;
-    justify-self: end;
-    align-self: center;
-    margin: 26px clamp(24px, 5vw, 78px) 0 16px;
-  }
-  /* Row 4: the scene keeps its full diagonal assembly, composed inside the band
-     by the renderer's own width/height (js/ui/components/landing_lattice.js). */
-  #step-1 .chrx-lattice-scene {
-    position: relative;
-    inset: auto;
-    grid-row: 4;
-    width: 100%;
-    height: 100%;
-    min-height: 0;
-  }
-  /* Row 4 is the board band, so the drop prompt anchors to the hero's bottom
-     edge (always inside the band) instead of its vertical centre — centred, it
-     landed on the copy cluster and made the buttons unreadable. */
-  #step-1 .chrx-lattice-drop {
-    top: auto;
-    bottom: clamp(16px, 4vh, 44px);
-    transform: translateX(-50%);
-  }
-}
-
-/* Short viewports: the copy is what has to fit, so it compresses before the
-   board band does. Keeps the scroll cue inside the fold at 200% zoom. */
-@media (max-width: 1100px) and (max-height: 620px) {
-  #step-1 .chrx-lattice-hero { grid-template-rows: auto auto auto minmax(72px, 1fr); }
-  #step-1 .chrx-lattice-copy { margin-top: clamp(14px, 2.5vh, 28px); }
-  #step-1 .chrx-lattice-copy h1,
-  #step-1 .chrx-lattice-copy h2 { font-size: clamp(40px, 9vw, 62px); }
-  #step-1 .chrx-lattice-copy__lead { max-width: 48ch; margin-top: 18px; }
-  #step-1 .chrx-lattice-copy__signal { margin-top: 12px; }
-  #step-1 .chrx-lattice-actions { margin-top: 18px; }
-  #step-1 .chrx-lattice-scroll,
-  #step-1 .chrx-lattice-privacy { margin-top: 18px; }
-}
-
-@media (max-width: 640px) {
-  #step-1 .chrx-lattice-nav { margin-top: 22px; margin-left: 20px; margin-right: 20px; }
-  #step-1 .chrx-lattice-nav p { display: none; }
-  #step-1 .chrx-lattice-copy { width: calc(100% - 40px); margin-left: 20px; }
-  #step-1 .chrx-lattice-copy h1,
-  #step-1 .chrx-lattice-copy h2 { font-size: clamp(47px, 15vw, 66px); line-height: .94; }
-  #step-1 .chrx-lattice-copy__lead { max-width: 35ch; margin-top: 20px; font-size: 14px; }
-  #step-1 .chrx-lattice-copy__signal { margin-top: 14px; }
-  #step-1 .chrx-lattice-actions { align-items: stretch; flex-wrap: wrap; margin-top: 22px; }
-  #step-1 .chrx-lattice-action--primary { flex: 1 1 180px; }
-  #step-1 .chrx-lattice-action--secondary { flex: 1 1 130px; }
-  #step-1 .chrx-lattice-info { width: 42px; height: 48px; }
-  /* Was display:none — the trust statement must survive on phones. It shares
-     row 3 with the scroll cue and wraps under it when space runs out. */
-  #step-1 .chrx-lattice-privacy {
-    grid-row: 3;
-    justify-self: start;
-    max-width: calc(100% - 40px);
-    margin: 12px 0 0 20px;
-  }
-  #step-1 .chrx-proof { padding-top: 90px; padding-bottom: 90px; }
-  #step-1 .chrx-proof__intro h2,
-  #step-1 .chrx-proof__intro h3 { font-size: 43px; }
-  #step-1 .chrx-proof__sequence { margin-top: 65px; }
-  #step-1 .chrx-landing-demo { padding-top: 90px; padding-bottom: 90px; }
-  #step-1 .chrx-landing-demo__copy h2,
-  #step-1 .chrx-landing-demo__copy h3 { font-size: 43px; }
-  #step-1 .chrx-appwindow__stages { overflow-x: auto; }
-  #step-1 .chrx-appwindow__stage { flex: 0 0 auto; }
-  #step-1 .chrx-appwindow__viewport { min-height: 260px; padding: 18px 10px; }
-  #step-1 .chrx-appwindow__title { display: none; }
-  #step-1 .chrx-capabilities { grid-template-columns: 1fr; gap: 38px; }
-  #step-1 .chrx-closing { padding-top: 96px; padding-bottom: 80px; }
-  #step-1 .chrx-closing__line { max-width: 14ch; }
-  #step-1 .chrx-closing__actions { align-items: stretch; flex-wrap: wrap; }
-  #step-1 .chrx-closing__actions .chrx-lattice-action--primary { flex: 1 1 180px; }
-  #step-1 .chrx-closing__actions .chrx-lattice-action--secondary { flex: 1 1 130px; }
-}
-
-/* Very narrow (≤420px): the copy block is what pushes the action cluster and the
-   privacy line past the fold, so it compresses first. The three controls are
-   forced onto ONE row here — at 320px the 640px breakpoint's 180px/130px flex
-   bases exceed the 280px content box, so they wrapped to three rows and the "?"
-   ended up clipped at the fold. */
-@media (max-width: 420px) {
-  #step-1 .chrx-lattice-copy h1,
-  #step-1 .chrx-lattice-copy h2 { font-size: clamp(34px, 12vw, 52px); }
-  #step-1 .chrx-lattice-copy__lead { margin-top: 16px; font-size: 13.5px; }
-  #step-1 .chrx-lattice-copy__signal { margin-top: 12px; font-size: 9px; letter-spacing: .09em; }
-  #step-1 .chrx-lattice-actions { flex-wrap: nowrap; gap: 8px; margin-top: 18px; }
-  #step-1 .chrx-lattice-action--primary { flex: 1 1 auto; min-width: 0; padding: 0 14px; }
-  #step-1 .chrx-lattice-action--secondary { flex: 0 1 auto; padding: 0 12px; }
-  #step-1 .chrx-lattice-info { flex: none; width: 44px; }
-  #step-1 .chrx-lattice-new { margin-top: 12px; }
-  /* The cue and the privacy line share row 3, but at this width their combined
-     intrinsic widths exceed the content box and they overlapped (clipping
-     "EXPLORE THE FIELD" mid-word). A scroll cue is also redundant on a phone —
-     the trust statement is what must survive, so the cue yields the row. */
-  #step-1 .chrx-lattice-scroll { display: none; }
-  #step-1 .chrx-lattice-privacy { max-width: 100%; margin-top: 14px; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  #step-1 .chrx-lattice-action { transition: none; }
-  #step-1 .chrx-lattice-action:hover,
-  #step-1 .chrx-lattice-action:focus-visible { transform: none; }
-  /* Drop state still appears and disappears, just without the fade. */
-  #step-1 .chrx-lattice-hero::before,
-  #step-1 .chrx-lattice-drop,
-  #step-1 .chrx-lattice-copy { transition: none; }
+@media (max-width: 370px) {
+  .studio-nav nav { gap: 8px; }
+  .studio-nav nav a[href="#chrx-proof"] { display: none; }
+  .studio-nav-demo { white-space: nowrap; }
+  #step-1 .studio-copy h1 { font-size: 18vw; }
+  .studio-model { border-radius: 12px; }
 }

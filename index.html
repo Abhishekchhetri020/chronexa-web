@@ -21,11 +21,7 @@
      as one hashed stylesheet. The old CDN <script> and per-file <link>
      tags are gone. -->
 <style>
-  /* Tiny FOUC guard until the bundled stylesheet loads. Must match the FIRST
-     painted surface, which is the ink-black landing — not the light workbench.
-     A light value here paints the whole app shell for ~1.5s before JS calls
-     showStep(1) and snaps it black. */
-  body { background: #05070a; }
+  body.chrx-landing-active { background: #f8f7f2; }
 </style>
 
 <!-- Excel + gzip libs for ribbon Export/Snapshot (loaded once) -->
@@ -118,119 +114,73 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
   <!-- STEP 1 — Start (build new OR upload existing) -->
   <section id="step-1" class="step-panel">
-    <!-- Landing redesign 2026-08-02 (docs/design/CHRONEXA_LANDING_REDESIGN_PLAN-2026-08-02.md).
-         Pixel wordmark retired; every JS-bound ID below is contract — do not rename:
-         cta-build-new, start-open-card, xml-file, cta-landing-demo, start-sample-info,
-         cta-load-demo, start-recent-section, start-recent-list, xml-status,
-         landing-demo-mount, data-landing-demo-status. -->
     <div class="chrx-landing">
-      <section class="chrx-lattice-hero" aria-labelledby="chrx-hero-title">
-        <div class="chrx-lattice-scene" data-lattice-scene aria-hidden="true">
-          <canvas class="chrx-lattice-scene__webgl" data-lattice-webgl></canvas>
-          <canvas class="chrx-lattice-scene__labels" data-lattice-labels></canvas>
-          <div class="chrx-lattice-scene__fallback"></div>
-        </div>
+      <header class="studio-nav studio-width">
+        <a class="chrx-lattice-brand" href="#step-1" aria-label="Chronexa home">
+          <span class="studio-mark" aria-hidden="true"><i></i><i></i><i></i></span>Chronexa
+        </a>
+        <nav aria-label="Landing navigation">
+          <a href="#chrx-proof">How it works</a>
+          <a class="studio-docs" href="https://github.com/Abhishekchhetri020/chronexa-web/blob/main/README.md" target="_blank" rel="noopener">Docs <span aria-hidden="true">↗</span></a>
+          <button type="button" data-closing-demo class="studio-nav-demo">Try demo <span aria-hidden="true">↗</span></button>
+        </nav>
+      </header>
 
-        <header class="chrx-lattice-nav">
-          <a class="chrx-lattice-brand" href="#step-1" aria-label="Chronexa home">
-            <svg viewBox="0 0 30 30" aria-hidden="true"><path d="M4 7.5h22M4 15h15M4 22.5h22"/><path d="m20 11 5 4-5 4"/></svg>
-            <span>Chronexa</span>
-          </a>
-          <p>Timetable studio</p>
-        </header>
-
-        <div class="chrx-lattice-copy">
-          <h1 id="chrx-hero-title">Build a timetable<br>that behaves.</h1>
-          <p class="chrx-lattice-copy__lead">Move lessons directly. See conflicts before they land. Keep the entire school in one coherent field.</p>
-          <p class="chrx-lattice-copy__signal"><span></span>Local-first <i></i> Constraint-aware</p>
-
-          <div class="chrx-lattice-actions" aria-label="Start with Chronexa">
-            <label id="start-open-card" class="chrx-lattice-action chrx-lattice-action--primary" tabindex="0">
-              <!-- tabindex="-1": the label already forwards Enter/Space via input.click()
-                   (js/ui/start_screen.js), so the input must not be a second, invisible tab stop. -->
-              <input type="file" id="xml-file" accept=".xml,.har" tabindex="-1" class="chrx-lattice-action__input">
-              <span>Open timetable</span>
-              <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h12M11 5l5 5-5 5"/></svg>
+      <section class="chrx-lattice-hero studio-width" aria-labelledby="chrx-hero-title">
+        <div class="studio-copy">
+          <h1 id="chrx-hero-title">The school<br>week, <em>in sync.</em></h1>
+          <p class="studio-lead">Build a school timetable that fits your classes, teachers and rooms together. Spot clashes as you move lessons into place.</p>
+          <div class="studio-actions">
+            <label id="start-open-card" class="studio-button studio-primary" tabindex="0">
+              <input type="file" id="xml-file" accept=".xml,.har" tabindex="-1" class="studio-file">
+              Open timetable <span aria-hidden="true">↗</span>
             </label>
-            <button id="cta-landing-demo" type="button" class="chrx-lattice-action chrx-lattice-action--secondary">
-              Launch demo
+            <button id="cta-landing-demo" type="button" class="studio-button studio-secondary">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5 12 8l-7 4.5Z"/></svg>Launch demo
             </button>
-            <button id="start-sample-info" type="button" class="chrx-lattice-info" aria-label="What is in the demo school" title="What's in the demo school?">?</button>
           </div>
-          <button id="cta-build-new" type="button" class="chrx-lattice-new">Start from a school template</button>
+          <button id="cta-build-new" type="button" class="studio-template">Start with a school template <span aria-hidden="true">→</span></button>
         </div>
-
-        <p class="chrx-lattice-privacy">Your timetable stays in this browser unless you choose a cloud solve.</p>
-        <!-- Drop affordance for the whole hero, revealed only during a real file
-             drag (see wireOpenCard in js/ui/start_screen.js). aria-hidden: it
-             duplicates the "Open timetable" control, which stays the keyboard
-             and screen-reader route. -->
-        <p class="chrx-lattice-drop" aria-hidden="true"><b>Drop to open</b><span>.xml or .har</span></p>
-        <a class="chrx-lattice-scroll" href="#chrx-proof"><span></span>Explore the field</a>
+        <figure class="studio-model" aria-label="Interactive model of a school timetable with class, teacher and room layers">
+          <div class="model-head"><span>Timetable model</span><button type="button" data-model-toggle aria-pressed="false" aria-controls="studio-assembly">Stack layers</button></div>
+          <div id="studio-assembly" class="studio-assembly"></div>
+          <figcaption><span><i class="class-key"></i>Classes</span><span><i class="teacher-key"></i>Teachers</span><span><i class="room-key"></i>Rooms</span></figcaption>
+        </figure>
+        <div class="studio-drop" aria-hidden="true">Drop your timetable<span>XML or HAR</span></div>
       </section>
 
-      <section id="chrx-proof" class="chrx-proof" aria-labelledby="chrx-proof-title">
-        <div class="chrx-proof__intro">
-          <h2 id="chrx-proof-title">A constraint is not an error message.<br>It is part of the canvas.</h2>
-          <p>Chronexa keeps the reason beside the move. Teacher availability, occupied rooms, class collisions, and fixed lessons remain visible while you work.</p>
-        </div>
+      <div class="studio-specs studio-width" aria-label="Timetable workflow">
+        <p><strong>Import</strong><span>aSc XML, GP-Untis XML, HAR</span></p>
+        <p><strong>Edit</strong><span>Class, teacher and room views</span></p>
+        <p><strong>Export</strong><span>Excel, calendar, print and more</span></p>
+      </div>
 
-        <div class="chrx-proof__sequence" aria-label="Chronexa editing sequence">
-          <article><strong>Pick up</strong><p>The source stays visible, so you never lose your place.</p></article>
-          <svg viewBox="0 0 86 22" aria-hidden="true"><path d="M2 11h78m-8-7 8 7-8 7"/></svg>
-          <article><strong>Read the field</strong><p>Only relevant targets react; valid placements answer in cyan.</p></article>
-          <svg viewBox="0 0 86 22" aria-hidden="true"><path d="M2 11h78m-8-7 8 7-8 7"/></svg>
-          <article><strong>Land instantly</strong><p>The card follows your pointer directly and commits in one motion.</p></article>
-        </div>
-      </section>
-
-      <section class="chrx-landing-demo" aria-labelledby="landing-demo-title">
-        <div class="chrx-landing-demo__copy">
-          <h2 id="landing-demo-title">Watch one conflict become a valid week.</h2>
-          <p>No file required. The miniature school below runs the same placement story in a smaller frame.</p>
-          <span class="chrx-landing-demo__status" data-landing-demo-status aria-live="polite">Preparing preview…</span>
-        </div>
-        <div class="chrx-appwindow">
-          <!-- These are a sequential scrubber over one animation, not a tab
-               interface: they swap no panels, so role="tab" was a lie and had no
-               aria-controls/tabpanels. role="group" + aria-pressed is honest and
-               matches how the JS drives them. -->
-          <div class="chrx-appwindow__stages" role="group" aria-label="Solver stages">
-            <button type="button" aria-pressed="true" class="chrx-appwindow__stage" data-stage="lessons">Lessons</button>
-            <button type="button" aria-pressed="false" class="chrx-appwindow__stage" data-stage="solve">Solve</button>
-            <button type="button" aria-pressed="false" class="chrx-appwindow__stage" data-stage="conflict">Conflict</button>
-            <button type="button" aria-pressed="false" class="chrx-appwindow__stage" data-stage="reassign">Reroute</button>
-            <button type="button" aria-pressed="false" class="chrx-appwindow__stage" data-stage="ready">Ready</button>
+      <section id="chrx-proof" class="chrx-landing-demo" aria-labelledby="landing-demo-title">
+        <div class="studio-feature studio-width">
+          <div class="studio-feature-copy">
+            <h2 id="landing-demo-title">See a clash.<br><em>Find its place.</em></h2>
+            <p>Follow one double-booked period from the first lesson to a working week. Select a stage to inspect the move.</p>
+            <button id="start-sample-info" type="button" class="studio-about">About the demo school <span aria-hidden="true">↗</span></button>
           </div>
-          <div class="chrx-appwindow__viewport"><div id="landing-demo-mount" class="chrx-landing-demo__mount"></div></div>
-          <footer class="chrx-appwindow__footer">
-            <span class="chrx-appwindow__title">mini school · five days · local preview</span>
-            <button type="button" class="chrx-appwindow__mode" data-demo-mode aria-pressed="true">Auto sequence</button>
-          </footer>
+          <div class="studio-preview">
+            <div class="studio-preview-head"><strong>Placement preview</strong><button type="button" data-demo-mode>Pause</button></div>
+            <div class="chrx-appwindow__stages" role="group" aria-label="Solver stages">
+              <button type="button" aria-pressed="true" class="chrx-appwindow__stage" data-stage="lessons">Lessons</button>
+              <button type="button" aria-pressed="false" class="chrx-appwindow__stage" data-stage="solve">Solve</button>
+              <button type="button" aria-pressed="false" class="chrx-appwindow__stage" data-stage="conflict">Conflict</button>
+              <button type="button" aria-pressed="false" class="chrx-appwindow__stage" data-stage="reassign">Reroute</button>
+              <button type="button" aria-pressed="false" class="chrx-appwindow__stage" data-stage="ready">Ready</button>
+            </div>
+            <div id="landing-demo-mount" class="chrx-landing-demo__mount"></div>
+            <div class="studio-preview-foot"><span data-landing-demo-status>Preparing preview…</span></div>
+          </div>
         </div>
       </section>
-
-      <section class="chrx-capabilities" aria-label="Chronexa capabilities">
-        <p><strong>Direct manipulation</strong><span>Cards stay attached to your pointer and preserve their source until the move commits.</span></p>
-        <p><strong>Private by default</strong><span>Open and edit locally. Cloud solving is an explicit choice, not a hidden upload.</span></p>
-        <p><strong>Interoperable</strong><span>Open Classic/ASC XML and GP&#8209;Untis files. Export XML, Excel, HTML, ICS, PowerSchool, Atlantis ROZ, and GP&#8209;Untis DIF. FET&#8209;style constraint semantics are built in.</span></p>
+      <section class="studio-close studio-width" aria-label="Get started">
+        <div><h2>Your week starts here.</h2><p>Open and edit in your browser. Your file stays on this device unless you choose cloud solving.</p></div>
+        <button type="button" id="start-open-card-2" class="studio-button studio-primary">Open timetable <span aria-hidden="true">↗</span></button>
       </section>
-
-      <!-- Closing move. The page previously ended on two 11px utility links
-           ~3,200px below the primary CTA, so a visitor persuaded by the demo had
-           nothing to act on. Repeats the primary action, full size. -->
-      <section class="chrx-closing" aria-label="Get started">
-        <p class="chrx-closing__line">Open your timetable. Nothing leaves this browser.</p>
-        <div class="chrx-closing__actions">
-          <label for="xml-file" id="start-open-card-2" class="chrx-lattice-action chrx-lattice-action--primary" tabindex="0">
-            <span>Open your timetable</span>
-            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h12M11 5l5 5-5 5"/></svg>
-          </label>
-          <button type="button" class="chrx-lattice-action chrx-lattice-action--secondary" data-closing-demo>Run the demo again</button>
-        </div>
-      </section>
-
-      <section id="start-recent-section" class="chrx-start-recent hidden" aria-label="Recent timetables">
+      <section id="start-recent-section" class="chrx-start-recent studio-width hidden" aria-label="Recent timetables">
         <div class="chrx-start-recent__head">
           <h3>Recent</h3>
           <input id="start-recent-filter" class="chrx-start-recent__filter" type="search"
@@ -240,7 +190,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         <div id="start-recent-list" class="chrx-start-recent__list chrx-rise-stagger"></div>
       </section>
 
-      <nav class="chrx-start-links" aria-label="Start links">
+      <nav class="chrx-start-links studio-width" aria-label="Start links">
+        <span class="studio-footer-name">Chronexa</span>
         <button id="cta-load-demo" type="button" style="display:none;">Demo</button>
         <a href="https://github.com/Abhishekchhetri020/chronexa-web/blob/main/README.md" target="_blank" rel="noopener">Docs</a>
         <a href="#step-1">Back to top</a>
@@ -336,7 +287,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
 <!-- ─────────────────────── SCRIPTS ─────────────────────── -->
 <!-- Bump APP_VER on every deploy so the browser refetches the JS bundle -->
-<script>window.APP_VER = "20261103-p262-preview-tuning";</script>
+<script>window.APP_VER = "20261118-p263-timetable-studio";</script>
 <!-- Nuclear SW migration: if an old cache-first SW is still controlling,
      unregister it and reload to pick up the new network-first SW. -->
 <script>

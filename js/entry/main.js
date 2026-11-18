@@ -27,9 +27,6 @@ import "../../css/substitution.css";
 import "../../css/motion.css";
 import "../../css/design-v3.css";
 import "../../css/first-five-minutes.css";
-// Landing redesign stylesheet + entrance choreography (landing-anim.css was
-// revived 2026-09-05 as the hero first-paint layer; landing-pixels.css stays
-// retired on disk for the lessons page).
 import "../../css/landing-redesign.css";
 import "../../css/landing-anim.css";
 // Editor v3 "Studio" — system-native surface for the whole editor page.

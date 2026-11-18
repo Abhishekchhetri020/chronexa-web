@@ -295,6 +295,9 @@ import "./start_screen.js";
 
   // ----- Step navigation ----------------------------------------------------
   function showStep(n) {
+    if (window.APP.step === 1 && n !== 1) {
+      window.LandingDemo?.destroy(document.getElementById("landing-demo-mount"));
+    }
     window.APP.step = n;
     document.body.classList.toggle("chrx-landing-active", n === 1);
     for (let i = 1; i <= 6; i++) {
@@ -407,9 +410,6 @@ import "./start_screen.js";
     switch (window.APP.step) {
       case 1:
         if (window.StartScreen && window.StartScreen.render) window.StartScreen.render();
-        import("./components/landing_lattice.js")
-          .then(({ LandingLattice }) => LandingLattice.mount())
-          .catch((error) => console.warn("[landing-lattice] unable to mount:", error));
         break;
       case 2:
         // Prefer the multi-pane School Hub (its file docstring calls it
@@ -594,11 +594,6 @@ import "./start_screen.js";
     // 5-step wizard walkthrough on top as a modal overlay.
     const buildBtn = document.getElementById("cta-build-new");
     if (buildBtn) {
-      // The markup says "Start with a blank school" but the picker that opens
-      // offers seven school types, so the label promised something the button
-      // does not do. The trigger says what actually happens; "Blank — I'll set
-      // up everything" is still the last option inside.
-      buildBtn.textContent = "Start from a school template";
       buildBtn.onclick = () => {
         if (window.Tour && window.Tour.end) window.Tour.end();
         if (window.APP.school && (window.APP.school.teachers.length || window.APP.school.cards.length)) {
