@@ -21,7 +21,7 @@
      as one hashed stylesheet. The old CDN <script> and per-file <link>
      tags are gone. -->
 <style>
-  body.chrx-landing-active { background: #f8f7f2; }
+  body.chrx-landing-active { background: #fbfbfd; }
 </style>
 
 <!-- Excel + gzip libs for ribbon Export/Snapshot (loaded once) -->
@@ -115,72 +115,162 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   <!-- STEP 1 — Start (build new OR upload existing) -->
   <section id="step-1" class="step-panel">
     <div class="chrx-landing">
-      <header class="studio-nav studio-width">
-        <a class="chrx-lattice-brand" href="#step-1" aria-label="Chronexa home">
-          <span class="studio-mark" aria-hidden="true"><i></i><i></i><i></i></span>Chronexa
-        </a>
-        <nav aria-label="Landing navigation">
-          <a href="#chrx-proof">How it works</a>
-          <a class="studio-docs" href="https://github.com/Abhishekchhetri020/chronexa-web/blob/main/README.md" target="_blank" rel="noopener">Docs <span aria-hidden="true">↗</span></a>
-          <button type="button" data-closing-demo class="studio-nav-demo">Try demo <span aria-hidden="true">↗</span></button>
-        </nav>
+      <header class="lx-nav">
+        <div class="lx-wrap lx-nav__in">
+          <a class="chrx-lattice-brand" href="#step-1" aria-label="Chronexa home">
+            <span class="lx-logo" aria-hidden="true"><i></i><i></i><i></i><i></i></span>Chronexa
+          </a>
+          <nav aria-label="Landing navigation">
+            <a href="#lx-features">Features</a>
+            <a href="#chrx-proof">How it works</a>
+            <a class="lx-nav__docs" href="https://github.com/Abhishekchhetri020/chronexa-web/blob/main/README.md" target="_blank" rel="noopener">Docs</a>
+            <button type="button" data-closing-demo class="lx-btn lx-btn--primary lx-btn--sm">Try demo</button>
+          </nav>
+        </div>
       </header>
 
-      <section class="chrx-lattice-hero studio-width" aria-labelledby="chrx-hero-title">
-        <div class="studio-copy">
-          <h1 id="chrx-hero-title">The school<br>week, <em>in sync.</em></h1>
-          <p class="studio-lead">Build a school timetable that fits your classes, teachers and rooms together. Spot clashes as you move lessons into place.</p>
-          <div class="studio-actions">
-            <label id="start-open-card" class="studio-button studio-primary" tabindex="0">
-              <input type="file" id="xml-file" accept=".xml,.har" tabindex="-1" class="studio-file">
-              Open timetable <span aria-hidden="true">↗</span>
+      <section class="chrx-lattice-hero lx-hero" aria-labelledby="chrx-hero-title">
+        <div class="lx-aurora" aria-hidden="true"><i></i><i></i><i></i></div>
+        <div class="lx-wrap lx-hero__copy">
+          <p class="lx-eyebrow lx-in" style="--d:0"><span class="lx-eyebrow__dot"></span>School timetabling, reimagined</p>
+          <h1 id="chrx-hero-title">
+            <span class="lx-line"><span class="lx-word" style="--d:1">Every</span> <span class="lx-word" style="--d:2">period.</span></span>
+            <span class="lx-line"><span class="lx-word lx-grad" style="--d:3">Perfectly</span> <span class="lx-word lx-grad" style="--d:4">placed.</span></span>
+          </h1>
+          <p class="lx-lead lx-in" style="--d:5">Classes, teachers and rooms on one live grid. Chronexa spots every clash the moment it happens and finds the lesson a better home.</p>
+          <div class="lx-actions lx-in" style="--d:6">
+            <label id="start-open-card" class="lx-btn lx-btn--primary" tabindex="0">
+              <input type="file" id="xml-file" accept=".xml,.har" tabindex="-1" class="lx-file">
+              Open timetable
             </label>
-            <button id="cta-landing-demo" type="button" class="studio-button studio-secondary">
+            <button id="cta-landing-demo" type="button" class="lx-btn lx-btn--ghost">
               <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5 12 8l-7 4.5Z"/></svg>Launch demo
             </button>
           </div>
-          <button id="cta-build-new" type="button" class="studio-template">Start with a school template <span aria-hidden="true">→</span></button>
+          <button id="cta-build-new" type="button" class="lx-link lx-in" style="--d:7">Start with a school template <span aria-hidden="true">›</span></button>
         </div>
-        <figure class="studio-model" aria-label="Interactive model of a school timetable with class, teacher and room layers">
-          <div class="model-head"><span>Timetable model</span><button type="button" data-model-toggle aria-pressed="false" aria-controls="studio-assembly">Stack layers</button></div>
-          <div id="studio-assembly" class="studio-assembly"></div>
-          <figcaption><span><i class="class-key"></i>Classes</span><span><i class="teacher-key"></i>Teachers</span><span><i class="room-key"></i>Rooms</span></figcaption>
-        </figure>
+
+        <div class="lx-stage">
+          <figure class="lx-device" aria-label="Animated preview of a weekly timetable that detects a clash and moves the lesson">
+            <div class="lx-device__bar">
+              <span class="lx-lights" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span class="lx-device__title">Grade 8 · Week A</span>
+              <div class="lx-seg" role="group" aria-label="Timetable view">
+                <button type="button" data-view="classes" aria-pressed="true">Class</button>
+                <button type="button" data-view="teachers" aria-pressed="false">Teacher</button>
+                <button type="button" data-view="rooms" aria-pressed="false">Room</button>
+              </div>
+            </div>
+            <div id="studio-assembly" class="lx-board"></div>
+          </figure>
+          <div class="lx-float lx-float--clash" aria-hidden="true">
+            <span class="lx-float__icon lx-float__icon--warn">!</span>
+            <span><strong>Clash found</strong><small>Wed · Period 3 double-booked</small></span>
+          </div>
+          <div class="lx-float lx-float--ok" aria-hidden="true">
+            <span class="lx-float__icon lx-float__icon--ok">✓</span>
+            <span><strong>Week solved</strong><small>0 clashes · every lesson placed</small></span>
+          </div>
+        </div>
         <div class="studio-drop" aria-hidden="true">Drop your timetable<span>XML or HAR</span></div>
       </section>
 
-      <div class="studio-specs studio-width" aria-label="Timetable workflow">
-        <p><strong>Import</strong><span>aSc XML, GP-Untis XML, HAR</span></p>
-        <p><strong>Edit</strong><span>Class, teacher and room views</span></p>
-        <p><strong>Export</strong><span>Excel, calendar, print and more</span></p>
-      </div>
+      <section class="lx-marquee" aria-label="Supported formats">
+        <p class="lx-marquee__label">Works with the files your school already has</p>
+        <div class="lx-marquee__track">
+          <ul>
+            <li>aSc Timetables XML</li><li>GP-Untis XML</li><li>HAR capture</li><li>Excel</li><li>Calendar (ICS)</li><li>HTML</li><li>Print &amp; PDF</li><li>PowerSchool</li><li>Atlantis ROZ</li><li>GP-Untis DIF</li>
+          </ul>
+          <ul aria-hidden="true">
+            <li>aSc Timetables XML</li><li>GP-Untis XML</li><li>HAR capture</li><li>Excel</li><li>Calendar (ICS)</li><li>HTML</li><li>Print &amp; PDF</li><li>PowerSchool</li><li>Atlantis ROZ</li><li>GP-Untis DIF</li>
+          </ul>
+        </div>
+      </section>
 
-      <section id="chrx-proof" class="chrx-landing-demo" aria-labelledby="landing-demo-title">
-        <div class="studio-feature studio-width">
-          <div class="studio-feature-copy">
-            <h2 id="landing-demo-title">See a clash.<br><em>Find its place.</em></h2>
-            <p>Follow one double-booked period from the first lesson to a working week. Select a stage to inspect the move.</p>
-            <button id="start-sample-info" type="button" class="studio-about">About the demo school <span aria-hidden="true">↗</span></button>
+      <section id="lx-features" class="lx-wrap lx-features" aria-labelledby="lx-features-title">
+        <header class="lx-section-head" data-reveal>
+          <p class="lx-kicker">Why Chronexa</p>
+          <h2 id="lx-features-title">Built for the way<br><span class="lx-grad">schools actually plan.</span></h2>
+        </header>
+        <div class="lx-bento">
+          <article class="lx-tile lx-tile--wide lx-tile--views" data-reveal>
+            <div class="lx-tile__copy">
+              <h3>Three views. One truth.</h3>
+              <p>Switch between class, teacher and room grids. Move a lesson in one and the other two follow.</p>
+            </div>
+            <div class="lx-planes" aria-hidden="true">
+              <span class="lx-plane lx-plane--a"><b>Rooms</b></span>
+              <span class="lx-plane lx-plane--b"><b>Teachers</b></span>
+              <span class="lx-plane lx-plane--c"><b>Classes</b></span>
+            </div>
+          </article>
+          <article class="lx-tile lx-tile--clash" data-reveal>
+            <div class="lx-mini" aria-hidden="true">
+              <i></i><i></i><i class="is-hot"></i><i></i><i></i><i></i><i></i><i class="is-target"></i><i></i>
+            </div>
+            <h3>Clashes surface instantly.</h3>
+            <p>A double-booked teacher or room lights up before it ever reaches a notice board.</p>
+          </article>
+          <article class="lx-tile lx-tile--private" data-reveal>
+            <div class="lx-lock" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></svg></div>
+            <h3>Private by default.</h3>
+            <p>Your timetable opens and stays in this browser. Nothing is uploaded unless you choose cloud solving.</p>
+          </article>
+          <article class="lx-tile lx-tile--solver" data-reveal>
+            <div class="lx-ring" aria-hidden="true"><svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="50"/><circle class="lx-ring__arc" cx="60" cy="60" r="50"/></svg><span>Solve</span></div>
+            <h3>A solver on your computer.</h3>
+            <p>Generate a full week with the in-browser solver, or hand the hard ones to the cloud.</p>
+          </article>
+          <article class="lx-tile lx-tile--wide lx-tile--import" data-reveal>
+            <div class="lx-tile__copy">
+              <h3>Opens what you already have.</h3>
+              <p>Bring in an aSc or GP-Untis export and keep working. Send it back out as Excel, a calendar, or a print-ready sheet.</p>
+            </div>
+            <div class="lx-files" aria-hidden="true">
+              <span style="--i:0">.xml</span><span style="--i:1">.har</span><span class="lx-files__arrow">→</span><span style="--i:2">.xlsx</span><span style="--i:3">.ics</span><span style="--i:4">.pdf</span>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section id="chrx-proof" class="chrx-landing-demo lx-dark" aria-labelledby="landing-demo-title">
+        <div class="lx-wrap lx-proof">
+          <div class="lx-proof__copy" data-reveal>
+            <p class="lx-kicker">How it works</p>
+            <h2 id="landing-demo-title">From a pile of lessons<br><span class="lx-grad lx-grad--light">to a working week.</span></h2>
+            <div class="chrx-appwindow__stages lx-steps" role="group" aria-label="Solver stages">
+              <button type="button" aria-pressed="true" class="chrx-appwindow__stage" data-stage="lessons"><strong>Lessons</strong><small>Read every class, teacher and room.</small></button>
+              <button type="button" aria-pressed="false" class="chrx-appwindow__stage" data-stage="solve"><strong>Solve</strong><small>Place each lesson into a free period.</small></button>
+              <button type="button" aria-pressed="false" class="chrx-appwindow__stage" data-stage="conflict"><strong>Conflict</strong><small>Catch the period that is double-booked.</small></button>
+              <button type="button" aria-pressed="false" class="chrx-appwindow__stage" data-stage="reassign"><strong>Reroute</strong><small>Move the clashing lesson somewhere it fits.</small></button>
+              <button type="button" aria-pressed="false" class="chrx-appwindow__stage" data-stage="ready"><strong>Ready</strong><small>A clean week, ready to print or share.</small></button>
+            </div>
+            <button id="start-sample-info" type="button" class="lx-link lx-link--light">About the demo school <span aria-hidden="true">›</span></button>
           </div>
-          <div class="studio-preview">
-            <div class="studio-preview-head"><strong>Placement preview</strong><button type="button" data-demo-mode>Pause</button></div>
-            <div class="chrx-appwindow__stages" role="group" aria-label="Solver stages">
-              <button type="button" aria-pressed="true" class="chrx-appwindow__stage" data-stage="lessons">Lessons</button>
-              <button type="button" aria-pressed="false" class="chrx-appwindow__stage" data-stage="solve">Solve</button>
-              <button type="button" aria-pressed="false" class="chrx-appwindow__stage" data-stage="conflict">Conflict</button>
-              <button type="button" aria-pressed="false" class="chrx-appwindow__stage" data-stage="reassign">Reroute</button>
-              <button type="button" aria-pressed="false" class="chrx-appwindow__stage" data-stage="ready">Ready</button>
+          <div class="lx-window" data-reveal>
+            <div class="lx-window__bar">
+              <span class="lx-lights" aria-hidden="true"><i></i><i></i><i></i></span>
+              <strong>Placement preview</strong>
+              <button type="button" data-demo-mode>Pause</button>
             </div>
             <div id="landing-demo-mount" class="chrx-landing-demo__mount"></div>
-            <div class="studio-preview-foot"><span data-landing-demo-status>Preparing preview…</span></div>
+            <div class="lx-window__foot"><span data-landing-demo-status>Preparing preview…</span></div>
           </div>
         </div>
       </section>
-      <section class="studio-close studio-width" aria-label="Get started">
-        <div><h2>Your week starts here.</h2><p>Open and edit in your browser. Your file stays on this device unless you choose cloud solving.</p></div>
-        <button type="button" id="start-open-card-2" class="studio-button studio-primary">Open timetable <span aria-hidden="true">↗</span></button>
+
+      <section class="lx-close" aria-labelledby="lx-close-title">
+        <div class="lx-wrap" data-reveal>
+          <h2 id="lx-close-title">Your week<br><span class="lx-grad">starts here.</span></h2>
+          <p>Open and edit in your browser. Your file stays on this device unless you choose cloud solving.</p>
+          <div class="lx-actions lx-actions--center">
+            <button type="button" id="start-open-card-2" class="lx-btn lx-btn--primary lx-btn--lg">Open timetable</button>
+            <button type="button" data-closing-demo class="lx-btn lx-btn--ghost lx-btn--lg">Try the demo</button>
+          </div>
+        </div>
       </section>
-      <section id="start-recent-section" class="chrx-start-recent studio-width hidden" aria-label="Recent timetables">
+
+      <section id="start-recent-section" class="chrx-start-recent lx-wrap hidden" aria-label="Recent timetables">
         <div class="chrx-start-recent__head">
           <h3>Recent</h3>
           <input id="start-recent-filter" class="chrx-start-recent__filter" type="search"
@@ -190,8 +280,9 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         <div id="start-recent-list" class="chrx-start-recent__list chrx-rise-stagger"></div>
       </section>
 
-      <nav class="chrx-start-links studio-width" aria-label="Start links">
-        <span class="studio-footer-name">Chronexa</span>
+      <nav class="chrx-start-links lx-wrap" aria-label="Start links">
+        <span class="lx-footer-name">Chronexa</span>
+        <span class="lx-footer-note">Open timetable. Yours to keep.</span>
         <button id="cta-load-demo" type="button" style="display:none;">Demo</button>
         <a href="https://github.com/Abhishekchhetri020/chronexa-web/blob/main/README.md" target="_blank" rel="noopener">Docs</a>
         <a href="#step-1">Back to top</a>
@@ -287,7 +378,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
 <!-- ─────────────────────── SCRIPTS ─────────────────────── -->
 <!-- Bump APP_VER on every deploy so the browser refetches the JS bundle -->
-<script>window.APP_VER = "20261118-p264-print-visibility";</script>
+<script>window.APP_VER = "20261118-p265-landing-v3";</script>
 <!-- Nuclear SW migration: if an old cache-first SW is still controlling,
      unregister it and reload to pick up the new network-first SW. -->
 <script>
