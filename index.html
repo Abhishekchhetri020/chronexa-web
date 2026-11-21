@@ -21,7 +21,7 @@
      as one hashed stylesheet. The old CDN <script> and per-file <link>
      tags are gone. -->
 <style>
-  body.chrx-landing-active { background: #fbfbfd; }
+  body.chrx-landing-active { background: #000; }
 </style>
 
 <!-- Excel + gzip libs for ribbon Export/Snapshot (loaded once) -->
@@ -122,7 +122,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
           </a>
           <nav aria-label="Landing navigation">
             <a href="#lx-features">Features</a>
-            <a href="#chrx-proof">How it works</a>
+            <a href="#lx-story">How it works</a>
             <a class="lx-nav__docs" href="https://github.com/Abhishekchhetri020/chronexa-web/blob/main/README.md" target="_blank" rel="noopener">Docs</a>
             <button type="button" data-closing-demo class="lx-btn lx-btn--primary lx-btn--sm">Try demo</button>
           </nav>
@@ -130,11 +130,12 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       </header>
 
       <section class="chrx-lattice-hero lx-hero" aria-labelledby="chrx-hero-title">
-        <div class="lx-aurora" aria-hidden="true"><i></i><i></i><i></i></div>
+        <div class="lx-horizon" aria-hidden="true"></div>
+        <div id="lx-field" class="lx-field" aria-hidden="true"></div>
         <div class="lx-wrap lx-hero__copy">
           <p class="lx-eyebrow lx-in" style="--d:0"><span class="lx-eyebrow__dot"></span>School timetabling, reimagined</p>
           <h1 id="chrx-hero-title">
-            <span class="lx-line"><span class="lx-word" style="--d:1">Every</span> <span class="lx-word" style="--d:2">period.</span></span>
+            <span class="lx-line lx-line--silver"><span class="lx-word" style="--d:1">Every</span> <span class="lx-word" style="--d:2">period.</span></span>
             <span class="lx-line"><span class="lx-word lx-grad" style="--d:3">Perfectly</span> <span class="lx-word lx-grad" style="--d:4">placed.</span></span>
           </h1>
           <p class="lx-lead lx-in" style="--d:5">Classes, teachers and rooms on one live grid. Chronexa spots every clash the moment it happens and finds the lesson a better home.</p>
@@ -149,30 +150,25 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
           </div>
           <button id="cta-build-new" type="button" class="lx-link lx-in" style="--d:7">Start with a school template <span aria-hidden="true">›</span></button>
         </div>
-
-        <div class="lx-stage">
-          <figure class="lx-device" aria-label="Animated preview of a weekly timetable that detects a clash and moves the lesson">
-            <div class="lx-device__bar">
-              <span class="lx-lights" aria-hidden="true"><i></i><i></i><i></i></span>
-              <span class="lx-device__title">Grade 8 · Week A</span>
-              <div class="lx-seg" role="group" aria-label="Timetable view">
-                <button type="button" data-view="classes" aria-pressed="true">Class</button>
-                <button type="button" data-view="teachers" aria-pressed="false">Teacher</button>
-                <button type="button" data-view="rooms" aria-pressed="false">Room</button>
-              </div>
-            </div>
-            <div id="studio-assembly" class="lx-board"></div>
-          </figure>
-          <div class="lx-float lx-float--clash" aria-hidden="true">
-            <span class="lx-float__icon lx-float__icon--warn">!</span>
-            <span><strong>Clash found</strong><small>Wed · Period 3 double-booked</small></span>
-          </div>
-          <div class="lx-float lx-float--ok" aria-hidden="true">
-            <span class="lx-float__icon lx-float__icon--ok">✓</span>
-            <span><strong>Week solved</strong><small>0 clashes · every lesson placed</small></span>
-          </div>
-        </div>
+        <a class="lx-cue lx-in" style="--d:9" href="#lx-story" aria-label="Scroll to see how it works"><i></i></a>
         <div class="studio-drop" aria-hidden="true">Drop your timetable<span>XML or HAR</span></div>
+      </section>
+
+      <section id="lx-story" class="lx-story" aria-label="How Chronexa builds a week">
+        <div class="lx-story__pin">
+          <div class="lx-caps">
+            <div class="lx-cap is-on"><p class="lx-kicker">01 · Assemble</p><h2>Twenty-six lessons.<br><span class="lx-grad">One week.</span></h2></div>
+            <div class="lx-cap"><p class="lx-kicker">02 · Layer</p><h2>Three timetables.<br><span class="lx-grad">Always in sync.</span></h2></div>
+            <div class="lx-cap"><p class="lx-kicker lx-kicker--red">03 · Detect</p><h2>A clash.<br><span class="lx-grad lx-grad--red">Caught instantly.</span></h2></div>
+            <div class="lx-cap"><p class="lx-kicker lx-kicker--green">04 · Resolve</p><h2>Moved.<br><span class="lx-grad lx-grad--green">Solved.</span></h2></div>
+          </div>
+          <div class="lx-scene">
+            <div class="lx-days" aria-hidden="true"><b>Mon</b><b>Tue</b><b>Wed</b><b>Thu</b><b>Fri</b></div>
+            <div id="lx-sky" class="lx-sky" aria-hidden="true"></div>
+            <p id="lx-hud" class="lx-hud" aria-live="off"><i></i><span>Placing lessons</span></p>
+          </div>
+          <ol class="lx-rail" aria-hidden="true"><li class="is-on"></li><li></li><li></li><li></li></ol>
+        </div>
       </section>
 
       <section class="lx-marquee" aria-label="Supported formats">
@@ -199,9 +195,9 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
               <p>Switch between class, teacher and room grids. Move a lesson in one and the other two follow.</p>
             </div>
             <div class="lx-planes" aria-hidden="true">
-              <span class="lx-plane lx-plane--a"><b>Rooms</b></span>
-              <span class="lx-plane lx-plane--b"><b>Teachers</b></span>
-              <span class="lx-plane lx-plane--c"><b>Classes</b></span>
+              <span class="lx-plane-mini lx-plane--a"><b>Rooms</b></span>
+              <span class="lx-plane-mini lx-plane--b"><b>Teachers</b></span>
+              <span class="lx-plane-mini lx-plane--c"><b>Classes</b></span>
             </div>
           </article>
           <article class="lx-tile lx-tile--clash" data-reveal>
@@ -236,8 +232,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       <section id="chrx-proof" class="chrx-landing-demo lx-dark" aria-labelledby="landing-demo-title">
         <div class="lx-wrap lx-proof">
           <div class="lx-proof__copy" data-reveal>
-            <p class="lx-kicker">How it works</p>
-            <h2 id="landing-demo-title">From a pile of lessons<br><span class="lx-grad lx-grad--light">to a working week.</span></h2>
+            <p class="lx-kicker">Live preview</p>
+            <h2 id="landing-demo-title">Watch it work,<br><span class="lx-grad">step by step.</span></h2>
             <div class="chrx-appwindow__stages lx-steps" role="group" aria-label="Solver stages">
               <button type="button" aria-pressed="true" class="chrx-appwindow__stage" data-stage="lessons"><strong>Lessons</strong><small>Read every class, teacher and room.</small></button>
               <button type="button" aria-pressed="false" class="chrx-appwindow__stage" data-stage="solve"><strong>Solve</strong><small>Place each lesson into a free period.</small></button>
