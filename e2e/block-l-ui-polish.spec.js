@@ -370,4 +370,72 @@ test.describe("Block L — UI polish, L0/L1b early-click race, dark mode & multi
     }
   });
 
+
+  test("L3b: blocking all third-party hosts (Google Fonts) shows no boot error, keeps unique Try demo IDs, and early Try demo click opens demo", async ({ page }) => {
+    test.setTimeout(60_000);
+    const L3B_DIR = path.resolve("docs/neon/ui-shots/l3b");
+    fs.mkdirSync(L3B_DIR, { recursive: true });
+    const errors = [];
+    page.on("pageerror", (e) => errors.push(String(e)));
+
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.route("**/*", async (route) => {
+      const url = route.request().url();
+      if (url.startsWith("http://127.0.0.1") || url.startsWith("http://localhost") || url.startsWith("data:") || url.startsWith("blob:")) {
+        await route.continue();
+      } else {
+        await route.abort("blockedbyclient");
+      }
+    });
+
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    // Unique IDs on both Try demo buttons
+    await expect(page.locator("#cta-nav-demo")).toHaveCount(1);
+    await expect(page.locator("#cta-footer-demo")).toHaveCount(1);
+    await page.screenshot({ path: path.join(L3B_DIR, "landing-no-3p-1440.png") });
+
+    // Early click on top-bar Try demo must NOT be dropped by blocked Google Fonts
+    await page.locator("#cta-nav-demo").click({ timeout: 5_000 });
+    await page.locator("#editor-root .chrx-vkarta").first().waitFor({ timeout: 30_000 });
+
+    await expect(page.locator("#chrx-boot-error")).toHaveCount(0);
+    const cards = await page.evaluate(() => (window.APP?.school?.cards || []).length);
+    expect(cards).toBeGreaterThan(500);
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    expect(overflow).toBeLessThanOrEqual(2);
+    await page.screenshot({ path: path.join(L3B_DIR, "editor-no-3p-1440.png") });
+    expect(errors).toEqual([]);
+  });
+
+
+  test("L3b-0: 10x repeat fresh context under 4x CPU throttle clicking Launch demo right at READY opens demo every time with no Restore popup", async ({ browser }) => {
+    test.setTimeout(240_000);
+    for (let i = 1; i <= 10; i++) {
+      const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+      const page = await ctx.newPage();
+      const errors = [];
+      page.on("pageerror", (e) => errors.push(String(e)));
+      const cdp = await ctx.newCDPSession(page);
+      await cdp.send("Emulation.setCPUThrottlingRate", { rate: 4 });
+      try {
+        await page.goto("/", { waitUntil: "domcontentloaded" });
+        await page.waitForFunction(() => window.__CHRX_READY__ === true, { timeout: 20_000 });
+        await page.locator("#cta-landing-demo").click({ timeout: 5_000 });
+        await page.locator("#editor-root .chrx-vkarta").first().waitFor({ timeout: 30_000 });
+        const cards = await page.evaluate(() => (window.APP?.school?.cards || []).length);
+        expect(cards, `iteration ${i}: demo cards loaded`).toBeGreaterThan(500);
+        // Ensure no late SW reload knocks user back to landing or pops up Restore previous session
+        if (i === 1 || i === 10) {
+          await page.waitForTimeout(1600);
+          await expect(page.locator(".chrx-restore-card")).toHaveCount(0);
+          await expect(page.locator("#editor-root .chrx-vkarta").first()).toBeVisible();
+        }
+        expect(errors, `iteration ${i}: zero pageerrors`).toEqual([]);
+      } finally {
+        await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 }).catch(() => {});
+        await ctx.close();
+      }
+    }
+  });
+
 });

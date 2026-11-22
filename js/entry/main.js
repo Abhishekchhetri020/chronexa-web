@@ -231,23 +231,36 @@ import "../ui/io/lazy_cdn.js";
 // OnboardingWiring, ShellV3, and StartScreen) has finished evaluating, then replay
 // any early CTA click queued before boot completed.
 (function () {
-  function markReadyAndReplay() {
+  async function markReadyAndReplay() {
+    if (window.__CHRX_SW_DECISION__) {
+      try { await window.__CHRX_SW_DECISION__; } catch (_) {}
+    }
+    if (window.__CHRX_SW_RELOADING__) return;
     if (window.__CHRX_BOOT_NOTICE_TIMER__) {
       clearTimeout(window.__CHRX_BOOT_NOTICE_TIMER__);
       window.__CHRX_BOOT_NOTICE_TIMER__ = null;
     }
     const bootNotice = document.getElementById("chrx-boot-timeout");
     if (bootNotice) bootNotice.remove();
+    const bootError = document.getElementById("chrx-boot-error");
+    if (bootError) bootError.remove();
+    window.__CHRX_BOOT_FAILED__ = false;
     if (window.ShellV3 && !document.getElementById("chrx-shell") && typeof window.ShellV3.mount === "function") {
       try { window.ShellV3.mount(); } catch (_) {}
     }
     window.__CHRX_READY__ = true;
-    const queuedId = window.__CHRX_EARLY_CLICK__;
+    let carriedId = null;
+    try {
+      carriedId = sessionStorage.getItem("chrx-queued-cta");
+      if (carriedId) sessionStorage.removeItem("chrx-queued-cta");
+    } catch (_) {}
+    const queuedId = window.__CHRX_EARLY_CLICK__ || window.__CHRX_EARLY_CLICK_BACKUP__ || carriedId;
     if (queuedId) {
       if (typeof window.__CHRX_RESTORE_EARLY_BTN__ === "function") {
         try { window.__CHRX_RESTORE_EARLY_BTN__(); } catch (_) {}
       }
       window.__CHRX_EARLY_CLICK__ = null;
+      window.__CHRX_EARLY_CLICK_BACKUP__ = null;
       setTimeout(() => {
         const el = document.getElementById(queuedId);
         if (el) el.click();

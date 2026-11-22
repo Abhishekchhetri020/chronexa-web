@@ -67,3 +67,28 @@
 - `npx vitest run`: **587 / 587 passed** (68 files, 0 failed)
 - `npx vite build`: **succeeded** (`2.05 s`)
 - `npx playwright test --config pw.chrome.config.local.mjs`: **165 passed, 1 skipped** (known real-XML ranker skip), **1 transient perf jitter** (`w2-5-availability-shading.spec.js:67` `pickupDuration` 100.43 ms vs 100 ms; immediately re-verified **2/2 passed in 6.5 s**, `block-l-ui-polish.spec.js` **8/8 passed**).
+
+## Batch L3b HOTFIX (`20261123-p284-l3b-hotfix`)
+
+### What changed
+1. **L3b-0 — First-visit SW reload race eliminated (`js/ui/pwa_install.js`, `js/entry/main.js`, `index.html`, `js/ui/components/auto_save.js`):**
+   - On a fresh visit where `navigator.serviceWorker.controller` is null, `pwa_install.js` exposes `window.__CHRX_SW_DECISION__` and `markReadyAndReplay()` awaits it before setting `window.__CHRX_READY__ = true`, so early CTA clicks during the first-visit SW takeover are queued cleanly with `"Loading…"` instead of racing a reload.
+   - Before any automatic SW/COI reload (`reloadPreservingClick()`), any queued CTA id is stored in `sessionStorage` (`chrx-queued-cta`) and replayed in `markReadyAndReplay()` after the reload.
+   - `hasOpenWork()` now also detects active/in-progress CTA clicks (`window.__CHRX_CTA_IN_PROGRESS__`), open template pickers, and mounted editors, and is **re-checked inside the 300 ms `controllerchange` timer** so a reload can never fire over an already-loaded school or in-flight demo fetch.
+   - Replaced the `💾` emoji and hardcoded light card in `auto_save.js`'s `"Restore previous session?"` popup with `ChrxIcons.svg("clock", 15)` + dark/theme tokens (and suppressed it while a CTA is queued/in-progress), and replaced `🔄` in `pwa_install.js`'s update banner with `ChrxIcons.svg("refresh", 15)`.
+2. **L3b-1 — Boot-crash fail-safe scoped strictly to same-origin module failures (`index.html`, `js/entry/main.js`):**
+   - `handleBootCrash` now triggers **only** on same-origin `<script>` / `<link rel="modulepreload">` load errors or dynamic-import module rejections — completely ignoring blocked third-party stylesheets, Google Fonts, images, and non-fatal runtime errors.
+   - Preserves a backup of any queued CTA click (`__CHRX_EARLY_CLICK_BACKUP__`) so if `markReadyAndReplay()` is reached later, it removes `#chrx-boot-error`, clears `__CHRX_BOOT_FAILED__`, and still replays the click.
+3. **L3b-2 — Unique IDs for both "Try demo" buttons (`index.html`):**
+   - Added `id="cta-nav-demo"` on the topbar `"Try demo"` button and `id="cta-footer-demo"` on the footer `"Try the demo"` button, and made fallback ID generation unique (`chrx-early-cta-<seq>`).
+4. **L3b-3 — Clean fallback font stack & third-party-blocked screenshots (`css/tokens.css`, `css/chronexa-theme.css`, `docs/neon/ui-shots/l3b/`):**
+   - Updated `--chrx-font-sans` / `--font-family-body` to include `system-ui` right after `"Inter Tight"`, and `--font-family-heading` to `"Fraunces", "Iowan Old Style", Georgia, serif`.
+   - Captured `landing-no-3p-1440.png` and `editor-no-3p-1440.png` with all third-party hosts blocked.
+5. **E2E tests (`e2e/block-l-ui-polish.spec.js`):**
+   - Added `L3b` (blocks all third-party hosts → zero `#chrx-boot-error`, unique `#cta-nav-demo` & `#cta-footer-demo`, early click opens demo).
+   - Added `L3b-0` (**10× repeat** fresh browser context under 4× CPU throttle clicking `#cta-landing-demo` right at `READY` → demo opens 10/10 times with zero `"Restore previous session?"` popup).
+
+### Full Release Gate (`p284`)
+- `npx vitest run`: **587 / 587 passed** (68 files, 0 failed)
+- `npx vite build`: **succeeded** (`2.02 s`)
+- `npx playwright test --config pw.chrome.config.local.mjs`: **168 passed, 1 skipped** (known real-XML ranker skip), **0 failed** (`11.8 m`)

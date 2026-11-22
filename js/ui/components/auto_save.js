@@ -332,27 +332,36 @@ import "./version_history.js";
 
     // Untouched demo snapshot: keep start screen on reload and offer optional restore card
     setTimeout(() => {
-      if (window.APP?.school || isViewerPage()) return;
+      if (window.APP?.school || window.__CHRX_CTA_IN_PROGRESS__ || window.__CHRX_EARLY_CLICK__ || isViewerPage()) return;
+      try { if (sessionStorage.getItem("chrx-queued-cta")) return; } catch (_) {}
       const latest = restore();
       if (!latest || (!latest.payload && !latest.idbFallback)) return;
       const ageMin = Math.round((Date.now() - latest.ts) / 60000);
+      const onDarkSurface = document.body.classList.contains("chrx-landing-active") || document.documentElement.getAttribute("data-theme") === "dark";
+      const bg = onDarkSurface ? "var(--chrx-bg-elev, #171c26)" : "var(--chrx-bg-elev, #fff)";
+      const fg = onDarkSurface ? "var(--chrx-fg, #f8fafc)" : "var(--chrx-fg, #0f172a)";
+      const fgSub = onDarkSurface ? "var(--chrx-fg-secondary, #cbd5e1)" : "var(--chrx-fg-secondary, #475569)";
+      const line = onDarkSurface ? "var(--chrx-line, rgba(255,255,255,0.16))" : "var(--chrx-line, #e2e8f0)";
+      const secBg = onDarkSurface ? "var(--chrx-bg-tile, #262d3d)" : "var(--chrx-bg-tile, #fff)";
+      const clockSvg = window.ChrxIcons ? window.ChrxIcons.svg("clock", 15) : "";
       const card = document.createElement("div");
+      card.className = "chrx-restore-card";
       card.style.cssText = [
         "position:fixed", "top:80px", "right:16px",
-        "background:#fff", "color:#0f172a",
-        "border:1px solid #e2e8f0", "border-radius:10px",
-        "padding:14px 16px", "box-shadow:0 8px 24px rgba(0,0,0,.12)",
-        "font-family:-apple-system,sans-serif", "font-size:13px",
+        `background:${bg}`, `color:${fg}`,
+        `border:1px solid ${line}`, "border-radius:10px",
+        "padding:14px 16px", "box-shadow:0 12px 32px rgba(0,0,0,.28)",
+        "font-family:var(--chrx-font-sans,system-ui,-apple-system,sans-serif)", "font-size:13px",
         "max-width:300px", "z-index:999"
       ].join(";");
       card.innerHTML = `
-        <div style="font-weight:600;color:#1e3a8a;margin-bottom:6px">💾 Restore previous session?</div>
-        <div style="color:#475569;margin-bottom:10px">
+        <div style="display:flex;align-items:center;gap:6px;font-weight:600;color:${fg};margin-bottom:6px">${clockSvg}Restore previous session?</div>
+        <div style="color:${fgSub};margin-bottom:10px">
           "${escapeHtml(latest.schoolName)}" · ${latest.cards} cards · saved ${ageMin}m ago
         </div>
         <div style="display:flex;gap:6px;justify-content:flex-end">
-          <button data-discard style="background:#fff;border:1px solid #cbd5e1;color:#0f172a;padding:4px 10px;border-radius:5px;cursor:pointer;font-size:12px">Discard</button>
-          <button data-restore style="background:#10b981;border:0;color:#fff;padding:4px 12px;border-radius:5px;cursor:pointer;font-size:12px;font-weight:600">Restore</button>
+          <button data-discard style="background:${secBg};border:1px solid ${line};color:${fg};padding:5px 10px;border-radius:6px;cursor:pointer;font-size:12px">Discard</button>
+          <button data-restore style="background:var(--chrx-accent,#0d4f54);border:0;color:#fff;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">Restore</button>
         </div>`;
       document.body.appendChild(card);
       card.querySelector("[data-restore]").onclick = () => {

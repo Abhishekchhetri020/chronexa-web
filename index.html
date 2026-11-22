@@ -59,12 +59,17 @@
     }
     window.__CHRX_RESTORE_EARLY_BTN__ = restoreQueuedBtn;
     document.addEventListener("click", function (e) {
-      if (window.__CHRX_READY__ || window.__CHRX_BOOT_FAILED__) return;
+      if (window.__CHRX_READY__) {
+        var activeBtn = e.target && e.target.closest && e.target.closest("#cta-build-new, #cta-landing-demo, [data-closing-demo], #cta-load-demo");
+        if (activeBtn) window.__CHRX_CTA_IN_PROGRESS__ = true;
+        return;
+      }
+      if (window.__CHRX_BOOT_FAILED__) return;
       var btn = e.target && e.target.closest && e.target.closest("#cta-build-new, #cta-landing-demo, [data-closing-demo], #cta-load-demo");
       if (!btn) return;
       e.preventDefault();
       e.stopImmediatePropagation();
-      if (!btn.id) btn.id = "chrx-early-cta";
+      if (!btn.id) { window.__CHRX_EARLY_SEQ__ = (window.__CHRX_EARLY_SEQ__ || 0) + 1; btn.id = "chrx-early-cta-" + window.__CHRX_EARLY_SEQ__; }
       if (window.__CHRX_EARLY_CLICK__ && window.__CHRX_EARLY_CLICK__ !== btn.id) {
         restoreQueuedBtn();
       }
@@ -92,19 +97,41 @@
         }, 20000);
       }
     }, true);
-    // L3 boot-crash fail-safe: if a module fails to load or throws before __CHRX_READY__,
-    // never leave a queued CTA stuck on "Loading…"; restore the button and show a plain message.
+    // L3b boot-crash fail-safe: ONLY treat same-origin module script/modulepreload/dynamic-import
+    // load failures as a boot crash. Ignore blocked third-party fonts/stylesheets/images and
+    // non-fatal runtime errors. Keep a backup of any queued click so if READY is reached later,
+    // markReadyAndReplay() clears the notice and still replays the click.
+    function isSameOriginUrl(url) {
+      if (!url) return false;
+      try { return new URL(url, window.location.href).origin === window.location.origin; }
+      catch (_) { return false; }
+    }
     function handleBootCrash(e) {
       if (window.__CHRX_READY__) return;
-      var isScriptErr = e && e.type === "error" && (e.error || (e.target && (e.target.tagName === "SCRIPT" || e.target.tagName === "LINK")));
-      var isRej = e && e.type === "unhandledrejection";
-      if (!isScriptErr && !isRej) return;
+      var isOwnModuleFailure = false;
+      if (e && e.type === "error" && e.target && e.target !== window) {
+        var tag = e.target.tagName;
+        if (tag === "SCRIPT") {
+          isOwnModuleFailure = isSameOriginUrl(e.target.src || "");
+        } else if (tag === "LINK" && (e.target.rel || "").toLowerCase() === "modulepreload") {
+          isOwnModuleFailure = isSameOriginUrl(e.target.href || "");
+        }
+      } else if (e && e.type === "unhandledrejection") {
+        var msg = String((e.reason && (e.reason.message || e.reason)) || "");
+        if (/failed to fetch dynamically imported module|importing a module script failed|error loading dynamically imported module/i.test(msg)) {
+          isOwnModuleFailure = true;
+        }
+      }
+      if (!isOwnModuleFailure) return;
       if (window.__CHRX_BOOT_NOTICE_TIMER__) {
         clearTimeout(window.__CHRX_BOOT_NOTICE_TIMER__);
         window.__CHRX_BOOT_NOTICE_TIMER__ = null;
       }
       var notice = document.getElementById("chrx-boot-timeout");
       if (notice) notice.remove();
+      if (window.__CHRX_EARLY_CLICK__) {
+        window.__CHRX_EARLY_CLICK_BACKUP__ = window.__CHRX_EARLY_CLICK__;
+      }
       restoreQueuedBtn();
       window.__CHRX_EARLY_CLICK__ = null;
       window.__CHRX_BOOT_FAILED__ = true;
@@ -113,7 +140,7 @@
         var box = document.createElement("div");
         box.id = "chrx-boot-error";
         box.setAttribute("role", "alert");
-        box.style.cssText = "position:fixed;bottom:16px;right:16px;z-index:10050;background:#991b1b;color:#fff;padding:12px 16px;border-radius:10px;font:500 13px/1.4 -apple-system,BlinkMacSystemFont,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.3);max-width:360px";
+        box.style.cssText = "position:fixed;bottom:16px;right:16px;z-index:10050;background:#991b1b;color:#fff;padding:12px 16px;border-radius:10px;font:500 13px/1.4 system-ui,-apple-system,BlinkMacSystemFont,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.3);max-width:360px";
         box.textContent = "Chronexa could not start. Please refresh the page.";
         slot.appendChild(box);
       }
@@ -207,7 +234,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
             <a href="#lx-features">Features</a>
             <a href="#lx-story">How it works</a>
             <a class="lx-nav__docs" href="https://github.com/Abhishekchhetri020/chronexa-web/blob/main/README.md" target="_blank" rel="noopener">Docs</a>
-            <button type="button" data-closing-demo class="lx-btn lx-btn--primary lx-btn--sm">Try demo</button>
+            <button id="cta-nav-demo" type="button" data-closing-demo class="lx-btn lx-btn--primary lx-btn--sm">Try demo</button>
           </nav>
         </div>
       </header>
@@ -342,7 +369,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
           <p>Open and edit in your browser. Your file stays on this device unless you choose cloud solving.</p>
           <div class="lx-actions lx-actions--center">
             <button type="button" id="start-open-card-2" class="lx-btn lx-btn--primary lx-btn--lg">Open timetable</button>
-            <button type="button" data-closing-demo class="lx-btn lx-btn--ghost lx-btn--lg">Try the demo</button>
+            <button id="cta-footer-demo" type="button" data-closing-demo class="lx-btn lx-btn--ghost lx-btn--lg">Try the demo</button>
           </div>
         </div>
       </section>
@@ -455,7 +482,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
 <!-- ─────────────────────── SCRIPTS ─────────────────────── -->
 <!-- Bump APP_VER on every deploy so the browser refetches the JS bundle -->
-<script>window.APP_VER = "20261123-p283-l3-ui-polish";</script>
+<script>window.APP_VER = "20261123-p284-l3b-hotfix";</script>
 <!-- Nuclear SW migration: if an old cache-first SW is still controlling,
      unregister it and reload to pick up the new network-first SW. -->
 <script>
