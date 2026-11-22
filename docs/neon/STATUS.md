@@ -21,3 +21,6 @@
 2026-11-22 15:53 | E | RELEASED 20261122-p272-qa-weeks-terms-mobile | E0 docs tracked + E-03 weeksDefs/termsDefs sync & XML round-trip + E-04 390px mobile overflow fix (merge 56a8524), 587 unit + 143 e2e (1 skip), live=APP_VER = "20261122-p272-qa-weeks-terms-mobile"
 2026-11-22 15:53 | E | DONE | Wrote docs/neon/BLOCK_E.md & logged E-01..E-04 in docs/neon/BUGS.md (E-01/E-02 queued for Block F)
 2026-11-22 17:55 | F | STARTED | F0 reload-after-import persistence + E-01 WASM Phase 2 robustness + E-02 non-negative soft score
+2026-11-22 18:22 | F | RELEASED 20261122-p273-solver-robustness-autosave | F0 reload-after-import/create persistence + E-01 WASM Phase 2 OOM guard (LATEST.xml 1441/1441, 116.53s, 0 pageerror) + E-02 non-negative soft penalties (merge d313378), 587 unit + 146 e2e (1 skip), live=APP_VER = "20261122-p273-solver-robustness-autosave"
+2026-11-22 18:22 | F | DONE | Wrote docs/neon/BLOCK_F.md & updated docs/neon/BUGS.md; awaiting Claude review
+2026-11-22 18:25 | G | STARTED | Performance: Vite code-splitting & first-load JS/TTI measurement

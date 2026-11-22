@@ -6,7 +6,6 @@ import "../io/export_ics.js";
 import "../io/export_html.js";
 import "../io/export_timetable_xml.js";
 import "../io/export_png.js";
-import "../print_preview/print_preview.js";
 
 /**
  * Export Dialog — Lane W3-4
@@ -265,6 +264,7 @@ import "../print_preview/print_preview.js";
     try {
       switch (state.format) {
         case "excel":
+          if (liveApp.ensureXlsx) await liveApp.ensureXlsx().catch(() => {});
           if (liveApp.io?.exportTimetable) liveApp.io.exportTimetable(scopeObj);
           break;
         case "csv":
@@ -280,6 +280,7 @@ import "../print_preview/print_preview.js";
           if (liveApp.io?.exportTimetableXml) liveApp.io.exportTimetableXml();
           break;
         case "png":
+          if (liveApp.ensurePrintPreview) await liveApp.ensurePrintPreview();
           if (liveApp.io?.exportPng) {
             await liveApp.io.exportPng(scopeObj);
           } else {
@@ -287,6 +288,7 @@ import "../print_preview/print_preview.js";
           }
           break;
         case "pdf":
+          if (liveApp.ensurePrintPreview) await liveApp.ensurePrintPreview();
           if (liveApp.printPreview?.printScope) {
             liveApp.printPreview.printScope(scopeObj);
           } else {

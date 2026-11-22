@@ -22,6 +22,14 @@ import "../ribbon/topbar.js";
   const notify = window._chrxNotify || console.log;
   const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"];
 
+  function __chrxEnsureXlsx(fn, args) {
+    if (typeof window !== "undefined" && typeof window.XLSX === "undefined" && window.APP && typeof window.APP.ensureXlsx === "function") {
+      return window.APP.ensureXlsx().then(() => fn.apply(null, args)).catch(() => {
+        if (typeof window._chrxNotify === "function") window._chrxNotify("Excel export needs SheetJS — check internet connection.", "error");
+      });
+    }
+    return fn.apply(null, args);
+  }
   function sanitiseSheetName(name, used) {
     // Excel forbids : \ / ? * [ ] in sheet names and caps at 31 chars.
     let safe = String(name || "Sheet")

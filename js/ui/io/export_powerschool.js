@@ -11,7 +11,15 @@ import "../ribbon/topbar.js";
   const APP = window.APP;
   const notify = window._chrxNotify || console.log;
 
-  function need() {
+    function __chrxEnsureXlsx(fn, args) {
+    if (typeof window !== "undefined" && typeof window.XLSX === "undefined" && window.APP && typeof window.APP.ensureXlsx === "function") {
+      return window.APP.ensureXlsx().then(() => fn.apply(null, args)).catch(() => {
+        if (typeof window._chrxNotify === "function") window._chrxNotify("Excel export needs SheetJS — check internet connection.", "error");
+      });
+    }
+    return fn.apply(null, args);
+  }
+function need() {
     if (typeof window.XLSX === "undefined") {
       notify("PowerSchool export needs SheetJS — check internet connection.", "error");
       return false;
@@ -88,7 +96,7 @@ import "../ribbon/topbar.js";
     notify("Exported " + fname);
   }
 
-  window.ExportPowerschool = { run };
+  window.ExportPowerschool = { run: (...a) => __chrxEnsureXlsx(run, a) };
   window.addEventListener("app:export-powerschool", () => run());
 })();
 

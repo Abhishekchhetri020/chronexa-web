@@ -159,39 +159,6 @@ import "../ui/io/export_ics.js";
 import "../ui/io/export_csv.js";
 import "../ui/io/export_png.js";
 import "../ui/components/export_dialog.js";
-import "../ui/print_preview/cell_style_dialog.js";
-import "../ui/print_preview/print_settings_dialog.js";
-import "../ui/print_preview/templates_registry.js";
-import "../ui/print_preview/templates/_helpers.js";
-import "../ui/print_preview/print_report_schema.js";
-import "../ui/print_preview/pivot_cell_renderer.js";
-import "../ui/print_preview/pivot_engine.js";
-import "../ui/print_preview/modify_structure_dialog.js";
-import "../ui/print_preview/filter_dialog.js";
-import "../ui/print_preview/extras_dialog.js";
-import "../ui/print_preview/sizes_design_colors_dialogs.js";
-import "../ui/print_preview/header_dialog.js";
-import "../ui/print_preview/templates/timetable_for_student.js";
-import "../ui/print_preview/templates/timetable_for_each_student.js";
-import "../ui/print_preview/templates/summary_of_students.js";
-import "../ui/print_preview/templates/summary_of_subjects.js";
-import "../ui/print_preview/templates/wall_poster_classrooms.js";
-import "../ui/print_preview/templates/lesson_grid.js";
-import "../ui/print_preview/templates/classwise_with_table.js";
-import "../ui/print_preview/templates/teacherwise_with_table.js";
-import "../ui/print_preview/templates/teacherwise_extra.js";
-import "../ui/print_preview/templates/contract_overview.js";
-import "../ui/print_preview/templates/daily_attendance.js";
-import "../ui/print_preview/templates/timetable_for_each_subject.js";
-import "../ui/print_preview/templates/summary_of_teachers.js";
-import "../ui/print_preview/templates/summary_of_classrooms.js";
-import "../ui/print_preview/templates/wall_poster_teachers.js";
-import "../ui/print_preview/templates/list_of_teachers.js";
-import "../ui/print_preview/templates/teacher_workload.js";
-import "../ui/print_preview/templates/supervision_duties.js";
-import "../ui/print_preview/templates/list_of_classes.js";
-import "../ui/print_preview/templates/custom_slots.js";
-import "../ui/print_preview/print_presets.js";
 import "../ui/io/compare_files.js";
 import "../ui/io/import_cardrelationships_har.js";
 import "../ui/io/snapshots.js";
@@ -211,7 +178,6 @@ import "../ui/components/advisor.js";
 import "../ui/components/inputted_constraints_dialog.js";
 import "../solver/improve_mode.js";
 import "../solver/score_expr.js";
-import "../ui/print_preview/print_preview.js";
 import "../ui/ribbon/bootstrap.js";
 import "../ui/substitution/main.js";
 import "../ui/substitution/candidate_ranker.js";
@@ -225,3 +191,38 @@ import "../ui/components/command_palette.js";
 // Solver shims for the main thread (was an inline <script type="module">
 // in index.html). Dynamic imports keep the solver graph in its own chunk.
 import "./solver_shims.js";
+
+// Block G: on-demand CDN helper (SheetJS/pako) + lazy Print Preview bundle
+import "../ui/io/lazy_cdn.js";
+(function () {
+  const APP = (window.APP = window.APP || {});
+  let printPromise = null;
+  function ensurePrintPreview() {
+    if (APP.printPreview && APP.printTemplates) return Promise.resolve(true);
+    if (!printPromise) {
+      printPromise = import("./print_bundle.js").then(() => true).catch((err) => {
+        printPromise = null;
+        console.error("[print-bundle] failed to load:", err);
+        return false;
+      });
+    }
+    return printPromise;
+  }
+  APP.ensurePrintPreview = ensurePrintPreview;
+
+  // Preload print bundle once a school is loaded (never on initial landing paint)
+  const prewarm = () => { ensurePrintPreview(); };
+  window.addEventListener("app:school-loaded", prewarm);
+  document.addEventListener("app:school-loaded", prewarm);
+
+  // If user opens Print Preview before prewarm finishes, load then re-dispatch once
+  let replaying = false;
+  window.addEventListener("app:print-preview", () => {
+    if (APP.printPreview || replaying) return;
+    replaying = true;
+    ensurePrintPreview().then((ok) => {
+      replaying = false;
+      if (ok) window.dispatchEvent(new Event("app:print-preview"));
+    });
+  });
+})();

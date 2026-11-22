@@ -25,8 +25,6 @@
 </style>
 
 <!-- Excel + gzip libs for ribbon Export/Snapshot (loaded once) -->
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
-<script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js" defer></script>
 
 <style>
   /* Minimal inline rules used by the grid view. Lives here only because the
@@ -374,7 +372,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
 <!-- ─────────────────────── SCRIPTS ─────────────────────── -->
 <!-- Bump APP_VER on every deploy so the browser refetches the JS bundle -->
-<script>window.APP_VER = "20261122-p273-solver-robustness-autosave";</script>
+<script>window.APP_VER = "20261122-p274-perf-code-splitting";</script>
 <!-- Nuclear SW migration: if an old cache-first SW is still controlling,
      unregister it and reload to pick up the new network-first SW. -->
 <script>
