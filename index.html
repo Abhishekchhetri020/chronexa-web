@@ -482,7 +482,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
 <!-- ─────────────────────── SCRIPTS ─────────────────────── -->
 <!-- Bump APP_VER on every deploy so the browser refetches the JS bundle -->
-<script>window.APP_VER = "20261123-p284-l3b-hotfix";</script>
+<script>window.APP_VER = "20261123-p285-l4-generate-grid";</script>
 <!-- Nuclear SW migration: if an old cache-first SW is still controlling,
      unregister it and reload to pick up the new network-first SW. -->
 <script>
@@ -618,7 +618,11 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
               },
               algorithm: cfg.algorithm,
               onFallback: function (why) {
-                window.SolverUI._toast("Cloud unavailable — using in-browser solver.");
+                var msg = "Cloud solver is unavailable right now — continuing in your browser.";
+                if (window.SolverUI && window.SolverUI.Progress && typeof window.SolverUI.Progress.setNotice === "function") {
+                  window.SolverUI.Progress.setNotice(msg);
+                }
+                window.SolverUI._toast(msg);
                 console.warn("[solver fallback]", why);
               },
             });

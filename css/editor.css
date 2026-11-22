@@ -44,8 +44,11 @@
   .chrx-focus-board{grid-template-columns:64px repeat(var(--chrx-days,6),minmax(132px,1fr))}
 }
 @media (max-width:560px){
-  .chrx-focus-boardbar{grid-template-columns:auto minmax(150px,1fr) auto;left:auto}
-  .chrx-focus-boardbar__overview{grid-column:1/-1}
+  .chrx-focus-boardbar{grid-template-columns:auto minmax(0,1fr) auto;left:auto;max-width:100%;box-sizing:border-box}
+  .chrx-focus-boardbar__picker{min-width:0}
+  .chrx-focus-boardbar__picker select{min-width:0}
+  .chrx-focus-boardbar__overview{grid-column:1/-1;width:100%;box-sizing:border-box}
+  .chrx-overview-bar{flex-wrap:wrap;gap:8px;max-width:100%;box-sizing:border-box}
   .chrx-focus-board{grid-template-columns:58px repeat(var(--chrx-days,6),minmax(124px,1fr));grid-auto-rows:minmax(68px,auto)}
 }
 /* Smart full-bleed editor: on the editor step the page container drops its

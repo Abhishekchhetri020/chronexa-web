@@ -92,3 +92,30 @@
 - `npx vitest run`: **587 / 587 passed** (68 files, 0 failed)
 - `npx vite build`: **succeeded** (`2.02 s`)
 - `npx playwright test --config pw.chrome.config.local.mjs`: **168 passed, 1 skipped** (known real-XML ranker skip), **0 failed** (`11.8 m`)
+
+## Batch L4 — Generate Flow & Grid Polish (`20261123-p285-l4-generate-grid`)
+
+### What changed
+1. **Pre-launch dialog (`js/ui/solver_ui/prelaunch_dialog.js`, `css/solver_ui.css`):**
+   - Aligned summary unit with progress/result via `SolverUI.expectedCardCount(school)` (e.g. `946 lesson periods to place`, `951 currently on the grid, 4 conflicts`).
+   - Replaced all emoji/symbol icons (`◷ ⚖ ★ ↺ ↻ ＋ ✦ ✓`) with `ChrxIcons.node(...)` SVGs.
+   - Replaced purple accents with brand teal tokens, removed `"soft penalties"` / `"clashes"` jargon, and added plain-English footnote explaining `"best so far"` and that Cancel leaves the timetable unchanged.
+2. **Progress modal (`js/ui/solver_ui/progress_modal.js`, `index.html`, `css/solver_ui.css`):**
+   - Fixed progress resetting backwards to `0 of 946` / `946 left to place` during polishing/finishing by tracking `bestPlaced` and preserving final placed counts through `"applying"` and `"done"`.
+   - Replaced raw internals in `"Show details"` (`applyingPhase`, `Current branch`, `Soft penalties 9,779,290`, `Schedules / sec`, `Iterations`) with plain English (`Current step`, `Current pass`, `Balance`, `Checks / sec`, `Tries`) and replaced step-pill/tile symbols (`📋 ⏱ ✓ ✎ ✦ ▶ ◎ ▸ ↻ ◆ ⚠`) with `ChrxIcons.node(...)` SVGs.
+   - Added live 500 ms elapsed timer, plain one-line cloud-fallback notice bar (`#csu-progress-fallback`) wired to `onFallback`, and renamed `"Accept partial result"` → `"Use what we have so far"`.
+3. **Result panel (`js/ui/solver_ui/result_panel.js`, `css/solver_ui.css`):**
+   - Standardized terminology to `conflict` / `conflicts` everywhere (no `clash` / `clashes`), explained resolved/reduced prior conflicts in the status line (e.g. `Finished in 5s · All 4 previous conflicts resolved`), removed `⛔` emoji, and added explicit `Discard` (`#csu-result-reject`) alongside `Apply`.
+   - Prevented `"946 / 946"` tile from wrapping onto two lines at 390 px (`white-space: nowrap`, responsive font size).
+4. **Grid, tooltips, toast & 390 px mobile layout (`js/ui/editor/card_in_hand.js`, `js/ui/editor/constraint_explainer.js`, `js/ui/components/auto_save.js`, `js/ui/main.js`, `css/editor.css`, `css/editor-v3.css`, `css/lane-class-rail.css`):**
+   - Fixed rule-only invalid cell refusal modal (`showCollisionMenu`) to display `"Cannot place here"` + actual reasons instead of `"clashes with 0 lessons"`.
+   - Moved `#chrx-autosave-pill` to bottom-right (`bottom:14px; right:16px`) so it never covers the bottom-left `"Unplaced lessons"` bar label.
+   - Fixed stuck `.chrx-explainer-tooltip` by hiding on `mouseleave`, `pointerdown`, `scroll`, `blur`, and dialog-open events, and suppressing hover tooltips on mobile/touch (`<= 767px` / `hover: none`) or while a modal is open.
+   - Cleaned up 390 px layout: grouped secondary grid toolbar controls into a `"⋯"` overflow menu (`#editor-tools-more`), hid the redundant `.chrx-class-rail` on `<= 767px` (keeping the Class dropdown), and fixed right-edge clipping on `.chrx-focus-boardbar` / `.chrx-overview-bar`.
+5. **E2E tests & screenshots (`e2e/block-l4-generate-grid.spec.js`, `docs/neon/ui-shots/l4/`):**
+   - Added `L4-1` (plain pre-launch counts, no raw internals in progress details, live elapsed timer, Cancel mid-generate leaves cards 100% identical), `L4-2` (`conflict(s)` wording, single-line 390 px tile, bottom-right autosave pill, Apply then Undo restores identical cards), and `L4-3` (real mouse drag onto invalid red cell refused with plain-English reason + 390 px layout/tooltip/rail checks) with 10 light/dark 1440 & 390 screenshots.
+
+### Full Release Gate (`p285`)
+- `npx vitest run`: **587 / 587 passed** (68 files, 0 failed)
+- `npx vite build`: **succeeded** (`1.98 s`)
+- `npx playwright test --config pw.chrome.config.local.mjs`: **171 passed, 1 skipped** (known real-XML ranker skip), **0 failed** (`14.3 m`)

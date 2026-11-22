@@ -1756,3 +1756,42 @@ html[data-skin="classic"] .chrx-shell .chrx-editor:not(.chrx-editor--focus) .chr
   color: var(--chrx-accent, #4fc3c9) !important;
   border-color: var(--chrx-accent, #4fc3c9) !important;
 }
+
+/* L4: Mobile toolbar overflow menu (<= 767px) — keeps topbar compact and tidy */
+.chrx-tools-more { display: none; }
+@media (max-width: 767px) {
+  .chrx-shell #editor-quick-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    position: relative;
+  }
+  .chrx-shell .chrx-tools-more {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 28px;
+    min-width: 32px;
+    padding: 0 8px;
+    margin-left: auto;
+    border: 1px solid var(--chrx-line, rgba(0,0,0,0.12));
+    border-radius: 7px;
+    background: var(--chrx-bg-tile, #f1f5f9);
+    color: var(--chrx-fg, #1d1d1f);
+    font: 700 15px/1 var(--chrx-font-sans);
+    cursor: pointer;
+  }
+  .chrx-shell #editor-quick-tools:not(.is-tools-expanded) > *:not(#editor-unplaced-count):not(#editor-tools-more) {
+    display: none !important;
+  }
+  .chrx-shell #editor-quick-tools.is-tools-expanded {
+    padding-bottom: 4px;
+  }
+  .chrx-shell .chrx-editor--overview,
+  .chrx-shell .chrx-editor--focus {
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+}

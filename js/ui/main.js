@@ -335,6 +335,36 @@ import "./start_screen.js";
     const slot = document.getElementById("chrx-topbar-editor-slot");
     if (!tools || !slot) return;
     if (tools.parentElement !== slot) slot.appendChild(tools);
+    if (!document.getElementById("editor-tools-more")) {
+      const moreBtn = document.createElement("button");
+      moreBtn.type = "button";
+      moreBtn.id = "editor-tools-more";
+      moreBtn.className = "chrx-tools-more";
+      moreBtn.setAttribute("aria-label", "More grid tools");
+      moreBtn.setAttribute("aria-expanded", "false");
+      moreBtn.title = "More grid tools";
+      moreBtn.textContent = "⋯";
+      moreBtn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const open = tools.classList.toggle("is-tools-expanded");
+        moreBtn.setAttribute("aria-expanded", open ? "true" : "false");
+      });
+      document.addEventListener("click", (ev) => {
+        if (!tools.classList.contains("is-tools-expanded")) return;
+        if (tools.contains(ev.target)) return;
+        tools.classList.remove("is-tools-expanded");
+        moreBtn.setAttribute("aria-expanded", "false");
+      });
+      document.addEventListener("keydown", (ev) => {
+        if (ev.key === "Escape" && tools.classList.contains("is-tools-expanded")) {
+          tools.classList.remove("is-tools-expanded");
+          moreBtn.setAttribute("aria-expanded", "false");
+        }
+      });
+      const chip = document.getElementById("editor-unplaced-count");
+      if (chip && chip.parentNode === tools) chip.after(moreBtn);
+      else tools.prepend(moreBtn);
+    }
     slot.style.display = editorActive ? "flex" : "none";
   }
 

@@ -265,7 +265,7 @@ import "./version_history.js";
     pill.id = "chrx-autosave-pill";
     const reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     pill.style.cssText = [
-      "position:fixed", "bottom:12px", "left:12px",
+      "position:fixed", "bottom:14px", "right:16px",
       "background:#0f172a", "color:#f8fafc",
       "padding:4px 10px", "border-radius:12px",
       "font-size:11px", "font-family:-apple-system,BlinkMacSystemFont,sans-serif",

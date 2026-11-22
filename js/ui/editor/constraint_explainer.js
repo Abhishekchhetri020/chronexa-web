@@ -141,6 +141,12 @@ window.ConstraintExplainer = (function () {
     rootEl.addEventListener("mouseover", onMouseOver, true);
     rootEl.addEventListener("mousemove", onMouseMove, true);
     rootEl.addEventListener("mouseout", onMouseOut, true);
+    rootEl.addEventListener("mouseleave", forceHideTooltip);
+    document.addEventListener("pointerdown", forceHideTooltip, true);
+    document.addEventListener("scroll", forceHideTooltip, true);
+    window.addEventListener("blur", forceHideTooltip);
+    window.addEventListener("app:generate", forceHideTooltip);
+    window.addEventListener("app:test", forceHideTooltip);
     document.addEventListener("keydown", onKeyDown);
     document.addEventListener("keyup", onKeyUp);
   }
@@ -166,7 +172,22 @@ window.ConstraintExplainer = (function () {
     document.body.appendChild(tooltipEl);
   }
 
+  function isTouchOrModalBlocked() {
+    if (window.innerWidth <= 767) return true;
+    if (window.matchMedia && window.matchMedia("(hover: none), (pointer: coarse)").matches) return true;
+    if (document.querySelector(".csu-backdrop.is-open, .chrx-modal.is-open, .chrx-dialog-backdrop.is-open")) return true;
+    return false;
+  }
+
+  function forceHideTooltip() {
+    clearTimeout(showTimer); showTimer = null;
+    clearTimeout(hideTimer); hideTimer = null;
+    currentTarget = null;
+    hideTooltip();
+  }
+
   function onMouseOver(ev) {
+    if (isTouchOrModalBlocked()) { forceHideTooltip(); return; }
     if (window.APP && window.APP.editor && window.APP.editor.cardInHand) return;
     const vk = ev.target.closest && ev.target.closest(".chrx-vkarta");
     if (!vk) return;
@@ -182,9 +203,12 @@ window.ConstraintExplainer = (function () {
       return;
     }
     if (!tooltipEl || tooltipEl.style.display === "none") return;
+    if (isTouchOrModalBlocked()) { forceHideTooltip(); return; }
     const vk = ev.target.closest && ev.target.closest(".chrx-vkarta");
     if (vk && vk === currentTarget) {
       positionTooltip(ev.clientX, ev.clientY);
+    } else {
+      forceHideTooltip();
     }
   }
 
@@ -206,7 +230,7 @@ window.ConstraintExplainer = (function () {
   function onKeyUp() { /* Shift toggle obsolete — tooltip always shows */ }
 
   function showFor(vk, mouseX, mouseY) {
-    if (!vk || !document.body.contains(vk)) { hideTooltip(); return; }
+    if (isTouchOrModalBlocked() || !vk || !document.body.contains(vk)) { forceHideTooltip(); return; }
     ensureTooltipEl();
     // The cell carries the canonical lessonId on data-lesson-id; the cardId
     // (data-card-id, e.g. "placed_l1_0_3") is kept as the public API arg for

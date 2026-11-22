@@ -124,16 +124,17 @@ import "./backend_client.js";
 
     // ---- named phase breadcrumb (Checking → Placing → Improving → Done)
     const phaseRow = el("ol", { class: "csu-phases", id: "csu-phases", "aria-label": "Timetable build steps" });
+    const ic = (name, sz) => (global.ChrxIcons ? global.ChrxIcons.node(name, sz || 15) : "");
     const PHASES = [
-      { key: "validating", label: "Checking",  icon: "✓" },
-      { key: "drafting",   label: "Placing",   icon: "✎" },
-      { key: "polishing",  label: "Improving", icon: "✦" },
-      { key: "applying",   label: "Done",      icon: "▶" },
+      { key: "validating", label: "Checking",  icon: "check" },
+      { key: "drafting",   label: "Placing",   icon: "lesson" },
+      { key: "polishing",  label: "Improving", icon: "sparkle" },
+      { key: "applying",   label: "Done",      icon: "play" },
     ];
     const phaseEls = {};
     PHASES.forEach((p, i) => {
       const li = el("li", { class: "csu-phase", "data-phase": p.key, id: "csu-phase-" + p.key },
-        el("span", { class: "csu-phase__icon" }, p.icon),
+        el("span", { class: "csu-phase__icon" }, ic(p.icon, 12)),
         el("span", { class: "csu-phase__label" }, p.label),
       );
       if (i > 0) phaseRow.appendChild(el("span", { class: "csu-phase__sep" }, "›"));
@@ -153,7 +154,7 @@ import "./backend_client.js";
     const bar1Fill = el("div", { class: "csu-bar__fill", style: "width:0%" });
     const bar1 = el("div", { class: "csu-bar" }, el("div", { class: "csu-bar__label" }, "Progress"), el("div", { class: "csu-bar__track" }, bar1Fill));
     const bar2Fill = el("div", { class: "csu-bar__fill csu-bar__fill--accent2", style: "width:0%" });
-    const bar2 = el("div", { class: "csu-bar" }, el("div", { class: "csu-bar__label" }, "Current branch"), el("div", { class: "csu-bar__track" }, bar2Fill));
+    const bar2 = el("div", { class: "csu-bar" }, el("div", { class: "csu-bar__label" }, "Current pass"), el("div", { class: "csu-bar__track" }, bar2Fill));
 
     // ---- calm summary row: Left to place + Elapsed time
     const tilesKey = el("div", { class: "csu-tiles csu-tiles--key csu-tiles--two" });
@@ -167,13 +168,13 @@ import "./backend_client.js";
       parent.appendChild(t);
       return v;
     }
-    const tHard    = tile(tilesKey, "csu-stat-hard",    "Left to place", "📋");
-    const tElapsed = tile(tilesKey, "csu-stat-elapsed", "Elapsed time",  "⏱");
-    // Developer telemetry kept inside collapsible "Show details"
-    const tSoft    = tile(tilesSec, "csu-stat-soft",    "Soft penalties",  "◎");
-    const tSpeed   = tile(tilesSec, "csu-stat-speed",   "Schedules / sec", "▸");
-    const tIter    = tile(tilesSec, "csu-stat-iter",    "Iterations",      "↻");
-    const tStuck   = tile(tilesSec, "csu-stat-stuck",   "Phase",           "◆");
+    const tHard    = tile(tilesKey, "csu-stat-hard",    "Left to place", ic("lesson", 15));
+    const tElapsed = tile(tilesKey, "csu-stat-elapsed", "Elapsed time",  ic("clock", 15));
+    // Plain-English live details inside collapsible "Show details"
+    const tSoft    = tile(tilesSec, "csu-stat-soft",    "Balance",       ic("layers", 14));
+    const tSpeed   = tile(tilesSec, "csu-stat-speed",   "Checks / sec",  ic("play", 14));
+    const tIter    = tile(tilesSec, "csu-stat-iter",    "Tries",         ic("refresh", 14));
+    const tStuck   = tile(tilesSec, "csu-stat-stuck",   "Current step",  ic("info", 14));
 
     // ---- heatmap + branch race + live faults inside collapsible "Show details"
     const heat = el("div", { class: "csu-heatmap", "aria-hidden": "true" });
@@ -197,7 +198,8 @@ import "./backend_client.js";
     const acceptBtn = el("button", { type: "button", class: "chrx-btn csu-btn--gradient", id: "csu-progress-accept", onclick: doAcceptPartial }, "Use what we have so far");
     const actions = el("div", { class: "csu-dialog__actions" }, cancelBtn, pauseBtn, acceptBtn);
 
-    dlg.append(header, placedHero, bar1, tilesKey, detailsBox, actions);
+    const noticeBar = el("div", { class: "csu-progress__notice", id: "csu-progress-fallback", role: "status", hidden: "" }, "");
+    dlg.append(header, noticeBar, placedHero, bar1, tilesKey, detailsBox, actions);
     host.appendChild(dlg);
     document.body.appendChild(host);
 
@@ -206,7 +208,7 @@ import "./backend_client.js";
       heat, faultsList, placingLabel, pauseBtn, cancelBtn, acceptBtn,
       ringCircle: ring.circle, ringPct: ring.pctText, ringCircumference: ring.circumference,
       branches,
-      phaseRow, phaseEls,
+      phaseRow, phaseEls, noticeBar,
     };
   }
 
@@ -249,7 +251,8 @@ import "./backend_client.js";
       li.className = "csu-faults__item csu-faults__item--" + severity;
       const icon = document.createElement("span");
       icon.className = "csu-faults__icon";
-      icon.textContent = severity === "hard" ? "⚠" : "•";
+      if (severity === "hard" && global.ChrxIcons) icon.appendChild(global.ChrxIcons.node("warn", 13));
+      else icon.textContent = "•";
       const text = document.createElement("span");
       text.className = "csu-faults__text";
       text.textContent = (v && v.description) || (v && v.ruleId) || "violation";
@@ -275,7 +278,7 @@ import "./backend_client.js";
     wrap.style.display = "";
     for (let i = 0; i < count; i++) {
       const fill = el("div", { class: "csu-branch__fill", "data-branch": String(i), style: "width:0%" });
-      const label = el("span", { class: "csu-branch__label" }, "Branch " + (i + 1));
+      const label = el("span", { class: "csu-branch__label" }, "Pass " + (i + 1));
       const track = el("div", { class: "csu-branch__track" }, fill);
       wrap.appendChild(el("div", { class: "csu-branch" }, label, track));
     }
@@ -345,7 +348,7 @@ import "./backend_client.js";
       if (refs && refs.acceptBtn) {
         refs.acceptBtn.textContent = "No partial yet — try in a few seconds";
         setTimeout(() => {
-          if (refs && refs.acceptBtn) refs.acceptBtn.textContent = "Accept partial result";
+          if (refs && refs.acceptBtn) refs.acceptBtn.textContent = "Use what we have so far";
         }, 2500);
       }
       return;
@@ -384,6 +387,7 @@ import "./backend_client.js";
       lastIter: 0,
       lastDurMs: 0,
       lastSpeed: 0,
+      bestPlaced: 0,
     };
 
     // Build branch lanes if applicable
@@ -406,15 +410,15 @@ import "./backend_client.js";
                  valueNode.parentNode.querySelector(".csu-tile__label");
       if (lb) lb.textContent = text;
     };
-    relabel(refs.tIter, isCloud ? "Cards placed" : "Iterations");
-    relabel(refs.tSpeed, isCloud ? "Cards / sec" : "Schedules / sec");
+    relabel(refs.tIter, isCloud ? "Periods placed" : "Tries");
+    relabel(refs.tSpeed, isCloud ? "Periods / sec" : "Checks / sec");
     refs.bar1Fill.style.width = "0%";
     refs.bar2Fill.style.width = "0%";
     refs.pauseBtn.textContent = "Pause";
     refs.acceptBtn.style.display = state.mode === "test" ? "none" : "";
     // "Keep what you have so far" is only meaningful once something exists.
     refs.acceptBtn.disabled = true;
-    refs.acceptBtn.textContent = "Accept partial result";
+    refs.acceptBtn.textContent = "Use what we have so far";
     refs.placedHero.textContent = state.totalLessons > 0
       ? `0 of ${state.totalLessons.toLocaleString()} placed`
       : "Starting…";
@@ -422,7 +426,17 @@ import "./backend_client.js";
     refs.tIter.textContent = "—";
     refs.tHard.textContent = "—";
     refs.tSoft.textContent = "—";
+    setNotice("");
+    stopElapsedTicker();
+    const openStartedAt = Date.now();
     refs.tElapsed.textContent = "0:00";
+    elapsedTicker = setInterval(() => {
+      if (!state || !refs || !refs.tElapsed) { stopElapsedTicker(); return; }
+      const sec = Math.max(0, Math.floor((Date.now() - openStartedAt) / 1000));
+      const m = Math.floor(sec / 60);
+      const r = sec % 60;
+      refs.tElapsed.textContent = m + ":" + (r < 10 ? "0" : "") + r;
+    }, 500);
     refs.tStuck.textContent = "—";
     updateRing(0, state.totalLessons || 1);
     // Reset phase breadcrumb to "all pending" — caller calls setPhase(...)
@@ -445,17 +459,40 @@ import "./backend_client.js";
     state.unsubscribe = state.source.subscribe(handleEvent);
   }
 
+  const PHASE_LABELS = {
+    validating: "Checking rules",
+    drafting: "Placing lessons",
+    polishing: "Improving balance",
+    applying: "Finishing up",
+  };
+  function formatBalanceWord(softScore, placed) {
+    if (typeof softScore !== "number" || !Number.isFinite(softScore) || !placed) return "Checking…";
+    const pen = Math.max(0, softScore < 0 ? -softScore : softScore);
+    const perCard = pen / Math.max(1, placed);
+    const pct = Math.max(5, Math.min(100, Math.round(100 * Math.exp(-perCard / 25))));
+    const word = pct >= 90 ? "Excellent" : pct >= 75 ? "Good" : pct >= 55 ? "Fair" : "Improving";
+    return `${word} (${pct}%)`;
+  }
   function handleEvent(ev) {
     if (!state || !ev) return;
     if (ev.type === "phase") {
       state.phase = ev.phase;
       setPhase(ev.phase);
-      if (refs.tStuck) refs.tStuck.textContent = ev.phase || "—";
+      if (refs.tStuck) refs.tStuck.textContent = PHASE_LABELS[ev.phase] || "Working";
       if (refs.sub) {
         if (ev.phase === "validating") refs.sub.textContent = "Checking your school schedule…";
         else if (ev.phase === "drafting") refs.sub.textContent = "Placing lessons across the week…";
         else if (ev.phase === "polishing") refs.sub.textContent = "Improving the timetable… (fewer gaps, better spread)";
         else if (ev.phase === "applying") refs.sub.textContent = "Finishing up…";
+      }
+      if (ev.phase === "applying" && state.totalLessons > 0 && state.bestPlaced > 0) {
+        const left = Math.max(0, state.totalLessons - state.bestPlaced);
+        refs.tHard.textContent = fmtInt(left);
+        if (refs.placedHero) {
+          refs.placedHero.textContent = `Finishing up… (${fmtInt(state.bestPlaced)} of ${fmtInt(state.totalLessons)} placed)`;
+        }
+        updateRing(state.bestPlaced, state.totalLessons);
+        refs.bar1Fill.style.width = ((state.bestPlaced / state.totalLessons) * 100).toFixed(1) + "%";
       }
       return;
     }
@@ -473,33 +510,43 @@ import "./backend_client.js";
 
       refs.tSpeed.textContent   = fmtInt(Math.round(state.lastSpeed));
       refs.tIter.textContent    = fmtInt(iter);
-      const displaySoft = (typeof ev.softScore === "number" && Number.isFinite(ev.softScore))
-        ? Math.max(0, Math.round(ev.softScore < 0 ? -ev.softScore : ev.softScore))
-        : 0;
-      refs.tSoft.textContent    = fmtInt(displaySoft);
       refs.tElapsed.textContent = fmtTime(dt);
 
       // Single honest progress metric drives BOTH the ring and the Progress bar.
-      // "Left to place" is always total - placed (never hardConflicts).
+      // Never let placed count go backwards to 0 during polishing/finishing.
       if (ev.placed != null && state.totalLessons > 0) {
-        const placedClamped = Math.min(state.totalLessons, Math.max(0, ev.placed));
+        const rawPlaced = Math.min(state.totalLessons, Math.max(0, ev.placed));
+        if (rawPlaced > state.bestPlaced) state.bestPlaced = rawPlaced;
+        const placedClamped = (state.phase === "polishing" || state.phase === "applying")
+          ? Math.max(state.bestPlaced, rawPlaced)
+          : (rawPlaced > 0 ? rawPlaced : state.bestPlaced);
         const left = Math.max(0, state.totalLessons - placedClamped);
         const pct = placedClamped / state.totalLessons;
         updateRing(placedClamped, state.totalLessons);
         refs.bar1Fill.style.width = (pct * 100).toFixed(1) + "%";
         refs.tHard.textContent = fmtInt(left);
+        refs.tSoft.textContent = formatBalanceWord(ev.softScore, placedClamped);
         if (refs.placedHero) {
-          if (state.phase === "polishing" || left === 0) {
+          if (state.phase === "applying") {
+            refs.placedHero.textContent = `Finishing up… (${fmtInt(placedClamped)} of ${fmtInt(state.totalLessons)} placed)`;
+          } else if (state.phase === "polishing" || left === 0) {
             refs.placedHero.textContent = `Improving the timetable… (${fmtInt(placedClamped)} of ${fmtInt(state.totalLessons)} placed)`;
           } else {
             refs.placedHero.textContent = `Placing lessons… ${fmtInt(placedClamped)} of ${fmtInt(state.totalLessons)}`;
           }
         }
         if (refs.acceptBtn && placedClamped > 0) refs.acceptBtn.disabled = false;
+      } else if (state.bestPlaced > 0 && state.totalLessons > 0) {
+        const left = Math.max(0, state.totalLessons - state.bestPlaced);
+        updateRing(state.bestPlaced, state.totalLessons);
+        refs.bar1Fill.style.width = ((state.bestPlaced / state.totalLessons) * 100).toFixed(1) + "%";
+        refs.tHard.textContent = fmtInt(left);
+        refs.tSoft.textContent = formatBalanceWord(ev.softScore, state.bestPlaced);
       } else {
         updateRing(timePct * (state.totalLessons || 100), state.totalLessons || 100);
         refs.bar1Fill.style.width = (timePct * 100).toFixed(1) + "%";
         refs.tHard.textContent = state.totalLessons ? fmtInt(state.totalLessons) : "—";
+        refs.tSoft.textContent = "Checking…";
       }
 
       // Update branch lane widths if branch progress data is available
@@ -514,6 +561,16 @@ import "./backend_client.js";
       if (Array.isArray(ev.latestViolations)) renderFaults(ev.latestViolations);
     } else if (ev.type === "done") {
       state.lastResult = ev.result;
+      const finalPlaced = (ev.result && ev.result.stats && typeof ev.result.stats.placed === "number")
+        ? Math.min(state.totalLessons || ev.result.stats.placed, ev.result.stats.placed)
+        : state.bestPlaced;
+      if (state.totalLessons > 0 && finalPlaced > 0) {
+        const finalLeft = Math.max(0, state.totalLessons - finalPlaced);
+        refs.tHard.textContent = fmtInt(finalLeft);
+        if (refs.placedHero) {
+          refs.placedHero.textContent = `Finishing up… (${fmtInt(finalPlaced)} of ${fmtInt(state.totalLessons)} placed)`;
+        }
+      }
       // Bar fills to 100% before we transition.
       refs.bar1Fill.style.width = "100%";
       refs.bar2Fill.style.width = "100%";
@@ -529,7 +586,22 @@ import "./backend_client.js";
     }
   }
 
+  let elapsedTicker = null;
+  function stopElapsedTicker() {
+    if (elapsedTicker) { clearInterval(elapsedTicker); elapsedTicker = null; }
+  }
+  function setNotice(msg) {
+    if (!refs || !refs.noticeBar) return;
+    if (msg) {
+      refs.noticeBar.textContent = msg;
+      refs.noticeBar.hidden = false;
+    } else {
+      refs.noticeBar.textContent = "";
+      refs.noticeBar.hidden = true;
+    }
+  }
   function close() {
+    stopElapsedTicker();
     if (!host) return;
     host.classList.remove("is-open");
     host.setAttribute("aria-hidden", "true");
