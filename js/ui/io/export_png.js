@@ -1,3 +1,4 @@
+import { localDateYmd, schoolSlug } from "./export_filename.js";
 // [vite-esm] imports
 import "../state.js";
 
@@ -285,9 +286,7 @@ export async function exportPng(scope = { type: "all" }) {
     tempContainer.remove();
   }
 
-  const _raw = (school.schoolName || "").trim();
-  const _isPh = !_raw || /^(classic timetable|asc timetables|untitled|\(school\))/i.test(_raw);
-  const base = (_isPh ? (school._isDemo ? "Sample-school" : "Chronexa-timetable") : _raw).replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "Chronexa-timetable";
+  const base = schoolSlug(school);
   let suffix = "timetable";
   if (scopeType === "class" && scopeId) {
     const c = (school.classes || []).find(x => x.id === scopeId);
@@ -300,7 +299,7 @@ export async function exportPng(scope = { type: "all" }) {
     suffix = (r?.short || r?.name || scopeId).replace(/[^\w.-]+/g, "-");
   }
 
-  const filename = `${base}-${suffix}-${new Date().toISOString().slice(0, 10)}.png`;
+  const filename = `${base}-${suffix}-${localDateYmd()}.png`;
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

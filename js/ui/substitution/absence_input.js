@@ -86,7 +86,7 @@ import "./candidate_ranker.js";
         const t = (school._idx?.teacherById?.[tid]) || { id: tid, name: "?", abbr: "" };
         chips.appendChild(el("span", { class: "chrx-sub-chip" },
           el("span", { class: "chrx-sub-chip__nm" }, t.name || tid),
-          t.abbr ? el("span", { class: "chrx-sub-chip__abbr" }, t.abbr) : null,
+          (t.abbr && t.abbr.trim().toLowerCase() !== (t.name || "").trim().toLowerCase()) ? el("span", { class: "chrx-sub-chip__abbr" }, t.abbr) : null,
           el("button", { class: "chrx-sub-chip__x", "aria-label": "Remove",
             onclick: () => {
               state.absent = state.absent.filter(x => x !== tid);
@@ -147,7 +147,7 @@ import "./candidate_ranker.js";
             updateGenerate();
           } },
           el("span", { class: "chrx-sub-opt__nm" }, t.name || t.id),
-          t.abbr ? el("span", { class: "chrx-sub-opt__abbr" }, t.abbr) : null,
+          (t.abbr && t.abbr.trim().toLowerCase() !== (t.name || "").trim().toLowerCase()) ? el("span", { class: "chrx-sub-opt__abbr" }, t.abbr) : null,
         ));
       });
     }
@@ -314,14 +314,14 @@ import "./candidate_ranker.js";
             renderDutyChips();
           } },
           el("span", { class: "chrx-sub-opt__nm" }, t.name || t.id),
-          t.abbr ? el("span", { class: "chrx-sub-opt__abbr" }, t.abbr) : null,
+          (t.abbr && t.abbr.trim().toLowerCase() !== (t.name || "").trim().toLowerCase()) ? el("span", { class: "chrx-sub-opt__abbr" }, t.abbr) : null,
         ));
       }
     }
     dutySearch.addEventListener("focus", () => { buildDutyOptions(dutySearch.value); dutyDropdown.classList.remove("is-hidden"); });
     dutySearch.addEventListener("input", () => buildDutyOptions(dutySearch.value));
     host.appendChild(el("div", { class: "chrx-sub-row chrx-sub-row--col" },
-      el("label", { class: "chrx-sub-lbl" }, "🛡 On-duty pool"),
+      el("label", { class: "chrx-sub-lbl", style: "display:inline-flex;align-items:center;gap:6px" }, window.ChrxIcons ? window.ChrxIcons.node("shield", 14) : null, "On-duty pool"),
       dutyChips,
       el("div", { class: "chrx-sub-search-wrap" }, dutySearch, dutyDropdown),
     ));
@@ -392,7 +392,7 @@ import "./candidate_ranker.js";
     if (summaryEl) {
       const n = state.assignments.length;
       const filled = state.assignments.filter(a => a.chosen).length;
-      summaryEl.innerHTML = `<span class="chrx-sub-ok">Generated <b>${n}</b> slot(s); <b>${filled}</b> filled, <b>${n - filled}</b> uncovered.</span>`;
+      summaryEl.innerHTML = `<span class="chrx-sub-ok">Generated <b>${n}</b> ${n === 1 ? "slot" : "slots"}; <b>${filled}</b> filled, <b>${n - filled}</b> uncovered.</span>`;
     }
     if (typeof onGenerate === "function") setTimeout(onGenerate, 50);
   }

@@ -44,13 +44,13 @@ body.chrx-viewer-active .chrx-landing {
   justify-content: space-between;
   gap: 12px;
   padding: 12px 4px 16px;
-  border-bottom: 2px solid #1e3a8a;
+  border-bottom: 2px solid #0d4f54;
   margin-bottom: 12px;
 }
 .chrx-pub-head h1 {
   font-size: 22px;
   margin: 0;
-  color: #1e3a8a;
+  color: #0d4f54;
 }
 .chrx-pub-head p {
   margin: 4px 0 0;
@@ -64,12 +64,12 @@ body.chrx-viewer-active .chrx-landing {
   font-weight: 600;
   padding: 8px 16px;
   border-radius: 8px;
-  border: 1px solid #1e3a8a;
-  background: #1e3a8a;
+  border: 1px solid #0d4f54;
+  background: #0d4f54;
   color: #fff;
   cursor: pointer;
 }
-.chrx-pub-print:hover { background: #1e40af; }
+.chrx-pub-print:hover { background: #0a3f43; }
 
 .chrx-pub-tabs {
   display: flex;
@@ -88,8 +88,8 @@ body.chrx-viewer-active .chrx-landing {
   cursor: pointer;
 }
 .chrx-pub-tab.is-on {
-  background: #1e3a8a;
-  border-color: #1e3a8a;
+  background: #0d4f54;
+  border-color: #0d4f54;
   color: #fff;
 }
 
@@ -134,14 +134,14 @@ body.chrx-viewer-active .chrx-landing {
 }
 .chrx-pub-grid-corner,
 .chrx-pub-grid-day {
-  background: #1e3a8a;
+  background: #0d4f54;
   color: #fff;
   font-size: 13px;
   padding: 10px 8px;
   text-align: center;
 }
 .chrx-pub-grid-corner { width: 110px; }
-.chrx-pub-grid-day.is-today { background: #1d4ed8; text-decoration: underline; text-underline-offset: 3px; }
+.chrx-pub-grid-day.is-today { background: #13676e; text-decoration: underline; text-underline-offset: 3px; }
 .chrx-pub-grid-row { border-top: 1px solid #f1f5f9; }
 .chrx-pub-grid-period {
   width: 110px;
@@ -179,7 +179,7 @@ body.chrx-viewer-active .chrx-landing {
 .chrx-pub-day h2 {
   font-size: 15px;
   margin: 0 0 8px;
-  color: #1e3a8a;
+  color: #0d4f54;
 }
 .chrx-pub-table {
   width: 100%;
@@ -252,7 +252,7 @@ body.chrx-viewer-active .chrx-landing {
   font-weight: 600;
   padding: 10px 20px;
   border-radius: 8px;
-  background: #1e3a8a;
+  background: #0d4f54;
   color: #fff;
   cursor: pointer;
 }
@@ -282,8 +282,8 @@ body.chrx-viewer-active .chrx-landing {
     cursor: pointer;
   }
   .chrx-pub-daytab.is-on {
-    background: #1e3a8a;
-    border-color: #1e3a8a;
+    background: #0d4f54;
+    border-color: #0d4f54;
     color: #fff;
   }
   .chrx-pub-day { display: none; }

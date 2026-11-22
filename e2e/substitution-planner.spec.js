@@ -115,7 +115,7 @@ test("a slot can be resolved by supervision, cancelled, moved, or merged", async
   expect(supervised, "no slot was recorded as supervision").toBe(1);
 
   // ── cancel a period ────────────────────────────────────────────────────
-  await page.locator(".chrx-sub-table tbody tr").nth(1).getByRole("button", { name: /^✕ cancel$/ }).click();
+  await page.locator(".chrx-sub-table tbody tr").nth(1).getByRole("button", { name: /^cancel$/i }).click();
   await expect(page.locator(".chrx-sub-cancelled").first()).toBeVisible({ timeout: 10_000 });
   const cancelled = await page.evaluate(() =>
     (window.APP.substitution?.slots || []).filter((s) => s.status === "CANCELLED").length
@@ -123,7 +123,7 @@ test("a slot can be resolved by supervision, cancelled, moved, or merged", async
   expect(cancelled).toBe(1);
 
   // ── move a period ──────────────────────────────────────────────────────
-  await page.locator(".chrx-sub-table tbody tr").nth(2).getByRole("button", { name: /⏱ move/i }).click();
+  await page.locator(".chrx-sub-table tbody tr").nth(2).getByRole("button", { name: /^move$/i }).click();
   await expect(page.locator(".chrx-sub-sheet")).toBeVisible({ timeout: 10_000 });
   const moveButtons = page.locator(".chrx-sub-sheet button", { hasText: /^P\d+$/ });
   const targetPeriod = await moveButtons.last().textContent();
@@ -150,7 +150,7 @@ test("a slot can be resolved by supervision, cancelled, moved, or merged", async
       const slots = window.APP.substitution?.slots || [];
       return slots.findIndex((s) => s.slotKey === key);
     }, pair[0]);
-    await rows.nth(index).getByRole("button", { name: /🔗 merge/i }).click();
+    await rows.nth(index).getByRole("button", { name: /^merge$/i }).click();
     await expect(page.locator(".chrx-sub-sheet")).toBeVisible({ timeout: 10_000 });
     await page.locator(".chrx-sub-sheet button", { hasText: /absent/i }).first().click();
     const merged = await page.evaluate(() =>
@@ -249,7 +249,7 @@ test("a date change rebuilds the day, a partial absence stays partial, and a cla
   await page.waitForTimeout(300);
   await page.getByRole("button", { name: /Generate substitutions/i }).click();
   await expect(page.locator(".chrx-sub-tab.is-active")).toHaveText(/Class-wise/i);
-  await page.locator(".chrx-sub-table tbody tr").first().getByRole("button", { name: /⏱ move/ }).click();
+  await page.locator(".chrx-sub-table tbody tr").first().getByRole("button", { name: /^move$/i }).click();
   await expect(page.locator(".chrx-sub-sheet")).toBeVisible({ timeout: 10_000 });
 
   const clash = page.locator(".chrx-sub-sheet button", { hasText: /⚠/ }).first();

@@ -22,10 +22,10 @@ import "../io/export_png.js";
     { id: "excel", label: "Excel Workbook (.xlsx)", icon: "chart", desc: "Multi-sheet workbook with class, teacher and room schedules." },
     { id: "csv",   label: "CSV Spreadsheet (.csv)", icon: "table", desc: "Structured timetable grid and detailed lesson records." },
     { id: "ics",   label: "iCalendar (.ics)",        icon: "calendar", desc: "Subscribable calendar feed recurring weekly for an academic year." },
-    { id: "html",  label: "Standalone Web Page (.html)", icon: "globe", desc: "Self-contained print-friendly HTML timetable with zero dependencies." },
-    { id: "xml",   label: "Classic XML (.xml)",      icon: "file", desc: "Round-trip XML file compatible with classic timetabling software." },
+    { id: "html",  label: "Standalone Web Page (.html)", icon: "globe", desc: "Standalone web page you can open offline or share with staff." },
+    { id: "xml",   label: "Classic XML (.xml)",      icon: "file", desc: "Timetable file you can re-open in Chronexa or classic timetable apps." },
     { id: "png",   label: "PNG Image (.png)",         icon: "image", desc: "High-resolution timetable image ready to share." },
-    { id: "pdf",   label: "PDF / Print (.pdf)",      icon: "print", desc: "One-click print dialog set up for A4 landscape with zero app chrome." },
+    { id: "pdf",   label: "PDF / Print (.pdf)",      icon: "print", desc: "Opens your browser print dialog ready for A4 landscape." },
   ];
 
   const SCOPES = [
@@ -77,18 +77,18 @@ import "../io/export_png.js";
 
     // Header
     const header = el("div", {
-      style: "background:#1e293b;color:#f8fafc;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;",
+      style: "background:var(--chrx-accent,#0d4f54);color:#ffffff;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;",
     },
       el("div", null,
         el("h3", { style: "margin:0;font-size:16px;font-weight:600;color:#f8fafc;font-family:var(--chrx-font-sans,-apple-system,BlinkMacSystemFont,sans-serif);display:flex;align-items:center;gap:8px;" },
           window.ChrxIcons ? window.ChrxIcons.node("export", 16) : null,
           "Export Timetable"),
-        el("div", { style: "color:#94a3b8;font-size:12px;margin-top:2px;" },
+        el("div", { style: "color:rgba(255,255,255,0.82);font-size:12px;margin-top:2px;" },
           school.schoolName || "Chronexa Timetable")),
       el("button", {
         type: "button",
         "data-testid": "chrx-export-close",
-        style: "background:transparent;border:0;color:#94a3b8;font-size:22px;cursor:pointer;line-height:1;padding:0 4px;",
+        style: "background:transparent;border:0;color:rgba(255,255,255,0.85);font-size:22px;cursor:pointer;line-height:1;padding:0 4px;",
         onclick: close,
       }, "×"));
     dialogBox.appendChild(header);
@@ -210,12 +210,12 @@ import "../io/export_png.js";
     let summaryText = "";
     if (state.format === "pdf") {
       summaryText = state.scope === "all"
-        ? `Will open browser print preview configured for A4 landscape with all ${(school.classes || []).length} classes (one per page).`
-        : `Will open browser print preview configured for A4 landscape with 1 timetable page.`;
+        ? `Opens your browser print dialog in A4 landscape with all ${(school.classes || []).length} classes (one per page).`
+        : `Opens your browser print dialog in A4 landscape with 1 timetable page.`;
     } else if (state.format === "png") {
-      summaryText = `Will render timetable view to high-resolution PNG image without external dependencies.`;
+      summaryText = `Creates a crisp timetable image ready to share.`;
     } else if (state.format === "xml") {
-      summaryText = `Will export complete classic timetable XML structure.`;
+      summaryText = `Saves a full timetable XML file you can import back later.`;
     } else {
       summaryText = state.scope === "all"
         ? `Exporting whole school data.`

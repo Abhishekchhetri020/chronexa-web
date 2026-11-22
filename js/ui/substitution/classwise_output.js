@@ -47,6 +47,15 @@ import "./planner_model.js";
     if (score >= 30) return "★★";
     return "★";
   }
+  function tierLabel(score) {
+    if (score == null) return "—";
+    if (score >= 100) return "Best match";
+    if (score >= 30) return "Good match";
+    return "Possible";
+  }
+  function icNode(name, sz) {
+    return window.ChrxIcons ? window.ChrxIcons.node(name, sz || 13) : null;
+  }
 
   /** The plan the board renders: APP.substitution, rebuilt from the document. */
   function currentPlan() {
@@ -99,7 +108,7 @@ import "./planner_model.js";
       el("span", { class: "chrx-sub-pill is-green" }, `★★★ ${s3}`),
       el("span", { class: "chrx-sub-pill is-blue" }, `★★  ${s2}`),
       el("span", { class: "chrx-sub-pill is-yellow" }, `★   ${s1}`),
-      c.supervised ? el("span", { class: "chrx-sub-pill", style: "background:#e0f2fe;color:#0369a1;" }, `👁 Sup ${c.supervised}`) : null,
+      c.supervised ? el("span", { class: "chrx-sub-pill", style: "background:#e0f2fe;color:#0369a1;" }, `Supervised ${c.supervised}`) : null,
       c.cancelled ? el("span", { class: "chrx-sub-pill", style: "background:#fee2e2;color:#b91c1c;" }, `Cancelled ${c.cancelled}`) : null,
       el("span", { class: "chrx-sub-pill is-red" }, `— ${c.pending + c.reschedule}`),
     );
@@ -109,23 +118,29 @@ import "./planner_model.js";
     const anyPending = (plan.slots || []).some((s) => s.status === "PENDING");
     const smart = el("button", {
       class: "chrx-sub-btn chrx-sub-btn--primary",
+      style: "display:inline-flex;align-items:center;gap:6px",
       onclick: () => runSmartFill(plan, refresh),
-      title: "Fill every slot the policy is willing to fill, then let you review it",
-    }, "⚡ Smart auto-fill");
+      title: anyPending
+        ? "Fill every uncovered slot automatically, then let you review"
+        : "All slots are already covered — clear a slot to run Smart auto-fill again",
+    }, icNode("bolt", 14), "Smart auto-fill");
     smart.disabled = !anyPending;
 
-    return el("div", { class: "chrx-sub-row chrx-sub-row--actions", style: "gap:8px;flex-wrap:wrap;margin:8px 0 10px" },
+    return el("div", { class: "chrx-sub-row chrx-sub-row--actions", style: "gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0 10px" },
       smart,
+      !anyPending && (plan.slots || []).length ? el("span", { class: "chrx-sub-hint" }, "All slots covered") : null,
       el("button", {
         class: "chrx-sub-btn",
+        style: "display:inline-flex;align-items:center;gap:6px",
         onclick: () => {
           S.persistPlan(APP.school, plan, "Save substitutions");
           refresh();
         },
         title: "Write this day's plan to the timetable (one undo step)",
-      }, "💾 Save plan"),
+      }, icNode("check", 14), "Save plan"),
       el("button", {
         class: "chrx-sub-btn",
+        style: "display:inline-flex;align-items:center;gap:6px",
         onclick: () => {
           for (const s of plan.slots) {
             if (s.status !== "PENDING") {
@@ -142,7 +157,7 @@ import "./planner_model.js";
           refresh();
         },
         title: "Clear every assignment for this day",
-      }, "↺ Clear"),
+      }, icNode("refresh", 14), "Clear"),
     );
   }
 
@@ -154,7 +169,7 @@ import "./planner_model.js";
         el("th", null, "Subject"),
         el("th", null, "Absent"),
         el("th", null, "Substitute / action"),
-        el("th", null, "Score"),
+        el("th", null, "Match"),
       )),
     );
     const tbody = el("tbody");
@@ -183,10 +198,10 @@ import "./planner_model.js";
     } else if (filled) {
       const supervision = slot.status === "SUPERVISED";
       cell.appendChild(el("span", null,
-        el("span", { class: "chrx-sub-stars" }, supervision ? "👁" : tierStars(slot.smartScore)),
+        el("span", { class: "chrx-sub-stars" }, supervision ? icNode("users", 13) : tierStars(slot.smartScore)),
         " ",
         el("b", null, slot.substituteTeacher || slot.substituteTeacherId),
-        slot.mergedWithKey ? el("span", { class: "chrx-sub-hint", style: "margin-left:6px" }, "🔗 merged") : null,
+        slot.mergedWithKey ? el("span", { class: "chrx-sub-hint", style: "margin-left:6px;display:inline-flex;align-items:center;gap:3px" }, icNode("link", 12), "merged") : null,
       ));
       if (slot.smartReason) {
         cell.appendChild(el("div", { class: "chrx-sub-reasons" }, slot.smartReason));
@@ -202,17 +217,17 @@ import "./planner_model.js";
     // coordinator can resolve a slot however the day actually went).
     const acts = el("div", { style: "display:flex;gap:6px;margin-top:6px;flex-wrap:wrap" });
     if (!challenged) {
-      acts.appendChild(miniBtn("✎ pick", () => openChooser(plan, slot, refresh)));
-      acts.appendChild(miniBtn("👁 supervise", () => openChooser(plan, slot, refresh, { supervision: true })));
+      acts.appendChild(miniBtn("pick", () => openChooser(plan, slot, refresh), "lesson"));
+      acts.appendChild(miniBtn("supervise", () => openChooser(plan, slot, refresh, { supervision: true }), "users"));
     }
-    acts.appendChild(miniBtn("⏱ move", () => moveDialog(plan, slot, refresh)));
-    acts.appendChild(miniBtn("🔗 merge", () => mergeDialog(plan, slot, refresh)));
-    if (challenged) acts.appendChild(miniBtn("↺ uncancel", () => {
+    acts.appendChild(miniBtn("move", () => moveDialog(plan, slot, refresh), "clock"));
+    acts.appendChild(miniBtn("merge", () => mergeDialog(plan, slot, refresh), "link"));
+    if (challenged) acts.appendChild(miniBtn("uncancel", () => {
       S.setCancelled(plan, slot.slotKey, false);
       S.persistPlan(APP.school, plan, "Un-cancel period");
       refresh();
-    }));
-    else acts.appendChild(miniBtn("✕ cancel", () => {
+    }, "refresh"));
+    else acts.appendChild(miniBtn("cancel", () => {
       S.setCancelled(plan, slot.slotKey, true);
       S.persistPlan(APP.school, plan, "Cancel period");
       refresh();
@@ -226,7 +241,7 @@ import "./planner_model.js";
 
     tr.appendChild(cell);
     tr.appendChild(el("td", { class: "chrx-sub-score" },
-      slot.status === "CANCELLED" ? "0" : (filled ? String(slot.smartScore != null ? slot.smartScore : "—") : "—")));
+      slot.status === "CANCELLED" ? "Cancelled" : (filled ? (slot.status === "SUPERVISED" ? "Supervision" : tierLabel(slot.smartScore)) : "—")));
     return tr;
   }
 
@@ -276,7 +291,7 @@ import "./planner_model.js";
         el("b", null, `P${first.period} · ${(a.members || []).map((m) => `${m.classSection} ${m.subject}`).join(" + ")}`),
         " → ",
         el("b", { style: "color:#047857" }, String(a.candidate.teacher)),
-        el("span", { style: "color:#059669;font-weight:700" }, ` (${a.candidate.score})`),
+        el("span", { style: "color:#059669;font-weight:600" }, ` · ${tierLabel(a.candidate.score)}`),
         el("div", { style: "font-size:11.5px;color:#64748b" }, why || "best eligible workload balance"),
         warn ? el("div", { style: "font-size:11px;color:#b45309" }, `Fairness: ${warn}`) : null,
       ));
@@ -373,10 +388,10 @@ import "./planner_model.js";
       for (const c of eligible.slice(0, 40)) {
         const isChosen = slot.substituteTeacherId === c.teacherId;
         const badges = [];
-        if (c.isOnDuty) badges.push("🛡 duty");
-        if (c.isCoTeacher) badges.push(`👥 co-teacher${c.coSubject ? " · " + c.coSubject : ""}`);
+        if (c.isOnDuty) badges.push("On duty");
+        if (c.isCoTeacher) badges.push(`Co-teacher${c.coSubject ? " · " + c.coSubject : ""}`);
         if (c.isCT) badges.push("CT");
-        if (c.alreadyInSlot) badges.push(`🔄 in ${c.alreadyInSlot.classSection}`);
+        if (c.alreadyInSlot) badges.push(`In ${c.alreadyInSlot.classSection}`);
         if (c.today) badges.push(`today · ${c.today}`);
         if (c.week) badges.push(`week · ${c.week}`);
 
@@ -395,7 +410,7 @@ import "./planner_model.js";
         },
           el("span", { class: "chrx-sub-cand__stars" }, tierStars(c.score)),
           el("span", { class: "chrx-sub-cand__nm" }, String(c.teacher)),
-          el("span", { class: "chrx-sub-cand__score" }, String(c.score)),
+          el("span", { class: "chrx-sub-cand__score" }, tierLabel(c.score)),
           c.why && c.why.length ? el("div", { class: "chrx-sub-cand__why" }, c.why.join(" · ")) : null,
           badges.length ? el("div", { class: "chrx-sub-hint", style: "font-size:10.5px" }, badges.join(" · ")) : null,
           c.warnings && c.warnings.length
@@ -460,7 +475,7 @@ import "./planner_model.js";
             scrim.remove();
             refresh();
           },
-        }, `↺ Back to P${slot.movedFrom}`),
+        }, `Back to P${slot.movedFrom}`),
       ));
     }
     scrim.appendChild(sheet);
@@ -535,9 +550,11 @@ import "./planner_model.js";
       const classId = reverse[teacherId];
       const chosen = plan.actingCT?.[classId];
       const cands = P().eligibleActingCTs(APP.school, plan, classId);
+      const clsObj = APP.school._idx?.classById?.[classId];
+      const clsName = (clsObj && (clsObj.name || clsObj.short)) || classId;
       const name = chosen ? (APP.school._idx?.teacherById?.[chosen]?.name || chosen) : "—";
       wrap.appendChild(el("div", { style: "display:flex;gap:8px;align-items:center;padding:4px 0" },
-        el("span", { style: "min-width:120px" }, classId),
+        el("span", { style: "min-width:120px;font-weight:500" }, clsName),
         el("b", { style: "color:#0369a1" }, name),
         el("button", {
           class: "chrx-sub-btn",
@@ -563,7 +580,7 @@ import "./planner_model.js";
       onclick: (e) => { if (e.target === scrim) scrim.remove(); } });
     const sheet = el("div", { class: "chrx-sub-sheet", style: "max-width:460px" });
     sheet.appendChild(el("header", { class: "chrx-sub-sheet__head" },
-      el("h3", null, `Acting class teacher for ${classId}`),
+      el("h3", null, `Acting class teacher for ${(APP.school._idx?.classById?.[classId]?.name) || classId}`),
       el("button", { class: "chrx-sub-sheet__x", onclick: () => scrim.remove() }, "×"),
     ));
     const list = el("div", { class: "chrx-sub-cand-list", style: "max-height:46vh;overflow:auto" });
@@ -580,7 +597,7 @@ import "./planner_model.js";
       },
         el("span", { class: "chrx-sub-cand__stars" }, "★".repeat(c.stars)),
         el("span", { class: "chrx-sub-cand__nm" }, String(c.teacher)),
-        el("span", { class: "chrx-sub-cand__score" }, String(c.score)),
+        el("span", { class: "chrx-sub-cand__score" }, tierLabel(c.score)),
         el("div", { class: "chrx-sub-cand__why" }, (c.why || []).join(" · ")),
       ));
     }
