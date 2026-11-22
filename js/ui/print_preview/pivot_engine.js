@@ -1040,7 +1040,8 @@ import { entityLabel, entityFull } from "./entity_label.js";
     const resolvedPeriods = periods || PERIODS_DEFAULT;
     const joinedSchool = Object.assign({}, school, { cards: joinedCards, _printPeriods: resolvedPeriods });
     const pageCombos = axisCombinations(report.pages, joinedSchool, resolvedPeriods, report.filters);
-    const isEntityMatrix = Array.isArray(report.rows) && report.rows.length > 0 &&
+    const fitToPage = Boolean(APP.printSettings && APP.printSettings.fitToPage);
+    const isEntityMatrix = !fitToPage && Array.isArray(report.rows) && report.rows.length > 0 &&
       !report.rows.includes("day") && !report.rows.includes("period");
     const out = [];
     pageCombos.forEach((bindings, idx) => {
