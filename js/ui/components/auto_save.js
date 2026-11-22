@@ -22,10 +22,13 @@ import "./version_history.js";
   const PERIOD_MS = 60 * 1000;
   const DEBOUNCE_MS = 2000;
 
+  const TAB_ID = "tab_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 7);
+  let adoptedTs = Date.now();
   let saveTimer = null;
   let lastSaveTs = 0;
   let currentSource = "";
   let currentAutoRestore = false;
+  let multiTabBannerEl = null;
 
   // ─── IndexedDB fallback for very large schools (> localStorage quota) ──
   function openIdb() {
@@ -95,6 +98,49 @@ import "./version_history.js";
     } catch (e) { /* a failed backup must never interrupt editing */ }
   }
 
+  function showMultiTabWarning(other) {
+    if (multiTabBannerEl) multiTabBannerEl.remove();
+    const banner = document.createElement("div");
+    banner.setAttribute("data-testid", "chrx-multitab-warning");
+    banner.setAttribute("role", "alert");
+    banner.style.cssText = [
+      "position:fixed", "top:72px", "right:16px",
+      "background:#fffbeb", "color:#78350f",
+      "border:1px solid #f59e0b", "border-radius:10px",
+      "padding:12px 14px", "box-shadow:0 8px 24px rgba(0,0,0,.14)",
+      "font-family:-apple-system,sans-serif", "font-size:12.5px",
+      "max-width:340px", "z-index:10050"
+    ].join(";");
+    const otherName = escapeHtml(other.schoolName || "(untitled)");
+    banner.innerHTML = `
+      <div style="font-weight:600;margin-bottom:4px">⚠ Another tab saved "${otherName}"</div>
+      <div style="margin-bottom:8px;opacity:.9">Saving in this tab would overwrite that school. Choose which copy to keep:</div>
+      <div style="display:flex;gap:6px;justify-content:flex-end">
+        <button data-load-other style="background:#fff;border:1px solid #d97706;color:#78350f;padding:4px 9px;border-radius:5px;cursor:pointer;font-size:12px">Load other tab</button>
+        <button data-keep-this style="background:#d97706;border:0;color:#fff;padding:4px 10px;border-radius:5px;cursor:pointer;font-size:12px;font-weight:600">Keep this tab</button>
+      </div>`;
+    document.body.appendChild(banner);
+    multiTabBannerEl = banner;
+    banner.querySelector("[data-keep-this]").onclick = () => {
+      banner.remove();
+      multiTabBannerEl = null;
+      adoptedTs = Date.now();
+      save({ autoRestore: true, forceOverwrite: true });
+    };
+    banner.querySelector("[data-load-other]").onclick = () => {
+      banner.remove();
+      multiTabBannerEl = null;
+      const latest = restore();
+      if (!latest) return;
+      adoptedTs = latest.ts || Date.now();
+      if (latest.idbFallback) {
+        idbGet().then((p) => { if (p) applyRestoredSchool(p); }).catch(() => {});
+      } else if (latest.payload) {
+        applyRestoredSchool(latest.payload);
+      }
+    };
+  }
+
   function save(opts) {
     const APP = window.APP;
     if (!APP || !APP.school) return;
@@ -102,10 +148,28 @@ import "./version_history.js";
     if (opts && typeof opts.autoRestore === "boolean") {
       currentAutoRestore = opts.autoRestore;
     }
+    const existing = restore();
+    // H1: Never let an untouched demo peek overwrite a previously saved real school.
+    if (!currentAutoRestore && existing && existing.autoRestore) {
+      return;
+    }
+    // H2: Multi-tab conflict guard — if another open tab wrote a newer real school
+    // after this tab booted/adopted, warn instead of silently overwriting it.
+    if (
+      !(opts && opts.forceOverwrite) &&
+      existing && existing.autoRestore &&
+      existing.tabId && existing.tabId !== TAB_ID &&
+      (existing.ts || 0) > adoptedTs
+    ) {
+      showMultiTabWarning(existing);
+      return;
+    }
     const clean = cloneSchoolForStorage(school);
     if (!clean) return;
+    const now = Date.now();
     const meta = {
-      ts: Date.now(),
+      ts: now,
+      tabId: TAB_ID,
       schoolName: school.schoolName || "(untitled)",
       cards: (school.cards || []).length,
       lessons: (school.lessons || []).length,
@@ -116,6 +180,7 @@ import "./version_history.js";
     try {
       localStorage.setItem(KEY, JSON.stringify(full));
       lastSaveTs = meta.ts;
+      adoptedTs = meta.ts;
       flashIndicator("✓");
     } catch (e) {
       // Exceeded localStorage quota (e.g. very large XML with sourceText):
@@ -124,6 +189,7 @@ import "./version_history.js";
         localStorage.setItem(KEY, JSON.stringify(Object.assign({}, meta, { idbFallback: true })));
         idbPut(clean).then(() => {
           lastSaveTs = meta.ts;
+          adoptedTs = meta.ts;
           flashIndicator("✓");
         }).catch((err) => {
           flashIndicator("⚠", "warn");
@@ -236,6 +302,7 @@ import "./version_history.js";
     if (!saved) return;
 
     if (saved.autoRestore) {
+      adoptedTs = saved.ts || Date.now();
       if (saved.idbFallback) {
         idbGet().then((payload) => {
           if (payload && !window.APP?.school) {
@@ -331,6 +398,16 @@ import "./version_history.js";
     window.addEventListener("app:school-loaded", onSchoolLoaded);
     document.addEventListener("app:school-loaded", onSchoolLoaded);
     window.addEventListener("app:solve-applied", onSolveApplied);
+    // H2: Detect concurrent saves from another open Chronexa tab
+    window.addEventListener("storage", (e) => {
+      if (!e || e.key !== KEY || !e.newValue) return;
+      try {
+        const other = JSON.parse(e.newValue);
+        if (other && other.autoRestore && other.tabId && other.tabId !== TAB_ID && window.APP?.school) {
+          showMultiTabWarning(other);
+        }
+      } catch {}
+    });
     // Wait one macrotask so all modules finish wiring app:school-loaded listeners
     setTimeout(maybeAutoRestoreOrOffer, 0);
   }

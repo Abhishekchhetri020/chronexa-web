@@ -41,6 +41,17 @@ import "./dialog_shell.js";
       days: "111111" });
   }
 
+  function syncDaysDefs(school) {
+    if (!school || !Array.isArray(school.days)) return;
+    school.daysDefs = school.days.map(d => ({
+      id: d.id,
+      name: d.name || d.short || d.id,
+      short: d.short || "",
+      bits: String(d.days != null ? d.days : (d.bits != null ? d.bits : "")),
+      days: String(d.days != null ? d.days : (d.bits != null ? d.bits : "")),
+    }));
+  }
+
   function ensure() {
     const s = window.APP.school = window.APP.school || {};
     if (!Array.isArray(s.days)) {
@@ -187,9 +198,10 @@ import "./dialog_shell.js";
           days: draft.days,
         };
         if (!isNew) {
-          window.APP.mutate("Edit day pattern", () => {
+          window.APP.mutate("Edit day pattern", (school) => {
             const before = { ...ref };
             Object.assign(ref, payload);
+            syncDaysDefs(school);
             window.APP.audit.append({ entity:"days", op:"update", before, after:{...ref} });
           });
         } else {
@@ -197,6 +209,7 @@ import "./dialog_shell.js";
           payload.id = D.uid("day");
           window.APP.mutate("Add day pattern", (school) => {
             school.days.push(payload);
+            syncDaysDefs(school);
             window.APP.audit.append({ entity:"days", op:"add", after:{...payload} });
           });
         }
@@ -217,8 +230,9 @@ import "./dialog_shell.js";
           const all = ensure();
           const i = all.findIndex(x => x.id === row._ref.id);
           if (i >= 0) {
-            window.APP.mutate("Delete day pattern", () => {
+            window.APP.mutate("Delete day pattern", (school) => {
               const removed = all.splice(i,1)[0];
+              syncDaysDefs(school);
               window.APP.audit.append({ entity:"days", op:"remove", before:{...removed} });
             });
             D.refresh(rows());

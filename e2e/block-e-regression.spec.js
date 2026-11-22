@@ -109,6 +109,7 @@ test.describe("Block E regressions (E-03 weeks/terms UI sync + XML round-trip, E
     expect(xmlContent).toContain('terms="10"');
 
     // Re-import into fresh page
+    await page.evaluate(() => localStorage.clear());
     await page.goto("/", { waitUntil: "networkidle" });
     await page.locator("#xml-file").setInputFiles(tmpXml);
     await page.locator("button.chrx-btn--primary", { hasText: "Generate" }).first().waitFor({ state: "visible", timeout: 20000 });

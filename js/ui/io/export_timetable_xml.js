@@ -183,6 +183,16 @@ import "../ribbon/topbar.js";
     src = replaceBlock(src, "classrooms", renderClassroomsBlock(school));
     src = replaceBlock(src, "classes",    renderClassesBlock(school));
     src = replaceBlock(src, "groups",     renderGroupsBlock(school));
+    const dDefs = (school.daysDefs && school.daysDefs.length) ? school.daysDefs : (school.days || []);
+    if (dDefs.length) {
+      const dLines = ['  <daysdefs options="canadd,export:silent" columns="id,days,name,short">'];
+      for (const d of dDefs) {
+        const bits = d.bits != null ? d.bits : (d.days != null ? d.days : "11111");
+        dLines.push(`    <daysdef id="${xmlEscape(d.id)}" name="${xmlEscape(d.name || "")}" short="${xmlEscape(d.short || "")}" days="${xmlEscape(bits)}"/>`);
+      }
+      dLines.push("  </daysdefs>");
+      src = replaceBlock(src, "daysdefs", dLines.join("\n"));
+    }
     const wDefs = (school.weeksDefs && school.weeksDefs.length) ? school.weeksDefs : (school.weeks || []);
     if (wDefs.length) {
       const wLines = ['  <weeksdefs options="canadd,export:silent" columns="id,weeks,name,short">'];

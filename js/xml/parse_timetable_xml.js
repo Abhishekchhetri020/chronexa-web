@@ -87,11 +87,17 @@ _global.parseTimetableXml = (function () {
   }
 
   function parseText(text, sourceName) {
+    if (!text || !String(text).trim()) {
+      throw new Error("The selected XML file is empty.");
+    }
     const xml = new DOMParser().parseFromString(text, "application/xml");
     const errNode = xml.querySelector("parsererror");
     if (errNode) throw new Error("Invalid XML: " + errNode.textContent.slice(0, 200));
 
     const root = xml.querySelector("timetable");
+    if (!root && !xml.querySelector("lessons") && !xml.querySelector("classes") && !xml.querySelector("teachers")) {
+      throw new Error("Not a valid timetable XML file (missing <timetable> data).");
+    }
     const schoolName = root ? (root.getAttribute("displayname") || "") : "";
 
     // --- Days per week (inferred from daysdefs, mirrors Swift port) ------------
