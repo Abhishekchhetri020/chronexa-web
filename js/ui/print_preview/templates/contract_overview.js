@@ -29,7 +29,7 @@ import "../../state.js";
     }
 
     const p = page(true);
-    p.appendChild(header("Contract overview (teacher × subject)", school.schoolName || ""));
+    p.appendChild(header("Contract overview (teacher × subject)", (U.schoolTitle ? U.schoolTitle(school) : "")));
 
     const tbl = el("table", { style: U.tableCSS() });
     const tr0 = el("tr");

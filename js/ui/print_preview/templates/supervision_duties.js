@@ -78,7 +78,7 @@ export function computeSupervisionGrid(school) {
     const { days, periods, grid } = computeSupervisionGrid(school);
     const p = page(true);
     p.appendChild(header("Supervision duties",
-      (school.schoolName || "") + "  ·  " + new Date().toLocaleDateString()));
+      [U.schoolTitle(school), U.dateLine(school)].filter(Boolean).join("  ·  ")));
 
     const tbl = el("table", { style: U.tableCSS() });
     const head = el("tr");
@@ -92,10 +92,10 @@ export function computeSupervisionGrid(school) {
       tr.appendChild(el("td", { style: U.tdCSS() + ";font-weight:600;text-align:center" }, String(period)));
       days.forEach((_d, dayIdx) => {
         const cell = (grid[`${dayIdx}_${period}`] || []);
-        const td = el("td", { style: U.tdCSS() + ";vertical-align:top;font-size:8.5px" },
-          cell.length
+        const td = el("td", { style: U.tdCSS() + ";vertical-align:top" },
+          ...(cell.length
             ? cell.map((c) => el("div", null, (c.room ? c.room + " — " : "") + c.teacher))
-            : el("span", { style: "color:#bbb" }, "—"));
+            : [el("span", { style: "color:#bbb" }, "—")]));
         tr.appendChild(td);
       });
       tbody.appendChild(tr);

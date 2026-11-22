@@ -20,7 +20,7 @@ import "../../state.js";
     const totalSlots = DAYS.length * periods.length;
 
     const p = page(true);
-    p.appendChild(header("Summary of classrooms", school.schoolName || ""));
+    p.appendChild(header("Summary of classrooms", (U.schoolTitle ? U.schoolTitle(school) : "")));
 
     const tbl = el("table", { style: U.tableCSS() });
     const tr0 = el("tr");

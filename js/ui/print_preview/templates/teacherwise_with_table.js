@@ -22,7 +22,7 @@ import "../../state.js";
       const list = byTeacher[t.id] || [];
       const p = page(false);
       p.appendChild(header(t.name + " — teacher-wise with table",
-        (school.schoolName || "") + (t.abbr ? "  (" + t.abbr + ")" : "")));
+        (U.schoolTitle ? U.schoolTitle(school) : "") + (t.abbr ? "  (" + t.abbr + ")" : "")));
 
       // Grid
       const tbl = el("table", { style: U.gridCSS() });

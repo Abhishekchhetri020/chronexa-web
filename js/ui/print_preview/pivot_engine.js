@@ -347,7 +347,7 @@ import { entityLabel, entityFull } from "./entity_label.js";
       const pageWidthPx = (orientation === "portrait" ? 210 : 297) * mmToPx;
       const paddingWidthPx = 24 * mmToPx;
       const rowHeaderWidthPx = compactLevel === 2 ? 46 : compactLevel === 1 ? 58 : 80;
-      const availableGridWidthPx = pageWidthPx - paddingWidthPx - rowHeaderWidthPx;
+      const availableGridWidthPx = pageWidthPx - paddingWidthPx - rowHeaderWidthPx - 14;
       const breakCount = summaryCols.filter(col => col.kind === "break").length;
       const teachingColCount = Math.max(1, summaryCols.filter(col => col.kind === "period").length);
       const minPeriodWidthPx = compactLevel === 2 ? 6 : compactLevel === 1 ? 7 : 8;

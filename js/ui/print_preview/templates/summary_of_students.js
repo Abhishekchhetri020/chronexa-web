@@ -19,7 +19,7 @@ import "../../state.js";
     const cardsByClass = school._idx?.cardsByClass || {};
 
     const p = page(true);
-    p.appendChild(header("Summary of students", school.schoolName || ""));
+    p.appendChild(header("Summary of students", (U.schoolTitle ? U.schoolTitle(school) : "")));
 
     const tbl = el("table", { style: U.tableCSS() });
     const thead = el("thead");

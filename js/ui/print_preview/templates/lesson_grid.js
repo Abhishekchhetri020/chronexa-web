@@ -31,7 +31,7 @@ import "../../state.js";
     for (let i = 0; i < lessons.length; i += PER_PAGE) {
       const chunk = lessons.slice(i, i + PER_PAGE);
       const p = page(true);
-      p.appendChild(header("Lesson grid", (school.schoolName || "") + "  ·  page " + (i / PER_PAGE + 1)));
+      p.appendChild(header("Lesson grid", (U.schoolTitle ? U.schoolTitle(school) : "") + "  ·  page " + (i / PER_PAGE + 1)));
 
       const tbl = el("table", { style: U.tableCSS() });
       const thead = el("thead");

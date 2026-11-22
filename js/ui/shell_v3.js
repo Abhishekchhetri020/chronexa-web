@@ -302,7 +302,10 @@ import "./state.js";
     let p = document.getElementById("chrx-palette");
     if (!p) p = buildPalette();
     p.classList.add("is-open");
-    setTimeout(() => { p._input.value = ""; p._input.focus(); renderPaletteList(""); }, 20);
+    p._input.value = "";
+    renderPaletteList("");
+    p._input.focus();
+    setTimeout(() => { p._input.focus(); }, 20);
   }
   function closePalette() {
     const p = document.getElementById("chrx-palette");

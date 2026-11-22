@@ -22,7 +22,7 @@ import "../../state.js";
     for (const c of school.classes) {
       const list = byClass[c.id] || [];
       const p = page(false);
-      p.appendChild(header(c.name + " — class-wise with table", school.schoolName || ""));
+      p.appendChild(header(c.name + " — class-wise with table", (U.schoolTitle ? U.schoolTitle(school) : "")));
 
       // Grid — honour per-template structure override (Item 5).
       const structure = (U.structureFor && U.structureFor("classwise_with_table")) || "rows-days";

@@ -26,7 +26,7 @@ import "../../state.js";
         const p = page(false);
         p.appendChild(header(
           sec.name + " — Student timetable",
-          (school.schoolName || "") + " · " + DAYS.length + " days × " + periods.length + " periods"));
+          (U.schoolTitle ? U.schoolTitle(school) : "") + " · " + DAYS.length + " days × " + periods.length + " periods"));
 
         const tbl = el("table", { style: U.gridCSS() });
         tbl.appendChild(U.gridCols(periods, 62));

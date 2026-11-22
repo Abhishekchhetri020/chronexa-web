@@ -30,7 +30,7 @@ import "../../state.js";
     }
 
     const p = page(true);
-    p.appendChild(header("Summary of subjects", school.schoolName || ""));
+    p.appendChild(header("Summary of subjects", (U.schoolTitle ? U.schoolTitle(school) : "")));
 
     const tbl = el("table", { style: U.tableCSS() });
     const thead = el("thead");

@@ -18,10 +18,12 @@ import "../../state.js";
       else if (k.startsWith("on") && typeof attrs[k] === "function") n.addEventListener(k.slice(2), attrs[k]);
       else if (attrs[k] != null) n.setAttribute(k, attrs[k]);
     }
-    for (const c of kids) {
-      if (c == null) continue;
-      n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
-    }
+    const appendKid = (c) => {
+      if (c == null || c === false) return;
+      if (Array.isArray(c)) { c.forEach(appendKid); return; }
+      n.appendChild(typeof c === "string" || typeof c === "number" ? document.createTextNode(String(c)) : c);
+    };
+    for (const c of kids) appendKid(c);
     return n;
   }
 
@@ -47,9 +49,28 @@ import "../../state.js";
       el("div", { style: "font-size:9.5px;color:#555" }, subtitle || ""));
   }
 
+  function schoolTitle(school) {
+    const Pivot = window.APP && window.APP.PrintPivot;
+    const PS = (window.APP && window.APP.printSettings) || {};
+    if (Pivot && typeof Pivot.printTitle === "function") {
+      return Pivot.printTitle(school, PS) || "";
+    }
+    const raw = (PS.headerText || (school && (school.regName || school.schoolName || school.name)) || "").trim();
+    return /^aSc\s+Timetables/i.test(raw) ? "" : raw;
+  }
+
+  function dateLine(school) {
+    const Pivot = window.APP && window.APP.PrintPivot;
+    if (Pivot && typeof Pivot.printDateLine === "function") {
+      return Pivot.printDateLine(school) || "";
+    }
+    return "";
+  }
+
   function footer() {
+    const d = dateLine(window.APP && window.APP.school);
     return el("div", { style: "font-size:9px;color:#999;text-align:right;margin-top:8px" },
-      "Chronexa · " + new Date().toLocaleDateString());
+      d ? ("Chronexa · " + d) : "Chronexa");
   }
 
   function emptyPage(msg) {
@@ -97,8 +118,18 @@ import "../../state.js";
 
   // Style block used by tables across templates (kept tiny so each template
   // can rely on identical look without redefining).
+  function tuning() {
+    const t = (typeof window !== "undefined" && window.APP && window.APP.printTuning) || {};
+    return {
+      padding: Number.isFinite(t.padding) ? t.padding : 6,
+      fontSize: Number.isFinite(t.fontSize) ? t.fontSize : 9.5,
+      borderWidth: Number.isFinite(t.borderWidth) ? t.borderWidth : 1,
+      theme: t.theme || "mono",
+    };
+  }
   function tableCSS() {
-    return "border-collapse:collapse;width:100%;font-size:9.5px";
+    const t = tuning();
+    return "border-collapse:collapse;width:100%;font-size:" + t.fontSize + "px";
   }
   // W3b-1 — equal period columns. Under the default `table-layout:auto` the
   // browser sizes a column to its widest cell, so one slot holding "Sports
@@ -123,10 +154,20 @@ import "../../state.js";
   // teacher list breaks into the pinned column instead of widening it.
   const WRAP = ";overflow-wrap:anywhere;word-break:break-word;white-space:normal";
   function thCSS() {
-    return "border:1px solid #888;background:#f0f0f0;padding:3px 5px;font-weight:600;text-align:left" + WRAP;
+    const t = tuning();
+    const padV = Math.max(2, Math.round(t.padding * 0.5));
+    const padH = Math.max(3, Math.round(t.padding * 0.85));
+    const bg = t.theme === "pastel" ? "#eef2ff" : t.theme === "neon" ? "#f5f3ff" : t.theme === "classic" ? "#f8fafc" : "#f0f0f0";
+    const bc = t.theme === "neon" ? "#a78bfa" : t.theme === "pastel" ? "#93c5fd" : "#888";
+    return "border:" + t.borderWidth + "px solid " + bc + ";background:" + bg + ";padding:" + padV + "px " + padH + "px;font-weight:600;text-align:left;font-size:" + t.fontSize + "px" + WRAP;
   }
   function tdCSS() {
-    return "border:1px solid #bbb;padding:3px 5px;vertical-align:top" + WRAP;
+    const t = tuning();
+    const padV = Math.max(2, Math.round(t.padding * 0.5));
+    const padH = Math.max(3, Math.round(t.padding * 0.85));
+    const bc = t.theme === "neon" ? "#c4b5fd" : t.theme === "pastel" ? "#bfdbfe" : "#bbb";
+    const bg = t.theme === "mono" ? "#ffffff" : t.theme === "pastel" ? "#fafcff" : t.theme === "neon" ? "#fdfcff" : "#ffffff";
+    return "border:" + t.borderWidth + "px solid " + bc + ";background:" + bg + ";padding:" + padV + "px " + padH + "px;vertical-align:top;font-size:" + t.fontSize + "px" + WRAP;
   }
 
   // Item 5 — per-template structure resolver. Templates that want to
@@ -143,7 +184,7 @@ import "../../state.js";
   }
 
   APP.printTemplateUtils = {
-    DAYS, el, page, header, footer, emptyPage,
+    DAYS, el, page, header, footer, emptyPage, schoolTitle, dateLine,
     cardAtFor, subjectLabel, teacherList, cellTextMode,
     tableCSS, gridCSS, gridCols, thCSS, tdCSS,
     structureFor,
