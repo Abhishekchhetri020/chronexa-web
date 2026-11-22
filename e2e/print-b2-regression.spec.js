@@ -122,3 +122,50 @@ test("B2-P06: Export PDF printScope closes cleanly on Escape and afterprint", as
   await page.evaluate(() => window.dispatchEvent(new Event("afterprint")));
   await expect(page.locator(".chrx-preview-overlay.is-open")).toHaveCount(0);
 });
+
+test("D2-P08: dense 66-teacher / 34-class / 42-subject matrices auto-paginate and Fit A4 without Fit-to-page", async ({ page }) => {
+  await loadDemoSchool(page);
+  await page.evaluate(() => {
+    document.getElementById("chrx-pwa-banner")?.remove();
+    const S = window.APP.school;
+    // Scale up to match the real 66-teacher / 34-class / 42-subject school density
+    while ((S.teachers || []).length < 66) {
+      const i = S.teachers.length + 1;
+      S.teachers.push({ id: `T_SYN_${i}`, name: `Teacher Number ${i} Sharma`, short: `T${i}`, abbr: `T${i}` });
+    }
+    while ((S.classes || []).length < 34) {
+      const i = S.classes.length + 1;
+      S.classes.push({ id: `C_SYN_${i}`, name: `Class ${i}A`, short: `${i}A` });
+    }
+    while ((S.subjects || []).length < 42) {
+      const i = S.subjects.length + 1;
+      S.subjects.push({ id: `S_SYN_${i}`, name: `Subject ${i}`, short: `SUB${i}`, abbr: `SUB${i}` });
+    }
+    window.APP.printSettings = Object.assign({}, window.APP.printSettings, { fitToPage: false });
+    window.dispatchEvent(new Event("app:print-preview"));
+  });
+  await expect(page.locator(".chrx-preview-overlay.is-open")).toBeVisible();
+
+  for (const tpl of ["summary", "summary_of_teachers", "contract_overview", "wait_points_teachers", "wall_poster_teachers"]) {
+    await page.selectOption(`${CONTROLS} select`, tpl);
+    await expect(page.locator(PAGE)).toBeVisible();
+    const info = await page.evaluate(() => {
+      const ind = document.querySelector(".chrx-preview-controls .chrx-pp-indicator")?.textContent?.trim() || "";
+      const fit = document.querySelector(".chrx-preview-controls [class*='fit'], .chrx-fit-badge")?.textContent?.trim() || "";
+      const p = document.querySelector(".chrx-preview-doc .chrx-preview-page");
+      return {
+        ind,
+        fit,
+        overW: p ? p.scrollWidth - p.clientWidth : 999,
+        overH: p ? p.scrollHeight - p.clientHeight : 999,
+        fitToPage: !!window.APP?.printSettings?.fitToPage,
+      };
+    });
+    expect(info.fitToPage, `${tpl} fitToPage should stay false`).toBe(false);
+    expect(info.fit, `${tpl} should Fit A4, got "${info.fit}"`).toMatch(/Fits A4/i);
+    expect(info.overW, `${tpl} horizontal overflow`).toBeLessThanOrEqual(2);
+    expect(info.overH, `${tpl} vertical overflow`).toBeLessThanOrEqual(2);
+    const m = info.ind.match(/Page\s+1\s*\/\s*(\d+)/);
+    expect(m && Number(m[1]), `${tpl} should auto-paginate to >1 page, got "${info.ind}"`).toBeGreaterThan(1);
+  }
+});

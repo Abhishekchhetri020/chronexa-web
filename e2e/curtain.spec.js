@@ -270,16 +270,47 @@ test.describe("bottom curtain", () => {
     await page.locator(CURTAIN).evaluate(() => window.Curtain.open({ state: "expanded" }));
     await expect(page.locator(CURTAIN)).toHaveAttribute("data-state", "expanded");
     await expect.poll(() => curtainHeight(page), { timeout: 5_000 }).toBeGreaterThan(190);
+    await expect(pendingCard).toBeVisible();
+
     const target = page.locator(
-      `#editor-root .chrx-slot[data-day="${meta.day}"][data-period="${meta.period}"]`
+      `#editor-root .chrx-slot.empty[data-day="${meta.day}"][data-period="${meta.period}"]`
     ).first();
+    await expect(target).toBeVisible();
+
+    // Wait for both layout boxes to settle (curtain height committed, pendingCard
+    // painted inside the expanded body, and target uncovered above the curtain).
+    await expect.poll(async () => {
+      const cb = await page.locator(CURTAIN).boundingBox();
+      const fb = await pendingCard.boundingBox();
+      const tb = await target.boundingBox();
+      if (!cb || !fb || !tb) return false;
+      if (fb.width < 10 || fb.height < 10) return false;
+      // Ensure target center is above the curtain overlay
+      if (tb.y + tb.height / 2 >= cb.y) {
+        await target.scrollIntoViewIfNeeded();
+        return false;
+      }
+      return true;
+    }, { timeout: 5_000 }).toBe(true);
 
     const from = await pendingCard.boundingBox();
     const to = await target.boundingBox();
     expect(from).not.toBeNull();
-    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+    expect(to).not.toBeNull();
+    const fx = from.x + from.width / 2;
+    const fy = from.y + from.height / 2;
+    const tx = to.x + to.width / 2;
+    const ty = to.y + to.height / 2;
+
+    await page.mouse.move(fx, fy);
     await page.mouse.down();
-    await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 12 });
+    // Nudge past the drag-pickup threshold and wait for card-in-hand state before moving to target
+    await page.mouse.move(fx, fy - 8, { steps: 3 });
+    await expect.poll(
+      () => page.evaluate(() => Boolean(window.CardInHand?.active?.() || document.querySelector(".chrx-card-ghost, .chrx-drag-ghost"))),
+      { timeout: 3_000 }
+    ).toBe(true);
+    await page.mouse.move(tx, ty, { steps: 12 });
     await page.mouse.up();
 
     // 4. Placed again, tray empty, curtain back to slim.

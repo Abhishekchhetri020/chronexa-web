@@ -79,7 +79,7 @@ test("print preview smoke: mounts, templates, multi-page print, clean console", 
   const summaryTpl = await selectTemplate(page, "summary");
   expect(summaryTpl.index).toBe(1);
   expect(summaryTpl.total).toBeGreaterThanOrEqual(1);
-  expect(summaryTpl.total).toBeLessThanOrEqual(7);
+  expect(summaryTpl.total).toBeLessThanOrEqual(school.classes);
 
   // 3. printAllPages: mount everything, then restore single-page view ------
   await selectTemplate(page, "teacher");

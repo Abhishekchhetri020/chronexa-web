@@ -546,7 +546,7 @@ import { entityLabel, entityFull } from "./entity_label.js";
     thead.appendChild(periodRow);
   }
 
-  function renderPage(report, school, periods, pageBindings, pageIndex, totalPages) {
+  function renderPage(report, school, periods, pageBindings, pageIndex, totalPages, rowSliceOverride, partSuffix) {
     const allCards = school.cards || [];
     const pageCards = cardsMatching(allCards, pageBindings);
 
@@ -556,6 +556,7 @@ import { entityLabel, entityFull } from "./entity_label.js";
       for (const [, ent] of pageBindings.entries()) titleParts.push(ent.name || ent.abbr);
       pageTitle = titleParts.join(" · ");
     }
+    if (partSuffix) pageTitle = pageTitle ? (pageTitle + " (" + partSuffix + ")") : partSuffix;
 
     const rowCombos = axisCombinations(report.rows, school, periods, report.filters);
     const colCombos = axisCombinations(report.cols, school, periods, report.filters);
@@ -573,6 +574,9 @@ import { entityLabel, entityFull } from "./entity_label.js";
         const combined = new Map([...pageBindings, ...rc]);
         return cardsMatching(pageCards, combined).length > 0;
       });
+    }
+    if (Array.isArray(rowSliceOverride)) {
+      visibleRows = rowSliceOverride;
     }
 
     const denseCols = visibleCols.length;
@@ -1017,15 +1021,53 @@ import { entityLabel, entityFull } from "./entity_label.js";
     return lessonCards.concat(dutyCards);
   }
 
+  function maxMatrixRowsPerPage(report, orientation) {
+    const PS0 = APP.printSettings || {};
+    const userMargin = Math.max(0, Math.min(40, parseInt(PS0.marginMM, 10) || 0));
+    const paperH = orientation === "portrait" ? 297 : 210;
+    const multiHeader = Array.isArray(report.cols) && report.cols.length > 1;
+    const chromePx = multiHeader ? 200 : 165;
+    const usablePx = Math.max(220, (paperH - userMargin * 2 - 28) * 3.7795 - chromePx);
+    const isPoster = report.context === "poster" || report.cells === "draw-lessons";
+    const isTeacher = Array.isArray(report.rows) && report.rows.includes("teacher");
+    const rowPx = isTeacher ? (isPoster ? 44 : 42) : (isPoster ? 34 : 30);
+    return Math.max(8, Math.floor(usablePx / rowPx));
+  }
+
   function renderReport(report, school, periods) {
     if (!report || !school) return [];
     const joinedCards = joinCardsWithLessons(school);
     const resolvedPeriods = periods || PERIODS_DEFAULT;
     const joinedSchool = Object.assign({}, school, { cards: joinedCards, _printPeriods: resolvedPeriods });
     const pageCombos = axisCombinations(report.pages, joinedSchool, resolvedPeriods, report.filters);
+    const isEntityMatrix = Array.isArray(report.rows) && report.rows.length > 0 &&
+      !report.rows.includes("day") && !report.rows.includes("period");
     const out = [];
     pageCombos.forEach((bindings, idx) => {
-      out.push(renderPage(report, joinedSchool, periods || PERIODS_DEFAULT, bindings, idx, pageCombos.length));
+      if (!isEntityMatrix) {
+        out.push(renderPage(report, joinedSchool, resolvedPeriods, bindings, idx, pageCombos.length));
+        return;
+      }
+      const pageCards = cardsMatching(joinedCards, bindings);
+      let visibleRows = axisCombinations(report.rows, joinedSchool, resolvedPeriods, report.filters);
+      if (report.hideEmptyRows) {
+        visibleRows = visibleRows.filter(rc => {
+          const combined = new Map([...bindings, ...rc]);
+          return cardsMatching(pageCards, combined).length > 0;
+        });
+      }
+      const colCombos = axisCombinations(report.cols, joinedSchool, resolvedPeriods, report.filters);
+      const orientation = report.pageSetup?.orientation || (colCombos.length > 10 ? "landscape" : "portrait");
+      const perPage = maxMatrixRowsPerPage(report, orientation);
+      if (visibleRows.length <= perPage) {
+        out.push(renderPage(report, joinedSchool, resolvedPeriods, bindings, idx, pageCombos.length, visibleRows));
+        return;
+      }
+      const totalParts = Math.ceil(visibleRows.length / perPage);
+      for (let start = 0, part = 1; start < visibleRows.length; start += perPage, part++) {
+        const slice = visibleRows.slice(start, start + perPage);
+        out.push(renderPage(report, joinedSchool, resolvedPeriods, bindings, idx, pageCombos.length, slice, part + "/" + totalParts));
+      }
     });
     return out;
   }
