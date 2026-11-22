@@ -340,7 +340,7 @@ import "../entities/dialog_shell.js";
         <div class="text-xs text-slate-500">Captures perspective, focus vs overview, zoom, color by, and current selection.</div>
         <div class="flex items-center gap-2 pt-1">
           <input type="text" id="chrx-sv-name-input" placeholder="e.g. Grade 10 Focus" class="flex-1 px-2.5 py-1.5 border border-slate-300 rounded text-xs bg-white focus:outline-none focus:ring-1 focus:ring-blue-500">
-          <button type="button" id="chrx-sv-save-btn" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded text-xs">Save</button>
+          <button type="button" id="chrx-sv-save-btn" class="chrx-btn chrx-btn--primary text-xs">Save</button>
         </div>
       `;
       container.appendChild(saveBox);

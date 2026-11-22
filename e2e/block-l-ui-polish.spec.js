@@ -182,4 +182,192 @@ test.describe("Block L — UI polish, L0/L1b early-click race, dark mode & multi
 
     expect(errors).toEqual([]);
   });
+
+  test("L3-boot-crash: blocking a JS chunk before boot restores queued CTA and shows plain boot error", async ({ page }) => {
+    test.setTimeout(45_000);
+    let aborted = 0;
+    await page.route("**/assets/*.js", async (route) => {
+      const url = route.request().url();
+      if (aborted === 0 && /\/assets\/index-.*\.js/.test(url)) {
+        aborted++;
+        await route.abort("failed");
+        return;
+      }
+      await route.continue();
+    });
+
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    const cta = page.locator("#cta-build-new");
+    await cta.click({ timeout: 5_000 });
+
+    // Boot crash fail-safe must show plain error and restore button (never stuck on "Loading…")
+    const errBox = page.locator("#chrx-boot-error");
+    await expect(errBox).toBeVisible({ timeout: 10_000 });
+    await expect(errBox).toContainText("Chronexa could not start. Please refresh the page.");
+    await expect(cta).not.toHaveAttribute("aria-busy", "true");
+    const ctaText = await cta.innerText();
+    expect(ctaText).not.toContain("Loading…");
+  });
+
+  test("L3-dark-audit: every dialog & topbar toggle in dark mode has zero white-on-white text, closes on Escape, and captures L3 shots", async ({ page }) => {
+    test.setTimeout(120_000);
+    const L3_DIR = path.resolve("docs/neon/ui-shots/l3");
+    fs.mkdirSync(L3_DIR, { recursive: true });
+    const errors = [];
+    page.on("pageerror", (e) => errors.push(String(e)));
+
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/");
+    await page.waitForFunction(() => window.__CHRX_READY__ && window.APP);
+
+    await page.locator("#cta-landing-demo").click();
+    await page.locator("#editor-root .chrx-vkarta").first().waitFor({ timeout: 30_000 });
+
+    // Light shots (1440)
+    await page.evaluate(() => document.documentElement.setAttribute("data-theme", "light"));
+    await page.waitForTimeout(150);
+    await page.screenshot({ path: path.join(L3_DIR, "editor-1440-light.png") });
+
+    // Switch to dark mode
+    await page.evaluate(() => document.documentElement.setAttribute("data-theme", "dark"));
+    await page.waitForTimeout(200);
+    await page.screenshot({ path: path.join(L3_DIR, "editor-1440-dark.png") });
+
+    // Check .chrx-shell-toggle buttons are NOT light rgb(239, 239, 241) in dark mode
+    const toggleBgs = await page.locator(".chrx-shell-toggle").evaluateAll((els) =>
+      els.map((el) => ({ label: el.getAttribute("aria-label"), bg: getComputedStyle(el).backgroundColor }))
+    );
+    for (const t of toggleBgs) {
+      expect(t.bg, `dark shell toggle ${t.label} should not be light`).not.toBe("rgb(239, 239, 241)");
+      expect(t.bg, `dark shell toggle ${t.label} should not be white`).not.toBe("rgb(255, 255, 255)");
+    }
+
+    // Helper: detect white/near-white text on white/near-white effective background inside a container
+    async function findWhiteOnWhite(selector) {
+      return page.evaluate((sel) => {
+        const root = document.querySelector(sel);
+        if (!root) return [{ missing: sel }];
+        function parseRgb(str) {
+          const m = str && str.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
+          if (!m) return null;
+          return { r: +m[1], g: +m[2], b: +m[3], a: m[4] === undefined ? 1 : +m[4] };
+        }
+        function lum(c) {
+          const s = [c.r, c.g, c.b].map((v) => {
+            v /= 255;
+            return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+          });
+          return 0.2126 * s[0] + 0.7152 * s[1] + 0.0722 * s[2];
+        }
+        function effectiveBg(el) {
+          let cur = el;
+          while (cur && cur.nodeType === 1) {
+            const c = parseRgb(getComputedStyle(cur).backgroundColor);
+            if (c && c.a > 0.2) return c;
+            cur = cur.parentElement;
+          }
+          return { r: 21, g: 19, b: 15, a: 1 };
+        }
+        const bad = [];
+        for (const el of root.querySelectorAll("*")) {
+          const r = el.getBoundingClientRect();
+          if (r.width === 0 || r.height === 0) continue;
+          const style = getComputedStyle(el);
+          if (style.visibility === "hidden" || style.display === "none" || parseFloat(style.opacity) === 0) continue;
+          const directText = [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent.trim()).join("");
+          if (!directText) continue;
+          const fg = parseRgb(style.color);
+          const bg = effectiveBg(el);
+          if (!fg || !bg) continue;
+          const fL = lum(fg), bL = lum(bg);
+          if (fL > 0.65 && bL > 0.65) {
+            bad.push({ text: directText.slice(0, 40), fg: style.color, bg: `rgb(${bg.r},${bg.g},${bg.b})`, tag: el.tagName, cls: el.className });
+          }
+        }
+        return bad;
+      }, selector);
+    }
+
+    const dialogs = [
+      { name: "publish", event: "app:publish-timetable", sel: "[data-testid='chrx-pub-dialog']", shot: "publish-1440-dark.png" },
+      { name: "advisor", event: "app:advisor", sel: ".chrx-adv-panel", shot: "advisor-1440-dark.png" },
+      { name: "statistics", event: "app:statistics", sel: ".chrx-stats-panel", shot: "statistics-1440-dark.png" },
+      { name: "version-history", event: "app:open-version-history", sel: ".chrx-vh-panel", shot: "version-history-1440-dark.png" },
+      { name: "verification", event: "app:verification-pro", sel: ".chrx-vpro-panel", shot: "verification-1440-dark.png" },
+      { name: "export", event: "app:export-dialog", sel: ".chrx-export-dialog", shot: "export-1440-dark.png" },
+      { name: "lessons", event: "app:open-entity", detail: { kind: "lessons" }, sel: ".chrx-ent-dialog", shot: "lessons-1440-dark.png" },
+    ];
+
+    for (const d of dialogs) {
+      await page.evaluate(({ ev, det }) => {
+        window.dispatchEvent(new CustomEvent(ev, det ? { detail: det } : undefined));
+      }, { ev: d.event, det: d.detail });
+      await expect(page.locator(d.sel).first()).toBeVisible({ timeout: 8_000 });
+      await page.waitForTimeout(200);
+      if (d.shot) await page.screenshot({ path: path.join(L3_DIR, d.shot) });
+
+      const bad = await findWhiteOnWhite(d.sel);
+      expect(bad, `white-on-white elements in dark mode ${d.name}`).toEqual([]);
+
+      // Escape must close every dialog cleanly
+      await page.keyboard.press("Escape");
+      await expect(page.locator(d.sel)).toHaveCount(0, { timeout: 5_000 });
+    }
+
+    // 390px mobile dark & light shots
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(200);
+    await page.screenshot({ path: path.join(L3_DIR, "editor-390-dark.png") });
+    await page.evaluate(() => document.documentElement.setAttribute("data-theme", "light"));
+    await page.waitForTimeout(150);
+    await page.screenshot({ path: path.join(L3_DIR, "editor-390-light.png") });
+
+    expect(errors).toEqual([]);
+  });
+
+
+  test("L3-item0: early-click guard lives in <head> so real mouse click on Try demo under 200 KB/s + 300ms latency opens demo", async ({ page, context }) => {
+    test.setTimeout(150_000);
+    const errors = [];
+    page.on("pageerror", (e) => errors.push(String(e)));
+
+    const cdp = await context.newCDPSession(page);
+    await cdp.send("Network.enable");
+    await cdp.send("Network.emulateNetworkConditions", {
+      offline: false,
+      latency: 300,
+      downloadThroughput: 200 * 1024,
+      uploadThroughput: 200 * 1024,
+    });
+
+    try {
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.goto("/", { waitUntil: "commit" });
+      const tryDemo = page.locator("[data-closing-demo]").first();
+      await tryDemo.waitFor({ state: "visible", timeout: 15_000 });
+
+      // Guard must ALREADY be wired in <head> before <body> finishes / before JS boots
+      const wired = await page.evaluate(() => !!window.__CHRX_EARLY_WIRED__);
+      expect(wired).toBe(true);
+
+      const box = await tryDemo.boundingBox();
+      expect(box).not.toBeNull();
+      await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+
+      // Demo grid must open cleanly once modules finish downloading
+      await page.locator("#editor-root .chrx-vkarta").first().waitFor({ timeout: 120_000 });
+      const cards = await page.evaluate(() => (window.APP?.school?.cards || []).length);
+      expect(cards).toBeGreaterThan(500);
+      await expect(page.locator("#chrx-boot-timeout")).toHaveCount(0);
+      expect(errors).toEqual([]);
+    } finally {
+      await cdp.send("Network.emulateNetworkConditions", {
+        offline: false,
+        latency: 0,
+        downloadThroughput: -1,
+        uploadThroughput: -1,
+      }).catch(() => {});
+    }
+  });
+
 });

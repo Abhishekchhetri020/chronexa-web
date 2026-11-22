@@ -39,6 +39,89 @@
   .grid-table .tt-cell { min-width: 80px; }
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif; }
 </style>
+<script>
+  // L0/L1b: Queue early clicks on landing CTAs until ALL entry modules finish booting,
+  // with visible "Loading..." feedback and a calm 20-second notice (only if a CTA was clicked).
+  (function () {
+    if (window.__CHRX_EARLY_WIRED__) return;
+    window.__CHRX_EARLY_WIRED__ = true;
+    function restoreQueuedBtn() {
+      var id = window.__CHRX_EARLY_CLICK__;
+      if (!id) return;
+      var b = document.getElementById(id);
+      if (b) {
+        b.removeAttribute("aria-busy");
+        if (b.dataset && b.dataset.chrxOrigHtml) {
+          b.innerHTML = b.dataset.chrxOrigHtml;
+          delete b.dataset.chrxOrigHtml;
+        }
+      }
+    }
+    window.__CHRX_RESTORE_EARLY_BTN__ = restoreQueuedBtn;
+    document.addEventListener("click", function (e) {
+      if (window.__CHRX_READY__ || window.__CHRX_BOOT_FAILED__) return;
+      var btn = e.target && e.target.closest && e.target.closest("#cta-build-new, #cta-landing-demo, [data-closing-demo], #cta-load-demo");
+      if (!btn) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (!btn.id) btn.id = "chrx-early-cta";
+      if (window.__CHRX_EARLY_CLICK__ && window.__CHRX_EARLY_CLICK__ !== btn.id) {
+        restoreQueuedBtn();
+      }
+      window.__CHRX_EARLY_CLICK__ = btn.id;
+      btn.setAttribute("aria-busy", "true");
+      if (btn.dataset && !btn.dataset.chrxOrigHtml) {
+        btn.dataset.chrxOrigHtml = btn.innerHTML;
+        btn.textContent = "Loading…";
+      }
+      // Start a 20s reassurance notice ONLY when a CTA click is actually queued.
+      // Never set __CHRX_READY__ early and keep the click queued so slow connections still replay cleanly.
+      if (!window.__CHRX_BOOT_NOTICE_TIMER__) {
+        window.__CHRX_BOOT_NOTICE_TIMER__ = setTimeout(function () {
+          window.__CHRX_BOOT_NOTICE_TIMER__ = null;
+          if (window.__CHRX_READY__ || !window.__CHRX_EARLY_CLICK__) return;
+          var slot = document.getElementById("error-slot") || document.body;
+          if (slot && !document.getElementById("chrx-boot-timeout")) {
+            var box = document.createElement("div");
+            box.id = "chrx-boot-timeout";
+            box.setAttribute("role", "status");
+            box.style.cssText = "position:fixed;bottom:16px;right:16px;z-index:10050;background:#0f172a;color:#f8fafc;border:1px solid rgba(148,163,184,.35);padding:12px 16px;border-radius:10px;font:500 13px/1.4 -apple-system,BlinkMacSystemFont,sans-serif;box-shadow:0 8px 24px rgba(15,23,42,.28);max-width:360px";
+            box.textContent = "Still loading Chronexa — your click will open as soon as it is ready.";
+            slot.appendChild(box);
+          }
+        }, 20000);
+      }
+    }, true);
+    // L3 boot-crash fail-safe: if a module fails to load or throws before __CHRX_READY__,
+    // never leave a queued CTA stuck on "Loading…"; restore the button and show a plain message.
+    function handleBootCrash(e) {
+      if (window.__CHRX_READY__) return;
+      var isScriptErr = e && e.type === "error" && (e.error || (e.target && (e.target.tagName === "SCRIPT" || e.target.tagName === "LINK")));
+      var isRej = e && e.type === "unhandledrejection";
+      if (!isScriptErr && !isRej) return;
+      if (window.__CHRX_BOOT_NOTICE_TIMER__) {
+        clearTimeout(window.__CHRX_BOOT_NOTICE_TIMER__);
+        window.__CHRX_BOOT_NOTICE_TIMER__ = null;
+      }
+      var notice = document.getElementById("chrx-boot-timeout");
+      if (notice) notice.remove();
+      restoreQueuedBtn();
+      window.__CHRX_EARLY_CLICK__ = null;
+      window.__CHRX_BOOT_FAILED__ = true;
+      var slot = document.getElementById("error-slot") || document.body;
+      if (slot && !document.getElementById("chrx-boot-error")) {
+        var box = document.createElement("div");
+        box.id = "chrx-boot-error";
+        box.setAttribute("role", "alert");
+        box.style.cssText = "position:fixed;bottom:16px;right:16px;z-index:10050;background:#991b1b;color:#fff;padding:12px 16px;border-radius:10px;font:500 13px/1.4 -apple-system,BlinkMacSystemFont,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.3);max-width:360px";
+        box.textContent = "Chronexa could not start. Please refresh the page.";
+        slot.appendChild(box);
+      }
+    }
+    window.addEventListener("error", handleBootCrash, true);
+    window.addEventListener("unhandledrejection", handleBootCrash);
+  })();
+</script>
 </head>
 <!-- chrx-landing-active is on <body> from the first byte: the landing is the
      first painted surface, and the brief requires app chrome to be absent while
@@ -310,10 +393,10 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       <button id="editor-saved-views" type="button" data-icon="camera" title="Saved views (manage, save, apply)"><span class="chrx-tool__label">Views</span></button>
       <button id="editor-toggle-skin" type="button" data-icon="grid" title="Classic aSc-style skin"><span class="chrx-tool__label">Classic</span></button>
       <button id="editor-toggle-dark" type="button" data-icon="moon" title="Appearance: light / dark"><span class="chrx-tool__label">Dark</span></button>
-      <div id="editor-dated-view" class="flex items-center gap-1 ml-1" style="gap:4px;">
-        <label for="editor-date-input" class="text-xs text-slate-500 font-medium chrx-tool__label">Date:</label>
-        <input type="date" id="editor-date-input" class="text-xs border border-slate-300 rounded px-1.5 py-0.5" title="View timetable for a specific date (substitutions)">
-        <button type="button" id="editor-date-clear" class="text-xs text-slate-400 hover:text-slate-600 px-1 font-bold" title="Clear date filter">×</button>
+      <div id="editor-dated-view" class="chrx-dated-view flex items-center gap-1 ml-1" style="gap:4px;">
+        <label for="editor-date-input" class="chrx-date-label chrx-tool__label">Date:</label>
+        <input type="date" id="editor-date-input" class="chrx-date-input" title="View timetable for a specific date (substitutions)">
+        <button type="button" id="editor-date-clear" class="chrx-date-clear" title="Clear date filter" aria-label="Clear date filter">×</button>
       </div>
     </div>
 
@@ -372,7 +455,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
 <!-- ─────────────────────── SCRIPTS ─────────────────────── -->
 <!-- Bump APP_VER on every deploy so the browser refetches the JS bundle -->
-<script>window.APP_VER = "20261122-p282-l2-ui-polish";</script>
+<script>window.APP_VER = "20261123-p283-l3-ui-polish";</script>
 <!-- Nuclear SW migration: if an old cache-first SW is still controlling,
      unregister it and reload to pick up the new network-first SW. -->
 <script>
@@ -458,7 +541,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         ov.style.cssText = "position:fixed;inset:0;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;z-index:9999;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;";
         ov.innerHTML = ''
           + '<div role="dialog" aria-modal="true" style="background:#fff;border-radius:14px;box-shadow:0 24px 64px rgba(15,23,42,.25);padding:24px 26px;max-width:440px;width:calc(100% - 32px);">'
-          +   '<div style="font-size:32px;line-height:1;margin-bottom:8px;">📝</div>'
+          +   '<div style="margin-bottom:10px;color:var(--chrx-accent,#0d4f54);"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H19v15H6.5A2.5 2.5 0 0 0 4 20.5v-15z"/><path d="M4 18v2.5A2.5 2.5 0 0 0 6.5 23H19"/><path d="M9 8h6M9 11.5h6"/></svg></div>'
           +   '<h2 style="font-size:18px;font-weight:700;color:#0f172a;margin:0 0 8px;">No lessons to schedule yet</h2>'
           +   '<p style="font-size:13px;line-height:1.5;color:#475569;margin:0 0 18px;">'
           +     'A <strong>lesson</strong> connects a class, a subject, and a teacher — it tells Generate what to place on the grid.'
@@ -466,7 +549,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
           +   '</p>'
           +   '<div style="display:flex;gap:8px;justify-content:flex-end;">'
           +     '<button type="button" data-close style="background:#fff;border:1px solid #cbd5e1;color:#0f172a;padding:8px 14px;border-radius:7px;cursor:pointer;font-size:13px;font-weight:500;">Not now</button>'
-          +     '<button type="button" data-open-lessons style="background:#1d4ed8;border:0;color:#fff;padding:8px 16px;border-radius:7px;cursor:pointer;font-size:13px;font-weight:600;">Open Lessons</button>'
+          +     '<button type="button" data-open-lessons style="background:var(--chrx-accent,#0d4f54);border:0;color:#fff;padding:8px 16px;border-radius:7px;cursor:pointer;font-size:13px;font-weight:600;">Open Lessons</button>'
           +   '</div>'
           + '</div>';
         document.body.appendChild(ov);
@@ -555,60 +638,5 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
 <!-- Appearance (light / dark) is wired in js/ui/main.js (v3 studio). -->
 
-<script>
-  // L0/L1b: Queue early clicks on landing CTAs until ALL entry modules finish booting,
-  // with visible "Loading..." feedback and a calm 20-second notice (only if a CTA was clicked).
-  (function () {
-    if (window.__CHRX_EARLY_WIRED__) return;
-    window.__CHRX_EARLY_WIRED__ = true;
-    function restoreQueuedBtn() {
-      var id = window.__CHRX_EARLY_CLICK__;
-      if (!id) return;
-      var b = document.getElementById(id);
-      if (b) {
-        b.removeAttribute("aria-busy");
-        if (b.dataset && b.dataset.chrxOrigHtml) {
-          b.innerHTML = b.dataset.chrxOrigHtml;
-          delete b.dataset.chrxOrigHtml;
-        }
-      }
-    }
-    window.__CHRX_RESTORE_EARLY_BTN__ = restoreQueuedBtn;
-    document.addEventListener("click", function (e) {
-      if (window.__CHRX_READY__) return;
-      var btn = e.target && e.target.closest && e.target.closest("#cta-build-new, #cta-landing-demo, [data-closing-demo], #cta-load-demo");
-      if (!btn) return;
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      if (!btn.id) btn.id = "chrx-early-cta";
-      if (window.__CHRX_EARLY_CLICK__ && window.__CHRX_EARLY_CLICK__ !== btn.id) {
-        restoreQueuedBtn();
-      }
-      window.__CHRX_EARLY_CLICK__ = btn.id;
-      btn.setAttribute("aria-busy", "true");
-      if (btn.dataset && !btn.dataset.chrxOrigHtml) {
-        btn.dataset.chrxOrigHtml = btn.innerHTML;
-        btn.textContent = "Loading…";
-      }
-      // Start a 20s reassurance notice ONLY when a CTA click is actually queued.
-      // Never set __CHRX_READY__ early and keep the click queued so slow connections still replay cleanly.
-      if (!window.__CHRX_BOOT_NOTICE_TIMER__) {
-        window.__CHRX_BOOT_NOTICE_TIMER__ = setTimeout(function () {
-          window.__CHRX_BOOT_NOTICE_TIMER__ = null;
-          if (window.__CHRX_READY__ || !window.__CHRX_EARLY_CLICK__) return;
-          var slot = document.getElementById("error-slot") || document.body;
-          if (slot && !document.getElementById("chrx-boot-timeout")) {
-            var box = document.createElement("div");
-            box.id = "chrx-boot-timeout";
-            box.setAttribute("role", "status");
-            box.style.cssText = "position:fixed;bottom:16px;right:16px;z-index:10050;background:#0f172a;color:#f8fafc;border:1px solid rgba(148,163,184,.35);padding:12px 16px;border-radius:10px;font:500 13px/1.4 -apple-system,BlinkMacSystemFont,sans-serif;box-shadow:0 8px 24px rgba(15,23,42,.28);max-width:360px";
-            box.textContent = "Still loading Chronexa — your click will open as soon as it is ready.";
-            slot.appendChild(box);
-          }
-        }, 20000);
-      }
-    }, true);
-  })();
-</script>
 </body>
 </html>

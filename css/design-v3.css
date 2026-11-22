@@ -1237,9 +1237,9 @@ body.chrx-editor-dark .chrx-vkarta[data-halo="amber"]{
 /* ── Plan E: editor accessibility ──────────────────────────────────────────
    Visible keyboard focus, a colour-INDEPENDENT conflict cue (shape), and a
    reduced-motion catch-all for the Plan B animations. */
-.chrx-vkarta:focus-visible{ outline:3px solid #2563eb; outline-offset:1px; z-index:6; }
-.chrx-slot:focus-visible{ outline:3px solid #2563eb; outline-offset:-3px; z-index:5; }
-.chrx-rowlabel:focus-visible{ outline:3px solid #2563eb; outline-offset:-2px; }
+.chrx-vkarta:focus-visible{ outline:3px solid var(--chrx-accent, #0d4f54); outline-offset:1px; z-index:6; }
+.chrx-slot:focus-visible{ outline:3px solid var(--chrx-accent, #0d4f54); outline-offset:-3px; z-index:5; }
+.chrx-rowlabel:focus-visible{ outline:3px solid var(--chrx-accent, #0d4f54); outline-offset:-2px; }
 body.chrx-editor-dark .chrx-vkarta:focus-visible,
 body.chrx-editor-dark .chrx-slot:focus-visible{ outline-color:#7dd3fc; }
 
@@ -1510,4 +1510,83 @@ body:has(#step-1:not(.hidden)) .chrx-main{ overflow:visible; height:auto; }
   background: var(--chrx-bg-tile, #2c2c2e) !important;
   color: var(--chrx-accent, #4fc3c9) !important;
   border-color: var(--chrx-accent, #4fc3c9) !important;
+}
+
+/* Block L3: theme-aware topbar date controls, dark-mode shell toggles, and dialog/preview dark-mode parity */
+.chrx-date-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--chrx-fg-secondary, #475569);
+}
+.chrx-date-input {
+  font-size: 12px;
+  border: 1px solid var(--chrx-line, #cbd5e1);
+  border-radius: 6px;
+  padding: 2px 6px;
+  background: var(--chrx-bg-input, #ffffff);
+  color: var(--chrx-fg, #0f172a);
+}
+.chrx-date-clear {
+  font-size: 13px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--chrx-fg-secondary, #64748b);
+  cursor: pointer;
+  line-height: 1;
+}
+.chrx-date-clear:hover {
+  background: var(--chrx-bg-tile, #f1f5f9);
+  color: var(--chrx-fg, #0f172a);
+}
+:root[data-theme="dark"] .chrx-shell .chrx-shell-toggle,
+:root[data-theme="dark"] .chrx-shell-toggle {
+  background: transparent !important;
+  color: var(--chrx-fg-secondary, #cbd5e1) !important;
+  border-color: var(--chrx-line, rgba(255, 255, 255, 0.14)) !important;
+}
+:root[data-theme="dark"] .chrx-shell .chrx-shell-toggle:hover,
+:root[data-theme="dark"] .chrx-shell-toggle:hover {
+  background: var(--chrx-bg-tile, #2c2c2e) !important;
+  color: var(--chrx-fg, #f5f5f7) !important;
+}
+:root[data-theme="dark"] .chrx-shell.is-side-hidden .chrx-shell-toggle[data-toggle="side"],
+:root[data-theme="dark"] .chrx-shell.is-rail-hidden .chrx-shell-toggle[data-toggle="rail"],
+:root[data-theme="dark"] .chrx-shell.is-fullscreen .chrx-shell-toggle[data-toggle="fs"] {
+  background: var(--chrx-bg-tile, #2c2c2e) !important;
+  color: var(--chrx-accent, #4fc3c9) !important;
+  border-color: var(--chrx-accent, #4fc3c9) !important;
+}
+:root[data-theme="dark"] .chrx-date-clear {
+  background: transparent;
+  color: var(--chrx-fg-secondary, #cbd5e1);
+}
+:root[data-theme="dark"] .chrx-date-clear:hover {
+  background: var(--chrx-bg-tile, #2c2c2e);
+  color: var(--chrx-fg, #f5f5f7);
+}
+:root[data-theme="dark"] .chrx-ent-sheet,
+:root[data-theme="dark"] .chrx-ent-dialog,
+:root[data-theme="dark"] .chrx-export-dialog,
+:root[data-theme="dark"] .chrx-sub-dialog,
+:root[data-theme="dark"] .csu-dialog {
+  background: var(--chrx-bg-elev, #22201c);
+  color: var(--chrx-fg, #f5f5f7);
+  border-color: var(--chrx-line, #2c2823);
+}
+:root[data-theme="dark"] .chrx-ent-sheet input:not([type="checkbox"]):not([type="radio"]):not([type="color"]),
+:root[data-theme="dark"] .chrx-ent-sheet select,
+:root[data-theme="dark"] .chrx-ent-sheet textarea,
+:root[data-theme="dark"] .chrx-ent-dialog input:not([type="checkbox"]):not([type="radio"]):not([type="color"]),
+:root[data-theme="dark"] .chrx-ent-dialog select,
+:root[data-theme="dark"] .chrx-ent-dialog textarea,
+:root[data-theme="dark"] .chrx-export-dialog select,
+:root[data-theme="dark"] .chrx-export-dialog input,
+:root[data-theme="dark"] .chrx-preview-overlay select,
+:root[data-theme="dark"] .chrx-preview-overlay input:not([type="checkbox"]):not([type="radio"]):not([type="color"]) {
+  background: var(--chrx-bg-input, #1c1a16);
+  color: var(--chrx-fg, #f5f5f7);
+  border-color: var(--chrx-line, #3a3630);
 }

@@ -366,8 +366,8 @@ import "./cell_style_dialog.js";
       activeTabId = id;
       tabBar.querySelectorAll("button").forEach(b => {
         const on = b.dataset.tab === id;
-        b.style.borderBottom = on ? "2px solid #2563eb" : "2px solid transparent";
-        b.style.color = on ? "#2563eb" : "#475569";
+        b.style.borderBottom = on ? "2px solid var(--chrx-accent,#0d4f54)" : "2px solid transparent";
+        b.style.color = on ? "var(--chrx-accent,#0d4f54)" : "#475569";
       });
       while (body.firstChild) body.removeChild(body.firstChild);
       const t = TABS.find(t => t.id === id);

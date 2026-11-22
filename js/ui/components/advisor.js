@@ -613,17 +613,22 @@ import "./master_solver_wizard.js";
     let showIgnored = false;
     const expandedLessons = new Set();
 
+    const previousFocus = document.activeElement;
+    const ic = (name, size = 16) => (window.ChrxIcons ? window.ChrxIcons.node(name, size) : null);
     const root = el("div", {
       class: "chrx-adv-root",
       role: "dialog",
       "aria-modal": "true",
       onclick: e => { if (e.target === root) close(); },
     });
-    const panel = el("div", { class: "chrx-adv-panel" });
+    const panel = el("div", { class: "chrx-adv-panel", tabindex: "-1" });
 
     function close() {
       root.remove();
       document.removeEventListener("keydown", onKey, true);
+      if (previousFocus && previousFocus.isConnected && typeof previousFocus.focus === "function") {
+        try { previousFocus.focus(); } catch (_) {}
+      }
     }
     function onKey(e) {
       if (e.key === "Escape") { e.preventDefault(); close(); }
@@ -636,8 +641,8 @@ import "./master_solver_wizard.js";
       // Header
       panel.appendChild(el("header", { class: "chrx-adv-head" },
         el("div", null,
-          el("h2", null, "💡 Timetable Advisor"),
-          el("small", { style: "color:#64748b;font-size:12px" },
+          el("h2", null, ic("bulb", 18), "Timetable Advisor"),
+          el("small", { style: "color:var(--chrx-fg-secondary, #64748b);font-size:12px" },
             "Model validation & 1-click improvement suggestions"),
         ),
         el("button", { class: "chrx-adv-close", "aria-label": "Close", onclick: close }, "×"),
@@ -688,11 +693,11 @@ import "./master_solver_wizard.js";
       // SECTION 1: MODEL CHECKS
       // ─────────────────────────────────────────────────────────────
       list.appendChild(el("h3", { class: "chrx-adv-sec-title" },
-        "🔍 Model Checks (Pre-generation Validation)"));
+        ic("search", 14), "Model Checks (Pre-generation Validation)"));
 
       if (!displayedModel.length) {
         list.appendChild(el("div", { class: "chrx-adv-empty" },
-          "🎉 No model faults detected — timetable structure is sound."));
+          ic("check", 15), "No model faults detected — timetable structure is sound."));
       } else {
         displayedModel.forEach(f => {
           const isExp = expandedLessons.has(f.id);
@@ -779,11 +784,11 @@ import "./master_solver_wizard.js";
       // SECTION 2: SUGGESTIONS (1-Click Apply Actions)
       // ─────────────────────────────────────────────────────────────
       list.appendChild(el("h3", { class: "chrx-adv-sec-title", style: "margin-top:20px" },
-        "⚡ Suggestions (1-Click Actions)"));
+        ic("bolt", 14), "Suggestions (1-Click Actions)"));
 
       if (!suggestionItems.length) {
         list.appendChild(el("div", { class: "chrx-adv-empty" },
-          "🎉 No suggestions at this time."));
+          ic("check", 15), "No suggestions at this time."));
       } else {
         suggestionItems.forEach(s => {
           const card = el("div", {
@@ -836,41 +841,41 @@ import "./master_solver_wizard.js";
     s.id = "chrx-adv-styles";
     s.textContent = `
 .chrx-adv-root{position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:flex-start;justify-content:center;padding:24px;z-index:1100;overflow:auto}
-.chrx-adv-panel{background:#fff;border-radius:14px;width:min(820px,96vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,.3);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#0f172a}
-.chrx-adv-head{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid #e2e8f0}
-.chrx-adv-head h2{margin:0;font-size:18px;color:#1e3a8a}
-.chrx-adv-close{background:none;border:0;font-size:24px;cursor:pointer;color:#64748b;line-height:1}
-.chrx-adv-close:hover{color:#0f172a}
-.chrx-adv-summary{display:flex;justify-content:space-between;align-items:center;padding:10px 20px;background:#f8fafc;font-size:13px;color:#475569;border-bottom:1px solid #e2e8f0}
-.chrx-adv-toggle-ignored{display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;user-select:none}
-.chrx-adv-sec-title{margin:14px 0 6px;font-size:13px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:.04em}
+.chrx-adv-panel{background:var(--chrx-bg-elev,#fff);border:1px solid var(--chrx-line,#e2e8f0);border-radius:14px;width:min(820px,96vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,.3);font-family:var(--chrx-font-sans,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif);color:var(--chrx-fg,#0f172a)}
+.chrx-adv-head{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--chrx-line,#e2e8f0)}
+.chrx-adv-head h2{margin:0;font-family:var(--chrx-font-sans,sans-serif);font-size:18px;font-weight:700;color:var(--chrx-fg,#0f172a);display:flex;align-items:center;gap:8px}
+.chrx-adv-close{background:none;border:0;font-size:24px;cursor:pointer;color:var(--chrx-fg-secondary,#64748b);line-height:1}
+.chrx-adv-close:hover{color:var(--chrx-fg,#0f172a)}
+.chrx-adv-summary{display:flex;justify-content:space-between;align-items:center;padding:10px 20px;background:var(--chrx-bg-tile,#f8fafc);font-size:13px;color:var(--chrx-fg-secondary,#475569);border-bottom:1px solid var(--chrx-line,#e2e8f0)}
+.chrx-adv-toggle-ignored{display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;user-select:none;color:var(--chrx-fg,#0f172a)}
+.chrx-adv-sec-title{margin:14px 0 6px;font-family:var(--chrx-font-sans,sans-serif);font-size:12.5px;font-weight:700;color:var(--chrx-fg-secondary,#334155);text-transform:uppercase;letter-spacing:.04em;display:flex;align-items:center;gap:6px}
 .chrx-adv-list{flex:1;overflow-y:auto;padding:14px 20px;display:flex;flex-direction:column;gap:8px}
-.chrx-adv-empty{padding:20px;text-align:center;color:#10b981;font-size:13px;font-weight:500;background:#f0fdf4;border-radius:8px;border:1px dashed #86efac}
-.chrx-adv-card{border:1px solid #e2e8f0;border-radius:8px;padding:11px 14px;background:#fff;transition:border-color .15s}
+.chrx-adv-empty{padding:20px;text-align:center;color:var(--chrx-green,#10b981);font-size:13px;font-weight:500;background:var(--chrx-bg-tile,#f0fdf4);border-radius:8px;border:1px dashed var(--chrx-line,#86efac);display:flex;align-items:center;justify-content:center;gap:6px}
+.chrx-adv-card{border:1px solid var(--chrx-line,#e2e8f0);border-radius:8px;padding:11px 14px;background:var(--chrx-bg-tile,#fff);transition:border-color .15s}
 .chrx-adv-card--high{border-left:4px solid #ef4444}
 .chrx-adv-card--med{border-left:4px solid #f59e0b}
 .chrx-adv-card--low{border-left:4px solid #10b981}
 .chrx-adv-card.is-ignored{opacity:.55;border-left:4px solid #94a3b8}
 .chrx-adv-main-row{display:flex;align-items:center;gap:12px}
 .chrx-adv-badge{font-size:10px;font-weight:700;text-transform:uppercase;padding:2px 7px;border-radius:4px;letter-spacing:.04em;color:#fff;flex-shrink:0}
-.chrx-adv-badge--high{background:#ef4444}
-.chrx-adv-badge--med{background:#f59e0b}
-.chrx-adv-badge--low{background:#10b981}
-.chrx-adv-badge--ignored{background:#94a3b8}
-.chrx-adv-text{flex:1;line-height:1.45;font-size:13px;color:#1e293b}
+.chrx-adv-badge--high{background:#dc2626}
+.chrx-adv-badge--med{background:#d97706}
+.chrx-adv-badge--low{background:#059669}
+.chrx-adv-badge--ignored{background:#64748b}
+.chrx-adv-text{flex:1;line-height:1.45;font-size:13px;color:var(--chrx-fg,#1e293b)}
 .chrx-adv-actions{display:flex;align-items:center;gap:6px;flex-shrink:0}
-.chrx-adv-btn{border:0;padding:5px 12px;border-radius:5px;font-size:12px;font-weight:600;cursor:pointer;line-height:1.2;flex-shrink:0}
-.chrx-adv-btn--subtle{background:#f1f5f9;color:#334155;font-weight:500}
-.chrx-adv-btn--subtle:hover{background:#e2e8f0}
-.chrx-adv-btn--ghost{background:transparent;color:#64748b;font-weight:500}
-.chrx-adv-btn--ghost:hover{background:#f1f5f9;color:#0f172a}
-.chrx-adv-btn--primary{background:#2563eb;color:#fff}
-.chrx-adv-btn--primary:hover{background:#1d4ed8}
-.chrx-adv-lesson-drawer{margin-top:10px;padding:10px;background:#f8fafc;border-radius:6px;border:1px solid #e2e8f0}
-.chrx-adv-drawer-title{font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;margin-bottom:6px}
-.chrx-adv-lesson-tbl{width:100%;border-collapse:collapse;font-size:12px}
-.chrx-adv-lesson-tbl th{text-align:left;padding:4px 6px;color:#64748b;font-weight:600;border-bottom:1px solid #cbd5e1}
-.chrx-adv-lesson-tbl td{padding:4px 6px;border-bottom:1px solid #f1f5f9}
+.chrx-adv-btn{border:1px solid transparent;padding:5px 12px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;line-height:1.2;flex-shrink:0}
+.chrx-adv-btn--subtle{background:var(--chrx-bg-canvas,#f1f5f9);color:var(--chrx-fg,#334155);border-color:var(--chrx-line,#e2e8f0);font-weight:500}
+.chrx-adv-btn--subtle:hover{filter:brightness(.95)}
+.chrx-adv-btn--ghost{background:transparent;color:var(--chrx-fg-secondary,#64748b);font-weight:500}
+.chrx-adv-btn--ghost:hover{background:var(--chrx-bg-canvas,#f1f5f9);color:var(--chrx-fg,#0f172a)}
+.chrx-adv-btn--primary{background:var(--chrx-accent,#0d4f54);color:var(--chrx-accent-on,#fff)}
+.chrx-adv-btn--primary:hover{background:var(--chrx-accent-hover,#093b3f)}
+.chrx-adv-lesson-drawer{margin-top:10px;padding:10px;background:var(--chrx-bg-canvas,#f8fafc);border-radius:6px;border:1px solid var(--chrx-line,#e2e8f0)}
+.chrx-adv-drawer-title{font-size:11px;font-weight:600;color:var(--chrx-fg-secondary,#64748b);text-transform:uppercase;margin-bottom:6px}
+.chrx-adv-lesson-tbl{width:100%;border-collapse:collapse;font-size:12px;color:var(--chrx-fg,#0f172a)}
+.chrx-adv-lesson-tbl th{text-align:left;padding:4px 6px;color:var(--chrx-fg-secondary,#64748b);font-weight:600;border-bottom:1px solid var(--chrx-line,#cbd5e1)}
+.chrx-adv-lesson-tbl td{padding:4px 6px;border-bottom:1px solid var(--chrx-line-soft,#f1f5f9)}
     `;
     document.head.appendChild(s);
   }

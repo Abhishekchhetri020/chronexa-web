@@ -176,7 +176,7 @@ import "../entities/lessons.js";
       const isDone = i < active;
       const isActive = i === active;
       const cls = isActive
-        ? "flex-1 h-1.5 rounded-full bg-blue-600"
+        ? "flex-1 h-1.5 rounded-full bg-teal-700"
         : isDone
           ? "flex-1 h-1.5 rounded-full bg-emerald-500"
           : "flex-1 h-1.5 rounded-full bg-slate-200";

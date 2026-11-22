@@ -563,7 +563,7 @@ import "./dialog_shell.js";
         }
         // "more..." link
         const more = D.el("a", {
-          href: "#", style: "font-size:12px;color:#2563eb;cursor:pointer",
+          href: "#", style: "font-size:12px;color:var(--chrx-accent,#0d4f54);cursor:pointer",
           onclick: (e) => { e.preventDefault(); slots.push({ classId: "", groupId: null }); renderSlots(); }
         }, "more...");
         body.appendChild(more);
@@ -1267,7 +1267,7 @@ import "./dialog_shell.js";
     const count = selectedRows.length;
 
     const body = D.el("div", { style: "min-width:380px" });
-    body.appendChild(D.el("div", { style: "margin-bottom:12px;font-size:13px;color:#3b82f6" },
+    body.appendChild(D.el("div", { style: "margin-bottom:12px;font-size:13px;color:var(--chrx-accent,#0d4f54)" },
       `ℹ Change — selected: ${count} Lesson${count > 1 ? "s" : ""}`));
 
     const fields = [

@@ -45,6 +45,12 @@
     dot:      '<circle cx="12" cy="12" r="5" fill="currentColor" stroke="none"/>',
     move:     '<path d="M12 3v18M3 12h18"/><path d="m8.5 7.5 3.5-3.5 3.5 3.5M8.5 16.5l3.5 3.5 3.5-3.5M7.5 8.5 4 12l3.5 3.5M16.5 8.5 20 12l-3.5 3.5"/>',
     bolt:     '<path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"/>',
+    bulb:     '<path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.7.6 1 1.4 1 2.3h6c0-.9.3-1.7 1-2.3A7 7 0 0 0 12 2z"/>',
+    chart:    '<path d="M3 20h18"/><rect x="5" y="11" width="3" height="9" rx="1"/><rect x="10.5" y="6" width="3" height="14" rx="1"/><rect x="16" y="13" width="3" height="7" rx="1"/>',
+    trend:    '<path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
+    file:     '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>',
+    globe:    '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
+    image:    '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="m21 16-5-5-6 6-2-2-5 5"/>',
   };
   function svg(name, size, extra) {
     const body = P[name];

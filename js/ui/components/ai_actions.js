@@ -126,7 +126,7 @@ import "../entities/dialog_shell.js";
     div.innerHTML = `<p>Top ${suggestions.length} suggested placements:</p><ul>${html}</ul>` +
       `<p style="margin-top:12px;font-size:11px;color:#94a3b8">These respect hard constraints and rank by fewest soft warnings. Click <em>Apply</em> in the editor to place them.</p>`;
     if (window.EntityDialog?.openSheet) {
-      window.EntityDialog.openSheet(div, { title: "✨ AI suggestions" });
+      window.EntityDialog.openSheet(div, { title: "AI suggestions" });
     } else {
       alert(suggestions.map(s => `${s.subjectName} → D${s.day + 1}P${s.period + 1}`).join("\n"));
     }

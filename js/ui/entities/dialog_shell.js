@@ -121,12 +121,15 @@ import "../components/help_tooltip.js";
     renderRows();
   }
   let standaloneHost = null;
+  let sheetOpener = null;
+  let standaloneKeyHandler = null;
   function openSheet(node, opts) {
     closeSubSheet();
     closeSheet();
+    sheetOpener = document.activeElement;
     sheet = el("div", { class:"chrx-ent-sheet-scrim",
       onclick:(e)=>{ if (e.target === sheet) closeSheet(); } },
-      el("div", { class:"chrx-ent-sheet", role:"dialog", "aria-modal":"true" },
+      el("div", { class:"chrx-ent-sheet", role:"dialog", "aria-modal":"true", tabindex:"-1" },
         opts && opts.title ? el("header", { class:"chrx-ent-sheet__head" },
           el("h3", null, opts.title),
           opts.headerExtras || null,
@@ -135,24 +138,40 @@ import "../components/help_tooltip.js";
         el("div", { class:"chrx-ent-sheet__body" }, node),
       ),
     );
-    // No full EntityDialog is open (e.g. SchoolSettings called directly from
-    // a menu) — mount the sheet in a synthetic position:fixed host so the
-    // scrim's inset:0 covers the viewport instead of crashing on null host.
+    // No full EntityDialog is open (e.g. SchoolSettings or Publish called directly from
+    // a menu) — mount the sheet in a synthetic position:fixed host and wire Escape.
     if (!host) {
       standaloneHost = el("div", { class: "chrx-ent-standalone",
         style: "position:fixed;inset:0;z-index:5000" });
       document.body.appendChild(standaloneHost);
       standaloneHost.appendChild(sheet);
+      standaloneKeyHandler = (e) => {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          e.stopPropagation();
+          if (subSheet) closeSubSheet();
+          else closeSheet();
+        }
+      };
+      document.addEventListener("keydown", standaloneKeyHandler, true);
     } else {
       host.appendChild(sheet);
     }
   }
   function closeSheet() {
+    if (standaloneKeyHandler) {
+      document.removeEventListener("keydown", standaloneKeyHandler, true);
+      standaloneKeyHandler = null;
+    }
     if (sheet) { sheet.remove(); sheet = null; }
     if (standaloneHost && !sheet) {
       standaloneHost.remove();
       standaloneHost = null;
     }
+    if (sheetOpener && sheetOpener.isConnected && typeof sheetOpener.focus === "function") {
+      try { sheetOpener.focus(); } catch (_) {}
+    }
+    sheetOpener = null;
   }
 
   // openSubSheet — overlay an additional sheet ON TOP of the existing sheet
