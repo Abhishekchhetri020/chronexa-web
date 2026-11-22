@@ -26,8 +26,14 @@ import "../state.js";
     timer = global.setTimeout(show, typeof delay === "number" ? delay : 650);
   }
 
+  function hasOpenModal() {
+    return !!document.querySelector(
+      ".csu-prelaunch, .csu-progress, .csu-result, .chrx-ent-dialog, .chrx-ent-sheet, .chrx-preview-overlay.is-open, #chrx-no-lessons-overlay, [role='dialog']:not(.chrx-coachmark-card)"
+    );
+  }
+
   function show() {
-    if (overlay || !shouldShow()) return;
+    if (overlay || !shouldShow() || hasOpenModal()) return;
     const editorStep = document.getElementById("step-6");
     if (!editorStep || editorStep.classList.contains("hidden")) return;
 
@@ -38,11 +44,11 @@ import "../state.js";
         <div class="chrx-coachmark-card__eyebrow">First grid visit</div>
         <button type="button" class="chrx-coachmark-card__close" data-dismiss aria-label="Dismiss coachmark">×</button>
         <h2 id="chrx-coachmark-title">Place your first card</h2>
-        <p>Drag a lesson from <strong>Pending cards</strong> onto the grid. Placement halos explain the result before you commit.</p>
+        <p>Drag a lesson from <strong>Unplaced lessons</strong> onto the grid, or click <strong>Generate</strong> to place everything automatically.</p>
         <div class="chrx-coachmark-legend" aria-label="Placement halo legend">
           <span data-tone="good">Green <small>clear</small></span>
           <span data-tone="warn">Amber <small>preference</small></span>
-          <span data-tone="bad">Red <small>hard conflict</small></span>
+          <span data-tone="bad">Red <small>clash</small></span>
         </div>
         <div class="chrx-coachmark-demo" hidden data-demo>
           <span class="chrx-coachmark-demo__card">MTH · VII A</span>

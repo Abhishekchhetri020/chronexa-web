@@ -89,16 +89,28 @@ import { lessonMatchesFilter } from "./view_filter.js";
   function renderEmptyHero(root) {
     const fire = (kind) => () => window.dispatchEvent(new CustomEvent("app:open-entity", { detail: { kind } }));
     const school = (window.APP && window.APP.school) || {};
+    const nSubj = (school.subjects || []).length;
+    const nTch  = (school.teachers || []).length;
+    const nCls  = (school.classes  || []).length;
+    const nLes  = (school.lessons  || []).length;
+    const reqDone = (nSubj > 0 ? 1 : 0) + (nTch > 0 ? 1 : 0) + (nCls > 0 ? 1 : 0) + (nLes > 0 ? 1 : 0);
+    const readyForLessons = nSubj > 0 && nTch > 0 && nCls > 0;
+    const nextKind = nSubj === 0 ? "subjects" : nTch === 0 ? "teachers" : nCls === 0 ? "classes" : nLes === 0 ? "lessons" : "_generate";
 
-    function tile(icon, num, title, sub, kind) {
+    function tile(icon, num, title, sub, kind, optional = false) {
       const isGenerate = kind === "_generate";
       const count = isGenerate ? 0 : (school[kind] || []).length;
       const hasData = count > 0;
-      const statusLabel = isGenerate ? "Needs lessons" : hasData ? count + " added" : "Not started";
-      const actionLabel = isGenerate ? "Locked" : hasData ? "Manage →" : "Add →";
+      const isNext = kind === nextKind;
+      const statusLabel = isGenerate
+        ? "Add lessons first"
+        : hasData ? count + " added" : (optional ? "Optional" : "Not started");
+      const actionLabel = isGenerate
+        ? "Waiting"
+        : hasData ? "Manage →" : (isNext ? "Next →" : "Add →");
 
       return `
-        <button data-kind="${kind}" class="chrx-hero-tile chrx-lift chrx-press" ${hasData ? 'data-completed="true"' : ''} ${isGenerate ? "disabled" : ""}>
+        <button data-kind="${kind}" class="chrx-hero-tile chrx-lift chrx-press" ${hasData ? 'data-completed="true"' : ''} ${isNext ? 'data-next="true"' : ''} ${isGenerate ? "disabled" : ""}>
           <span class="chrx-hero-tile__num">${num}</span>
           <span class="chrx-hero-tile__icon" aria-hidden="true">${icon}</span>
           <span class="chrx-hero-tile__title">${title}</span>
@@ -110,48 +122,63 @@ import { lessonMatchesFilter } from "./view_filter.js";
         </button>`;
     }
 
+    const readyBanner = readyForLessons
+      ? `<div class="chrx-hero__ready chrx-fade-in" id="chrx-hero-ready">
+           <span><strong>Ready!</strong> You have subjects, teachers, and classes. Add your first lesson to open the grid.</span>
+           <button type="button" class="chrx-btn chrx-btn--primary" id="chrx-hero-first-lesson">Add first lesson →</button>
+         </div>`
+      : "";
+
     root.innerHTML = `
       <div class="chrx-hero">
         <div class="chrx-hero__inner">
           <header class="chrx-hero__head chrx-fade-in">
-            <span class="chrx-hero__eyebrow">Get started</span>
+            <div class="chrx-hero__head-top">
+              <span class="chrx-hero__eyebrow">Get started</span>
+              <span class="chrx-hero__progress" id="chrx-hero-progress">${reqDone} of 4 required steps done</span>
+            </div>
             <h3 class="chrx-hero__title">Let's build your timetable</h3>
-            <p class="chrx-hero__sub">Pick a starting point. We recommend this order, but you can jump in anywhere.</p>
+            <p class="chrx-hero__sub">Add at least one subject, teacher, and class, then create a lesson — or explore a ready-made school first.</p>
+            <div class="chrx-hero__head-actions">
+              <button type="button" class="chrx-btn" id="chrx-hero-sample-btn" data-closing-demo>Try a sample school</button>
+            </div>
           </header>
+          ${readyBanner}
           <div class="chrx-hero__grid chrx-rise-stagger">
             ${tile("📚", "1", "Subjects",   "Maths, Science, English, …",      "subjects")}
-            ${tile("👨‍🏫", "2", "Teachers",   "Names, abbreviations, colors",         "teachers")}
+            ${tile("👨‍🏫", "2", "Teachers",   "Names, abbreviations, colors",    "teachers")}
             ${tile("👥", "3", "Classes",    "I-A, I-B, VIII-C …",              "classes")}
-            ${tile("🚪", "4", "Classrooms", "Lab, Library, Music Room …",      "classrooms")}
-            ${tile("📝", "5", "Lessons",    "Who teaches what, how often",          "lessons")}
-            ${tile("⚡",    "6", "Generate",   "Auto-place all cards",                 "_generate")}
+            ${tile("🚪", "4", "Classrooms", "Optional · Lab, Library, Hall …", "classrooms", true)}
+            ${tile("📝", "5", "Lessons",    "Who teaches what, how often",     "lessons")}
+            ${tile("⚡", "6", "Generate",   "Auto-place lessons & print",      "_generate")}
           </div>
           <form class="chrx-hero-quickadd chrx-fade-in" data-quick-add>
             <strong>Quick add</strong>
             <select name="kind" aria-label="Entity type">
-              <option value="subjects">Subject</option>
-              <option value="teachers">Teacher</option>
-              <option value="classes">Class</option>
+              <option value="subjects"${nextKind === "subjects" ? " selected" : ""}>Subject</option>
+              <option value="teachers"${nextKind === "teachers" ? " selected" : ""}>Teacher</option>
+              <option value="classes"${nextKind === "classes" ? " selected" : ""}>Class</option>
             </select>
             <input name="name" required maxlength="80" placeholder="Name" aria-label="Name">
-            <input name="abbr" maxlength="12" placeholder="Short code" aria-label="Short code">
+            <input name="abbr" maxlength="12" placeholder="Short code (optional)" aria-label="Short code">
             <button class="chrx-btn chrx-btn--primary" type="submit">Add</button>
-            <p class="chrx-hero-quickadd__message" data-quick-add-message>Add a subject, teacher, or class without leaving this screen.</p>
+            <p class="chrx-hero-quickadd__message" data-quick-add-message>${readyForLessons ? "You're ready to add your first lesson, or keep adding more below." : "Add a subject, teacher, or class right here without opening a dialog."}</p>
           </form>
-          <p class="chrx-hero__tip chrx-fade-in">Build the five inputs above, then lessons become draggable cards in the editor.</p>
+          <p class="chrx-hero__tip chrx-fade-in">Once you add your first lesson, the timetable grid opens automatically so you can Generate and Print.</p>
         </div>
       </div>`;
     root.querySelectorAll("[data-kind]").forEach(btn => {
       btn.onclick = () => {
         const k = btn.dataset.kind;
         if (k === "_generate") {
-          const gen = document.getElementById("cta-generate");
-          if (gen) gen.click();
+          window.dispatchEvent(new CustomEvent("app:generate"));
           return;
         }
         fire(k)();
       };
     });
+    // #chrx-hero-sample-btn carries [data-closing-demo], handled by main.js loadBundledDemo()
+    root.querySelector("#chrx-hero-first-lesson")?.addEventListener("click", fire("lessons"));
     root.querySelector("[data-quick-add]")?.addEventListener("submit", quickAdd);
   }
 
@@ -288,6 +315,15 @@ import { lessonMatchesFilter } from "./view_filter.js";
   // Re-render the editor whenever an entity changes (so the hero card swaps to grid).
   // Debounced: rapid-fire undo/redo bursts dispatch many entity:changed events; coalesce them.
   let _entityChangedTimer = null;
+  const onEntityChanged = () => {
+    clearTimeout(_entityChangedTimer);
+    _entityChangedTimer = setTimeout(() => {
+      if (document.getElementById("step-6") && !document.getElementById("step-6").classList.contains("hidden")) {
+        activate();
+      }
+    }, 80);
+  };
+  window.addEventListener("entity:changed", onEntityChanged);
   document.addEventListener("entity:changed", () => {
     clearTimeout(_entityChangedTimer);
     _entityChangedTimer = setTimeout(() => {

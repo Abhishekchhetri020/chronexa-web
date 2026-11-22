@@ -43,3 +43,12 @@
 
 ## Regression Spec (`e2e/block-p-generate-clarity.spec.js`)
 - Verifies P1–P6 end-to-end on the demo school: clean Class grid + single nav, non-placeholder summary + Recommended == preselected + collapsed More options, ring == bar + left == total - placed + collapsed Show details, plain Result + 3 tiles + 1-click apply with **0 `#chrx-apply-confirm` modal**, and topbar chip == result clashes.
+
+## Block P7 — Live Review Polish (`20261122-p278-p7-polish`, merge `4da0f40`, commit `5a53696`)
+Addressed all 6 items from Claude's live review of `p277`:
+1. **"Undo apply" hidden before applying (`css/solver_ui.css`, `js/ui/solver_ui/result_panel.js`):** Added `.chrx-btn[hidden], .csu-result__reasons[hidden] { display: none !important; }` and explicit `refs.disc.style.display = "none"` in `open()`.
+2. **Auto-close on "Use this timetable" (`js/ui/solver_ui/result_panel.js`):** `applyImmediately()` now closes the result dialog cleanly and shows a toast (`"Timetable applied — press ⌘Z to undo."`).
+3. **1st / 2nd / 3rd Floor duty rows hidden in default all-classes grid (`js/ui/editor/grid_canvas.js`):** Fixed the `\b` regex escape in `isDutyAreaName` so empty floor/duty classes are filtered out of every Class view.
+4. **Visible Quality reasons + UI sans-serif font (`js/ui/solver_ui/result_panel.js`, `css/solver_ui.css`):** `collectTopSoftReasons()` now analyzes `previewCards` directly for teacher 2+ daily gaps, same-subject-twice-in-a-day classes, and 5+ back-to-back teacher streaks (showing top 3 plain-English reasons directly under the tiles without opening Details); Quality tile uses `.csu-result__num--word` with `var(--chrx-font-sans)`.
+5. **Placeholder school name fixed everywhere (`js/xml/parse_timetable_xml.js`, `js/ui/main.js`, `js/ui/io/import_timetable_xml.js`, `js/ui/editor/grid_canvas.js`, `js/ui/shell_v3.js`):** Stripped `"Classic Timetable 2012 XML"` at parse time, tagged demo loads as `"Sample school"`, and added `document.addEventListener("app:school-loaded", ...)` in `shell_v3.js` so both `#chrx-crumbs` (`"Sample school / Editor"`) and `.chrx-ob-title` (`"Sample school"`) update cleanly.
+6. **Mid-run `LATEST.xml` Best progress screenshot:** Captured `docs/neon/ui-shots/block-p/2-progress-latest-best.png` via `P7-6` in `e2e/block-p-generate-clarity.spec.js`.

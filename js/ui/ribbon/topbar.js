@@ -92,6 +92,14 @@ import { runAndApply } from "../solver_ui/run_and_apply.js";
   function openGenerate() {
     const school = window.APP && window.APP.school;
     if (!school) { (window._chrxNotify || function () {})("Open or create a timetable first.", "warn"); return; }
+    if (!(school.lessons && school.lessons.length)) {
+      const hasBasics = (school.subjects?.length > 0) && (school.teachers?.length > 0) && (school.classes?.length > 0);
+      const msg = hasBasics
+        ? "Add at least one lesson before building a timetable."
+        : "Add a subject, teacher, class, and lesson first — or click Try a sample school.";
+      (window._chrxNotify || function () {})(msg, "warn");
+      return;
+    }
     const onConfirm = (cfg) => {
       runAndApply(school, cfg, (phase, detail) => {
         if (phase === "run") (window._chrxNotify || function () {})("Generating timetable…", "info");
