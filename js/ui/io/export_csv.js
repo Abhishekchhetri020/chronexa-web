@@ -1,3 +1,4 @@
+import { localDateYmd, schoolSlug } from "./export_filename.js";
 // [vite-esm] imports
 import "../state.js";
 
@@ -194,9 +195,7 @@ export function exportCsv(scope = { type: "all" }) {
   const scopeId = typeof scope === "object" ? scope.id : arguments[1];
 
   const csv = buildCsvExport(school, { type: scopeType, id: scopeId });
-  const _raw = (school.schoolName || "").trim();
-  const _isPh = !_raw || /^(classic timetable|asc timetables|untitled|\(school\))/i.test(_raw);
-  const base = (_isPh ? (school._isDemo ? "Sample-school" : "Chronexa-timetable") : _raw).replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "Chronexa-timetable";
+  const base = schoolSlug(school);
   let suffix = "all";
   if (scopeType === "class" && scopeId) {
     const c = (school.classes || []).find(x => x.id === scopeId);
@@ -209,7 +208,7 @@ export function exportCsv(scope = { type: "all" }) {
     suffix = (r?.short || r?.name || scopeId).replace(/[^\w.-]+/g, "-");
   }
 
-  const filename = `${base}-${suffix}-${new Date().toISOString().slice(0, 10)}.csv`;
+  const filename = `${base}-${suffix}-${localDateYmd()}.csv`;
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");

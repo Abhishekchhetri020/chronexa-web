@@ -548,7 +548,7 @@ function renderList(body, versions) {
       </div>
       <div class="chrx-vh-actions">
         <button type="button" data-vh-act="preview" data-vh-id="${esc(v.id)}">Preview</button>
-        <button type="button" data-vh-act="diff" data-vh-id="${esc(v.id)}">Diff</button>
+        <button type="button" data-vh-act="diff" data-vh-id="${esc(v.id)}">Compare</button>
         <button type="button" data-vh-act="restore" data-vh-id="${esc(v.id)}">↶ Restore</button>
         <button type="button" class="danger" data-vh-act="delete" data-vh-id="${esc(v.id)}" aria-label="Delete version">✕</button>
       </div>
@@ -594,7 +594,7 @@ async function showDiff(body, rec) {
   const diff = diffSchools(rec.payload, current);
   const described = describeDiff(rec.payload, diff);
   body.innerHTML = `<div class="chrx-vh-diff" data-vh-counts="${esc(described.summary)}">
-      <div class="chrx-vh-diff-head">${versionHead("Diff vs the current timetable")}</div>
+      <div class="chrx-vh-diff-head">${versionHead("What changed")}</div>
       <p class="chrx-vh-note">Comparing <em>${esc(rec.label)}</em> (${esc(new Date(rec.ts).toLocaleString())}) with the current timetable.
         <span class="chrx-vh-diff-summary" data-vh-diff-summary>${esc(described.summary)}</span></p>
       ${described.lines.length
@@ -604,15 +604,55 @@ async function showDiff(body, rec) {
     </div>`;
 }
 
+function openAppConfirm({ title, message, confirmLabel, danger }) {
+  return new Promise((resolve) => {
+    const prev = document.activeElement;
+    const scrim = document.createElement("div");
+    scrim.className = "chrx-vh-confirm-scrim";
+    scrim.style.cssText = "position:fixed;inset:0;background:rgba(15,23,42,0.52);backdrop-filter:blur(4px);z-index:10050;display:flex;align-items:center;justify-content:center;padding:16px;";
+    const box = document.createElement("div");
+    box.setAttribute("role", "alertdialog");
+    box.setAttribute("aria-modal", "true");
+    box.style.cssText = "background:var(--chrx-bg-elev,#ffffff);color:var(--chrx-fg,#0f172a);border:1px solid var(--chrx-line,#e2e8f0);border-radius:12px;box-shadow:0 24px 64px rgba(15,23,42,0.28);padding:20px 22px;max-width:440px;width:100%;font-family:var(--chrx-font-sans,system-ui,-apple-system,sans-serif);";
+    box.innerHTML =
+      `<h3 style="margin:0 0 8px;font-size:16px;font-weight:700;color:var(--chrx-fg,#0f172a);">${esc(title)}</h3>` +
+      `<p style="margin:0 0 18px;font-size:13.5px;line-height:1.5;color:var(--chrx-fg-secondary,#475569);">${esc(message)}</p>` +
+      `<div style="display:flex;gap:8px;justify-content:flex-end;">` +
+        `<button type="button" data-vh-confirm-cancel class="chrx-btn">Cancel</button>` +
+        `<button type="button" data-vh-confirm-ok class="chrx-btn ${danger ? "chrx-btn--danger" : "chrx-btn--primary"}">${esc(confirmLabel || "Confirm")}</button>` +
+      `</div>`;
+    scrim.appendChild(box);
+    document.body.appendChild(scrim);
+    const done = (val) => {
+      document.removeEventListener("keydown", onKey, true);
+      scrim.remove();
+      if (prev && typeof prev.focus === "function") { try { prev.focus(); } catch (_) {} }
+      resolve(val);
+    };
+    const onKey = (ev) => {
+      if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); done(false); }
+    };
+    document.addEventListener("keydown", onKey, true);
+    scrim.addEventListener("click", (ev) => { if (ev.target === scrim) done(false); });
+    box.querySelector("[data-vh-confirm-cancel]").addEventListener("click", () => done(false));
+    box.querySelector("[data-vh-confirm-ok]").addEventListener("click", () => done(true));
+    box.querySelector("[data-vh-confirm-cancel]").focus();
+  });
+}
+
 async function showRestore(rec) {
   const when = new Date(rec.ts).toLocaleString();
-  const ok = window.confirm('Restore "' + (rec.label || "version") + '" from ' + when
-    + "?\n\nThe current timetable is replaced and can be brought back with ⌘Z (Undo).");
+  const ok = await openAppConfirm({
+    title: "Restore this version?",
+    message: 'Restore "' + (rec.label || "version") + '" from ' + when
+      + ". Your current timetable will be replaced, and you can press ⌘Z (Undo) to go back.",
+    confirmLabel: "Restore version",
+  });
   if (!ok) return false;
   const applied = applyRestore(rec.payload, "Restore backup · " + (rec.label || "version"));
   closePanel();
   notify(applied
-    ? "↶ Restored the version from " + when + " — press ⌘Z to undo."
+    ? "Restored the version from " + when + " — press ⌘Z to undo."
     : "Restore failed.", applied ? "info" : "error");
   return applied;
 }
@@ -667,7 +707,13 @@ export async function open() {
     else if (act === "diff") showDiff(body, rec);
     else if (act === "restore") showRestore(rec);
     else if (act === "delete") {
-      if (!window.confirm("Delete this version (" + new Date(rec.ts).toLocaleString() + ")?")) return;
+      const delOk = await openAppConfirm({
+        title: "Delete this saved version?",
+        message: "Remove the backup from " + new Date(rec.ts).toLocaleString() + ". Your current timetable will not change.",
+        confirmLabel: "Delete",
+        danger: true,
+      });
+      if (!delOk) return;
       await remove(id);
       await refresh();
     }

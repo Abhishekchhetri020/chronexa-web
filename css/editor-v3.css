@@ -373,6 +373,7 @@
 .chrx-shell .chrx-overview-bar button:active,
 .chrx-shell .chrx-focus-boardbar button:active { transform: scale(0.97); }
 .chrx-shell .chrx-overview-bar button[data-focus-nav="focus"] {
+  white-space: nowrap; flex-shrink: 0;
   background: var(--chrx-accent); color: var(--chrx-accent-on);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.14);
 }

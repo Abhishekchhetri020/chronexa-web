@@ -143,3 +143,27 @@
 - `npx vitest run`: **587 / 587 passed** (68 files, 0 failed)
 - `npx vite build`: **succeeded** (`5.81 s`)
 - `npx playwright test --config pw.chrome.config.local.mjs`: **174 passed, 1 skipped** (known real-XML ranker skip), **0 failed** (`23.9 m`)
+
+---
+
+## Batch L6 — Local-Date Exports, Strict Substitutions E2E & Output Polish (`20261123-p287-l6-output-fixes`)
+
+1. **Local-date export filenames (`js/ui/io/export_filename.js`, all 7 exporters):**
+   - Added shared `localDateYmd(date)` and `schoolSlug(school)` helpers so all 7 exporters (`export_excel.js`, `export_csv.js`, `export_ics.js`, `export_html.js`, `export_timetable_xml.js`, `export_png.js`, `export_excel_nyc.js`) format `YYYY-MM-DD` from local calendar date rather than UTC `toISOString().slice(0, 10)`.
+2. **Strict Substitutions E2E (`e2e/block-l5-output-screens.spec.js` `L5-2`):**
+   - Rewrote `L5-2` with zero `if (isVisible)` skips: types a teacher into `"Type a teacher name…"`, picks via keyboard (`Enter`), clicks `Generate substitutions`, asserts ≥1 row with a substitute name and no raw hex ID / emoji / `SCORE`, checks `Print memo` tab lists the substitute, and verifies the dated grid shows the substitution.
+   - `L5-1` uses `page.clock.install({ time: new Date("2026-11-23T00:30:00+05:30") })` under `TZ=Asia/Kolkata` to verify every downloaded filename carries local date `2026-11-23` (never UTC `2026-11-22`).
+3. **Substitution planner polish (`js/ui/substitution/{absence_input,classwise_output,teacherwise_output}.js`):**
+   - Resolved `"Acting class teacher"` class names instead of raw hex IDs; prevented duplicated teacher name in absent chips (`abbr === name`); replaced emoji icons (`🛡 ⚡ 💾 ↺ ✎ 👁 ⏱ 🔗 ✕`) with `ChrxIcons` SVGs; replaced `"SCORE 145"` / `"SCORE-LOAD 265"` with plain `"Best match"` / `"Good match"` / `"Possible"` and `"Load"` period counts; fixed singular/plural `"extra period"` / `"slot"`; added `"All slots covered"` hint + tooltip when `"Smart auto-fill"` is disabled.
+4. **Version History in-app confirm & plain copy (`js/ui/components/version_history.js`, `e2e/w3-1-version-history.spec.js`):**
+   - Replaced native `window.confirm` with an in-app confirmation modal (`[data-vh-confirm-ok]` / `[data-vh-confirm-cancel]`, Escape cancels); renamed `"Diff"` → `"Compare"` and `"Diff vs the current timetable"` → `"What changed"`.
+5. **Brand teal Export dialog & Published viewer (`js/ui/components/export_dialog.js`, `css/viewer.css`):**
+   - Styled Export dialog header in brand teal (`#0d4f54`) with plain-English format descriptions (removed `"Round-trip XML"`, `"zero dependencies"`, `"zero app chrome"`).
+   - Replaced navy `#1e3a8a` / `#1e40af` / `#1d4ed8` accents in `css/viewer.css` with brand teal (`#0d4f54` / `#0a3f43` / `#13676e`).
+6. **Single-line `"Focus board"` button (`css/editor-v3.css`):**
+   - Added `white-space: nowrap; flex-shrink: 0;` to `.chrx-overview-bar__back` so `"Focus board"` stays on one line at 1440 px with the sidebar open.
+
+### Full Release Gate (`p287`)
+- `npx vitest run`: **587 / 587 passed** (68 files, `38.11 s`, 0 failed)
+- `npx vite build`: **succeeded** (`3.70 s`)
+- `TZ=Asia/Kolkata npx playwright test --config pw.chrome.config.local.mjs`: **174 passed, 1 skipped** (known real-XML ranker skip), **0 failed** (`20.4 m`)

@@ -155,8 +155,8 @@ test("3 edits produce 3+ versions; preview, diff and restore work and ⌘Z undoe
   await expect(rows.first()).toBeVisible({ timeout: 20_000 });
 
   // ── Restore the oldest version (the load state) ─────────────────────────
-  page.once("dialog", (d) => d.accept());
   await rows.last().locator('[data-vh-act="restore"]').click();
+  await page.locator('[data-vh-confirm-ok]').click();
   await expect(panel).toHaveCount(0);
   await expect.poll(() => slotOf(page, firstCard.lessonId), { timeout: 20_000 }).toEqual(homeSlot);
   // …and the grid shows it back home.

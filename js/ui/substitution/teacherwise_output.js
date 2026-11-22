@@ -88,7 +88,7 @@ import "./main.js";
       a.teacher.localeCompare(b.teacher));
 
     host.appendChild(el("div", { class: "chrx-sub-banner" },
-      el("b", null, `${list.length} substitute${list.length === 1 ? "" : "s"} carry ${state.assignments.length - uncovered - cancelled} extra period(s)`),
+      (() => { const extraN = state.assignments.length - uncovered - cancelled; return el("b", null, `${list.length} substitute${list.length === 1 ? "" : "s"} ${list.length === 1 ? "carries" : "carry"} ${extraN} extra ${extraN === 1 ? "period" : "periods"}`); })(),
       cancelled ? el("span", { class: "chrx-sub-pill", style: "background:#fee2e2;color:#b91c1c;" }, `${cancelled} cancelled`) : null,
       uncovered ? el("span", { class: "chrx-sub-pill is-red" },
         `${uncovered} uncovered`) : null,
@@ -99,7 +99,7 @@ import "./main.js";
         el("th", null, "Teacher"),
         el("th", null, "Extra periods"),
         el("th", null, "Classes covered"),
-        el("th", null, "Score-load"),
+        el("th", null, "Load"),
       )),
     );
     const tbody = el("tbody");
@@ -111,11 +111,11 @@ import "./main.js";
       tbody.appendChild(el("tr", { class: "chrx-sub-tr" },
         el("td", null,
           el("b", null, g.teacher),
-          el("div", { class: "chrx-sub-reasons" }, `${g.rows.length} slot(s)`),
+          el("div", { class: "chrx-sub-reasons" }, `${g.rows.length} ${g.rows.length === 1 ? "slot" : "slots"}`),
         ),
         el("td", null, periodTags),
         el("td", null, classTags),
-        el("td", { class: "chrx-sub-score" }, String(g.scoreSum)),
+        el("td", { class: "chrx-sub-score" }, `${g.rows.length} ${g.rows.length === 1 ? "period" : "periods"}`),
       ));
     });
     table.appendChild(tbody);
