@@ -926,8 +926,9 @@ import { entityLabel } from "../../util/entity_label.js";
     const teachers = (school?.teachers || []).slice().sort((a, b) =>
       entityLabel(a, "abbreviation").localeCompare(entityLabel(b, "abbreviation")));
     const subjects = school?.subjects || [];
-    const perPage = 9;
-    const subjPerPage = 12;
+    const fitToPage = Boolean(window.APP && window.APP.printSettings && window.APP.printSettings.fitToPage);
+    const perPage = fitToPage ? Math.max(teachers.length, 1) : 9;
+    const subjPerPage = fitToPage ? Math.max(subjects.length, 1) : 12;
     const subjChunks = [];
     for (let si = 0; si < Math.max(subjects.length, 1); si += subjPerPage) {
       subjChunks.push(subjects.slice(si, si + subjPerPage));

@@ -169,3 +169,46 @@ test("D2-P08: dense 66-teacher / 34-class / 42-subject matrices auto-paginate an
     expect(m && Number(m[1]), `${tpl} should auto-paginate to >1 page, got "${info.ind}"`).toBeGreaterThan(1);
   }
 });
+
+test("D3: fitToPage=true keeps 1 page per day/page-combo on summary and fits; fitToPage=false splits", async ({ page }) => {
+  await loadDemoSchool(page);
+  const daysCount = await page.evaluate(() => {
+    document.getElementById("chrx-pwa-banner")?.remove();
+    const S = window.APP.school;
+    while ((S.classes || []).length < 34) {
+      const i = S.classes.length + 1;
+      S.classes.push({ id: `C_D3_${i}`, name: `Class ${i}A`, short: `${i}A` });
+    }
+    window.APP.printSettings = Object.assign({}, window.APP.printSettings, { fitToPage: false });
+    window.dispatchEvent(new Event("app:print-preview"));
+    return (S.days && S.days.length) ? S.days.length : 6;
+  });
+  await expect(page.locator(".chrx-preview-overlay.is-open")).toBeVisible();
+
+  // 1. fitToPage=false -> auto-splits into > daysCount pages and Fits A4
+  await page.selectOption(`${CONTROLS} select`, "summary");
+  await expect(page.locator(PAGE)).toBeVisible();
+  const splitInfo = await page.evaluate(() => ({
+    ind: document.querySelector(".chrx-preview-controls .chrx-pp-indicator")?.textContent?.trim() || "",
+    fit: document.querySelector(".chrx-preview-controls [class*='fit'], .chrx-fit-badge")?.textContent?.trim() || "",
+  }));
+  const splitTotal = Number((splitInfo.ind.match(/Page\s+1\s*\/\s*(\d+)/) || [])[1] || 0);
+  expect(splitTotal).toBeGreaterThan(daysCount);
+  expect(splitInfo.fit).toMatch(/Fits A4/i);
+
+  // 2. fitToPage=true -> skips auto-split, renders 1 page per day (== daysCount) and scales to fit A4
+  await page.evaluate(() => {
+    window.APP.printSettings = Object.assign({}, window.APP.printSettings, { fitToPage: true });
+    window.dispatchEvent(new Event("app:print-settings-changed"));
+  });
+  await expect.poll(async () => {
+    const ind = await page.locator(".chrx-preview-controls .chrx-pp-indicator").innerText();
+    const m = ind.trim().match(/Page\s+1\s*\/\s*(\d+)/);
+    return m ? Number(m[1]) : -1;
+  }, { timeout: 5_000 }).toBe(daysCount);
+
+  const fitInfo = await page.evaluate(() => ({
+    fit: document.querySelector(".chrx-preview-controls [class*='fit'], .chrx-fit-badge")?.textContent?.trim() || "",
+  }));
+  expect(fitInfo.fit).toMatch(/Fits A4|Scaled to \d+% for A4/i);
+});
