@@ -543,3 +543,26 @@
   background: var(--chrx-bg-panel);
   border-top-color: var(--chrx-line);
 }
+
+/* ---------- Mobile / narrow viewports (E-04: prevent 390px horizontal overflow) ---------- */
+@media (max-width: 640px) {
+  .chrx-ent-dialog { padding: 8px; }
+  .chrx-ent-panel {
+    width: calc(100vw - 16px);
+    max-width: calc(100vw - 16px);
+    height: calc(100vh - 16px);
+  }
+  .chrx-ent-head { flex-wrap: wrap; gap: 8px; padding: 10px 12px; }
+  .chrx-ent-search { width: 100%; margin-left: 0; }
+  .chrx-ent-body { flex-direction: column; }
+  .chrx-ent-table-wrap { min-width: 0; width: 100%; }
+  .chrx-ent-aside {
+    width: auto; flex: 0 0 auto;
+    flex-direction: row; flex-wrap: wrap;
+    padding: 8px 10px;
+    border-left: none;
+    border-top: 1px solid var(--chrx-line);
+  }
+  .chrx-ent-btn { height: 34px; padding: 0 10px; }
+  .chrx-ent-sheet { width: calc(100vw - 16px); max-width: calc(100vw - 16px); }
+}

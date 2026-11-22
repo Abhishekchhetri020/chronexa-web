@@ -17,6 +17,17 @@ import "./dialog_shell.js";
     arr.push({ id: D.uid("wk"), name: "All weeks", short: "All", weeks: "1" });
   }
 
+  function syncWeeksDefs(school) {
+    if (!school || !Array.isArray(school.weeks)) return;
+    school.weeksDefs = school.weeks.map(w => ({
+      id: w.id,
+      name: w.name || w.short || w.id,
+      short: w.short || "",
+      bits: String(w.weeks != null ? w.weeks : (w.bits != null ? w.bits : "1")),
+      weeks: String(w.weeks != null ? w.weeks : (w.bits != null ? w.bits : "1")),
+    }));
+  }
+
   function ensure() {
     const s = window.APP.school = window.APP.school || {};
     if (!Array.isArray(s.weeks)) {
@@ -39,6 +50,7 @@ import "./dialog_shell.js";
         }
       }
       if (s.weeks.length === 0) seedDefaults(s.weeks);
+      if (!Array.isArray(s.weeksDefs) || s.weeksDefs.length === 0) syncWeeksDefs(s);
     }
     return s.weeks;
   }
@@ -165,9 +177,10 @@ import "./dialog_shell.js";
           weeks: draft.weeks,
         };
         if (!isNew) {
-          window.APP.mutate("Edit week pattern", () => {
+          window.APP.mutate("Edit week pattern", (school) => {
             const before = { ...ref };
             Object.assign(ref, payload);
+            syncWeeksDefs(school);
             window.APP.audit.append({ entity:"weeks", op:"update", before, after:{...ref} });
           });
         } else {
@@ -175,6 +188,7 @@ import "./dialog_shell.js";
           payload.id = D.uid("wk");
           window.APP.mutate("Add week pattern", (school) => {
             school.weeks.push(payload);
+            syncWeeksDefs(school);
             window.APP.audit.append({ entity:"weeks", op:"add", after:{...payload} });
           });
         }
@@ -195,8 +209,9 @@ import "./dialog_shell.js";
           const all = ensure();
           const i = all.findIndex(x => x.id === row._ref.id);
           if (i >= 0) {
-            window.APP.mutate("Delete week pattern", () => {
+            window.APP.mutate("Delete week pattern", (school) => {
               const removed = all.splice(i,1)[0];
+              syncWeeksDefs(school);
               window.APP.audit.append({ entity:"weeks", op:"remove", before:{...removed} });
             });
             D.refresh(rows());

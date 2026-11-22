@@ -75,3 +75,37 @@ Audited on built preview (`http://localhost:4173/`) using Playwright + real Chro
 ### BUG-D01 [MEDIUM] [qa] `e2e/curtain.spec.js:248` flaked under full-suite load — FIXED
 - **Root cause:** Drag started immediately after `curtainHeight > 190` without waiting for settled `pendingCard`/`target` boxes (target uncovered above expanded curtain) or confirming drag-pickup state (`CardInHand.active()` / ghost element).
 - **Fix:** Wait on settled boxes, scroll target above curtain if needed, and poll for drag-pickup state before moving to target. Verified 5/5 with `--repeat-each=5`.
+
+---
+
+## Block E — Full QA Pass After p266–p271 (2026-11-22)
+
+### E-01 (High — Deferred to Block F per backlog)
+- **Title:** WASM CP-SAT `Aborted()` / `Uncaught [object WebAssembly.Exception]` during Phase 2 extended soft optimization on large real school (`LATEST.xml`)
+- **Steps:** Import `~/.mempalace/gdgpsd_data/timetable/LATEST.xml` (66 teachers, 34 classes, 537 lessons, 1,441 schedulable cards / 1,470 period-slots) -> Generate -> keep default (`Best` / `auto`, `best` preset) or `Generate` -> `wasm` (`best` preset) -> wait for Phase 2 (`EXTENDED SOFT: terms added= 69090`).
+- **Expected:** Solver completes Phase 2 (or skips/caps cleanly) with 0 `pageerror`s and 0 `Aborted()` crashes.
+- **Actual:** At ~138s during Phase 2, `cp_sat_runtime.js` logs `Aborted()` and throws `Uncaught [object WebAssembly.Exception]` (4–8 `pageerror` events) before recovering/falling back to deliver `1,441 / 1,441` placed (`0` hard conflicts). Note: at 90s `balanced` preset (`wasm`), Phase 2 did not abort (`1,433 / 1,441` placed, `0` hard conflicts, `0` pageerrors).
+- **Status:** Logged for Block F (`Solver robustness`).
+
+### E-02 (Medium — Deferred to Block F per backlog)
+- **Title:** Solver result panel displays large negative "SOFT PENALTIES" values
+- **Steps:** Run Generate on `LATEST.xml` or the Demo school and inspect the result panel tiles.
+- **Expected:** Quality/penalty metric is 0-or-positive (or presented as a clear quality score).
+- **Actual:** Displays `-693,100 SOFT PENALTIES` (`auto` on `LATEST.xml`), `-671,700 SOFT PENALTIES` (`wasm` balanced), `-404,200 SOFT PENALTIES` (`browser` balanced / `cloud` fallback), and `-489,460 SOFT PENALTIES` (demo school).
+- **Status:** Logged for Block F (`Solver robustness`).
+
+### E-03 (High — FIXED in `20261122-p272-qa-weeks-terms-mobile`)
+- **Title:** Week/Term patterns created or edited in `EntityWeeks` / `EntityTerms` dialogs do not sync `school.weeksDefs` / `school.termsDefs` and are dropped on template-based aSc XML export
+- **Steps:** Load Demo school -> open `Specification -> Weeks…`, add `Week A` (`10`) and `Week B` (`01`) -> open `Specification -> Terms…`, add `Term 1` (`10`) and `Term 2` (`01`) -> assign them to lessons -> open `#editor-view-filter` or export to aSc XML and re-import.
+- **Expected:** `school.weeksDefs` and `school.termsDefs` include the new patterns; grid filter lists `Week A`/`Term 1`; exported XML writes `<weeksdefs>` and `<termsdefs>` with the new patterns so re-import preserves both defs and lesson references.
+- **Actual (before fix):** `EntityWeeks`/`EntityTerms` mutated only `school.weeks`/`school.terms`, leaving `school.weeksDefs`/`school.termsDefs` stale (only "All weeks"/"Whole year"). `exportFromTemplate()` also never replaced `<weeksdefs>`/`<termsdefs>` in `sourceText`, dropping UI-created weeks/terms on XML export.
+- **Fix:** Added `syncWeeksDefs(school)` in `js/ui/entities/weeks.js` and `syncTermsDefs(school)` in `js/ui/entities/terms.js` inside `add`/`update`/`delete` mutations and `ensure()`; updated `exportFromTemplate()` and synthesized export in `js/ui/io/export_timetable_xml.js` to emit `<weeksdefs>` and `<termsdefs>` from `weeksDefs`/`weeks` and `termsDefs`/`terms`.
+- **Regression test:** `e2e/block-e-regression.spec.js` (`E-03` — full UI create -> lesson assign -> `#editor-view-filter` -> XML export -> re-import round-trip).
+
+### E-04 (Medium — FIXED in `20261122-p272-qa-weeks-terms-mobile`)
+- **Title:** 251px horizontal overflow (`641px > 390px`) at 390px mobile viewport when entity dialogs open
+- **Steps:** Set viewport to `390x844`, load Demo school, open `EntityClasses`, `EntityWeeks`, `EntityTerms`, or `EntityLessons`.
+- **Expected:** `document.documentElement.scrollWidth <= 394` with no horizontal page overflow.
+- **Actual (before fix):** `scrollWidth` reached `641px` (`HEADER.chrx-topbar` / `DIV.chrx-topbar-editor-tools` stretched past 390px and `.chrx-ent-dialog` lacked mobile stacking rules).
+- **Fix:** Added `@media (max-width: 640px)` responsive stacking in `css/entities.css` and `@media (max-width: 767px)` `.chrx-shell .chrx-topbar` wrapping + `max-width: 100vw; overflow-x: clip` in `css/editor-v3.css` + `css/editor.css`.
+- **Regression test:** `e2e/block-e-regression.spec.js` (`E-04` — verifies `scrollWidth <= clientWidth + 4` across `EntityClasses`, `EntityWeeks`, `EntityTerms`, `EntityLessons` at `390x844`).

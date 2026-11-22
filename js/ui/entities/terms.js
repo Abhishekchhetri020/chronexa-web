@@ -17,6 +17,17 @@ import "./dialog_shell.js";
     arr.push({ id: D.uid("term"), name: "Whole year", short: "YR", terms: "1" });
   }
 
+  function syncTermsDefs(school) {
+    if (!school || !Array.isArray(school.terms)) return;
+    school.termsDefs = school.terms.map(t => ({
+      id: t.id,
+      name: t.name || t.short || t.id,
+      short: t.short || "",
+      bits: String(t.terms != null ? t.terms : (t.bits != null ? t.bits : "1")),
+      terms: String(t.terms != null ? t.terms : (t.bits != null ? t.bits : "1")),
+    }));
+  }
+
   function ensure() {
     const s = window.APP.school = window.APP.school || {};
     if (!Array.isArray(s.terms)) {
@@ -39,6 +50,7 @@ import "./dialog_shell.js";
         }
       }
       if (s.terms.length === 0) seedDefaults(s.terms);
+      if (!Array.isArray(s.termsDefs) || s.termsDefs.length === 0) syncTermsDefs(s);
     }
     return s.terms;
   }
@@ -159,9 +171,10 @@ import "./dialog_shell.js";
           terms: draft.terms,
         };
         if (!isNew) {
-          window.APP.mutate("Edit term", () => {
+          window.APP.mutate("Edit term", (school) => {
             const before = { ...ref };
             Object.assign(ref, payload);
+            syncTermsDefs(school);
             window.APP.audit.append({ entity:"terms", op:"update", before, after:{...ref} });
           });
         } else {
@@ -169,6 +182,7 @@ import "./dialog_shell.js";
           payload.id = D.uid("term");
           window.APP.mutate("Add term", (school) => {
             school.terms.push(payload);
+            syncTermsDefs(school);
             window.APP.audit.append({ entity:"terms", op:"add", after:{...payload} });
           });
         }
@@ -189,8 +203,9 @@ import "./dialog_shell.js";
           const all = ensure();
           const i = all.findIndex(x => x.id === row._ref.id);
           if (i >= 0) {
-            window.APP.mutate("Delete term", () => {
+            window.APP.mutate("Delete term", (school) => {
               const removed = all.splice(i,1)[0];
+              syncTermsDefs(school);
               window.APP.audit.append({ entity:"terms", op:"remove", before:{...removed} });
             });
             D.refresh(rows());

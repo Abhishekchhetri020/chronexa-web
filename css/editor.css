@@ -768,7 +768,9 @@ body.chrx-body--resizing * {
   }
   .chrx-shell .chrx-sidebar, .chrx-shell .chrx-wordmark, .chrx-rail{ display:none; }
   /* Topbar can wrap its controls on small screens instead of overflowing. */
-  .chrx-topbar{ flex-wrap:wrap; height:auto; min-height:56px; }
+  .chrx-topbar{ flex-wrap:wrap; height:auto; min-height:56px; max-width:100vw; overflow-x:hidden; box-sizing:border-box; }
+  .chrx-topbar .chrx-crumbs{ min-width:0; max-width:100%; overflow:hidden; }
+  .chrx-topbar-editor-tools{ flex-wrap:wrap; max-width:100%; margin-left:0; }
 }
 
 /* ── Plan D: undo/redo grid flash + loading skeleton ───────────────────────*/
