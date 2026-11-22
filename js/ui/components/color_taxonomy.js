@@ -136,7 +136,7 @@ import "../ribbon/topbar.js";
     const panel = document.createElement("div");
     panel.style.cssText = "background:#fff;border-radius:12px;padding:20px;width:min(420px,95vw);box-shadow:0 20px 60px rgba(0,0,0,.3);font-family:-apple-system,sans-serif";
     panel.innerHTML = `
-      <h3 style="margin:0 0 10px;color:#1e3a8a">🎨 Color taxonomy</h3>
+      <h3 style="margin:0 0 10px;color:#1e3a8a">Color taxonomy</h3>
       <p style="margin:0 0 12px;font-size:13px;color:#475569">Auto-color subjects, teachers, classes and rooms using a stable hue-rotation palette. Existing colors stay unless you tick <em>Overwrite</em>.</p>
       <label style="display:block;font-size:13px;margin-bottom:14px"><input type="checkbox" id="chrx-color-overwrite"> Overwrite existing colors</label>
       <div style="display:flex;gap:8px;justify-content:flex-end">

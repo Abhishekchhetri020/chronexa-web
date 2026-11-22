@@ -57,17 +57,18 @@ import {
         render();
       },
     });
+    const selected = state.edition === key;
     return el("label", {
-      class: "chrx-pub-edition",
+      class: "chrx-pub-edition" + (selected ? " is-selected" : ""),
       style: "display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid "
-        + (state.edition === key ? "#1e3a8a" : "#e2e8f0")
-        + ";border-radius:10px;margin-bottom:8px;cursor:pointer;background:"
-        + (state.edition === key ? "#f4f7ff" : "#fff"),
+        + (selected ? "var(--chrx-accent, #0d4f54)" : "var(--chrx-line, #e2e8f0)")
+        + ";border-radius:10px;margin-bottom:8px;cursor:pointer;color:var(--chrx-fg, #0f172a);background:"
+        + (selected ? "var(--chrx-accent-bg, rgba(13, 79, 84, 0.08))" : "var(--chrx-bg-tile, #ffffff)"),
     },
       input,
       el("span", null,
-        el("span", { style: "display:block;font-weight:600" }, rules.label),
-        el("span", { style: "display:block;color:#64748b;font-size:12px;margin-top:2px" }, EDITION_HELP[key])));
+        el("span", { style: "display:block;font-weight:600;color:var(--chrx-fg, #0f172a)" }, rules.label),
+        el("span", { style: "display:block;color:var(--chrx-fg-secondary, #475569);font-size:12px;margin-top:2px" }, EDITION_HELP[key])));
   }
 
   function render() {
@@ -76,15 +77,15 @@ import {
     const snap = currentSnapshot();
     const rules = EDITION_RULES[state.edition];
 
-    body.appendChild(el("p", { style: "margin:0 0 12px;color:#475569;font-size:13px" },
+    body.appendChild(el("p", { style: "margin:0 0 12px;color:var(--chrx-fg-secondary, #475569);font-size:13px" },
       "Create a read-only copy of this timetable to share by WhatsApp, email or the school website. "
       + "Only what the chosen edition allows is written into the file."));
 
     for (const key of EDITIONS) body.appendChild(editionRow(key));
 
     body.appendChild(el("label", {
-      style: "display:flex;gap:8px;align-items:center;margin:2px 0 12px;font-size:13px;"
-        + (rules.canHideTeachers ? "" : "opacity:.55;"),
+      style: "display:flex;gap:8px;align-items:center;margin:2px 0 12px;font-size:13px;color:var(--chrx-fg, #0f172a);"
+        + (rules.canHideTeachers ? "" : "opacity:.6;"),
     },
       el("input", {
         type: "checkbox", "data-testid": "chrx-pub-teacher-names",
@@ -93,15 +94,15 @@ import {
         onchange: (e) => { state.teacherNames = !!e.target.checked; render(); },
       }),
       el("span", null, "Include teacher names",
-        el("span", { style: "color:#64748b" },
+        el("span", { style: "color:var(--chrx-fg-secondary, #475569)" },
           rules.canHideTeachers ? " (students & parents)" : (state.edition === "staff" ? " — always in the staff edition" : " — never in the public edition")))));
 
     body.appendChild(el("div", {
       class: "chrx-pub-counts", "data-testid": "chrx-pub-counts",
-      style: "padding:10px 12px;border-radius:10px;background:#f1f5f9;font-size:13px;color:#334155",
+      style: "padding:10px 12px;border-radius:10px;background:var(--chrx-bg-tile, #f1f5f9);border:1px solid var(--chrx-line, #e2e8f0);font-size:13px;color:var(--chrx-fg, #334155)",
     },
-      el("div", { style: "font-weight:600;margin-bottom:2px" }, "This file will contain"),
-      el("div", null, countsLine(snap))));
+      el("div", { style: "font-weight:600;margin-bottom:2px;color:var(--chrx-fg, #0f172a)" }, "This file will contain"),
+      el("div", { style: "color:var(--chrx-fg-secondary, #475569)" }, countsLine(snap))));
 
     const btn = (label, testid, primary, onclick) => el("button", {
       class: "chrx-btn" + (primary ? " chrx-btn--primary" : ""),
@@ -111,7 +112,7 @@ import {
     }, label);
 
     body.appendChild(el("div", {
-      style: "display:flex;justify-content:flex-end;gap:8px;margin-top:14px;border-top:1px solid #e2e8f0;padding-top:12px",
+      style: "display:flex;justify-content:flex-end;gap:8px;margin-top:14px;border-top:1px solid var(--chrx-line, #e2e8f0);padding-top:12px",
     },
       btn("Close", "chrx-pub-close", false, () => D.closeSheet()),
       btn("Download snapshot (.json)", "chrx-pub-download-json", false, async () => {

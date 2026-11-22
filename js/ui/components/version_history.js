@@ -472,40 +472,52 @@ function ensureStyles() {
   style.id = "chrx-vh-styles";
   style.textContent = `
 .chrx-vh-scrim{position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:flex-start;justify-content:center;padding:24px;z-index:1000;overflow:auto}
-.chrx-vh-panel{background:#fff;color:#0f172a;border-radius:12px;max-width:820px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3);font-family:-apple-system,BlinkMacSystemFont,sans-serif;display:flex;flex-direction:column;max-height:88vh}
-.chrx-vh-panel header{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid #e2e8f0}
-.chrx-vh-panel h2{margin:0;font-size:17px;color:#1e3a8a}
-.chrx-vh-close{background:none;border:0;font-size:22px;line-height:1;cursor:pointer;color:#64748b}
+.chrx-vh-panel{background:var(--chrx-bg-elev,#fff);color:var(--chrx-fg,#0f172a);border:1px solid var(--chrx-line,#e2e8f0);border-radius:12px;max-width:820px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3);font-family:var(--chrx-font-sans,-apple-system,BlinkMacSystemFont,sans-serif);display:flex;flex-direction:column;max-height:88vh}
+.chrx-vh-panel header{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid var(--chrx-line,#e2e8f0)}
+.chrx-vh-panel h2{margin:0;font-family:var(--chrx-font-sans,sans-serif);font-size:17px;font-weight:700;color:var(--chrx-fg,#0f172a);display:flex;align-items:center;gap:8px}
+.chrx-vh-close{background:none;border:0;font-size:22px;line-height:1;cursor:pointer;color:var(--chrx-fg-secondary,#64748b)}
+.chrx-vh-close:hover{color:var(--chrx-fg,#0f172a)}
 .chrx-vh-body{padding:10px 18px 16px;overflow:auto}
-.chrx-vh-note{font-size:12px;color:#64748b;margin:0 0 10px}
-.chrx-vh-empty{padding:24px;text-align:center;color:#94a3b8;font-size:13px}
-.chrx-vh-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #f1f5f9}
-.chrx-vh-row.is-newest{background:#f8fafc}
+.chrx-vh-note{font-size:12px;color:var(--chrx-fg-secondary,#64748b);margin:0 0 10px}
+.chrx-vh-empty{padding:24px;text-align:center;color:var(--chrx-fg-secondary,#94a3b8);font-size:13px}
+.chrx-vh-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 8px;border-bottom:1px solid var(--chrx-line-soft,#f1f5f9);border-radius:6px}
+.chrx-vh-row.is-newest{background:var(--chrx-bg-tile,#f8fafc)}
 .chrx-vh-meta{min-width:0}
-.chrx-vh-label{display:block;font-size:14px;font-weight:600}
-.chrx-vh-time{display:block;font-size:11px;color:#64748b}
-.chrx-vh-stat{display:block;font-size:11px;color:#94a3b8}
+.chrx-vh-label{display:block;font-size:14px;font-weight:600;color:var(--chrx-fg,#0f172a)}
+.chrx-vh-time{display:block;font-size:11px;color:var(--chrx-fg-secondary,#64748b)}
+.chrx-vh-stat{display:block;font-size:11px;color:var(--chrx-fg-tertiary,#94a3b8)}
 .chrx-vh-actions{display:flex;gap:6px;flex-shrink:0}
-.chrx-vh-actions button{border:1px solid #cbd5e1;background:#fff;color:#0f172a;padding:4px 10px;border-radius:5px;font-size:12px;cursor:pointer}
-.chrx-vh-actions button:hover{background:#f1f5f9}
-.chrx-vh-actions button.danger{color:#b91c1c;border-color:#fecaca}
+.chrx-vh-actions button{border:1px solid var(--chrx-line,#cbd5e1);background:var(--chrx-bg-tile,#fff);color:var(--chrx-fg,#0f172a);padding:4px 10px;border-radius:5px;font-size:12px;cursor:pointer}
+.chrx-vh-actions button:hover{filter:brightness(.95)}
+.chrx-vh-actions button.danger{color:#dc2626;border-color:rgba(220,38,38,.4)}
+:root[data-theme="dark"] .chrx-vh-actions button.danger{color:#f87171;border-color:rgba(248,113,113,.45)}
 .chrx-vh-preview-head,.chrx-vh-diff-head{display:flex;align-items:center;gap:10px;margin-bottom:10px}
-.chrx-vh-preview-head span,.chrx-vh-diff-head span{font-size:12px;color:#475569}
-.chrx-vh-preview-mount{border:1px solid #e2e8f0;border-radius:8px;overflow:auto;max-height:62vh;background:#f8fafc}
-.chrx-vh-diff-summary{font-weight:600;color:#1e3a8a}
+.chrx-vh-preview-head span,.chrx-vh-diff-head span{font-size:12px;color:var(--chrx-fg-secondary,#475569)}
+.chrx-vh-preview-mount{border:1px solid var(--chrx-line,#e2e8f0);border-radius:8px;overflow:auto;max-height:62vh;background:var(--chrx-bg-tile,#f8fafc)}
+.chrx-vh-diff-summary{font-weight:600;color:var(--chrx-accent,#0d4f54)}
 .chrx-vh-diff-list{list-style:none;margin:6px 0 0;padding:0;font-size:13px}
-.chrx-vh-diff__item{padding:6px 8px;border-left:3px solid #cbd5e1;margin-bottom:4px;background:#f8fafc}
-.chrx-vh-diff__item--moved{border-left-color:#2563eb}
+.chrx-vh-diff__item{padding:6px 8px;border-left:3px solid var(--chrx-line,#cbd5e1);margin-bottom:4px;background:var(--chrx-bg-tile,#f8fafc);color:var(--chrx-fg,#0f172a)}
+.chrx-vh-diff__item--moved{border-left-color:var(--chrx-accent,#0d4f54)}
 .chrx-vh-diff__item--added{border-left-color:#059669}
 .chrx-vh-diff__item--removed{border-left-color:#dc2626}
-.chrx-vh-back{border:1px solid #cbd5e1;background:#fff;border-radius:5px;padding:4px 10px;font-size:12px;cursor:pointer}
+.chrx-vh-back{border:1px solid var(--chrx-line,#cbd5e1);background:var(--chrx-bg-tile,#fff);color:var(--chrx-fg,#0f172a);border-radius:5px;padding:4px 10px;font-size:12px;cursor:pointer}
 `;
   document.head.appendChild(style);
 }
 
+let vhKeyHandler = null;
+let vhPreviousFocus = null;
 function closePanel() {
+  if (vhKeyHandler) {
+    document.removeEventListener("keydown", vhKeyHandler, true);
+    vhKeyHandler = null;
+  }
   const existing = document.getElementById(PANEL_ID);
   if (existing) existing.remove();
+  if (vhPreviousFocus && vhPreviousFocus.isConnected && typeof vhPreviousFocus.focus === "function") {
+    try { vhPreviousFocus.focus(); } catch (_) {}
+  }
+  vhPreviousFocus = null;
 }
 
 async function ensureViewer() {
@@ -614,13 +626,15 @@ export async function open() {
   const APP = window.APP;
   if (!APP || !APP.school) { notify("Open a timetable first.", "warn"); return null; }
   closePanel();
+  vhPreviousFocus = document.activeElement;
   ensureStyles();
 
+  const clockSvg = window.ChrxIcons ? window.ChrxIcons.svg("clock", 18) : "";
   const root = document.createElement("div");
   root.className = "chrx-vh-scrim";
   root.id = PANEL_ID;
-  root.innerHTML = `<div class="chrx-vh-panel" role="dialog" aria-modal="true" aria-label="Version history">
-      <header><h2>🕘 Version history</h2>
+  root.innerHTML = `<div class="chrx-vh-panel" role="dialog" aria-modal="true" aria-label="Version history" tabindex="-1">
+      <header><h2>${clockSvg}Version history</h2>
         <button type="button" class="chrx-vh-close" aria-label="Close">×</button></header>
       <div class="chrx-vh-body"></div>
     </div>`;
@@ -629,6 +643,8 @@ export async function open() {
   const body = root.querySelector(".chrx-vh-body");
   root.querySelector(".chrx-vh-close").onclick = closePanel;
   root.addEventListener("click", (e) => { if (e.target === root) closePanel(); });
+  vhKeyHandler = (e) => { if (e.key === "Escape") { e.preventDefault(); closePanel(); } };
+  document.addEventListener("keydown", vhKeyHandler, true);
 
   async function refresh() {
     let versions = [];

@@ -349,18 +349,20 @@ import "../state.js";
     if (!data) { alert("Open a timetable first."); return; }
     ensureStyles();
 
+    const previousFocus = document.activeElement;
+    const ic = (name, size = 16) => (window.ChrxIcons ? window.ChrxIcons.node(name, size) : null);
     const root = el("div", {
       class: "chrx-stats-root",
       role: "dialog",
       "aria-modal": "true",
       onclick: e => { if (e.target === root) close(); },
     });
-    const panel = el("div", { class: "chrx-stats-panel" });
+    const panel = el("div", { class: "chrx-stats-panel", tabindex: "-1" });
 
     panel.appendChild(el("header", { class: "chrx-stats-head" },
       el("div", null,
-        el("h2", null, "📊 Statistics — " + (data.school.name || "School")),
-        el("small", { style: "color:#64748b;font-size:12px" },
+        el("h2", null, ic("chart", 18), "Statistics — " + (data.school.name || "School")),
+        el("small", { style: "color:var(--chrx-fg-secondary, #64748b);font-size:12px" },
           `${data.school.days} days · ${data.school.periods} periods/day (${data.school.totalSlots} weekly slots)`),
       ),
       el("button", { class: "chrx-stats-close", "aria-label": "Close", onclick: close }, "×"),
@@ -376,7 +378,7 @@ import "../state.js";
     // ─────────────────────────────────────────────────────────────
     // 1. Exhaustion Table (sortable)
     // ─────────────────────────────────────────────────────────────
-    panel.appendChild(el("h3", null, "⚡ Exhaustion Table — Teachers & Classes"));
+    panel.appendChild(el("h3", null, ic("bolt", 14), "Exhaustion Table — Teachers & Classes"));
     panel.appendChild(renderSortableTable(data.exhaustionTable, [
       {
         key: "name", label: "Entity", defaultDir: "asc",
@@ -407,7 +409,7 @@ import "../state.js";
     // ─────────────────────────────────────────────────────────────
     // 2. Teachers Table (with gap windows)
     // ─────────────────────────────────────────────────────────────
-    panel.appendChild(el("h3", null, "👨🏫 Teachers — Load & Gap Windows"));
+    panel.appendChild(el("h3", null, ic("teacher", 14), "Teachers — Load & Gap Windows"));
     panel.appendChild(renderSortableTable(data.teachers, [
       {
         key: "name", label: "Teacher", defaultDir: "asc",
@@ -438,7 +440,7 @@ import "../state.js";
     // ─────────────────────────────────────────────────────────────
     // 3. Classes Table
     // ─────────────────────────────────────────────────────────────
-    panel.appendChild(el("h3", null, "🏫 Classes — Utilization"));
+    panel.appendChild(el("h3", null, ic("class", 14), "Classes — Utilization"));
     panel.appendChild(renderSortableTable(data.classes, [
       {
         key: "name", label: "Class", defaultDir: "asc",
@@ -458,7 +460,7 @@ import "../state.js";
     // ─────────────────────────────────────────────────────────────
     // 4. Rooms Table
     // ─────────────────────────────────────────────────────────────
-    panel.appendChild(el("h3", null, "🚪 Rooms — Utilization"));
+    panel.appendChild(el("h3", null, ic("room", 14), "Rooms — Utilization"));
     panel.appendChild(renderSortableTable(data.rooms, [
       { key: "name", label: "Room", defaultDir: "asc" },
       { key: "used", label: "Used Slots", align: "right", defaultDir: "desc" },
@@ -472,7 +474,7 @@ import "../state.js";
     // ─────────────────────────────────────────────────────────────
     // 5. Period-load balance
     // ─────────────────────────────────────────────────────────────
-    panel.appendChild(el("h3", null, "📈 Period-Load Balance"));
+    panel.appendChild(el("h3", null, ic("trend", 14), "Period-Load Balance"));
     const bars = el("div", { class: "chrx-stats-bars" });
     const max = Math.max(1, ...data.periodLoad);
     data.periodLoad.forEach((load, i) => {
@@ -489,6 +491,9 @@ import "../state.js";
     function close() {
       root.remove();
       document.removeEventListener("keydown", onKey, true);
+      if (previousFocus && previousFocus.isConnected && typeof previousFocus.focus === "function") {
+        try { previousFocus.focus(); } catch (_) {}
+      }
     }
     function onKey(e) {
       if (e.key === "Escape") { e.preventDefault(); close(); }
@@ -502,31 +507,31 @@ import "../state.js";
     s.id = "chrx-stats-styles";
     s.textContent = `
 .chrx-stats-root{position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:flex-start;justify-content:center;padding:24px;z-index:1000;overflow:auto}
-.chrx-stats-panel{background:#fff;border-radius:12px;max-width:940px;width:100%;padding:18px 24px;box-shadow:0 24px 64px rgba(0,0,0,.25);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#0f172a;max-height:92vh;display:flex;flex-direction:column;overflow-y:auto}
-.chrx-stats-head{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e2e8f0;margin:-4px 0 12px;padding-bottom:10px}
-.chrx-stats-head h2{margin:0;font-size:18px;color:#1e3a8a}
-.chrx-stats-close{background:none;border:0;font-size:24px;cursor:pointer;color:#64748b;line-height:1}
-.chrx-stats-close:hover{color:#0f172a}
-.chrx-stats-summary{display:flex;gap:24px;flex-wrap:wrap;font-size:13px;background:#f1f5f9;padding:10px 14px;border-radius:8px;margin-bottom:14px}
-.chrx-stats-panel h3{margin:18px 0 8px;font-size:13px;color:#334155;text-transform:uppercase;letter-spacing:.04em;font-weight:700}
+.chrx-stats-panel{background:var(--chrx-bg-elev,#fff);border:1px solid var(--chrx-line,#e2e8f0);border-radius:12px;max-width:940px;width:100%;padding:18px 24px;box-shadow:0 24px 64px rgba(0,0,0,.25);font-family:var(--chrx-font-sans,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif);color:var(--chrx-fg,#0f172a);max-height:92vh;display:flex;flex-direction:column;overflow-y:auto}
+.chrx-stats-head{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--chrx-line,#e2e8f0);margin:-4px 0 12px;padding-bottom:10px}
+.chrx-stats-head h2{margin:0;font-family:var(--chrx-font-sans,sans-serif);font-size:18px;font-weight:700;color:var(--chrx-fg,#0f172a);display:flex;align-items:center;gap:8px}
+.chrx-stats-close{background:none;border:0;font-size:24px;cursor:pointer;color:var(--chrx-fg-secondary,#64748b);line-height:1}
+.chrx-stats-close:hover{color:var(--chrx-fg,#0f172a)}
+.chrx-stats-summary{display:flex;gap:24px;flex-wrap:wrap;font-size:13px;background:var(--chrx-bg-tile,#f1f5f9);color:var(--chrx-fg,#0f172a);border:1px solid var(--chrx-line,#e2e8f0);padding:10px 14px;border-radius:8px;margin-bottom:14px}
+.chrx-stats-panel h3{margin:18px 0 8px;font-family:var(--chrx-font-sans,sans-serif);font-size:12.5px;color:var(--chrx-fg-secondary,#334155);text-transform:uppercase;letter-spacing:.04em;font-weight:700;display:flex;align-items:center;gap:6px}
 .chrx-stats-table-wrap{overflow-x:auto;margin-bottom:12px}
-.chrx-stats-table{width:100%;border-collapse:collapse;font-size:13px}
-.chrx-stats-table th{background:#f8fafc;color:#475569;font-weight:600;text-align:left;padding:7px 10px;border-bottom:2px solid #e2e8f0;user-select:none}
+.chrx-stats-table{width:100%;border-collapse:collapse;font-size:13px;color:var(--chrx-fg,#0f172a)}
+.chrx-stats-table th{background:var(--chrx-bg-tile,#f8fafc);color:var(--chrx-fg-secondary,#475569);font-weight:600;text-align:left;padding:7px 10px;border-bottom:2px solid var(--chrx-line,#e2e8f0);user-select:none}
 .chrx-stats-th-sortable{cursor:pointer}
-.chrx-stats-th-sortable:hover{background:#e2e8f0;color:#0f172a}
-.chrx-stats-table td{padding:6px 10px;border-bottom:1px solid #f1f5f9}
+.chrx-stats-th-sortable:hover{background:var(--chrx-bg-canvas,#e2e8f0);color:var(--chrx-fg,#0f172a)}
+.chrx-stats-table td{padding:6px 10px;border-bottom:1px solid var(--chrx-line-soft,#f1f5f9)}
 .chrx-stats-table td.align-right{text-align:right;font-variant-numeric:tabular-nums}
 .chrx-stats-table th.align-right{text-align:right}
 .chrx-stats-dot{display:inline-block;width:10px;height:10px;border-radius:50%;vertical-align:middle;margin-right:4px}
 .chrx-stats-badge{font-size:10px;font-weight:600;padding:2px 6px;border-radius:4px;text-transform:uppercase;letter-spacing:.03em}
-.chrx-stats-badge--teacher{background:#e0e7ff;color:#3730a3}
-.chrx-stats-badge--class{background:#dcfce7;color:#166534}
-.chrx-stats-bar-mini{width:48px;height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden;display:inline-block}
+.chrx-stats-badge--teacher{background:var(--chrx-accent-bg,#e6f4f4);color:var(--chrx-accent,#0d4f54)}
+.chrx-stats-badge--class{background:var(--chrx-green-bg,#dcfce7);color:var(--chrx-green,#166534)}
+.chrx-stats-bar-mini{width:48px;height:6px;background:var(--chrx-line,#e2e8f0);border-radius:3px;overflow:hidden;display:inline-block}
 .chrx-stats-bar-mini div{height:100%;border-radius:3px}
-.chrx-stats-bars{display:flex;gap:6px;align-items:flex-end;height:80px;padding:10px;background:#f8fafc;border-radius:8px;margin-top:6px}
+.chrx-stats-bars{display:flex;gap:6px;align-items:flex-end;height:80px;padding:10px;background:var(--chrx-bg-tile,#f8fafc);border:1px solid var(--chrx-line,#e2e8f0);border-radius:8px;margin-top:6px}
 .chrx-stats-bar{display:flex;flex-direction:column;align-items:center;gap:3px;flex:1}
-.chrx-stats-bar span{display:block;width:22px;background:linear-gradient(180deg,#3b82f6,#1e40af);border-radius:4px 4px 0 0;min-height:2px}
-.chrx-stats-bar small{font-size:10px;color:#64748b}
+.chrx-stats-bar span{display:block;width:22px;background:linear-gradient(180deg,var(--chrx-accent,#0d4f54),var(--chrx-accent-hover,#093b3f));border-radius:4px 4px 0 0;min-height:2px}
+.chrx-stats-bar small{font-size:10px;color:var(--chrx-fg-secondary,#64748b)}
     `;
     document.head.appendChild(s);
   }

@@ -90,7 +90,7 @@ import "../entities/weeks.js";
       return sel;
     }
     function link(label, onClick) {
-      const a = D.el("a", { href: "#", style: "color:#3b82f6;font-size:12px;cursor:pointer;text-decoration:underline" }, label);
+      const a = D.el("a", { href: "#", style: "color:var(--chrx-accent,#0d4f54);font-size:12px;cursor:pointer;text-decoration:underline" }, label);
       a.addEventListener("click", (e) => { e.preventDefault(); onClick(); });
       return a;
     }

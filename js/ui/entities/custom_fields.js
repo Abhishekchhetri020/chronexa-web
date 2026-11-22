@@ -365,7 +365,7 @@ import "./dialog_shell.js";
         const tab = document.createElement("button");
         tab.type = "button";
         const isActive = curEntity === opt.id;
-        tab.style.cssText = `padding:4px 10px;font-size:12px;border-radius:4px;cursor:pointer;border:1px solid ${isActive ? "#3b82f6" : "#cbd5e1"};background:${isActive ? "#eff6ff" : "#fff"};color:${isActive ? "#1d4ed8" : "#475569"};font-weight:${isActive ? "600" : "400"}`;
+        tab.style.cssText = `padding:4px 10px;font-size:12px;border-radius:4px;cursor:pointer;border:1px solid ${isActive ? "var(--chrx-accent,#0d4f54)" : "#cbd5e1"};background:${isActive ? "#eff6ff" : "#fff"};color:${isActive ? "var(--chrx-accent,#0d4f54)" : "#475569"};font-weight:${isActive ? "600" : "400"}`;
         tab.textContent = opt.label;
         tab.addEventListener("click", () => {
           curEntity = opt.id;

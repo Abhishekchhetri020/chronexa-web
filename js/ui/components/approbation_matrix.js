@@ -46,7 +46,7 @@ import "../ribbon/topbar.js";
     const panel = el("div", { class: "chrx-appro-panel" });
 
     panel.appendChild(el("header", null,
-      el("h2", null, "🎓 Teacher qualifications (approbation)"),
+      el("h2", null, "Teacher qualifications (approbation)"),
       el("button", { class: "chrx-appro-close", "aria-label": "Close", onclick: () => root.remove() }, "×"),
     ));
     panel.appendChild(el("div", { class: "chrx-appro-hint" },
@@ -93,7 +93,7 @@ import "../ribbon/topbar.js";
       el("button", { class: "chrx-appro-bulk", onclick: () => bulk("tick-all") }, "Tick all"),
       el("button", { class: "chrx-appro-bulk", onclick: () => bulk("untick-all") }, "Untick all"),
       el("button", { class: "chrx-appro-bulk", onclick: () => bulk("diagonal") }, "Diagonal seed"),
-      el("button", { class: "chrx-appro-save", onclick: save }, "💾 Save"),
+      el("button", { class: "chrx-appro-save", onclick: save }, "Save"),
       el("button", { class: "chrx-appro-cancel", onclick: () => root.remove() }, "Cancel"),
     ));
 

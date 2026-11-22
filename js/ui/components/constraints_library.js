@@ -127,7 +127,7 @@ import "../ribbon/topbar.js";
     const panel = el("div", { class: "chrx-clib-panel" });
 
     panel.appendChild(el("header", null,
-      el("h2", null, "📜 Constraints library — scoring rules for your school"),
+      el("h2", null, "Constraints library — scoring rules for your school"),
       el("button", { class: "chrx-clib-close", "aria-label": "Close", onclick: () => root.remove() }, "×"),
     ));
     panel.appendChild(el("p", { class: "chrx-clib-sub" },

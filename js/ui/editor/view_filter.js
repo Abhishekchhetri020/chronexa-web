@@ -372,7 +372,7 @@ function renderPanel() {
     ${anyPatterns ? "" : `<p id="chrx-vf-hint" class="text-xs text-slate-400 m-0 mb-2">This timetable defines only "All weeks" / "Whole year". Add week or term patterns in the ribbon's Weeks / Terms lists to scope lessons.</p>`}
     <div class="flex items-center justify-between gap-2">
       <button type="button" id="chrx-vf-reset" class="px-2 py-1 border border-slate-300 rounded text-xs text-slate-700 hover:bg-slate-50">Show all weeks &amp; terms</button>
-      <button type="button" id="chrx-vf-done" class="px-2 py-1 bg-blue-600 text-white rounded text-xs">Done</button>
+      <button type="button" id="chrx-vf-done" class="chrx-btn chrx-btn--primary text-xs">Done</button>
     </div>
   `;
   body.querySelector("#chrx-vf-week").onchange = (e) => setAxis("week", e.target.value);

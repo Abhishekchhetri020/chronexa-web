@@ -45,7 +45,7 @@ import "../ribbon/topbar.js";
 .chrx-dash-toolbar{display:flex;gap:10px;padding:10px 18px;background:#f8fafc;border-bottom:1px solid #e2e8f0;align-items:center;flex-wrap:wrap}
 .chrx-dash-toolbar input[type="search"]{padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;min-width:200px;flex:1}
 .chrx-dash-toolbar select{padding:5px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;background:#fff}
-.chrx-dash-toolbar button{background:#1d4ed8;color:#fff;border:0;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer}
+.chrx-dash-toolbar button{background:var(--chrx-accent,#0d4f54);color:#fff;border:0;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer}
 .chrx-dash-toolbar button:hover{background:#1e40af}
 .chrx-dash-toolbar button.ghost{background:#fff;color:#475569;border:1px solid #cbd5e1}
 .chrx-dash-toolbar button.ghost:hover{background:#f1f5f9}
@@ -200,7 +200,7 @@ import "../ribbon/topbar.js";
         max: Math.max(40, maxTotal),
       },
       yaxis: { labels: { style: { fontSize: "11px" } } },
-      colors: ["#2563eb"],
+      colors: ["#0d4f54"],
       grid: { borderColor: "#e2e8f0", strokeDashArray: 4 },
       dataLabels: {
         enabled: true, style: { fontSize: "10px", colors: ["#1e293b"] }, offsetX: 30,
@@ -376,7 +376,7 @@ import "../ribbon/topbar.js";
       chart: { type: "radialBar", height: 280, toolbar: { show: false } },
       series: [Math.round(r.pct * 100)],
       labels: ["Target reached"],
-      colors: ["#2563eb"],
+      colors: ["#0d4f54"],
       plotOptions: {
         radialBar: {
           hollow: { size: "55%" },

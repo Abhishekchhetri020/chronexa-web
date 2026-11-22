@@ -42,3 +42,28 @@
 - `npx vitest run`: **587 / 587 passed** (68 files, 0 failed)
 - `npx vite build`: **succeeded** (`3.60 s`)
 - `npx playwright test --config pw.chrome.config.local.mjs`: **163 passed, 1 skipped** (known real-XML ranker skip), **0 failed** (`11.4 m`)
+
+## Batch L3 (`20261123-p283-l3-ui-polish`)
+
+### What changed
+1. **L3-0 — Early-click guard moved into `<head>`** (`index.html`):
+   - Moved the entire capture-phase early-click guard + boot-crash fail-safe `<script>` from the end of `<body>` into `<head>` so `window.__CHRX_EARLY_WIRED__ === true` from byte 0 before any CTA button in `<body>` is parsed.
+   - Fixes slow-connection (200 KB/s, 300 ms latency) real mouse clicks on the topbar `"Try demo"` button (`[data-closing-demo]`) at ~1–2 s that were previously lost before the end-of-body script ran.
+2. **L3-1 — Publish dialog dark mode & Escape + focus return** (`js/ui/components/publish_dialog.js`, `js/ui/entities/dialog_shell.js`):
+   - Replaced all hardcoded light backgrounds/borders/text (`#fff`, `#f4f7ff`, `#f1f5f9`, `#e2e8f0`, `#1e3a8a`, `#334155`, `#475569`, `#64748b`) in Publish with theme tokens (`--chrx-bg-tile`, `--chrx-accent-bg`, `--chrx-accent`, `--chrx-fg`, `--chrx-fg-secondary`, `--chrx-line`).
+   - Added standalone `Escape` key handler and opener focus restoration to `EntityDialog.openSheet()` / `closeSheet()` so Publish, School Settings, and all standalone sheets close cleanly on `Escape` and return focus.
+3. **L3-2 — Advisor, Statistics, Version History, Verification & app-wide icon/brand-teal sweep** (`js/ui/components/icons.js`, `advisor.js`, `statistics_panel.js`, `version_history.js`, `verification_panel_pro.js`, `export_dialog.js`, `dashboards.js`, `lessons_grid_matrix.js`, `saved_views.js`, `view_filter.js`, `print_settings_dialog.js`, `school_settings_dialog.js`, `lessons.js`, `custom_fields.js`, `wizard_walkthrough.js`, `approbation_matrix.js`, `color_taxonomy.js`, `constraints_library.js`, `ai_actions.js`, `index.html`):
+   - Added `bulb`, `chart`, `trend`, `file`, `globe`, `image` to `ChrxIcons`.
+   - Switched Advisor, Statistics, Version History, and Verification headings from serif to `--chrx-font-sans`, replaced dialog header/section/export emoji icons with `ChrxIcons` SVGs, converted all three panels + Export dialog to dark-mode theme tokens, added Escape + focus-return to Version History (and focus-return to Advisor/Statistics), and replaced hardcoded bright-blue buttons/accents (`#2563eb`, `#3b82f6`, `#1d4ed8`, `bg-blue-600`) with brand teal (`var(--chrx-accent, #0d4f54)`).
+4. **L3-3 — Dark-mode shell toggles, topbar date-clear, & full dark-mode audit** (`index.html`, `css/design-v3.css`):
+   - Fixed `.chrx-shell-toggle` in dark mode (including active `.is-side-hidden` / `.is-rail-hidden` / `.is-fullscreen` states) so they never render as light `rgb(239, 239, 241)` squares.
+   - Replaced Tailwind slate classes on `#editor-date-clear`, `#editor-date-input`, and its label with theme-token classes (`.chrx-date-clear`, `.chrx-date-input`, `.chrx-date-label`), and added dark-mode surface/input overrides for dialogs and print preview.
+5. **L3-4 — Boot-crash fail-safe** (`index.html`):
+   - Added capture-phase `error` + `unhandledrejection` handler before `__CHRX_READY__`: clears any pending 20 s notice timer, restores any queued CTA button (never stuck on `"Loading…"`), prevents post-crash clicks from re-entering `"Loading…"`, and shows `#chrx-boot-error` (`role="alert"`): *"Chronexa could not start. Please refresh the page."*
+6. **L3-5 — New E2E tests & 1440/390 light/dark screenshots** (`e2e/block-l-ui-polish.spec.js`, `docs/neon/ui-shots/l3/`):
+   - Added `L3-item0` (real `page.mouse.click` on Try demo under 200 KB/s + 300 ms latency asserting `__CHRX_EARLY_WIRED__ === true` before body finishes), `L3-boot-crash` (aborting `index-*.js` chunk via `page.route`), and `L3-dark-audit` (computed-color white-on-white DOM walker + Escape-close check across Publish, Advisor, Statistics, Version History, Verification, Export, and Lessons + `.chrx-shell-toggle` check + 11 screenshots in `docs/neon/ui-shots/l3/`).
+
+### Full Release Gate (`p283`)
+- `npx vitest run`: **587 / 587 passed** (68 files, 0 failed)
+- `npx vite build`: **succeeded** (`2.05 s`)
+- `npx playwright test --config pw.chrome.config.local.mjs`: **165 passed, 1 skipped** (known real-XML ranker skip), **1 transient perf jitter** (`w2-5-availability-shading.spec.js:67` `pickupDuration` 100.43 ms vs 100 ms; immediately re-verified **2/2 passed in 6.5 s**, `block-l-ui-polish.spec.js` **8/8 passed**).

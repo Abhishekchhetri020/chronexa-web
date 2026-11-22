@@ -19,13 +19,13 @@ import "../io/export_png.js";
   const notify = global._chrxNotify || console.log;
 
   const FORMATS = [
-    { id: "excel", label: "Excel Workbook (.xlsx)", icon: "📊", desc: "Multi-sheet workbook with class, teacher and room schedules." },
-    { id: "csv",   label: "CSV Spreadsheet (.csv)", icon: "📑", desc: "Structured timetable grid and detailed lesson records." },
-    { id: "ics",   label: "iCalendar (.ics)",        icon: "📆", desc: "Subscribable calendar feed recurring weekly for an academic year." },
-    { id: "html",  label: "Standalone Web Page (.html)", icon: "🌐", desc: "Self-contained print-friendly HTML timetable with zero dependencies." },
-    { id: "xml",   label: "Classic XML (.xml)",      icon: "📄", desc: "Round-trip XML file compatible with classic timetabling software." },
-    { id: "png",   label: "PNG Image (.png)",         icon: "🖼", desc: "High-resolution timetable image ready to share." },
-    { id: "pdf",   label: "PDF / Print (.pdf)",      icon: "🖨", desc: "One-click print dialog set up for A4 landscape with zero app chrome." },
+    { id: "excel", label: "Excel Workbook (.xlsx)", icon: "chart", desc: "Multi-sheet workbook with class, teacher and room schedules." },
+    { id: "csv",   label: "CSV Spreadsheet (.csv)", icon: "table", desc: "Structured timetable grid and detailed lesson records." },
+    { id: "ics",   label: "iCalendar (.ics)",        icon: "calendar", desc: "Subscribable calendar feed recurring weekly for an academic year." },
+    { id: "html",  label: "Standalone Web Page (.html)", icon: "globe", desc: "Self-contained print-friendly HTML timetable with zero dependencies." },
+    { id: "xml",   label: "Classic XML (.xml)",      icon: "file", desc: "Round-trip XML file compatible with classic timetabling software." },
+    { id: "png",   label: "PNG Image (.png)",         icon: "image", desc: "High-resolution timetable image ready to share." },
+    { id: "pdf",   label: "PDF / Print (.pdf)",      icon: "print", desc: "One-click print dialog set up for A4 landscape with zero app chrome." },
   ];
 
   const SCOPES = [
@@ -100,7 +100,7 @@ import "../io/export_png.js";
 
     // ── 1. Format Selection ───────────────────────────────────────────
     const formatSection = el("div", { style: "display:flex;flex-direction:column;gap:8px;" },
-      el("label", { style: "font-size:12px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.04em;" },
+      el("label", { style: "font-size:12px;font-weight:700;color:var(--chrx-fg-secondary,#475569);text-transform:uppercase;letter-spacing:0.04em;" },
         "1. Select Format"));
 
     const formatGrid = el("div", {
@@ -111,8 +111,8 @@ import "../io/export_png.js";
       const isSelected = state.format === fmt.id;
       const card = el("label", {
         "data-testid": `chrx-export-format-${fmt.id}`,
-        style: `display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1.5px solid ${isSelected ? "var(--chrx-accent,#0d4f54)" : "#e2e8f0"};`
-          + `border-radius:8px;background:${isSelected ? "var(--chrx-accent-bg,rgba(13,79,84,0.08))" : "#ffffff"};cursor:pointer;transition:all 0.15s ease;`,
+        style: `display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1.5px solid ${isSelected ? "var(--chrx-accent,#0d4f54)" : "var(--chrx-line,#e2e8f0)"};`
+          + `border-radius:8px;color:var(--chrx-fg,#0f172a);background:${isSelected ? "var(--chrx-accent-bg,rgba(13,79,84,0.08))" : "var(--chrx-bg-tile,#ffffff)"};cursor:pointer;transition:all 0.15s ease;`,
         onclick: (e) => {
           if (state.format !== fmt.id) {
             state.format = fmt.id;
@@ -132,9 +132,9 @@ import "../io/export_png.js";
           },
         }),
         el("div", null,
-          el("div", { style: "font-weight:600;font-size:13px;color:#1e293b;" },
-            `${fmt.icon} ${fmt.label}`),
-          el("div", { style: "font-size:11px;color:#64748b;margin-top:2px;line-height:1.3;" },
+          el("div", { style: "display:flex;align-items:center;gap:6px;font-weight:600;font-size:13px;color:var(--chrx-fg,#1e293b);" },
+            window.ChrxIcons ? window.ChrxIcons.node(fmt.icon, 14) : null, fmt.label),
+          el("div", { style: "font-size:11px;color:var(--chrx-fg-secondary,#64748b);margin-top:2px;line-height:1.3;" },
             fmt.desc)));
       formatGrid.appendChild(card);
     }
@@ -144,7 +144,7 @@ import "../io/export_png.js";
     // ── 2. Scope Selection ─────────────────────────────────────────────
     const scopeAllowed = state.format !== "xml";
     const scopeSection = el("div", { style: "display:flex;flex-direction:column;gap:8px;" },
-      el("label", { style: "font-size:12px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.04em;" },
+      el("label", { style: "font-size:12px;font-weight:700;color:var(--chrx-fg-secondary,#475569);text-transform:uppercase;letter-spacing:0.04em;" },
         "2. Select Scope"));
 
     const scopeRow = el("div", { style: "display:flex;flex-wrap:wrap;gap:10px;" });
@@ -153,8 +153,8 @@ import "../io/export_png.js";
       const isScopeDisabled = !scopeAllowed && sc.id !== "all";
       const scopeLabel = el("label", {
         "data-testid": `chrx-export-scope-${sc.id}`,
-        style: `display:flex;align-items:center;gap:6px;padding:6px 12px;border:1px solid ${isSelected ? "var(--chrx-accent,#0d4f54)" : "#cbd5e1"};`
-          + `border-radius:6px;background:${isSelected ? "var(--chrx-accent-bg,rgba(13,79,84,0.08))" : "#fff"};cursor:${isScopeDisabled ? "not-allowed" : "pointer"};`
+        style: `display:flex;align-items:center;gap:6px;padding:6px 12px;border:1px solid ${isSelected ? "var(--chrx-accent,#0d4f54)" : "var(--chrx-line,#cbd5e1)"};`
+          + `border-radius:6px;color:var(--chrx-fg,#0f172a);background:${isSelected ? "var(--chrx-accent-bg,rgba(13,79,84,0.08))" : "var(--chrx-bg-tile,#ffffff)"};cursor:${isScopeDisabled ? "not-allowed" : "pointer"};`
           + `opacity:${isScopeDisabled ? "0.5" : "1"};font-size:13px;font-weight:500;`,
         onclick: (e) => {
           if (!isScopeDisabled && state.scope !== sc.id) {
@@ -190,10 +190,10 @@ import "../io/export_png.js";
         state.entityId = entities[0].id;
       }
       const pickerRow = el("div", { style: "margin-top:6px;display:flex;align-items:center;gap:8px;" },
-        el("span", { style: "font-size:13px;color:#475569;" }, `Choose ${state.scope}:`),
+        el("span", { style: "font-size:13px;color:var(--chrx-fg-secondary,#475569);" }, `Choose ${state.scope}:`),
         el("select", {
           "data-testid": "chrx-export-entity-select",
-          style: "padding:6px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;background:#fff;min-width:180px;",
+          style: "padding:6px 10px;border:1px solid var(--chrx-line,#cbd5e1);border-radius:6px;font-size:13px;background:var(--chrx-bg-input,#fff);color:var(--chrx-fg,#0f172a);min-width:180px;",
           onchange: (e) => {
             state.entityId = e.target.value;
           },
@@ -223,7 +223,7 @@ import "../io/export_png.js";
     }
 
     const infoBox = el("div", {
-      style: "padding:10px 14px;border-radius:8px;background:#f8fafc;border:1px solid #e2e8f0;font-size:12.5px;color:#475569;",
+      style: "padding:10px 14px;border-radius:8px;background:var(--chrx-bg-tile,#f8fafc);border:1px solid var(--chrx-line,#e2e8f0);font-size:12.5px;color:var(--chrx-fg-secondary,#475569);",
     }, summaryText);
     body.appendChild(infoBox);
 
@@ -231,13 +231,13 @@ import "../io/export_png.js";
 
     // Footer actions
     const footer = el("div", {
-      style: "padding:14px 20px;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;gap:10px;background:#fafafa;",
+      style: "padding:14px 20px;border-top:1px solid var(--chrx-line,#e2e8f0);display:flex;justify-content:flex-end;gap:10px;background:var(--chrx-bg-tile,#fafafa);",
     },
       el("button", {
         type: "button",
         "data-testid": "chrx-export-cancel",
         class: "chrx-btn",
-        style: "padding:8px 16px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#334155;font-size:13px;font-weight:500;cursor:pointer;",
+        style: "padding:8px 16px;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;",
         onclick: close,
       }, "Cancel"),
       el("button", {
@@ -249,7 +249,7 @@ import "../io/export_png.js";
         onclick: async () => {
           await runExport();
         },
-      }, state.busy ? "Exporting…" : (state.format === "pdf" ? "🖨 Print / Save as PDF" : "Export")));
+      }, state.busy ? "Exporting…" : (state.format === "pdf" ? "Print / Save as PDF" : "Export")));
 
     dialogBox.appendChild(footer);
   }
@@ -326,7 +326,7 @@ import "../io/export_png.js";
     const dialogBox = el("div", {
       "data-testid": "chrx-export-dialog",
       class: "chrx-export-dialog",
-      style: "background:#ffffff;border-radius:12px;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25);width:min(680px, 96vw);overflow:hidden;display:flex;flex-direction:column;font-family:system-ui,-apple-system,sans-serif;",
+      style: "background:var(--chrx-bg-elev,#ffffff);border-radius:12px;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25);width:min(680px, 96vw);overflow:hidden;display:flex;flex-direction:column;font-family:system-ui,-apple-system,sans-serif;",
     });
 
     scrim.appendChild(dialogBox);
