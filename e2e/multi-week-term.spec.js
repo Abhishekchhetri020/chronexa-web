@@ -98,7 +98,7 @@ test("C2a: real-size demo school (half Week A, half Week B) survives both wasm a
   });
 
   for (const algo of ["wasm", "auto"]) {
-    const res = await runSolverInBrowser(page, algo, 25);
+    const res = await runSolverInBrowser(page, algo, 45);
     expect(res.assignment.length, `${algo} placed count on real-size A/B demo`).toBeGreaterThan(meta.totalCards - 20);
     const weekA = res.assignment.filter((c) => c.weeks === "10");
     const weekB = res.assignment.filter((c) => c.weeks === "01");

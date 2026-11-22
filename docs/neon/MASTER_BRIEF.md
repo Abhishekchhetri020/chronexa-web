@@ -179,3 +179,10 @@ Correction (16:35): the card came from fleet-shell after all, because the call w
 destructiveHint: true. When calling fleet-shell, leave destructiveHint false/unset. Abhishek chose
 no confirmation cards for fleet-shell; branch, commit, build, test and push are routine here. The
 hard rules above (no force-push, no deploy of the backend, EduPage read-only, no mail) still apply.
+
+## Claude's review of Block F (2026-11-22 ~18:35)
+F0/E-01/E-02 approved in code review (gate re-run by Claude in progress). Add to **Block H** as the
+first test: real school saved (autoRestore) → user opens the Demo or the template picker just to look →
+reload → the real school must still be restorable (auto-restore or at least Recent), never silently
+replaced by the demo. Also: with two browser tabs open on Chronexa, the later save must not wipe the
+other tab's school without a warning.

@@ -203,13 +203,18 @@ export default defineConfig({
     outDir: "dist",
     sourcemap: true,
     target: "baseline-widely-available",
-    rollupOptions: {
+    rolldownOptions: {
       output: {
-        advancedChunks: {
+        codeSplitting: {
           groups: [
-            { name: "solver", test: /\/js\/solver\// },
-            { name: "editor", test: /\/js\/ui\/editor\// },
-            { name: "print-preview", test: /\/js\/ui\/print_preview\// },
+            { name: "solver",        test: /\/js\/solver\// },
+            { name: "editor",        test: /\/js\/ui\/editor\// },
+            { name: "print-preview", test: /\/js\/(ui\/print_preview|entry\/print_bundle)/ },
+            { name: "entities",      test: /\/js\/ui\/entities\// },
+            { name: "io",            test: /\/js\/ui\/io\// },
+            { name: "solver-ui",     test: /\/js\/ui\/solver_ui\// },
+            { name: "substitution",  test: /\/js\/ui\/substitution\// },
+            { name: "components",    test: /\/js\/ui\/components\// },
           ],
         },
       },
