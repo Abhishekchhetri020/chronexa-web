@@ -26,7 +26,9 @@ test.describe("W3b-2 Generator Modes E2E", () => {
       const dialog = page.locator(".csu-prelaunch");
       await expect(dialog).toBeVisible();
 
-      // Pick the mode in the dialog
+      // Expand "More options" to pick the generator mode
+      const moreOpt = page.locator("#csu-advanced");
+      if (!(await moreOpt.evaluate((el) => el.open))) await moreOpt.locator("summary").click();
       const modeCard = page.locator(`.chrx-genmode-card[data-gen-mode='${m.id}']`);
       await expect(modeCard).toBeVisible();
       await modeCard.click();
@@ -81,6 +83,8 @@ test("Add unplaced only: applying never leaks the temporary locks; user locks ar
   expect(await countLocked()).toBe(2);
 
   await page.locator("button.chrx-btn--primary", { hasText: "Generate" }).first().click();
+  const moreOpt2 = page.locator("#csu-advanced");
+  if (!(await moreOpt2.evaluate((el) => el.open))) await moreOpt2.locator("summary").click();
   await page.locator(".chrx-genmode-card[data-gen-mode='add_unplaced']").click();
   await page.evaluate(() => { const dlg = document.querySelector(".csu-prelaunch"); if (dlg) dlg.dataset.timeLimitSec = "2"; });
   await page.locator("#csu-prelaunch-start").click();

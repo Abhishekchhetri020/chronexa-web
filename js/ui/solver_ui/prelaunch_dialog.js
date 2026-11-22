@@ -42,10 +42,9 @@ import "./backend_client.js";
   // Preset → underlying solver knobs. Conditions values must match the
   // Advanced radio values (draft / relax / strict).
   const PRESETS = [
-    { id: "fast",     label: "Fast preview", sub: "30s · quick check",        timeLimitSec: 30,  complexity: "normal", conditions: "draft",  icon: "◷" },
-    { id: "balanced", label: "Balanced",     sub: "90s · recommended",        timeLimitSec: 90,  complexity: "large",  conditions: "relax",  icon: "⚖", recommended: true },
-    { id: "best",     label: "Best result",  sub: "5 min · final timetable",  timeLimitSec: 300, complexity: "huge",   conditions: "strict", icon: "★" },
-    { id: "custom",   label: "Custom",       sub: "Tune everything",          custom: true, icon: "⚙" },
+    { id: "fast",     label: "Quick",    sub: "~30s · fast draft",      timeLimitSec: 30,  complexity: "normal", conditions: "draft",  icon: "◷" },
+    { id: "balanced", label: "Balanced", sub: "~90s · good balance",    timeLimitSec: 90,  complexity: "large",  conditions: "relax",  icon: "⚖", recommended: true },
+    { id: "best",     label: "Best",     sub: "~5 min · thorough run",  timeLimitSec: 300, complexity: "huge",   conditions: "strict", icon: "★" },
   ];
   const PRESET_BY_COMPLEXITY = { normal: "fast", large: "balanced", huge: "best" };
 
@@ -180,30 +179,33 @@ import "./backend_client.js";
       { value: "wasm",    label: "CP-SAT in browser",    hint: "Full OR-Tools portfolio · offline · multi-threaded." },
       { value: "cloud",   label: "Run on cloud",          hint: cloudReady ? "OR-Tools CP-SAT via backend." : "Backend URL not set — will fall back to browser." },
     ], "browser");
-    const advanced = el("details", { class: "csu-advanced", id: "csu-advanced" },
-      el("summary", { class: "csu-advanced__toggle" }, "Advanced — complexity, conditions, algorithm"),
-      el("div", { class: "csu-advanced__body" },
-        sectionTitle("Complexity"),    complexity,
-        sectionTitle("Conditions"),    conditions,
-        el("div", { id: "csu-algo-section" }, sectionTitle("Algorithm"), algorithm),
-      ),
-    );
-
     // --- Report toggle -------------------------------------------------------
     const reportTog = el("input", { type: "checkbox", id: "csu-show-report" });
     reportTog.checked = true;
     const reportLabel = el("label", { class: "csu-toggle", for: "csu-show-report" },
       reportTog,
-      el("span", null, "Show solver report after run"),
+      el("span", null, "Show summary report after run"),
+    );
+
+    const advanced = el("details", { class: "csu-advanced", id: "csu-advanced" },
+      el("summary", { class: "csu-advanced__toggle" }, "More options"),
+      el("div", { class: "csu-advanced__body" },
+        genModeStrip,
+        sectionTitle("Action"),        modeRow,
+        sectionTitle("Complexity"),    complexity,
+        sectionTitle("Conditions"),    conditions,
+        el("div", { id: "csu-algo-section" }, sectionTitle("Algorithm"), algorithm),
+        reportLabel,
+      ),
     );
 
     // --- Actions -------------------------------------------------------------
     const cancelBtn = el("button", { type: "button", class: "chrx-btn csu-btn--ghost", onclick: doCancel }, "Cancel");
-    const startBtn  = el("button", { type: "button", class: "chrx-btn chrx-btn--primary", id: "csu-prelaunch-start", onclick: doStart }, "Build best timetable");
-    const footNote = el("p", { class: "csu-dialog__foot" }, "Offline by default · cloud only if you pick it.");
+    const startBtn  = el("button", { type: "button", class: "chrx-btn chrx-btn--primary", id: "csu-prelaunch-start", onclick: doStart }, "Build timetable");
+    const footNote = el("p", { class: "csu-dialog__foot" }, "Runs privately on your device.");
     const actions = el("div", { class: "csu-dialog__actions" }, cancelBtn, startBtn);
 
-    dialog.append(titleEl, sub, summary, modeRow, genModeStrip, presetStrip, advanced, reportLabel, actions, footNote);
+    dialog.append(titleEl, sub, summary, presetStrip, advanced, actions, footNote);
     dialog.dataset.preset = "balanced";
     dialog.dataset.generatorMode = "rebuild";
     host.appendChild(dialog);
@@ -266,9 +268,9 @@ import "./backend_client.js";
     } else if (genMode === "add_unplaced") {
       startBtn.textContent = "Add unplaced cards";
     } else if (mode === "best") {
-      startBtn.textContent = "Build best timetable";
+      startBtn.textContent = "Build timetable";
     } else {
-      startBtn.textContent = "Start generation";
+      startBtn.textContent = "Build timetable";
     }
   }
 
@@ -307,7 +309,10 @@ import "./backend_client.js";
         el("strong", {}, String(n)), document.createTextNode(" " + label));
       sum.appendChild(s);
     };
-    const name = el("span", { class: "csu-chip csu-chip--name" }, school.schoolName || "(school)");
+    const rawName = (school.schoolName || "").trim();
+    const isPlaceholder = !rawName || /^(classic timetable|asc timetables|untitled|\(school\))/i.test(rawName);
+    const displayName = isPlaceholder ? (school._isDemo ? "Sample school" : "My school") : rawName;
+    const name = el("span", { class: "csu-chip csu-chip--name" }, displayName);
     sum.appendChild(name);
     chip(teachers, "teachers");
     chip(classes, "classes");
@@ -387,8 +392,20 @@ import "./backend_client.js";
     if (!suggested) return;
     const radios = dialog.querySelectorAll("input[name='complexity']");
     radios.forEach(r => { r.checked = (r.value === suggested); });
-    // Mirror the suggestion into the preset picker (school size picks speed).
-    selectPreset(PRESET_BY_COMPLEXITY[suggested] || "balanced");
+    // Mirror the suggestion into the preset picker AND move the Recommended badge
+    // onto the preselected option so "Recommended" always matches what is selected.
+    const chosenId = PRESET_BY_COMPLEXITY[suggested] || "balanced";
+    selectPreset(chosenId);
+    dialog.querySelectorAll(".chrx-preset-card").forEach(c => {
+      const isRec = c.dataset.preset === chosenId;
+      c.classList.toggle("chrx-preset-card--recommended", isRec);
+      let badge = c.querySelector(".chrx-preset-badge");
+      if (isRec && !badge) {
+        c.appendChild(el("span", { class: "chrx-preset-badge" }, "Recommended"));
+      } else if (!isRec && badge) {
+        badge.remove();
+      }
+    });
   }
 
   function open(opts) {

@@ -30,3 +30,6 @@
 2026-11-22 19:32 | H | RELEASED | 20261122-p275-data-reliability (merge b8dd112, live verified)
 2026-11-22 19:32 | H | DONE | H1-H5 complete; 587 unit, 150 e2e (1 skip), 0 failed; docs/neon/BLOCK_H.md written
 2026-11-22 19:37 | I | STARTED | Accessibility (axe-core), keyboard Generate->print, 390px dialogs
+2026-11-22 20:19 | I | RELEASED | 20261122-p276-accessibility (merge 5e6e91b, live verified)
+2026-11-22 20:19 | I | DONE | 0 critical/serious axe violations across 6 surfaces, 13 dialogs 390px clean, keyboard Generate->Print; 587 unit, 153 e2e (1 skip), 0 failed; docs/neon/BLOCK_I.md written
+2026-11-22 20:22 | P | STARTED | Block P: Generate flow + grid clarity (P1 946 vs 951 data risk first)

@@ -59,65 +59,124 @@ import "./progress_modal.js";  // provides SolverUI.expectedCardCount
     const status = el("div", { class: "csu-result__status", id: "csu-result-status" }, "");
 
     const hero = el("div", { class: "csu-result__hero" });
-    const placed   = el("div", { class: "csu-result__tile csu-result__tile--ok"   });
-    const unplaced = el("div", { class: "csu-result__tile csu-result__tile--warn" });
+    const placed   = el("div", { class: "csu-result__tile csu-result__tile--ok" });
     const relax    = el("div", { class: "csu-result__tile" });
     const soft     = el("div", { class: "csu-result__tile" });
-    hero.append(placed, unplaced, relax, soft);
+    hero.append(placed, relax, soft);
+
+    const reasons = el("div", { class: "csu-result__reasons", id: "csu-result-reasons", hidden: "" });
 
     const grid = el("div", { class: "csu-result__grid", id: "csu-result-grid" });
+    const gridDetails = el("details", { class: "csu-result__details", id: "csu-result-grid-details" },
+      el("summary", {}, "Lessons per period"),
+      grid,
+    );
 
-    const apply = el("button", { type: "button", class: "chrx-btn chrx-btn--primary", onclick: doApply, id: "csu-result-apply" }, "Keep this timetable");
-    const view  = el("button", { type: "button", class: "chrx-btn", onclick: doView },  "See issues");
-    // aSc "Show me the relaxed conditions": what this candidate breaks, by importance.
+    const apply = el("button", { type: "button", class: "chrx-btn chrx-btn--primary", onclick: doApply, id: "csu-result-apply" }, "Use this timetable");
+    const retry = el("button", { type: "button", class: "chrx-btn", id: "csu-result-retry", onclick: () => { close(); window.dispatchEvent(new CustomEvent("app:generate")); } }, "Try again");
+    const view  = el("button", { type: "button", class: "chrx-btn", onclick: doView }, "See issues");
     const relaxedBtn = el("button", { type: "button", class: "chrx-btn", id: "csu-result-relaxed", hidden: "",
       onclick: () => global.SolverUI.Relaxed && global.SolverUI.Relaxed.open({
         school: state.school, cards: assignmentToCards(state.result && state.result.assignment) }) }, "Relaxed conditions");
-    const disc  = el("button", { type: "button", class: "chrx-btn chrx-btn--danger", onclick: doDiscard, id: "csu-result-discard" }, "Discard");
-    const close = el("button", { type: "button", class: "chrx-btn", id: "csu-result-close", onclick: doClose }, "Close");
-    const actions = el("div", { class: "csu-dialog__actions" }, disc, view, relaxedBtn, close, apply);
+    const disc  = el("button", { type: "button", class: "chrx-btn", onclick: doDiscard, id: "csu-result-discard", hidden: "" }, "Undo apply");
+    const closeBtn = el("button", { type: "button", class: "chrx-btn", id: "csu-result-close", onclick: doClose }, "Close");
+    const actions = el("div", { class: "csu-dialog__actions" }, disc, view, relaxedBtn, retry, closeBtn, apply);
 
-    // Phase 4 / Phase 5: diagnostics + weight suggestions container.
-    // Populated by renderDiagnostics() only when the solver emitted data.
     const diagSection = el("div", { class: "csu-result__diag", id: "csu-result-diag" });
 
-    dlg.append(title, status, hero, grid, diagSection, actions);
+    dlg.append(title, status, hero, reasons, diagSection, gridDetails, actions);
     host.appendChild(dlg);
     document.body.appendChild(host);
 
-    refs = { title, status, placed, unplaced, relax, soft, grid, diagSection, apply, view, disc, close, relaxedBtn };
+    refs = { title, status, placed, relax, soft, reasons, grid, gridDetails, diagSection, apply, retry, view, disc, close: closeBtn, relaxedBtn };
   }
 
-  function renderHero(result, totalLessons) {
-    const s = result.stats || {};
-    refs.placed.innerHTML   = "";
-    refs.unplaced.innerHTML = "";
-    refs.relax.innerHTML    = "";
-    refs.soft.innerHTML     = "";
+  function computeVerifiedClashes(school, result) {
+    const solverHard = (result && result.stats && result.stats.hardConflicts) || 0;
+    if (!school || !result || !Array.isArray(result.assignment)) return solverHard;
+    try {
+      const VPro = global.VerificationPanelPro;
+      if (VPro && typeof VPro.countHardConflicts === "function") {
+        const previewCards = mergePreservedCards(school, assignmentToCards(result.assignment));
+        const previewSchool = Object.assign({}, school, { cards: previewCards });
+        const verified = VPro.countHardConflicts(previewSchool);
+        return Math.max(solverHard, verified);
+      }
+    } catch (_) {}
+    return solverHard;
+  }
 
+  function qualitySummary(displayPenalty, placedCount) {
+    const perCard = displayPenalty / Math.max(1, placedCount || 1);
+    const pct = Math.max(15, Math.min(100, Math.round(100 - Math.min(85, Math.sqrt(Math.max(0, perCard)) * 1.4))));
+    const word = pct >= 80 ? "Good" : (pct >= 60 ? "Fair" : "Needs work");
+    return { pct, word };
+  }
+
+  function collectTopSoftReasons(school, result) {
+    const out = [];
+    try {
+      const VPro = global.VerificationPanelPro;
+      if (VPro && typeof VPro.collectViolations === "function" && school && result && Array.isArray(result.assignment)) {
+        const previewCards = mergePreservedCards(school, assignmentToCards(result.assignment));
+        const previewSchool = Object.assign({}, school, { cards: previewCards });
+        const counts = new Map();
+        for (const v of VPro.collectViolations(previewSchool)) {
+          if (v.severity !== "soft") continue;
+          const label = v.message || v.type || "Minor preference";
+          counts.set(label, (counts.get(label) || 0) + 1);
+        }
+        const sorted = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 3);
+        for (const [msg, n] of sorted) out.push(n > 1 ? `${msg} (${n})` : msg);
+      }
+    } catch (_) {}
+    return out;
+  }
+
+  function renderHero(result, totalLessons, verifiedHard) {
+    const s = result.stats || {};
+    refs.placed.innerHTML = "";
+    refs.relax.innerHTML  = "";
+    refs.soft.innerHTML   = "";
+
+    const placedN = s.placed || 0;
+    const unplacedN = Math.max(0, totalLessons - placedN);
+    refs.placed.className = "csu-result__tile " + (unplacedN === 0 ? "csu-result__tile--ok" : "csu-result__tile--warn");
     refs.placed.append(
-      el("div", { class: "csu-result__num" }, fmt(s.placed)),
-      el("div", { class: "csu-result__lbl" }, `placed of ${fmt(totalLessons)}`),
+      el("div", { class: "csu-result__num" }, `${fmt(placedN)} / ${fmt(totalLessons)}`),
+      el("div", { class: "csu-result__lbl" }, unplacedN === 0 ? "All lessons placed" : `${fmt(unplacedN)} left to place`),
     );
-    refs.unplaced.append(
-      el("div", { class: "csu-result__num" }, fmt(s.unplaced)),
-      el("div", { class: "csu-result__lbl" }, "unplaced"),
-    );
+
+    const clashes = typeof verifiedHard === "number" ? verifiedHard : (s.hardConflicts || 0);
+    refs.relax.className = "csu-result__tile " + (clashes === 0 ? "csu-result__tile--ok" : "csu-result__tile--bad");
     refs.relax.append(
-      el("div", { class: "csu-result__num" }, fmt(s.hardConflicts)),
-      el("div", { class: "csu-result__lbl" }, "hard conflicts"),
+      el("div", { class: "csu-result__num" }, fmt(clashes)),
+      el("div", { class: "csu-result__lbl" }, clashes === 1 ? "clash" : "clashes"),
     );
-    // E-02: softScore is internally a negated penalty sum (<= 0); display a
-    // clean non-negative penalty count to users.
+
     const displayPenalty = (typeof s.softScore === "number" && Number.isFinite(s.softScore))
       ? Math.max(0, Math.round(s.softScore < 0 ? -s.softScore : s.softScore))
       : 0;
+    const q = qualitySummary(displayPenalty, placedN);
+    refs.soft.className = "csu-result__tile " + (q.pct >= 80 ? "csu-result__tile--ok" : (q.pct >= 60 ? "" : "csu-result__tile--warn"));
     refs.soft.append(
-      el("div", { class: "csu-result__num" }, fmt(displayPenalty)),
-      el("div", { class: "csu-result__lbl" }, "soft penalties"),
+      el("div", { class: "csu-result__num" }, `${q.word} (${q.pct}%)`),
+      el("div", { class: "csu-result__lbl" }, "quality"),
     );
-    if (s.phase2Note) {
-      refs.soft.title = s.phase2Note;
+    refs.soft.title = s.phase2Note || `Soft score detail: ${fmt(displayPenalty)}`;
+
+    if (refs.reasons) {
+      const topReasons = collectTopSoftReasons(state && state.school, result);
+      refs.reasons.innerHTML = "";
+      if (topReasons.length) {
+        refs.reasons.hidden = false;
+        refs.reasons.appendChild(el("strong", {}, "What could be improved:"));
+        const ul = el("ul", {});
+        for (const r of topReasons) ul.appendChild(el("li", {}, r));
+        refs.reasons.appendChild(ul);
+      } else {
+        refs.reasons.hidden = true;
+      }
     }
   }
 
@@ -330,60 +389,100 @@ import "./progress_modal.js";  // provides SolverUI.expectedCardCount
     if (school) apply(school);
   }
 
+  // P1: Preserve any non-lesson / duty / orphan cards that the solver does not manage.
+  function mergePreservedCards(school, solverCards) {
+    const out = Array.isArray(solverCards) ? solverCards.slice() : [];
+    if (!school || !Array.isArray(school.cards)) return out;
+    const lessonIds = new Set((school.lessons || []).map(l => String(l.id)));
+    for (const c of school.cards) {
+      const baseId = String(c.lessonId || "").replace(/#\d+$/, "");
+      if (!lessonIds.has(baseId)) out.push(cloneCards(c));
+    }
+    return out;
+  }
+
+  // P1: Count actual covered lesson-periods (avoiding false warnings when aSc XML
+  // splits a double-period lesson into 2 separate 1-period <card> elements while the
+  // solver emits 1 card with span=2).
+  function coveredLessonSlots(school, cards) {
+    if (!Array.isArray(cards) || !cards.length) return 0;
+    const byId = new Map((school && school.lessons || []).map(l => [String(l.id), l]));
+    const perLesson = new Map();
+    for (const c of cards) {
+      const baseId = String(c.lessonId || "").replace(/#\d+$/, "");
+      const l = byId.get(baseId);
+      const span = Math.max(1, Number(c.span) || (l ? Number(l.periodsPerCard) : 1) || 1);
+      // If XML stored 2 separate <card>s for a ppw=2/ppc=2 lesson, cap by periodsPerWeek.
+      const cur = perLesson.get(baseId) || 0;
+      const cap = l && l.periodsPerWeek ? Number(l.periodsPerWeek) : (cur + span);
+      perLesson.set(baseId, Math.min(cap, cur + span));
+    }
+    let total = 0;
+    for (const v of perLesson.values()) total += v;
+    return total;
+  }
+
   function applyImmediately() {
     if (!state) return;
-    const newCards = assignmentToCards(state.result.assignment);
+    const targetSchool = global.APP?.school || state.school;
+    const newCards = mergePreservedCards(targetSchool, assignmentToCards(state.result.assignment));
     if (state.school && !state.snapshot) {
       state.snapshot = cloneCards(Array.isArray(state.school.cards) ? state.school.cards : []);
     }
-    // Apply targets the LIVE school (one undo step) even when this preview holds a derived copy
-    // (e.g. "Add unplaced only" solves on a temporarily locked copy).
-    mutateResultCards("Apply solver timetable", global.APP?.school || state.school, newCards);
+    mutateResultCards("Apply solver timetable", targetSchool, newCards);
     if (state.school && state.school !== global.APP?.school) state.school.cards = cloneCards(newCards);
     state.applied = true;
     state.discarded = false;
     refs.apply.disabled = true;
+    refs.disc.hidden = false;
     refs.disc.disabled = false;
-    refs.status.textContent = "Applied to timetable.";
+    refs.status.textContent = "Applied to your timetable.";
     refs.status.style.color = "var(--chrx-green)";
-    // Force the editor (and pending strip) to re-render against the new
-    // school.cards. Without this the grid stays empty and the pending
-    // strip stays full even though the data is now in place.
-   try {
-     const editorRoot = document.querySelector(".chrx-editor");
-     if (editorRoot && global.Editor && global.Editor.render) global.Editor.render(editorRoot);
-     const pendRoot = document.querySelector(".chrx-pending-strip");
-     if (pendRoot && global.PendingStrip && global.PendingStrip.render) global.PendingStrip.render(pendRoot);
-     if (global.EditorActivator && global.EditorActivator.updatePendingCount) global.EditorActivator.updatePendingCount();
-   } catch (e) { console.warn("[result_panel] post-apply re-render failed", e); }
-    // Snapshot the freshly applied timetable immediately (AutoSave listens).
+    try {
+      const editorRoot = document.querySelector(".chrx-editor");
+      if (editorRoot && global.Editor && global.Editor.render) global.Editor.render(editorRoot);
+      const pendRoot = document.querySelector(".chrx-pending-strip");
+      if (pendRoot && global.PendingStrip && global.PendingStrip.render) global.PendingStrip.render(pendRoot);
+      if (global.EditorActivator && global.EditorActivator.updatePendingCount) global.EditorActivator.updatePendingCount();
+      if (global.Editor && global.Editor.updateUnplacedCount) global.Editor.updateUnplacedCount();
+    } catch (e) { console.warn("[result_panel] post-apply re-render failed", e); }
     try { window.dispatchEvent(new CustomEvent("app:solve-applied")); } catch {}
     if (state.onApply) try { state.onApply(newCards); } catch (e) { console.error(e); }
   }
+
   function isDestructiveApply() {
     if (!state || !state.school) return false;
-    const have = (state.school.cards && state.school.cards.length) || 0;
-    const newLen = (state.result && state.result.assignment && state.result.assignment.length) || 0;
-    return have > 0 && newLen < have;
+    const existing = Array.isArray(state.school.cards) ? state.school.cards : [];
+    const assignment = (state.result && state.result.assignment) || [];
+    if (!existing.length) return false;
+    if (!assignment.length) return true;
+    // A 100%-placed run with 0 unplaced lessons is never destructive.
+    const expected = global.SolverUI && global.SolverUI.expectedCardCount
+      ? global.SolverUI.expectedCardCount(state.school)
+      : 0;
+    const unplaced = (state.result.stats && state.result.stats.unplaced) || 0;
+    if (unplaced === 0 && expected > 0 && assignment.length >= expected) return false;
+    const haveSlots = coveredLessonSlots(state.school, existing);
+    const newSlots  = coveredLessonSlots(state.school, mergePreservedCards(state.school, assignmentToCards(assignment)));
+    return newSlots < haveSlots;
   }
+
   function confirmDestructiveApply() {
     if (document.getElementById("chrx-apply-confirm")) return;
-    const have = state.school.cards.length;
-    const newLen = state.result.assignment.length;
-    const lost = have - newLen;
-    const hard = (state.result.stats && state.result.stats.hardConflicts) || 0;
+    const haveSlots = coveredLessonSlots(state.school, state.school.cards || []);
+    const newSlots  = coveredLessonSlots(state.school, mergePreservedCards(state.school, assignmentToCards(state.result.assignment || [])));
+    const lost = Math.max(1, haveSlots - newSlots);
+    const hard = computeVerifiedClashes(state.school, state.result);
     const overlay = document.createElement("div");
     overlay.id = "chrx-apply-confirm";
-    overlay.style.cssText = "position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;z-index:10001;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;";
+    overlay.style.cssText = "position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;z-index:10001;font-family:var(--chrx-font-sans,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif);";
     overlay.innerHTML = ''
-      + '<div role="alertdialog" aria-modal="true" style="background:#fff;border-radius:14px;box-shadow:0 24px 64px rgba(15,23,42,.30);padding:24px 26px;max-width:480px;width:calc(100% - 32px);">'
-      +   '<div style="font-size:32px;line-height:1;margin-bottom:8px;">⚠️</div>'
-      +   '<h2 style="font-size:18px;font-weight:700;color:#9f1239;margin:0 0 8px;">Replace your timetable?</h2>'
-      +   `<p style="font-size:13px;line-height:1.55;color:#475569;margin:0 0 16px;">This solver run produced <strong>${newLen}</strong> placements, but your timetable currently has <strong>${have}</strong> placed cards. Applying will lose <strong>${lost}</strong> existing card${lost === 1 ? '' : 's'}` + (hard > 0 ? ` and the new layout has <strong>${hard} hard conflict${hard === 1 ? '' : 's'}</strong>` : '') + `.</p>`
-      +   '<p style="font-size:13px;line-height:1.55;color:#475569;margin:0 0 18px;">Click Discard to keep your original timetable, or confirm to replace it anyway.</p>'
+      + '<div role="alertdialog" aria-modal="true" style="background:var(--chrx-bg-panel,#fff);color:var(--chrx-fg,#1d1d1f);border-radius:14px;box-shadow:0 24px 64px rgba(15,23,42,.28);padding:24px 26px;max-width:460px;width:calc(100% - 32px);">'
+      +   '<h2 style="font-size:17px;font-weight:700;color:var(--chrx-fg,#1d1d1f);margin:0 0 8px;">Replace your current timetable?</h2>'
+      +   `<p style="font-size:13.5px;line-height:1.55;color:var(--chrx-fg-secondary,#515154);margin:0 0 18px;">This run leaves <strong>${lost}</strong> fewer period${lost === 1 ? '' : 's'} placed than your current timetable` + (hard > 0 ? ` and has <strong>${hard} clash${hard === 1 ? '' : 'es'}</strong>` : '') + `. You can still undo after applying.</p>`
       +   '<div style="display:flex;gap:8px;justify-content:flex-end;">'
-      +     '<button type="button" data-cancel style="background:#fff;border:1px solid #cbd5e1;color:#0f172a;padding:8px 14px;border-radius:7px;cursor:pointer;font-size:13px;font-weight:500;">Cancel</button>'
-      +     '<button type="button" data-confirm style="background:#be123c;border:0;color:#fff;padding:8px 16px;border-radius:7px;cursor:pointer;font-size:13px;font-weight:600;">Replace anyway</button>'
+      +     '<button type="button" data-cancel class="chrx-btn">Cancel</button>'
+      +     '<button type="button" data-confirm class="chrx-btn chrx-btn--primary">Replace anyway</button>'
       +   '</div>'
       + '</div>';
     document.body.appendChild(overlay);
@@ -496,25 +595,25 @@ import "./progress_modal.js";  // provides SolverUI.expectedCardCount
     } else {
       refs.title.textContent = `Needs attention — ${fmt(placedNum)} of ${fmt(totalLessons)} placed`;
     }
-    refs.status.textContent = `${status} · ${(state.result.stats && state.result.stats.durationMs) ? Math.round(state.result.stats.durationMs / 1000) + "s" : ""}`;
-    refs.status.style.color = (status === "OPTIMAL" || status === "FEASIBLE") ? "var(--chrx-green)" : "var(--chrx-orange)";
+    const durSec = (state.result.stats && state.result.stats.durationMs) ? Math.max(1, Math.round(state.result.stats.durationMs / 1000)) : 0;
+    const verifiedHard = computeVerifiedClashes(state.school, state.result);
+    refs.status.textContent = durSec ? `Finished in ${durSec}s` : "Finished";
+    refs.status.style.color = (verifiedHard === 0 && unplacedNm === 0) ? "var(--chrx-green)" : "var(--chrx-amber)";
     refs.apply.disabled = state.mode === "test";
+    refs.disc.hidden = true;
     refs.disc.disabled = true;
-    renderHero(state.result, totalLessons);
+    if (refs.gridDetails) refs.gridDetails.open = false;
+    renderHero(state.result, totalLessons, verifiedHard);
     renderPerSlotGrid(state.result, state.school);
     renderDiagnostics(state.result);
     renderRelaxedButton();
 
-    // De-emphasize Apply when the run is destructive (TIMEOUT, hard conflicts,
-    // or strictly fewer cards than the current school). The confirmation
-    // dialog catches actual clicks; visual styling helps prevent the click.
-    const hardN = (state.result.stats && state.result.stats.hardConflicts) || 0;
-    const bad = (status === "TIMEOUT" || status === "INFEASIBLE" || hardN > 0 || isDestructiveApply());
+    const bad = (status === "INFEASIBLE" || isDestructiveApply());
     if (refs.apply) {
       refs.apply.classList.toggle("is-warning", bad);
-      refs.apply.style.background = bad ? "#fff" : "";
-      refs.apply.style.color      = bad ? "#9f1239" : "";
-      refs.apply.style.border     = bad ? "1px solid #f43f5e" : "";
+      refs.apply.style.background = "";
+      refs.apply.style.color      = "";
+      refs.apply.style.border     = "";
     }
 
     host.classList.add("is-open");

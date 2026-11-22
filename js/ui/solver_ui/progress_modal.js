@@ -119,20 +119,16 @@ import "./backend_client.js";
     const ringWrap = el("div", { class: "csu-ring" });
     ringWrap.appendChild(ring.svg);
 
-    const title = el("h2", { class: "csu-dialog__title", id: "csu-progress-title" }, "Generating timetable…");
-    const sub = el("p", { class: "csu-dialog__sub", id: "csu-progress-sub" }, "Cycle 1 · in browser worker");
+    const title = el("h2", { class: "csu-dialog__title", id: "csu-progress-title" }, "Building your timetable…");
+    const sub = el("p", { class: "csu-dialog__sub", id: "csu-progress-sub" }, "Placing lessons across the week");
 
-    // ---- named phase breadcrumb (Validating → Drafting → Polishing → Applying)
-    // The current phase is highlighted; earlier phases get a check-mark; later
-    // phases are dim. The user sees a clear sense of "where am I in the
-    // pipeline?" instead of an indeterminate spinner. Inspired by the
-    // 6-step overlay in prabath1998/timetable-generator.
-    const phaseRow = el("ol", { class: "csu-phases", id: "csu-phases", "aria-label": "Solver pipeline phases" });
+    // ---- named phase breadcrumb (Checking → Placing → Improving → Done)
+    const phaseRow = el("ol", { class: "csu-phases", id: "csu-phases", "aria-label": "Timetable build steps" });
     const PHASES = [
-      { key: "validating", label: "Validating", icon: "✓" },
-      { key: "drafting",   label: "Drafting",   icon: "✎" },
-      { key: "polishing",  label: "Polishing",  icon: "✦" },
-      { key: "applying",   label: "Applying",   icon: "▶" },
+      { key: "validating", label: "Checking",  icon: "✓" },
+      { key: "drafting",   label: "Placing",   icon: "✎" },
+      { key: "polishing",  label: "Improving", icon: "✦" },
+      { key: "applying",   label: "Done",      icon: "▶" },
     ];
     const phaseEls = {};
     PHASES.forEach((p, i) => {
@@ -153,14 +149,14 @@ import "./backend_client.js";
     // "312 of 946 placed". Updated on every progress event that carries it.
     const placedHero = el("p", { class: "csu-placed-hero", id: "csu-placed-hero" }, "Starting…");
 
-    // ---- progress bars
+    // ---- single honest progress bar (matches the ring percentage)
     const bar1Fill = el("div", { class: "csu-bar__fill", style: "width:0%" });
-    const bar1 = el("div", { class: "csu-bar" }, el("div", { class: "csu-bar__label" }, "Overall"), el("div", { class: "csu-bar__track" }, bar1Fill));
+    const bar1 = el("div", { class: "csu-bar" }, el("div", { class: "csu-bar__label" }, "Progress"), el("div", { class: "csu-bar__track" }, bar1Fill));
     const bar2Fill = el("div", { class: "csu-bar__fill csu-bar__fill--accent2", style: "width:0%" });
     const bar2 = el("div", { class: "csu-bar" }, el("div", { class: "csu-bar__label" }, "Current branch"), el("div", { class: "csu-bar__track" }, bar2Fill));
 
-    // ---- stat tiles: 2-row layout (3 key + 3 secondary)
-    const tilesKey = el("div", { class: "csu-tiles csu-tiles--key" });
+    // ---- calm summary row: Left to place + Elapsed time
+    const tilesKey = el("div", { class: "csu-tiles csu-tiles--key csu-tiles--two" });
     const tilesSec = el("div", { class: "csu-tiles csu-tiles--secondary" });
 
     function tile(parent, id, label, icon) {
@@ -171,41 +167,37 @@ import "./backend_client.js";
       parent.appendChild(t);
       return v;
     }
-    // Key metrics (top row — larger). Labels use the flow-wide language
-    // "left to place" so Ask → Work → Land read as one story.
-    const tHard    = tile(tilesKey, "csu-stat-hard",    "Left to place", "⚡");
-    const tElapsed = tile(tilesKey, "csu-stat-elapsed", "Time",          "⏱");
-    const tSoft    = tile(tilesKey, "csu-stat-soft",    "Soft penalties", "◎");
-    // Secondary metrics (bottom row — smaller)
+    const tHard    = tile(tilesKey, "csu-stat-hard",    "Left to place", "📋");
+    const tElapsed = tile(tilesKey, "csu-stat-elapsed", "Elapsed time",  "⏱");
+    // Developer telemetry kept inside collapsible "Show details"
+    const tSoft    = tile(tilesSec, "csu-stat-soft",    "Soft penalties",  "◎");
     const tSpeed   = tile(tilesSec, "csu-stat-speed",   "Schedules / sec", "▸");
     const tIter    = tile(tilesSec, "csu-stat-iter",    "Iterations",      "↻");
     const tStuck   = tile(tilesSec, "csu-stat-stuck",   "Phase",           "◆");
 
-    const tilesWrap = el("div", { class: "csu-tiles-wrap" }, tilesKey, tilesSec);
-
-    // ---- heatmap
+    // ---- heatmap + branch race + live faults inside collapsible "Show details"
     const heat = el("div", { class: "csu-heatmap", "aria-hidden": "true" });
-
-    // ---- branch race lanes (populated dynamically in open())
     const branches = el("div", { class: "csu-branches" });
-
-    // ---- live fault list
     const placingHead = el("div", { class: "csu-faults__head" }, "Currently placing");
     const placingLabel = el("div", { class: "csu-faults__placing" }, "—");
-    
     const faultsHead = el("div", { class: "csu-faults__head", style: "margin-top: 12px;" }, "Currently stuck");
     const faultsList = el("ul", { class: "csu-faults__list" });
     const faultsEmpty = el("li", { class: "csu-faults__empty" }, "—");
     faultsList.appendChild(faultsEmpty);
     const faults = el("section", { class: "csu-faults" }, placingHead, placingLabel, faultsHead, faultsList);
 
+    const detailsBox = el("details", { class: "csu-advanced csu-progress-details", id: "csu-progress-details" },
+      el("summary", { class: "csu-advanced__toggle" }, "Show details"),
+      el("div", { class: "csu-advanced__body" }, bar2, tilesSec, heat, branches, faults),
+    );
+
     // ---- buttons with visual hierarchy
     const cancelBtn = el("button", { type: "button", class: "chrx-btn csu-btn--ghost", onclick: doCancel }, "Cancel");
     const pauseBtn  = el("button", { type: "button", class: "chrx-btn csu-btn--secondary", onclick: doPauseResume }, "Pause");
-    const acceptBtn = el("button", { type: "button", class: "chrx-btn csu-btn--gradient", onclick: doAcceptPartial }, "Accept partial result");
+    const acceptBtn = el("button", { type: "button", class: "chrx-btn csu-btn--gradient", id: "csu-progress-accept", onclick: doAcceptPartial }, "Use what we have so far");
     const actions = el("div", { class: "csu-dialog__actions" }, cancelBtn, pauseBtn, acceptBtn);
 
-    dlg.append(header, placedHero, bar1, bar2, tilesWrap, heat, branches, faults, actions);
+    dlg.append(header, placedHero, bar1, tilesKey, detailsBox, actions);
     host.appendChild(dlg);
     document.body.appendChild(host);
 
@@ -456,9 +448,15 @@ import "./backend_client.js";
   function handleEvent(ev) {
     if (!state || !ev) return;
     if (ev.type === "phase") {
-      // Named-stage marker from backend_client.runTwoStage. Drives the
-      // breadcrumb (Validating → Drafting → Polishing → Applying).
+      state.phase = ev.phase;
       setPhase(ev.phase);
+      if (refs.tStuck) refs.tStuck.textContent = ev.phase || "—";
+      if (refs.sub) {
+        if (ev.phase === "validating") refs.sub.textContent = "Checking your school schedule…";
+        else if (ev.phase === "drafting") refs.sub.textContent = "Placing lessons across the week…";
+        else if (ev.phase === "polishing") refs.sub.textContent = "Improving the timetable… (fewer gaps, better spread)";
+        else if (ev.phase === "applying") refs.sub.textContent = "Finishing up…";
+      }
       return;
     }
     if (ev.type === "progress") {
@@ -469,31 +467,39 @@ import "./backend_client.js";
       state.lastIter = iter;
       state.lastDurMs = dt;
 
-      const p1 = Math.min(1, dt / (state.timeLimitSec * 1000));
+      const timePct = Math.min(1, dt / (state.timeLimitSec * 1000));
       const p2 = ((iter % 1000) / 1000);
-      refs.bar1Fill.style.width = (p1 * 100).toFixed(1) + "%";
       refs.bar2Fill.style.width = (p2 * 100).toFixed(1) + "%";
 
       refs.tSpeed.textContent   = fmtInt(Math.round(state.lastSpeed));
       refs.tIter.textContent    = fmtInt(iter);
-      refs.tHard.textContent    = fmtInt(ev.hardConflicts);
       const displaySoft = (typeof ev.softScore === "number" && Number.isFinite(ev.softScore))
         ? Math.max(0, Math.round(ev.softScore < 0 ? -ev.softScore : ev.softScore))
         : 0;
       refs.tSoft.textContent    = fmtInt(displaySoft);
       refs.tElapsed.textContent = fmtTime(dt);
 
-      // Update the SVG progress ring — use placed/total if available,
-      // else approximate from time-based overall progress.
+      // Single honest progress metric drives BOTH the ring and the Progress bar.
+      // "Left to place" is always total - placed (never hardConflicts).
       if (ev.placed != null && state.totalLessons > 0) {
-        updateRing(ev.placed, state.totalLessons);
-        if (refs.placedHero) refs.placedHero.textContent =
-          `${fmtInt(ev.placed)} of ${fmtInt(state.totalLessons)} placed`;
-        // Something real exists now — accepting a partial is meaningful.
-        if (refs.acceptBtn && ev.placed > 0) refs.acceptBtn.disabled = false;
+        const placedClamped = Math.min(state.totalLessons, Math.max(0, ev.placed));
+        const left = Math.max(0, state.totalLessons - placedClamped);
+        const pct = placedClamped / state.totalLessons;
+        updateRing(placedClamped, state.totalLessons);
+        refs.bar1Fill.style.width = (pct * 100).toFixed(1) + "%";
+        refs.tHard.textContent = fmtInt(left);
+        if (refs.placedHero) {
+          if (state.phase === "polishing" || left === 0) {
+            refs.placedHero.textContent = `Improving the timetable… (${fmtInt(placedClamped)} of ${fmtInt(state.totalLessons)} placed)`;
+          } else {
+            refs.placedHero.textContent = `Placing lessons… ${fmtInt(placedClamped)} of ${fmtInt(state.totalLessons)}`;
+          }
+        }
+        if (refs.acceptBtn && placedClamped > 0) refs.acceptBtn.disabled = false;
       } else {
-        // Fallback: ring tracks overall time progress
-        updateRing(p1 * state.totalLessons, state.totalLessons || 1);
+        updateRing(timePct * (state.totalLessons || 100), state.totalLessons || 100);
+        refs.bar1Fill.style.width = (timePct * 100).toFixed(1) + "%";
+        refs.tHard.textContent = state.totalLessons ? fmtInt(state.totalLessons) : "—";
       }
 
       // Update branch lane widths if branch progress data is available
