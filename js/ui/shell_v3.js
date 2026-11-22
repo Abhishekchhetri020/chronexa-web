@@ -72,7 +72,7 @@ import "./state.js";
   ];
 
   function buildSidebar() {
-    const side = el("aside", { class: "chrx-sidebar" });
+    const side = el("aside", { class: "chrx-sidebar", tabindex: "0", "aria-label": "Navigation sidebar" });
     for (const item of NAV) {
       if (item.section) {
         side.appendChild(el("div", { class: "chrx-side-section" }, item.section));
@@ -322,7 +322,8 @@ import "./state.js";
       openPalette();
     } else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !isTypingTarget(e.target)) {
       const k = e.key.toLowerCase();
-      if (k === "v") { e.preventDefault(); fire("app:verify"); }
+      if (k === "g") { e.preventDefault(); fire("app:generate"); }
+      else if (k === "v") { e.preventDefault(); fire("app:verify"); }
       else if (k === "i") { e.preventDefault(); fire("app:improve"); }
       else if (k === "e") { e.preventDefault(); fire("app:export-dialog"); }
       else if (k === "o") { e.preventDefault(); fire("app:open-file"); }

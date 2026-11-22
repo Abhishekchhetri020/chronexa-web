@@ -475,7 +475,7 @@ import { checkPage } from "./fit_check.js";
     shell.appendChild(bar);
     
     const mainArea = el("div", { class: "chrx-preview-main-area", style: "display:flex; flex:1; overflow:hidden;" });
-    docShell = el("div", { class: "chrx-preview-doc", style: "flex:1; overflow:auto;" });
+    docShell = el("div", { class: "chrx-preview-doc", style: "flex:1; overflow:auto;", tabindex: "0", role: "region", "aria-label": "Print preview document" });
     // aSc's gesture: right-click a card or a table header to style it.
     try { attachContextMenu(docShell); } catch (e) { console.warn("[print] context menu:", e); }
     // Ctrl/⌘ + wheel zooms the preview (like a PDF viewer); plain wheel scrolls.
@@ -1286,7 +1286,7 @@ import { checkPage } from "./fit_check.js";
     ensureOverlay();
     const shell = overlay.querySelector(".chrx-preview-shell");
     shell.innerHTML = "";
-    docShell = el("div", { class: "chrx-preview-doc", style: "flex:1; overflow:auto;" });
+    docShell = el("div", { class: "chrx-preview-doc", style: "flex:1; overflow:auto;", tabindex: "0", role: "region", "aria-label": "Print preview document" });
     shell.appendChild(docShell);
 
     const scopePages = renderPagesForScope(scope);

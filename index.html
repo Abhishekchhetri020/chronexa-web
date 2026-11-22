@@ -138,10 +138,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
           </h1>
           <p class="lx-lead lx-in" style="--d:5">Classes, teachers and rooms on one live grid. Chronexa spots every clash the moment it happens and finds the lesson a better home.</p>
           <div class="lx-actions lx-in" style="--d:6">
-            <label id="start-open-card" class="lx-btn lx-btn--primary" tabindex="0">
-              <input type="file" id="xml-file" accept=".xml,.har" tabindex="-1" class="lx-file">
-              Open timetable
-            </label>
+            <input type="file" id="xml-file" accept=".xml,.har" tabindex="-1" class="lx-file" aria-hidden="true">
+            <button type="button" id="start-open-card" class="lx-btn lx-btn--primary">Open timetable</button>
             <button id="cta-landing-demo" type="button" class="lx-btn lx-btn--ghost">
               <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5 12 8l-7 4.5Z"/></svg>Launch demo
             </button>
@@ -372,7 +370,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
 <!-- ─────────────────────── SCRIPTS ─────────────────────── -->
 <!-- Bump APP_VER on every deploy so the browser refetches the JS bundle -->
-<script>window.APP_VER = "20261122-p275-data-reliability";</script>
+<script>window.APP_VER = "20261122-p276-accessibility";</script>
 <!-- Nuclear SW migration: if an old cache-first SW is still controlling,
      unregister it and reload to pick up the new network-first SW. -->
 <script>

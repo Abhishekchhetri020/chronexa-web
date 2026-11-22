@@ -27,3 +27,6 @@
 2026-11-22 18:54 | G | RELEASED 20261122-p274-perf-code-splitting | Vite code-splitting (0 chunks >500kB, index 871->148kB) + lazy xlsx/pako/print-preview (-49.2% first-load JS decoded, merge cf9a67e), 587 unit + 146 e2e (1 skip), live=APP_VER = "20261122-p274-perf-code-splitting"
 2026-11-22 18:54 | G | DONE | Wrote docs/neon/BLOCK_G.md; awaiting Claude review
 2026-11-22 18:57 | H | STARTED | Reliability of user data: autosave edge cases, version history, broken XML errors, full round-trip
+2026-11-22 19:32 | H | RELEASED | 20261122-p275-data-reliability (merge b8dd112, live verified)
+2026-11-22 19:32 | H | DONE | H1-H5 complete; 587 unit, 150 e2e (1 skip), 0 failed; docs/neon/BLOCK_H.md written
+2026-11-22 19:37 | I | STARTED | Accessibility (axe-core), keyboard Generate->print, 390px dialogs
