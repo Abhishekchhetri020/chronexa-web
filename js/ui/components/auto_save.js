@@ -4,35 +4,81 @@ import "../wizard/create_new.js";
 import "../io/snapshots.js";
 import "./version_history.js";
 
-/* Auto-save — silent localStorage snapshots every 60 seconds.
+/* Auto-save — silent localStorage (+ IndexedDB fallback) snapshots.
  *
- * Classic has a reputation for losing work when Windows crashes. Chronexa
- * silently snapshots the entire school to localStorage on a 60-second
- * timer (plus on every entity change beyond a debounce window).
- *
- * Recovery: on app boot, if no school is loaded AND a saved snapshot
- * exists for the user, offers "Restore your last session?" prompt.
- *
- * Storage key: `chronexa.autosave.v1` — separate from the manual
- * Snapshots feature (`chronexa.snapshots.v1`). Keeps ONE latest only.
- *
- * W3-1: the same triggers also feed the rolling 20-version backup ring in
- * IndexedDB (`components/version_history.js`) — `VersionHistory.record()`.
- * The ring is size-capped and evicts the oldest; it is fire-and-forget, so a
- * blocked/failed backup can never block editing or lose the localStorage copy.
+ * F0 (Block F): An imported or newly created school is persisted immediately
+ * on load/import/create (stripping derived `_idx` so large schools like a
+ * 1,470-card real timetable fit comfortably, with an IndexedDB fallback if
+ * localStorage quota is exceeded) and automatically restored on page reload
+ * or reopen without requiring an edit first. Untouched demo loads still land
+ * on the start screen on reload so landing/demo workflows stay clean.
  */
 (function () {
   "use strict";
   const KEY = "chronexa.autosave.v1";
+  const IDB_NAME = "chronexa-autosave-v1";
+  const IDB_STORE = "session";
+  const IDB_KEY = "latest";
   const PERIOD_MS = 60 * 1000;
   const DEBOUNCE_MS = 2000;
 
   let saveTimer = null;
   let lastSaveTs = 0;
+  let currentSource = "";
+  let currentAutoRestore = false;
 
-  // ─── Rolling versions (W3-1) ──────────────────────────────────────────
-  // Label = the last undo label (contract C1's APP.history.peek()), which is
-  // exactly what makes the history list readable ("Move card", "Swap cards", …).
+  // ─── IndexedDB fallback for very large schools (> localStorage quota) ──
+  function openIdb() {
+    return new Promise((resolve, reject) => {
+      if (typeof indexedDB === "undefined" || !indexedDB) return reject(new Error("no indexedDB"));
+      const req = indexedDB.open(IDB_NAME, 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(IDB_STORE)) db.createObjectStore(IDB_STORE);
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error || new Error("idb open failed"));
+    });
+  }
+  async function idbPut(val) {
+    const db = await openIdb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_STORE, "readwrite");
+      tx.objectStore(IDB_STORE).put(val, IDB_KEY);
+      tx.oncomplete = () => { db.close(); resolve(); };
+      tx.onerror = () => { db.close(); reject(tx.error); };
+    });
+  }
+  async function idbGet() {
+    const db = await openIdb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_STORE, "readonly");
+      const req = tx.objectStore(IDB_STORE).get(IDB_KEY);
+      req.onsuccess = () => { db.close(); resolve(req.result || null); };
+      req.onerror = () => { db.close(); reject(req.error); };
+    });
+  }
+  async function idbClear() {
+    try {
+      const db = await openIdb();
+      await new Promise((resolve) => {
+        const tx = db.transaction(IDB_STORE, "readwrite");
+        tx.objectStore(IDB_STORE).delete(IDB_KEY);
+        tx.oncomplete = () => { db.close(); resolve(); };
+        tx.onerror = () => { db.close(); resolve(); };
+      });
+    } catch {}
+  }
+
+  function cloneSchoolForStorage(school) {
+    if (!school || typeof school !== "object") return null;
+    // Strip derived lookup index `_idx` (rebuilt by CreateNew.refreshIndex on load)
+    // to keep snapshots compact and free of redundant maps.
+    const shallow = Object.assign({}, school);
+    delete shallow._idx;
+    return JSON.parse(JSON.stringify(shallow));
+  }
+
   function lastUndoLabel() {
     const APP = window.APP;
     const entry = APP && APP.history && typeof APP.history.peek === "function" ? APP.history.peek() : null;
@@ -49,26 +95,45 @@ import "./version_history.js";
     } catch (e) { /* a failed backup must never interrupt editing */ }
   }
 
-  function save() {
+  function save(opts) {
     const APP = window.APP;
     if (!APP || !APP.school) return;
     const school = APP.school;
-    const payload = {
+    if (opts && typeof opts.autoRestore === "boolean") {
+      currentAutoRestore = opts.autoRestore;
+    }
+    const clean = cloneSchoolForStorage(school);
+    if (!clean) return;
+    const meta = {
       ts: Date.now(),
       schoolName: school.schoolName || "(untitled)",
       cards: (school.cards || []).length,
       lessons: (school.lessons || []).length,
-      payload: structuredClone ? structuredClone(school) : JSON.parse(JSON.stringify(school)),
+      source: currentSource || "unknown",
+      autoRestore: !!currentAutoRestore,
     };
+    const full = Object.assign({}, meta, { payload: clean });
     try {
-      localStorage.setItem(KEY, JSON.stringify(payload));
-      lastSaveTs = payload.ts;
+      localStorage.setItem(KEY, JSON.stringify(full));
+      lastSaveTs = meta.ts;
       flashIndicator("✓");
     } catch (e) {
-      flashIndicator("⚠", "warn");
-      console.warn("[autosave] failed:", e);
+      // Exceeded localStorage quota (e.g. very large XML with sourceText):
+      // persist full school in IndexedDB and store a tiny pointer in localStorage.
+      try {
+        localStorage.setItem(KEY, JSON.stringify(Object.assign({}, meta, { idbFallback: true })));
+        idbPut(clean).then(() => {
+          lastSaveTs = meta.ts;
+          flashIndicator("✓");
+        }).catch((err) => {
+          flashIndicator("⚠", "warn");
+          console.warn("[autosave] idb fallback failed:", err);
+        });
+      } catch (e2) {
+        flashIndicator("⚠", "warn");
+        console.warn("[autosave] failed:", e2);
+      }
     }
-    // Independent of the localStorage copy: one more version in the ring.
     recordBackup();
   }
 
@@ -76,46 +141,58 @@ import "./version_history.js";
     try {
       const txt = localStorage.getItem(KEY);
       if (!txt) return null;
-      const obj = JSON.parse(txt);
-      return obj;
+      return JSON.parse(txt);
     } catch (e) { return null; }
   }
 
   function discardSaved() {
     try { localStorage.removeItem(KEY); } catch {}
+    idbClear();
+  }
+
+  function applyRestoredSchool(schoolPayload) {
+    const APP = window.APP;
+    if (!APP || !schoolPayload) return false;
+    APP.school = schoolPayload;
+    if (window.CreateNew && typeof window.CreateNew.refreshIndex === "function") {
+      window.CreateNew.refreshIndex();
+    }
+    document.querySelectorAll(".needs-school").forEach((b) => { b.disabled = false; });
+    const detail = { school: APP.school, source: "autosave-restore" };
+    window.dispatchEvent(new CustomEvent("app:school-loaded", { detail }));
+    document.dispatchEvent(new CustomEvent("app:school-loaded", { detail }));
+    if (typeof window.showStep === "function") {
+      try { window.showStep(6); } catch {}
+    }
+    flashIndicator("↶ Restored");
+    return true;
   }
 
   function schedulePeriodic() {
     if (saveTimer) clearInterval(saveTimer);
     saveTimer = setInterval(() => {
-      // Only save if something changed in the last period. Editor card moves
-      // go through APP.mutate (audit.commit) and never touch audit._log, so
-      // the last transaction's timestamp counts as a change too — otherwise a
-      // move made just after a backup waited a full extra minute.
       const APP = window.APP;
       if (!APP || !APP.school) return;
       const lastLog = APP.audit?._log?.[APP.audit._log.length - 1]?.ts || 0;
       const lastMutate = APP.history?.peek?.()?.timestamp || 0;
-      if (Math.max(lastLog, lastMutate) > lastSaveTs) save();
+      if (Math.max(lastLog, lastMutate) > lastSaveTs) save({ autoRestore: true });
     }, PERIOD_MS);
   }
 
   let debounceTimer = null;
   function onEntityChange() {
+    currentAutoRestore = true;
     clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(save, DEBOUNCE_MS);
+    debounceTimer = setTimeout(() => save({ autoRestore: true }), DEBOUNCE_MS);
   }
 
-  // A meaningful change (contract C1: any APP.mutate, undo or redo). Faster
-  // than the entity:changed debounce because it is the backup trigger, not the
-  // localStorage one.
   let changeTimer = null;
   function onSchoolChanged() {
+    currentAutoRestore = true;
     clearTimeout(changeTimer);
-    changeTimer = setTimeout(save, window.VersionHistory?.CHANGE_DEBOUNCE_MS || 800);
+    changeTimer = setTimeout(() => save({ autoRestore: true }), window.VersionHistory?.CHANGE_DEBOUNCE_MS || 800);
   }
 
-  // ─── Indicator pill (bottom-right) ────────────────────────────────────
   function ensureIndicator() {
     if (document.getElementById("chrx-autosave-pill")) return;
     const pill = document.createElement("div");
@@ -143,40 +220,75 @@ import "./version_history.js";
     pill._t = setTimeout(() => pill.style.opacity = "0", 2500);
   }
 
-  // ─── Recovery prompt on boot ──────────────────────────────────────────
-  function maybeOfferRecovery() {
+  function isViewerPage() {
+    try {
+      if (window.__CHRX_VIEWER_MODE) return true;
+      if (/viewer\.html/i.test(location.pathname || "")) return true;
+      if (/[?&]view=/.test(location.search || "")) return true;
+    } catch {}
+    return false;
+  }
+
+  function maybeAutoRestoreOrOffer() {
     const APP = window.APP;
-    if (APP?.school) return; // already have one loaded
+    if (APP?.school || isViewerPage()) return;
     const saved = restore();
     if (!saved) return;
-    const ageMin = Math.round((Date.now() - saved.ts) / 60000);
-    const card = document.createElement("div");
-    card.style.cssText = [
-      "position:fixed", "top:80px", "right:16px",
-      "background:#fff", "color:#0f172a",
-      "border:1px solid #e2e8f0", "border-radius:10px",
-      "padding:14px 16px", "box-shadow:0 8px 24px rgba(0,0,0,.12)",
-      "font-family:-apple-system,sans-serif", "font-size:13px",
-      "max-width:300px", "z-index:999"
-    ].join(";");
-    card.innerHTML = `
-      <div style="font-weight:600;color:#1e3a8a;margin-bottom:6px">💾 Restore previous session?</div>
-      <div style="color:#475569;margin-bottom:10px">
-        "${escapeHtml(saved.schoolName)}" · ${saved.cards} cards · saved ${ageMin}m ago
-      </div>
-      <div style="display:flex;gap:6px;justify-content:flex-end">
-        <button data-discard style="background:#fff;border:1px solid #cbd5e1;color:#0f172a;padding:4px 10px;border-radius:5px;cursor:pointer;font-size:12px">Discard</button>
-        <button data-restore style="background:#10b981;border:0;color:#fff;padding:4px 12px;border-radius:5px;cursor:pointer;font-size:12px;font-weight:600">Restore</button>
-      </div>`;
-    document.body.appendChild(card);
-    card.querySelector("[data-restore]").onclick = () => {
-      APP.school = saved.payload;
-      if (window.CreateNew?.refreshIndex) window.CreateNew.refreshIndex();
-      window.dispatchEvent(new CustomEvent("app:school-loaded", { detail: { source: "autosave-restore" } }));
-      card.remove();
-      flashIndicator("↶ Restored");
-    };
-    card.querySelector("[data-discard]").onclick = () => { discardSaved(); card.remove(); };
+
+    if (saved.autoRestore) {
+      if (saved.idbFallback) {
+        idbGet().then((payload) => {
+          if (payload && !window.APP?.school) {
+            currentSource = saved.source || "autosave-restore";
+            currentAutoRestore = true;
+            applyRestoredSchool(payload);
+          }
+        }).catch(() => {});
+        return;
+      }
+      if (saved.payload) {
+        currentSource = saved.source || "autosave-restore";
+        currentAutoRestore = true;
+        applyRestoredSchool(saved.payload);
+        return;
+      }
+    }
+
+    // Untouched demo snapshot: keep start screen on reload and offer optional restore card
+    setTimeout(() => {
+      if (window.APP?.school || isViewerPage()) return;
+      const latest = restore();
+      if (!latest || (!latest.payload && !latest.idbFallback)) return;
+      const ageMin = Math.round((Date.now() - latest.ts) / 60000);
+      const card = document.createElement("div");
+      card.style.cssText = [
+        "position:fixed", "top:80px", "right:16px",
+        "background:#fff", "color:#0f172a",
+        "border:1px solid #e2e8f0", "border-radius:10px",
+        "padding:14px 16px", "box-shadow:0 8px 24px rgba(0,0,0,.12)",
+        "font-family:-apple-system,sans-serif", "font-size:13px",
+        "max-width:300px", "z-index:999"
+      ].join(";");
+      card.innerHTML = `
+        <div style="font-weight:600;color:#1e3a8a;margin-bottom:6px">💾 Restore previous session?</div>
+        <div style="color:#475569;margin-bottom:10px">
+          "${escapeHtml(latest.schoolName)}" · ${latest.cards} cards · saved ${ageMin}m ago
+        </div>
+        <div style="display:flex;gap:6px;justify-content:flex-end">
+          <button data-discard style="background:#fff;border:1px solid #cbd5e1;color:#0f172a;padding:4px 10px;border-radius:5px;cursor:pointer;font-size:12px">Discard</button>
+          <button data-restore style="background:#10b981;border:0;color:#fff;padding:4px 12px;border-radius:5px;cursor:pointer;font-size:12px;font-weight:600">Restore</button>
+        </div>`;
+      document.body.appendChild(card);
+      card.querySelector("[data-restore]").onclick = () => {
+        card.remove();
+        if (latest.idbFallback) {
+          idbGet().then((p) => { if (p) applyRestoredSchool(p); }).catch(() => {});
+        } else {
+          applyRestoredSchool(latest.payload);
+        }
+      };
+      card.querySelector("[data-discard]").onclick = () => { discardSaved(); card.remove(); };
+    }, 1500);
   }
 
   function escapeHtml(s) {
@@ -184,25 +296,43 @@ import "./version_history.js";
       ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   }
 
-  // ─── Boot ─────────────────────────────────────────────────────────────
-  function onSchoolLoaded() { lastSaveTs = 0; save(); }
+  let lastHandledLoadEvent = null;
+  function onSchoolLoaded(ev) {
+    // Both window and document listeners may receive the same logical load
+    if (ev && ev === lastHandledLoadEvent) return;
+    lastHandledLoadEvent = ev;
+    const detail = (ev && ev.detail) || {};
+    if (detail.school === null || !window.APP?.school) {
+      currentSource = "";
+      currentAutoRestore = false;
+      discardSaved();
+      return;
+    }
+    const src = detail.source || "";
+    if (src === "autosave-restore") return;
+    currentSource = src;
+    const isDemo = src === "demo-xml" || src === "create-demo";
+    currentAutoRestore = !isDemo;
+    lastSaveTs = 0;
+    save({ autoRestore: currentAutoRestore });
+  }
+
+  function onSolveApplied() {
+    currentAutoRestore = true;
+    lastSaveTs = 0;
+    save({ autoRestore: true });
+  }
 
   function boot() {
     schedulePeriodic();
     window.addEventListener("entity:changed", onEntityChange);
     document.addEventListener("entity:changed", onEntityChange);
     document.addEventListener("app:school-changed", onSchoolChanged);
-    // Both targets: io/import_timetable_xml.js applySchool() dispatches on
-    // window, the bundled-demo loader in ui/main.js on document, and a
-    // CustomEvent without bubbles does not cross between them. Listening on
-    // window alone meant the demo load was never autosaved at all.
     window.addEventListener("app:school-loaded", onSchoolLoaded);
     document.addEventListener("app:school-loaded", onSchoolLoaded);
-    // A freshly generated/solved timetable is the most expensive-to-recreate
-    // state in the app — snapshot it immediately rather than waiting up to
-    // 60s for the periodic timer (a refresh in that window lost the result).
-    window.addEventListener("app:solve-applied", onSchoolLoaded);
-    setTimeout(maybeOfferRecovery, 1500);
+    window.addEventListener("app:solve-applied", onSolveApplied);
+    // Wait one macrotask so all modules finish wiring app:school-loaded listeners
+    setTimeout(maybeAutoRestoreOrOffer, 0);
   }
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", boot);

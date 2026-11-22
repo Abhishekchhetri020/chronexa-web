@@ -477,7 +477,10 @@ import "./backend_client.js";
       refs.tSpeed.textContent   = fmtInt(Math.round(state.lastSpeed));
       refs.tIter.textContent    = fmtInt(iter);
       refs.tHard.textContent    = fmtInt(ev.hardConflicts);
-      refs.tSoft.textContent    = fmtInt(ev.softScore);
+      const displaySoft = (typeof ev.softScore === "number" && Number.isFinite(ev.softScore))
+        ? Math.max(0, Math.round(ev.softScore < 0 ? -ev.softScore : ev.softScore))
+        : 0;
+      refs.tSoft.textContent    = fmtInt(displaySoft);
       refs.tElapsed.textContent = fmtTime(dt);
 
       // Update the SVG progress ring — use placed/total if available,
