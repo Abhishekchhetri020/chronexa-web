@@ -21,7 +21,7 @@
   color-scheme: light;
 
   /* ───── Typography ───── */
-  --chrx-font-sans: "Inter Tight", -apple-system, BlinkMacSystemFont,
+  --chrx-font-sans: "Inter Tight", system-ui, -apple-system, BlinkMacSystemFont,
     "Segoe UI", Roboto, sans-serif;
   --chrx-font-display: "Fraunces", "Iowan Old Style", Georgia, serif;
   --chrx-font-mono: "JetBrains Mono", ui-monospace, Menlo, Consolas,

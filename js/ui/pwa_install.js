@@ -149,9 +149,42 @@ import "./state.js";
     // version applies on the next visit.
     function hasOpenWork() {
       try {
-        return !!(window.APP && window.APP.school);
+        if (window.APP && window.APP.school) return true;
+        if (window.__CHRX_CTA_IN_PROGRESS__) return true;
+        if (document.querySelector(".chrx-tpl-modal__panel")) return true;
+        if (document.body && !document.body.classList.contains("chrx-landing-active") && document.getElementById("editor-root")?.children.length) return true;
+        return false;
       } catch (_) { return false; }
     }
+    function reloadPreservingClick() {
+      try {
+        const queued = window.__CHRX_EARLY_CLICK__ || window.__CHRX_EARLY_CLICK_BACKUP__;
+        if (queued) sessionStorage.setItem("chrx-queued-cta", queued);
+      } catch (_) {}
+      window.location.reload();
+    }
+    let resolveSwDecision = null;
+    let swDecisionSettled = false;
+    function settleSwDecision(val) {
+      if (swDecisionSettled) return;
+      swDecisionSettled = true;
+      if (resolveSwDecision) resolveSwDecision(val);
+    }
+    // On a fresh visit where no SW controls the page yet, hold __CHRX_READY__
+    // briefly until either controllerchange triggers the one-time COI reload
+    // (preserving any queued early CTA click across the reload) or we know no
+    // reload will happen.
+    const needsInitialSwDecision = !navigator.serviceWorker.controller;
+    if (needsInitialSwDecision) {
+      window.__CHRX_SW_DECISION__ = new Promise((resolve) => {
+        resolveSwDecision = resolve;
+      });
+      setTimeout(() => settleSwDecision("timeout"), 1500);
+    } else {
+      window.__CHRX_SW_DECISION__ = Promise.resolve("controlled");
+      swDecisionSettled = true;
+    }
+
     let refreshing = false;
     // Show a non-destructive "New version — Reload" banner instead of silently
     // deferring. Before this, a deploy while a school was open left the user
@@ -170,18 +203,19 @@ import "./state.js";
         "z-index:10050", "display:flex", "align-items:center", "gap:12px",
         "background:#0d4f54", "color:#f6f1e6", "padding:9px 12px 9px 16px",
         "border-radius:999px", "box-shadow:0 8px 28px rgba(15,23,42,.35)",
-        "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
+        "font-family:var(--chrx-font-sans,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif)",
         "font-size:13px", "font-weight:500",
       ].join(";");
+      const refreshIcon = window.ChrxIcons ? window.ChrxIcons.svg("refresh", 15) : "";
       bar.innerHTML =
-        '<span>🔄 A new version of Chronexa is ready.</span>' +
+        `<span style="display:inline-flex;align-items:center;gap:6px;">${refreshIcon}A new version of Chronexa is ready.</span>` +
         '<button type="button" data-reload style="background:#f6f1e6;color:#0d4f54;border:0;border-radius:999px;padding:5px 14px;font-weight:700;font-size:12.5px;cursor:pointer;">Reload</button>' +
         '<button type="button" data-later style="background:transparent;color:rgba(246,241,230,.7);border:0;font-size:12.5px;cursor:pointer;">Later</button>';
       bar.querySelector("[data-reload]").onclick = () => {
         refreshing = true;
         // Activate the waiting worker, then reload when it takes control.
         try { if (waitingWorker) waitingWorker.postMessage("SKIP_WAITING"); } catch (_) {}
-        setTimeout(() => window.location.reload(), 120);
+        setTimeout(() => reloadPreservingClick(), 120);
       };
       bar.querySelector("[data-later]").onclick = () => bar.remove();
       document.body.appendChild(bar);
@@ -194,11 +228,22 @@ import "./state.js";
         // page; the banner (shown on updatefound) lets the user reload when
         // ready.
         console.info("[chronexa] new SW active — reload deferred (work open); banner offered");
+        settleSwDecision("deferred");
         return;
       }
       refreshing = true;
+      window.__CHRX_SW_RELOADING__ = true;
       console.info("[chronexa] new SW active — reloading in 300ms…");
-      setTimeout(() => window.location.reload(), 300);
+      setTimeout(() => {
+        if (hasOpenWork()) {
+          refreshing = false;
+          window.__CHRX_SW_RELOADING__ = false;
+          settleSwDecision("deferred-in-timer");
+          console.info("[chronexa] new SW active — reload cancelled inside timer (work opened)");
+          return;
+        }
+        reloadPreservingClick();
+      }, 300);
     });
 
     // Cross-origin isolation: the COI service worker injects COOP/COEP, but the
@@ -210,7 +255,15 @@ import "./state.js";
         var _coiKey = "chrx-coi-reload-" + (window.APP_VER || "");
         if (!sessionStorage.getItem(_coiKey)) {
           sessionStorage.setItem(_coiKey, "1");
-          setTimeout(() => window.location.reload(), 50);
+          window.__CHRX_SW_RELOADING__ = true;
+          window.__CHRX_SW_DECISION__ = new Promise(() => {});
+          setTimeout(() => {
+            if (hasOpenWork()) {
+              window.__CHRX_SW_RELOADING__ = false;
+              return;
+            }
+            reloadPreservingClick();
+          }, 50);
         }
       }
     } catch (_) {}
@@ -250,7 +303,7 @@ import "./state.js";
           });
         });
       })
-      .catch((e) => console.warn("[chronexa] SW registration failed:", e));
+      .catch((e) => { console.warn("[chronexa] SW registration failed:", e); settleSwDecision("error"); });
   }
 
   // Capture install prompt before the browser shows its native one
