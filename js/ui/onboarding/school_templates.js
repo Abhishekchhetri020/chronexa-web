@@ -20,18 +20,25 @@ import "./data_library.js";
 
   const CHOICES = [
     { id: "cbse",              label: "CBSE school (India)",          subj: "cbse",
-      classes: "Indian primary",  bell: "Indian 6-day 8-period",       names: "indian" },
+      classes: "Indian primary",  bell: "Indian 6-day 8-period",       names: "indian",
+      subtitle: "8+ subjects · 6 days × 8 periods" },
     { id: "ib_myp",            label: "IB MYP school",                subj: "ib_myp",
-      classes: "Indian primary",  bell: "Western 5-day 7-period",      names: "western" },
+      classes: "Indian primary",  bell: "Western 5-day 7-period",      names: "western",
+      subtitle: "8+ subjects · 5 days × 7 periods" },
     { id: "igcse",             label: "IGCSE school",                 subj: "igcse",
-      classes: "Indian secondary", bell: "Western 5-day 7-period",     names: "western" },
+      classes: "Indian secondary", bell: "Western 5-day 7-period",     names: "western",
+      subtitle: "8+ subjects · 5 days × 7 periods" },
     { id: "us_k12",            label: "US public school K-12",        subj: "us_k12",
-      classes: "Western K-5",     bell: "Western 5-day 7-period",      names: "western" },
+      classes: "Western K-5",     bell: "Western 5-day 7-period",      names: "western",
+      subtitle: "8+ subjects · 5 days × 7 periods" },
     { id: "montessori_primary", label: "Montessori primary",          subj: "montessori_primary",
-      classes: "Montessori",      bell: "Montessori 5-day 4-cycle",    names: "western" },
+      classes: "Montessori",      bell: "Montessori 5-day 4-cycle",    names: "western",
+      subtitle: "8+ subjects · 5 days × 4 cycles" },
     { id: "india_govt",        label: "Govt school (India)",          subj: "india_govt",
-      classes: "Indian primary",  bell: "Indian 6-day 8-period",       names: "indian" },
-    { id: "blank",             label: "Blank — I'll set up everything", subj: null, classes: null, bell: null, names: null },
+      classes: "Indian primary",  bell: "Indian 6-day 8-period",       names: "indian",
+      subtitle: "8+ subjects · 6 days × 8 periods" },
+    { id: "blank",             label: "Blank — I'll set up everything", subj: null, classes: null, bell: null, names: null,
+      subtitle: "Start empty and add your own subjects, teachers, and classes" },
   ];
 
   function applyChoice(id, opts) {
@@ -117,14 +124,14 @@ import "./data_library.js";
   /* ── UI: template picker modal (only shown if user clicks "Create new") ── */
   function pickerHtml() {
     const tiles = CHOICES.map(c =>
-      `<button data-id="${c.id}" class="chrx-tpl-card chrx-lift chrx-press">
+      `<button type="button" data-id="${c.id}" class="chrx-tpl-card${c.id === "blank" ? " chrx-tpl-card--full" : ""} chrx-lift chrx-press">
          <strong>${c.label}</strong>
-         <small>${c.subj ? "8+ subjects · " : ""}${c.bell ? c.bell + " · " : ""}${c.names || "blank"}</small>
+         <small>${c.subtitle || ""}</small>
        </button>`
     ).join("");
     return `
-      <h3 style="margin:0 0 6px;color:#1e3a8a">Pick a starting point</h3>
-      <p style="margin:0 0 16px;color:#64748b;font-size:13px">We'll seed subjects, bell schedule, and 3 sample classes. You can change everything later.</p>
+      <h3 class="chrx-tpl-title">Pick a starting point</h3>
+      <p class="chrx-tpl-sub">We'll seed subjects, a bell schedule, and 3 sample classes. You can change everything later.</p>
       <div class="chrx-tpl-grid">${tiles}</div>`;
   }
 
@@ -133,12 +140,21 @@ import "./data_library.js";
     const s = document.createElement("style");
     s.id = "chrx-tpl-styles";
     s.textContent = `
-.chrx-tpl-modal{position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:24px;z-index:1100}
-.chrx-tpl-modal__panel{background:#fff;border-radius:14px;width:min(680px,95vw);padding:22px 24px;box-shadow:0 20px 60px rgba(0,0,0,.3);font-family:-apple-system,sans-serif}
+.chrx-tpl-modal{position:fixed;inset:0;background:rgba(15,23,42,.58);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:24px;z-index:1100}
+.chrx-tpl-modal__panel{background:var(--chrx-bg-elev,#fff);color:var(--chrx-fg,#0f172a);border:1px solid var(--chrx-line,#e2e8f0);border-radius:14px;width:min(680px,95vw);padding:24px 26px;box-shadow:0 24px 64px rgba(15,23,42,.3);font-family:var(--chrx-font-sans,"DM Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif)}
+.chrx-tpl-modal__panel:focus{outline:none}
+.chrx-tpl-title{margin:0 0 6px;font-family:var(--chrx-font-sans,"DM Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif);font-size:20px;font-weight:700;letter-spacing:-0.02em;color:var(--chrx-fg,#0f172a)}
+.chrx-tpl-sub{margin:0 0 18px;font-family:var(--chrx-font-sans,"DM Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif);font-size:13.5px;line-height:1.5;color:var(--chrx-fg-secondary,#64748b)}
 .chrx-tpl-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.chrx-tpl-card{background:#f1f5f9;border:1px solid transparent;color:#0f172a;text-align:left;padding:14px 16px;border-radius:10px;cursor:pointer;transition:background .15s ease,border-color .15s ease,transform .15s ease;display:flex;flex-direction:column;gap:4px}
-.chrx-tpl-card:hover{background:#fff;border-color:#4f46e5;transform:translateY(-1px)}
-.chrx-tpl-card small{color:#64748b;font-size:11px}
+@media (max-width:560px){.chrx-tpl-grid{grid-template-columns:1fr}}
+.chrx-tpl-card{background:var(--chrx-bg-tile,#f8fafc);border:1px solid var(--chrx-line,#e2e8f0);color:var(--chrx-fg,#0f172a);text-align:left;padding:14px 16px;border-radius:10px;cursor:pointer;transition:background .15s ease,border-color .15s ease,transform .15s ease;display:flex;flex-direction:column;gap:4px;font-family:inherit}
+.chrx-tpl-card--full{grid-column:1 / -1}
+.chrx-tpl-card:hover,.chrx-tpl-card:focus-visible{background:var(--chrx-bg-elev,#fff);border-color:var(--chrx-accent,#0d4f54);transform:translateY(-1px);outline:none;box-shadow:0 0 0 3px var(--chrx-accent-bg,rgba(13,79,84,.12))}
+.chrx-tpl-card strong{font-size:14px;font-weight:600;color:var(--chrx-fg,#0f172a)}
+.chrx-tpl-card small{color:var(--chrx-fg-secondary,#64748b);font-size:12px}
+.chrx-tpl-foot{display:flex;justify-content:flex-end;margin-top:16px;padding-top:12px;border-top:1px solid var(--chrx-line,#e2e8f0)}
+.chrx-tpl-cancel{background:transparent;border:1px solid var(--chrx-line,#cbd5e1);color:var(--chrx-fg,#0f172a);padding:7px 14px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit}
+.chrx-tpl-cancel:hover{background:var(--chrx-bg-tile,#f1f5f9)}
     `;
     document.head.appendChild(s);
   }

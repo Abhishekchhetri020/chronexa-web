@@ -1,4 +1,6 @@
 import { test, expect } from "@playwright/test";
+import fs from "node:fs";
+import path from "node:path";
 
 test.describe("Block J — First-run experience (empty school -> printed timetable)", () => {
   test("J1: a stranger starting from an empty school reaches a printed timetable without help", async ({ page }) => {
@@ -18,18 +20,13 @@ test.describe("Block J — First-run experience (empty school -> printed timetab
     await expect(blankChoice).toBeVisible({ timeout: 10_000 });
     await blankChoice.click();
 
-    // Dismiss onboarding walkthrough wizard if it opens on top of the Get Started checklist
-    const closeWalkthrough = page.locator("button[aria-label='Close wizard'], .chrx-wiz-close, .chrx-modal-close, button[aria-label='Close']").first();
-    await closeWalkthrough.waitFor({ state: "visible", timeout: 5_000 }).catch(() => {});
-    if (await closeWalkthrough.isVisible().catch(() => false)) {
-      await closeWalkthrough.click();
-    }
-
-    // 2. Verify Get Started checklist, progress counter, one-click sample school, and next-step highlight
+    // 2. Lands directly on Editor (#step-6) with Get Started checklist visible (no School Info, no blocking wizard, no Restored toast)
+    await expect(page.locator("#step-2")).toHaveClass(/hidden/);
     await expect(page.locator("#chrx-hero-progress")).toHaveText("0 of 4 required steps done", { timeout: 10_000 });
     await expect(page.locator("#chrx-hero-sample-btn")).toBeVisible();
     await expect(page.locator(".chrx-hero-tile[data-kind='subjects']")).toHaveAttribute("data-next", "true");
     await expect(page.locator(".chrx-hero-tile[data-kind='classrooms']")).toContainText(/Optional/i);
+    await expect(page.locator("#chrx-autosave-pill")).toHaveCount(0);
 
     // 3. Clicking Generate or Print preview on empty school shows plain-English guard, never opens empty dialog
     await page.locator("button.chrx-btn--primary, #cta-generate", { hasText: "Generate" }).first().click();
@@ -79,10 +76,8 @@ test.describe("Block J — First-run experience (empty school -> printed timetab
 
     const sheet = page.locator(".chrx-ent-sheet").first();
     await expect(sheet).toBeVisible({ timeout: 10_000 });
-    // Select our subject (Mathematics), class (Grade 1A), and teacher (Ms. Priya)
     const subjSelect = sheet.locator("select").first();
     await subjSelect.selectOption({ index: 1 });
-    // Select our class (Grade 1A) and teacher (Ms. Priya)
     const classCheckbox = sheet.locator("input[type='checkbox']").first();
     if (!(await classCheckbox.isChecked())) await classCheckbox.check();
     const teacherCheckbox = sheet.getByRole("checkbox", { name: /Ms\. Priya/i });
@@ -132,11 +127,6 @@ test.describe("Block J — First-run experience (empty school -> printed timetab
 
     await page.locator("#cta-build-new").click();
     await page.getByRole("button", { name: /Blank — I'll set up everything/i }).first().click();
-    const closeWalkthrough = page.locator("button[aria-label='Close wizard'], .chrx-wiz-close, .chrx-modal-close, button[aria-label='Close']").first();
-    await closeWalkthrough.waitFor({ state: "visible", timeout: 5_000 }).catch(() => {});
-    if (await closeWalkthrough.isVisible().catch(() => false)) {
-      await closeWalkthrough.click();
-    }
 
     await expect(page.locator("#chrx-hero-sample-btn")).toBeVisible({ timeout: 10_000 });
     await page.locator("#chrx-hero-sample-btn").click();
@@ -144,5 +134,54 @@ test.describe("Block J — First-run experience (empty school -> printed timetab
 
     const cards = await page.evaluate(() => (window.APP?.school?.cards || []).length);
     expect(cards).toBeGreaterThan(500);
+  });
+
+  test("J3: template picker polish, clean Blank landing, collapsed Advanced sidebar, no stray tab bar, SVG School Info icons", async ({ page }) => {
+    test.setTimeout(60_000);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/");
+    await page.waitForFunction(() => window.APP && window.SolverUI && window.Editor);
+
+    // 1. Template picker: sans-serif heading, plain subtitles (no raw tags), plain Cancel, balanced full-width Blank card
+    await page.locator("#cta-build-new").click();
+    const panel = page.locator(".chrx-tpl-modal__panel");
+    await expect(panel).toBeVisible({ timeout: 10_000 });
+    const panelText = await panel.innerText();
+    expect(panelText).not.toMatch(/·\s*(indian|western)\b/i);
+    expect(panelText).not.toMatch(/keep my current school/i);
+    await expect(panel.locator(".chrx-tpl-cancel")).toHaveText("Cancel");
+    const titleFont = await panel.locator(".chrx-tpl-title").evaluate((el) => getComputedStyle(el).fontFamily);
+    expect(titleFont).toMatch(/sans-serif/i);
+    expect(titleFont).not.toMatch(/times|georgia|fraunces|playfair/i);
+
+    const shotDir = path.resolve("docs/neon/ui-shots/block-j2");
+    fs.mkdirSync(shotDir, { recursive: true });
+    await page.screenshot({ path: path.join(shotDir, "1-templates-after.png") });
+
+    // 2. Pick Blank -> lands directly on Editor with Get Started checklist, no Restored toast, no stray + New tab
+    await panel.getByRole("button", { name: /Blank — I'll set up everything/i }).click();
+    await expect(page.locator("#chrx-hero-progress")).toHaveText("0 of 4 required steps done", { timeout: 10_000 });
+    await expect(page.locator("#chrx-hero-sample-btn")).toBeVisible();
+    await expect(page.locator("#step-2")).toHaveClass(/hidden/);
+    await expect(page.locator("#chrx-autosave-pill")).toHaveCount(0);
+    await expect(page.locator("#chrx-tab-bar")).toBeHidden();
+
+    // 3. Sidebar: open sidebar if collapsed in editor workspace; Basics expanded, Advanced collapsed by default
+    const advGroup = page.locator("details.chrx-side-group[data-section='advanced']");
+    if (!(await advGroup.isVisible().catch(() => false))) {
+      await page.locator("button[aria-label='Toggle sidebar']").click();
+    }
+    await expect(advGroup).toBeVisible();
+    await expect(advGroup).not.toHaveAttribute("open", "");
+
+    await page.screenshot({ path: path.join(shotDir, "2-empty-school-after.png") });
+
+    // 4. School Info subtitle is plain English (not "parsed from your XML") and sub-nav uses SVG line icons, zero emoji
+    await page.evaluate(() => window.showStep && window.showStep(2));
+    await expect(page.locator("#step-2")).not.toHaveClass(/hidden/);
+    const step2Desc = await page.locator('#step-2 [data-i18n="step2Desc"]').innerText();
+    expect(step2Desc).not.toMatch(/parsed from your XML/i);
+    const svgCount = await page.locator("#step-2 .chrx-hub__navicon svg").count();
+    expect(svgCount).toBe(8);
   });
 });

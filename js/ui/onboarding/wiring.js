@@ -28,6 +28,8 @@ import "./tour.js";
 
   // ─── 1. CTA hijack ──────────────────────────────────────────────────────
   function wireBuildNewCTA() {
+    // Delegated click handler in main.js owns #cta-build-new and calls onTemplatePicked().
+    return;
     const btn = document.getElementById("cta-build-new");
     if (!btn) return;
 
@@ -68,13 +70,10 @@ import "./tour.js";
     // Show the sample-data banner unless the user picked the blank template.
     if (id !== "blank") showSampleBanner(id, result);
 
-    // Open the 5-step walkthrough. Slight delay so the editor step transition
-    // settles first; the WizardWalkthrough overlay sits on top.
-    setTimeout(() => {
-      if (global.WizardWalkthrough && global.WizardWalkthrough.start) {
-        global.WizardWalkthrough.start();
-      }
-    }, 250);
+    // Ensure Editor (step 6) with the Get Started checklist stays front-and-center.
+    if (typeof global.showStep === "function") {
+      try { global.showStep(6); } catch {}
+    }
   }
 
   function showSampleBanner(templateId, result) {
