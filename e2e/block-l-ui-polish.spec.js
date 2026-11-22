@@ -58,6 +58,39 @@ test.describe("Block L — UI polish, L0/L1b early-click race, dark mode & multi
     }
   });
 
+  test("L1b-c: slow 200 KB/s connection + early click on #cta-build-new opens picker and leaves no #chrx-boot-timeout", async ({ page, context }) => {
+    test.setTimeout(150_000);
+    const errors = [];
+    page.on("pageerror", (e) => errors.push(String(e)));
+
+    const cdp = await context.newCDPSession(page);
+    await cdp.send("Network.enable");
+    await cdp.send("Network.emulateNetworkConditions", {
+      offline: false,
+      latency: 50,
+      downloadThroughput: 200 * 1024,
+      uploadThroughput: 200 * 1024,
+    });
+
+    try {
+      await page.goto("/", { waitUntil: "domcontentloaded" });
+      await page.locator("#cta-build-new").click({ timeout: 10_000 });
+
+      // Picker must open cleanly once modules finish downloading, and any #chrx-boot-timeout notice must be gone
+      const panel = page.locator(".chrx-tpl-modal__panel");
+      await expect(panel).toBeVisible({ timeout: 120_000 });
+      await expect(page.locator("#chrx-boot-timeout")).toHaveCount(0);
+      expect(errors).toEqual([]);
+    } finally {
+      await cdp.send("Network.emulateNetworkConditions", {
+        offline: false,
+        latency: 0,
+        downloadThroughput: -1,
+        uploadThroughput: -1,
+      }).catch(() => {});
+    }
+  });
+
   test("L1/L2: empty school shows 'No lessons yet', SVG icons, no overlapping banner, and high-contrast dark-mode buttons", async ({ page }) => {
     test.setTimeout(60_000);
     fs.mkdirSync(SHOT_DIR, { recursive: true });

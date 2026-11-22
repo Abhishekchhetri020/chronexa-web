@@ -1482,17 +1482,27 @@ body:has(#step-1:not(.hidden)) .chrx-main{ overflow:visible; height:auto; }
 }
 
 /* Block L2: global dark-mode secondary button contrast (works on empty-school & all dialogs) */
-:root[data-theme="dark"] .chrx-btn:not(.chrx-btn--primary),
-:root[data-theme="dark"] .chrx-shell .chrx-btn:not(.chrx-btn--primary),
-:root[data-theme="dark"] .chrx-hero .chrx-btn:not(.chrx-btn--primary) {
+:root[data-theme="dark"] .chrx-btn:not(.chrx-btn--primary):not(.chrx-btn--danger),
+:root[data-theme="dark"] .chrx-shell .chrx-btn:not(.chrx-btn--primary):not(.chrx-btn--danger),
+:root[data-theme="dark"] .chrx-hero .chrx-btn:not(.chrx-btn--primary):not(.chrx-btn--danger) {
   background: var(--chrx-bg-tile, #2c2c2e) !important;
   color: var(--chrx-fg, #f5f5f7) !important;
   border-color: var(--chrx-line, rgba(255, 255, 255, 0.14)) !important;
 }
-:root[data-theme="dark"] .chrx-btn:not(.chrx-btn--primary):hover,
-:root[data-theme="dark"] .chrx-shell .chrx-btn:not(.chrx-btn--primary):hover,
-:root[data-theme="dark"] .chrx-hero .chrx-btn:not(.chrx-btn--primary):hover {
+:root[data-theme="dark"] .chrx-btn:not(.chrx-btn--primary):not(.chrx-btn--danger):hover,
+:root[data-theme="dark"] .chrx-shell .chrx-btn:not(.chrx-btn--primary):not(.chrx-btn--danger):hover,
+:root[data-theme="dark"] .chrx-hero .chrx-btn:not(.chrx-btn--primary):not(.chrx-btn--danger):hover {
   background: #3a3a3c !important;
+}
+:root[data-theme="dark"] .chrx-btn.chrx-btn--danger,
+:root[data-theme="dark"] .chrx-shell .chrx-btn.chrx-btn--danger {
+  background: var(--chrx-bg-tile, #2c2c2e);
+  color: #f87171;
+  border-color: rgba(248, 113, 113, 0.42);
+}
+:root[data-theme="dark"] .chrx-btn.chrx-btn--danger:hover,
+:root[data-theme="dark"] .chrx-shell .chrx-btn.chrx-btn--danger:hover {
+  background: rgba(248, 113, 113, 0.14);
 }
 :root[data-theme="dark"] #editor-toggle-skin,
 :root[data-theme="dark"] #editor-toggle-skin[aria-pressed="true"],

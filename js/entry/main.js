@@ -232,6 +232,12 @@ import "../ui/io/lazy_cdn.js";
 // any early CTA click queued before boot completed.
 (function () {
   function markReadyAndReplay() {
+    if (window.__CHRX_BOOT_NOTICE_TIMER__) {
+      clearTimeout(window.__CHRX_BOOT_NOTICE_TIMER__);
+      window.__CHRX_BOOT_NOTICE_TIMER__ = null;
+    }
+    const bootNotice = document.getElementById("chrx-boot-timeout");
+    if (bootNotice) bootNotice.remove();
     if (window.ShellV3 && !document.getElementById("chrx-shell") && typeof window.ShellV3.mount === "function") {
       try { window.ShellV3.mount(); } catch (_) {}
     }
