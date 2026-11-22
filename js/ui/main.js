@@ -538,7 +538,14 @@ import "./start_screen.js";
         setTimeout(() => showStep(6), 250);
       } catch (err) {
         console.error(err);
-        status.innerHTML = `<span class="text-rose-700 font-semibold">${escapeHtml(t("parseFail"))} ${escapeHtml(err.message || "")}</span> <span class="text-slate-600">${escapeHtml(window.StartScreen.INPUT_FORMATS)}</span>`;
+        const msg = (err && err.message) ? err.message : "Could not read XML file.";
+        if (status) {
+          status.innerHTML = `<span class="text-rose-700 font-semibold">${escapeHtml(t("parseFail"))} ${escapeHtml(msg)}</span> <span class="text-slate-600">${escapeHtml(window.StartScreen.INPUT_FORMATS)}</span>`;
+        }
+        if (typeof window._chrxNotify === "function") {
+          window._chrxNotify("Could not open XML: " + msg, "error");
+        }
+        input.value = "";
       }
     });
   }

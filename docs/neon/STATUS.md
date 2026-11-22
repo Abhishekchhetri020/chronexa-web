@@ -24,3 +24,6 @@
 2026-11-22 18:22 | F | RELEASED 20261122-p273-solver-robustness-autosave | F0 reload-after-import/create persistence + E-01 WASM Phase 2 OOM guard (LATEST.xml 1441/1441, 116.53s, 0 pageerror) + E-02 non-negative soft penalties (merge d313378), 587 unit + 146 e2e (1 skip), live=APP_VER = "20261122-p273-solver-robustness-autosave"
 2026-11-22 18:22 | F | DONE | Wrote docs/neon/BLOCK_F.md & updated docs/neon/BUGS.md; awaiting Claude review
 2026-11-22 18:25 | G | STARTED | Performance: Vite code-splitting & first-load JS/TTI measurement
+2026-11-22 18:54 | G | RELEASED 20261122-p274-perf-code-splitting | Vite code-splitting (0 chunks >500kB, index 871->148kB) + lazy xlsx/pako/print-preview (-49.2% first-load JS decoded, merge cf9a67e), 587 unit + 146 e2e (1 skip), live=APP_VER = "20261122-p274-perf-code-splitting"
+2026-11-22 18:54 | G | DONE | Wrote docs/neon/BLOCK_G.md; awaiting Claude review
+2026-11-22 18:57 | H | STARTED | Reliability of user data: autosave edge cases, version history, broken XML errors, full round-trip
