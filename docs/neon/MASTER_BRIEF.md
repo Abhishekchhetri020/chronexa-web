@@ -129,3 +129,39 @@ reload persistence. Log `pageerror` + `console.error` (ignore the solver's own d
 **E4.** Every defect → `BUGS.md` (new ids `E-xx`, steps / expected / actual / severity), fix highest
 first with rendered-page regression tests, gate, release in batches.
 Report tool failures and anything you could not test. Write BLOCK_E.md. End your turn after E's DONE.
+
+## New helpers (2026-11-22, available now through fleet-shell)
+- `neonjob start "<cmd>" --cwd ~/chronexa-web --name <n>` → job id at once. `neonjob wait <id> --max 20`
+  (waits ≤20 s, then shows state + last lines), `neonjob status <id> --tail 40`, `neonjob list`,
+  `neonjob kill <id>`. Use it for every build, test run, server or REA analysis instead of nohup/polling.
+- `rea-summary <rea --json output>` → short summary (evidence id, counts, limitations).
+  `rea-summary <file> --grep weeksdef termsdef --source <analysed .js>` → each hit with a code snippet.
+  Never read a REA JSON file directly; it is tens of MB.
+
+## CONTINUOUS BACKLOG (from 2026-11-22 ~15:10, Abhishek away; Claude orchestrates)
+Work through this queue in order, one block at a time, same rules/gate/release flow as above, a
+`docs/neon/BLOCK_<id>.md` and STATUS lines for each. When a block is DONE, end your turn; Claude
+verifies and replies. **If Claude has not replied within 15 minutes, start the next block yourself.**
+Abhishek approves "Allow" cards from his phone; if one is pending, wait, don't work around it.
+Use `neonjob` for anything over ~10 s; keep every tool call short (disconnects happen on long calls).
+
+**E (current)** finish E1–E4 (QA pass). Known: E-01 WASM `Aborted()` in Phase 2 extended soft
+(69,090 terms) then recovery; E-02 negative "SOFT PENALTIES" shown to users.
+**F. Solver robustness** — fix E-01 (cap/segment the extended-soft model or skip phase 2 cleanly with a
+user-visible note, never a pageerror) and E-02 (show a meaningful 0-or-positive quality score, or hide
+it). Real-school regression: default Generate on LATEST.xml ≥ same placement, 0 pageerror.
+**G. Performance** — Vite "chunk > 500 kB" warning: code-split the heavy parts (solver/WASM, print,
+exports, xlsx) so first load is fast; measure first-load JS and time-to-interactive before/after on the
+built preview; no regressions in the gate.
+**H. Reliability of user data** — autosave + reload persistence, version history restore, import of a
+broken/old XML gives a clear message (never a blank page), export→import round trip keeps everything
+(including weeks/terms/day patterns). Tests for each.
+**I. Accessibility & polish** — run axe-core (dev dependency, version ≥14 days old + bumblebee scan) on
+start screen, editor, lesson dialog, print preview, substitutions, published viewer; fix serious/critical
+issues; keyboard-only path through Generate → print. 390 px pass for every dialog.
+**J. First-run experience** — a new user with an empty school reaches a printed timetable without help:
+clear empty states, inline hints, the GET STARTED checklist correct, sample school one click away,
+errors in plain words. Walk it as a stranger and record the time.
+**K. Student/seminar enrolment** (unlocks 12 aSc conditions) — study aSc's behaviour with the `rea`
+connector (read-only), design, implement in steps with tests.
+Out of scope until Abhishek decides: HF/cloud backend deploy, payments/pricing, accounts, legal pages.
