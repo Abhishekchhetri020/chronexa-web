@@ -263,13 +263,14 @@ import "./version_history.js";
     if (document.getElementById("chrx-autosave-pill")) return;
     const pill = document.createElement("div");
     pill.id = "chrx-autosave-pill";
+    const reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     pill.style.cssText = [
       "position:fixed", "bottom:12px", "left:12px",
-      "background:#0f172a", "color:#cbd5e1",
+      "background:#0f172a", "color:#f8fafc",
       "padding:4px 10px", "border-radius:12px",
       "font-size:11px", "font-family:-apple-system,BlinkMacSystemFont,sans-serif",
-      "opacity:0", "pointer-events:none",
-      "transition:opacity 200ms ease,background 200ms ease",
+      "opacity:0", "visibility:hidden", "pointer-events:none",
+      reduced ? "transition:none" : "transition:opacity 200ms ease,background 200ms ease",
       "z-index:998"
     ].join(";");
     pill.textContent = "Auto-saved";
@@ -279,11 +280,17 @@ import "./version_history.js";
     ensureIndicator();
     const pill = document.getElementById("chrx-autosave-pill");
     if (!pill) return;
+    const reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    pill.style.transition = reduced ? "none" : "opacity 200ms ease,background 200ms ease";
     pill.textContent = `${prefix} Auto-saved · ${new Date().toLocaleTimeString()}`;
-    pill.style.background = tone === "warn" ? "#b45309" : "#0f172a";
+    pill.style.background = tone === "warn" ? "#92400e" : "#0f172a";
+    pill.style.visibility = "visible";
     pill.style.opacity = "1";
     clearTimeout(pill._t);
-    pill._t = setTimeout(() => pill.style.opacity = "0", 2500);
+    pill._t = setTimeout(() => {
+      pill.style.opacity = "0";
+      pill.style.visibility = "hidden";
+    }, 2500);
   }
 
   function isViewerPage() {

@@ -555,7 +555,7 @@ window.Editor = (function () {
     rootEl.querySelectorAll(".chrx-vkarta").forEach(card => {
       const isSelected = selected.has(card.dataset.cardId);
       card.classList.toggle("chrx-vkarta--selected", isSelected);
-      card.setAttribute("aria-selected", isSelected ? "true" : "false");
+      card.setAttribute("aria-pressed", isSelected ? "true" : "false");
     });
     const bar = rootEl.querySelector("[data-selection-bar]");
     if (!bar) return;
@@ -894,7 +894,7 @@ window.Editor = (function () {
         const countHtml = count > 0
           ? ` <span class="chrx-class-rail__count" data-count="${count}">${count}</span>`
           : "";
-        return `<button type="button" class="chrx-class-rail__item${isSelected ? " is-active" : ""}" data-class-id="${esc(row.key)}" data-unplaced-count="${count}" aria-selected="${isSelected ? "true" : "false"}" title="${esc(row.label)}${count > 0 ? ` (${count} unplaced)` : ""}">
+        return `<button type="button" role="tab" class="chrx-class-rail__item${isSelected ? " is-active" : ""}" data-class-id="${esc(row.key)}" data-unplaced-count="${count}" aria-selected="${isSelected ? "true" : "false"}" title="${esc(row.label)}${count > 0 ? ` (${count} unplaced)` : ""}">
           <span class="chrx-class-rail__label">${esc(row.label)}</span>${countHtml}
         </button>`;
       }).join("");
@@ -909,7 +909,7 @@ window.Editor = (function () {
     } else if (perspective === "student") {
       const railItems = allRows.map(row => {
         const isSelected = row.key === focusRow.key;
-        return `<button type="button" class="chrx-class-rail__item chrx-student-rail__item${isSelected ? " is-active" : ""}" data-class-id="${esc(row.key)}" data-student-id="${esc(row.key)}" aria-selected="${isSelected ? "true" : "false"}" title="${esc(row.label)}${row.sub ? ` (${esc(row.sub)})` : ""}">
+        return `<button type="button" role="tab" class="chrx-class-rail__item chrx-student-rail__item${isSelected ? " is-active" : ""}" data-class-id="${esc(row.key)}" data-student-id="${esc(row.key)}" aria-selected="${isSelected ? "true" : "false"}" title="${esc(row.label)}${row.sub ? ` (${esc(row.sub)})` : ""}">
           <span class="chrx-class-rail__label">${esc(row.label)}</span>
           ${row.sub ? `<span class="chrx-class-rail__sub" style="opacity:.6;font-size:11px;margin-left:auto;">${esc(row.sub)}</span>` : ""}
         </button>`;
@@ -973,12 +973,14 @@ window.Editor = (function () {
     const perspective = window.APP.editor.perspective || "class";
     const bellPeriodSet = bellSetFor(S, focusRow, perspective);
     const bucket = cardLookup[focusRow.key] || null;
-    const cells = [`<div class="chrx-focus-corner" role="columnheader">Period</div>`];
+    const rowsHtml = [];
+    const headerCells = [`<div class="chrx-focus-corner" role="columnheader">Period</div>`];
     for (const day of daysToRender) {
-      cells.push(`<div class="chrx-focus-day" role="columnheader" data-day="${day}">${esc(DAY_LABELS_EN[day])}</div>`);
+      headerCells.push(`<div class="chrx-focus-day" role="columnheader" data-day="${day}">${esc(DAY_LABELS_EN[day])}</div>`);
     }
+    rowsHtml.push(`<div role="row" style="display:contents">${headerCells.join("")}</div>`);
     for (const period of periods) {
-      cells.push(`<div class="chrx-focus-period" role="rowheader"><strong>${esc(period.label || ("P" + period.index))}</strong><span>${esc(period.start || period.startTime || "")}</span></div>`);
+      const rowCells = [`<div class="chrx-focus-period" role="rowheader"><strong>${esc(period.label || ("P" + period.index))}</strong><span>${esc(period.start || period.startTime || "")}</span></div>`];
       for (const day of daysToRender) {
         const cards = bucket ? bucket[day + "_" + period.index] : null;
         const outOfBell = period.synthetic || (bellPeriodSet && !bellPeriodSet.has(period.index | 0));
@@ -989,11 +991,13 @@ window.Editor = (function () {
         if (outOfBell) classes.push("out-of-bell");
         if (cards && cards.length > 1) classes.push(cards.length === 2 ? "chrx-slot--split2" : "chrx-slot--split");
         const contents = cards ? cards.map(card => vkartaHtml(S, card, day, period.index, focusRow.key, 1)).join("") : "";
-        const label = outOfBell ? ' aria-hidden="true"' : ` aria-label="${cards && cards.length ? "Scheduled" : (supGap ? "No supervisor" : "Empty")}, ${esc(DAY_LABELS_EN[day])} ${esc(period.label || ("period " + period.index))}"`;
+        const label = outOfBell ? ' aria-hidden="true"' : (cards && cards.length ? '' : ` aria-label="${supGap ? "No supervisor" : "Empty"}, ${esc(DAY_LABELS_EN[day])} ${esc(period.label || ("period " + period.index))}"`);
         const slotTabindex = outOfBell ? "" : (!cards || !cards.length ? ' tabindex="-1"' : "");
-        cells.push(`<div class="${classes.join(" ")}" role="gridcell" data-day="${day}" data-period="${period.index}" data-row="${esc(focusRow.key)}"${slotTabindex}${label}>${contents}</div>`);
+        rowCells.push(`<div class="${classes.join(" ")}" role="gridcell" data-day="${day}" data-period="${period.index}" data-row="${esc(focusRow.key)}"${slotTabindex}${label}>${contents}</div>`);
       }
+      rowsHtml.push(`<div role="row" style="display:contents">${rowCells.join("")}</div>`);
     }
+    const cells = rowsHtml;
     return cells.join("");
   }
 

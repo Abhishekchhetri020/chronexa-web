@@ -194,7 +194,7 @@ body.chrx-viewer-active .chrx-landing {
   padding: 8px 10px 8px 0;
 }
 .chrx-pub-plabel { display: block; font-weight: 700; }
-.chrx-pub-ptime { display: block; font-size: 11px; font-weight: 400; color: #94a3b8; }
+.chrx-pub-ptime { display: block; font-size: 11px; font-weight: 400; color: #475569; }
 .chrx-pub-slot { padding: 6px 0; vertical-align: top; }
 .chrx-pub-cell {
   border-left: 4px solid #64748b;
@@ -224,7 +224,7 @@ body.chrx-viewer-active .chrx-landing {
 .chrx-pub-foot {
   text-align: center;
   font-size: 11.5px;
-  color: #94a3b8;
+  color: #475569;
   margin-top: 24px;
 }
 

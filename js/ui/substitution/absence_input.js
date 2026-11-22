@@ -40,7 +40,9 @@ import "./candidate_ranker.js";
 
     // ---- date row ----
     const dateInput = el("input", { type: "date", value: state.date,
+      id: "chrx-sub-date",
       class: "chrx-sub-date",
+      "aria-label": "Substitution date",
       onchange: (e) => {
         state.date = e.target.value || S.todayYmd();
         state.absent = [];
