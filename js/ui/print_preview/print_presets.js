@@ -926,66 +926,81 @@ import { entityLabel } from "../../util/entity_label.js";
     const teachers = (school?.teachers || []).slice().sort((a, b) =>
       entityLabel(a, "abbreviation").localeCompare(entityLabel(b, "abbreviation")));
     const subjects = school?.subjects || [];
-    const perPage = 10;
+    const perPage = 9;
+    const subjPerPage = 12;
+    const subjChunks = [];
+    for (let si = 0; si < Math.max(subjects.length, 1); si += subjPerPage) {
+      subjChunks.push(subjects.slice(si, si + subjPerPage));
+    }
     const pages = [];
+    const teacherChunks = [];
     for (let start = 0; start < Math.max(teachers.length, 1); start += perPage) {
-      const chunk = teachers.slice(start, start + perPage);
-      const p = el("div", {
-        class: "chrx-preview-page chrx-print-page chrx-pivot-page",
-        style: "background:#fff;color:#111;width:297mm;min-height:210mm;padding:12mm;box-sizing:border-box;font-family:system-ui;display:flex;flex-direction:column;gap:6px",
-      });
-      const schoolName = safeSchoolTitle(school);
-      if (schoolName) p.appendChild(el("div", {
-        style: "text-align:center;font-weight:600;font-size:12px",
-      }, schoolName));
-      p.appendChild(el("div", {
-        style: "text-align:center;font-weight:700;font-size:18px;font-family:'Fraunces',serif;font-style:italic",
-      }, "Contract overview"));
-      p.appendChild(el("div", {
-        style: "font-size:10px;color:#555;border-bottom:1px solid #bbb;padding-bottom:4px",
-      }, schoolName));
+      teacherChunks.push(teachers.slice(start, start + perPage));
+    }
+    const totalParts = teacherChunks.length * subjChunks.length;
+    let partNum = 0;
+    for (const chunk of teacherChunks) {
+      for (let scIdx = 0; scIdx < subjChunks.length; scIdx++) {
+        partNum++;
+        const subjChunk = subjChunks[scIdx];
+        const p = el("div", {
+          class: "chrx-preview-page chrx-print-page chrx-pivot-page",
+          style: "background:#fff;color:#111;width:297mm;min-height:210mm;padding:10mm 12mm;box-sizing:border-box;font-family:system-ui;display:flex;flex-direction:column;gap:5px",
+        });
+        const schoolName = safeSchoolTitle(school);
+        if (schoolName) p.appendChild(el("div", {
+          style: "text-align:center;font-weight:600;font-size:12px",
+        }, schoolName));
+        p.appendChild(el("div", {
+          "data-chrx-scope": "Contract overview" + (totalParts > 1 ? " (" + partNum + "/" + totalParts + ")" : ""),
+          style: "text-align:center;font-weight:700;font-size:16px;font-family:'Fraunces',serif;font-style:italic",
+        }, "Contract overview" + (totalParts > 1 ? " (" + partNum + "/" + totalParts + ")" : "")));
+        p.appendChild(el("div", {
+          style: "font-size:10px;color:#555;border-bottom:1px solid #bbb;padding-bottom:3px",
+        }, schoolName));
 
-      const tbl = el("table", {
-        class: "chrx-pivot-grid",
-        style: "width:100%;border-collapse:collapse;table-layout:fixed;font-size:10px;flex:1",
-      });
-      const head = el("tr");
-      head.appendChild(el("th", {
-        style: "border:1px solid #999;background:#fafafa;width:86px;padding:4px;text-align:left",
-      }, ""));
-      for (const subj of subjects) {
+        const tbl = el("table", {
+          class: "chrx-pivot-grid",
+          style: "width:100%;border-collapse:collapse;table-layout:fixed;font-size:9.5px",
+        });
+        const head = el("tr");
         head.appendChild(el("th", {
-          style: "border:1px solid #999;background:#fafafa;padding:4px 2px;text-align:center;font-weight:600;overflow-wrap:anywhere",
-        }, entityLabel(subj, "abbreviation") || ""));
-      }
-      tbl.appendChild(el("thead", null, head));
-
-      const body = el("tbody");
-      if (!chunk.length) {
-        const tr = el("tr");
-        tr.appendChild(el("td", { colspan: String(subjects.length + 1), style: "border:1px solid #ccc;padding:8px;color:#777;text-align:center" }, "No teachers"));
-        body.appendChild(tr);
-      }
-      for (const teacher of chunk) {
-        const tr = el("tr");
-        tr.appendChild(el("th", {
-          style: "border:1px solid #999;background:#fafafa;padding:4px 6px;text-align:left;font-size:14px;font-weight:500",
-        }, teacher.name || entityLabel(teacher, "abbreviation") || teacher.id || ""));
-        for (const subj of subjects) {
-          const labels = classLabelsForTeacherSubject(school, teacher.id, subj.id);
-          tr.appendChild(el("td", {
-            style: "border:1px solid #bbb;padding:3px 4px;height:15mm;text-align:center;vertical-align:middle;font-size:8px;line-height:1.12;overflow-wrap:anywhere;color:" + (labels.length ? "#111" : "#bbb"),
-          }, labels.length ? labels.join(", ") : ""));
+          style: "border:1px solid #999;background:#fafafa;width:110px;padding:3px 4px;text-align:left",
+        }, "Teacher"));
+        for (const subj of subjChunk) {
+          head.appendChild(el("th", {
+            style: "border:1px solid #999;background:#fafafa;padding:3px 2px;text-align:center;font-weight:600;overflow-wrap:anywhere;font-size:8.5px",
+          }, entityLabel(subj, "abbreviation") || ""));
         }
-        body.appendChild(tr);
+        tbl.appendChild(el("thead", null, head));
+
+        const body = el("tbody");
+        if (!chunk.length) {
+          const tr = el("tr");
+          tr.appendChild(el("td", { colspan: String(subjChunk.length + 1), style: "border:1px solid #ccc;padding:8px;color:#777;text-align:center" }, "No teachers"));
+          body.appendChild(tr);
+        }
+        for (const teacher of chunk) {
+          const tr = el("tr");
+          tr.appendChild(el("th", {
+            style: "border:1px solid #999;background:#fafafa;padding:3px 5px;text-align:left;font-size:10px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis",
+          }, teacher.name || entityLabel(teacher, "abbreviation") || teacher.id || ""));
+          for (const subj of subjChunk) {
+            const labels = classLabelsForTeacherSubject(school, teacher.id, subj.id);
+            tr.appendChild(el("td", {
+              style: "border:1px solid #bbb;padding:2px 3px;height:12mm;text-align:center;vertical-align:middle;font-size:8px;line-height:1.15;overflow-wrap:anywhere;color:" + (labels.length ? "#111" : "#bbb"),
+            }, labels.length ? labels.join(", ") : ""));
+          }
+          body.appendChild(tr);
+        }
+        tbl.appendChild(body);
+        p.appendChild(tbl);
+        p.appendChild(el("div", {
+          style: "display:flex;justify-content:space-between;font-size:9.5px;color:#666;font-family:'JetBrains Mono',ui-monospace,monospace;border-top:1px solid #eee;padding-top:4px;margin-top:auto",
+        }, el("span", null, ""),
+           el("span", null, "Chronexa Web")));
+        pages.push(p);
       }
-      tbl.appendChild(body);
-      p.appendChild(tbl);
-      p.appendChild(el("div", {
-        style: "display:flex;justify-content:space-between;font-size:10px;color:#666;font-family:'JetBrains Mono',ui-monospace,monospace;border-top:1px solid #eee;padding-top:6px",
-      }, el("span", null, "Timetable generated: " + new Date().toLocaleDateString("en-GB")),
-         el("span", null, "Chronexa Web")));
-      pages.push(p);
     }
     return pages;
   }
