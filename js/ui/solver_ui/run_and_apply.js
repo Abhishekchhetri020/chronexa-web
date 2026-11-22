@@ -65,6 +65,8 @@ export async function runAndApply(school, cfg, onProgress) {
   const cards = assignment.map((a) => ({
     lessonId: a.lessonId, day: a.day, period: a.period,
     classroomId: a.classroomId || null,
+    ...(a.weeks ? { weeks: a.weeks } : {}),
+    ...(a.terms ? { terms: a.terms } : {}),
   }));
   window.APP.mutate("Apply generated timetable", (s) => { s.cards = cards; });
   if (window.CreateNew && typeof window.CreateNew.refreshIndex === "function") window.CreateNew.refreshIndex();

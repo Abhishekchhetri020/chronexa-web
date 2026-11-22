@@ -42,7 +42,7 @@ export const ADV_REL_TYPS = new Set([
   // span / position counting
   "a_17", "a_18", "a_19", "a_21", "a_67", "a_68", "a_69", "a_70",
   // day sequencing: A/B across days, streaks and week order
-  "a_11", "a_20", "a_23", "a_37", "a_40", "a_41", "a_42",
+  "a_11", "a_20", "a_23", "a_37", "a_40", "a_41", "a_42", "a_48", "a_57", "a_73",
   // position family: same-slot counting, A-only-where-B, allowed windows
   "a_7", "a_8", "a_30", "a_34", "a_60",
   // room / building family
@@ -269,6 +269,62 @@ function buildModel(school) {
     return mask >>> 0;
   };
 
+  // Multi-week & multi-term pattern resolution (aSc weeksdefs / termsdefs).
+  // A school with W weeks and T terms spans S = W * T calendar slices (s = w * T + t).
+  // Disjoint week/term patterns (e.g. Week A "10" vs Week B "01", or Term 1 vs Term 2)
+  // can co-occupy the exact same (day, period) for a teacher, class, or classroom.
+  const weeksDefById = Object.create(null);
+  for (const wd of (school.weeksDefs || [])) { if (wd && wd.id) weeksDefById[wd.id] = wd; }
+  const termsDefById = Object.create(null);
+  for (const td of (school.termsDefs || [])) { if (td && td.id) termsDefById[td.id] = td; }
+  const inferCount = (arr, defs) => {
+    let n = Array.isArray(arr) ? arr.length : 0;
+    for (const d of (defs || [])) {
+      const raw = String(d && (d.bits != null ? d.bits : (d.weeks != null ? d.weeks : (d.terms != null ? d.terms : (Array.isArray(d.vals) ? d.vals.join(",") : "")))) || "");
+      for (const g of raw.split(",")) {
+        const len = g.trim().length;
+        if (len > n) n = len;
+      }
+    }
+    return Math.max(1, n);
+  };
+  const weekCount = inferCount(school.weeks, school.weeksDefs);
+  const termCount = inferCount(school.terms, school.termsDefs);
+  const sliceCount = weekCount * termCount;
+  const multiSlice = sliceCount > 1 && sliceCount <= 31;
+
+  const parseCalendarMask = (def, count, fallbackBits) => {
+    const full = count >= 31 ? 0x7FFFFFFF : (((1 << count) - 1) >>> 0);
+    const raw = def
+      ? String(def.bits != null ? def.bits : (def.weeks != null ? def.weeks : (def.terms != null ? def.terms : (Array.isArray(def.vals) ? def.vals.join(",") : "")))).trim()
+      : String(fallbackBits || "").trim();
+    if (!raw) return full;
+    let mask = 0;
+    for (const group of raw.split(",")) {
+      const g = group.trim();
+      for (let i = 0; i < g.length && i < count; i++) {
+        if (g[i] === "1") mask |= (1 << i);
+      }
+    }
+    return (mask >>> 0) || full;
+  };
+  const buildSliceMask = (wMask, tMask) => {
+    let sm = 0;
+    for (let w = 0; w < weekCount; w++) {
+      if (((wMask >>> w) & 1) === 0) continue;
+      for (let t = 0; t < termCount; t++) {
+        if (((tMask >>> t) & 1) === 0) continue;
+        sm |= (1 << (w * termCount + t));
+      }
+    }
+    return (sm >>> 0) || 1;
+  };
+  const maskToBits = (mask, count) => {
+    let out = "";
+    for (let i = 0; i < count; i++) out += ((mask >>> i) & 1) ? "1" : "0";
+    return out;
+  };
+
   const expanded = [];
   for (const l of school.lessons) {
     const periodsPerCard = l.periodsPerCard || (l.isLabDouble ? 2 : 1) || 1;
@@ -325,6 +381,8 @@ function buildModel(school) {
         conditional: !!l.conditional,
         // 0 = every day; otherwise a weekday bitmask from the lesson's day pattern.
         allowedDays: allowedDayMaskFor(l),
+        weekMask: parseCalendarMask(l.weeksDefId ? weeksDefById[l.weeksDefId] : null, weekCount, l.weeks),
+        termMask: parseCalendarMask(l.termsDefId ? termsDefById[l.termsDefId] : null, termCount, l.terms),
         isLabDouble: !!l.isLabDouble,
         periodsPerCard,
         lessonLength: periodsPerCard,
@@ -406,6 +464,9 @@ function buildModel(school) {
   const lessonSpan = new Int32Array(lessonCount);
   const lessonFixedSlot = new Int32Array(lessonCount).fill(-1);
   const lessonAllowedDays = new Uint32Array(lessonCount);   // weekday bitmask, 0 = any
+  const lessonWeekMask = new Uint32Array(lessonCount);
+  const lessonTermMask = new Uint32Array(lessonCount);
+  const lessonSliceMask = new Uint32Array(lessonCount);
   const lessonHardLock = new Uint8Array(lessonCount);
 
   const lessonClassFlat = [];
@@ -415,6 +476,11 @@ function buildModel(school) {
   for (let i = 0; i < lessonCount; i++) {
     const l = expanded[i];
     lessonAllowedDays[i] = l.allowedDays || 0;
+    lessonWeekMask[i] = l.weekMask || 1;
+    lessonTermMask[i] = l.termMask || 1;
+    lessonSliceMask[i] = buildSliceMask(lessonWeekMask[i], lessonTermMask[i]);
+    if (weekCount > 1) l.weeksBits = maskToBits(lessonWeekMask[i], weekCount);
+    if (termCount > 1) l.termsBits = maskToBits(lessonTermMask[i], termCount);
     lessonClassStart[i] = lessonClassFlat.length;
     for (const cid of l.classIds) {
       const ix = classIdx.get(cid);
@@ -1555,6 +1621,7 @@ function buildModel(school) {
     classGroupCount, classFullGroupMask,
     lessonTeacherStart, lessonTeacherCount, lessonTeacherFlat: Int32Array.from(lessonTeacherFlat),
     lessonSubject, lessonLabDouble, lessonSpan, lessonFixedSlot, lessonAllowedDays, lessonHardLock,
+    weekCount, termCount, sliceCount, multiSlice, lessonWeekMask, lessonTermMask, lessonSliceMask,
     lessonCandidateStart, lessonCandidateCount,
     candidateSlot: candidateSlotArr, candidateRoom: candidateRoomArr,
     teacherAvailabilityMask, teacherConditionalMask, teacherMaxPerDay, teacherMaxConsec,
@@ -1689,6 +1756,9 @@ function makeState(model) {
     // class is a conflict, which makes most real-world XML unsolvable.
     classGroupOcc: new Uint32Array(classCount * days * periodsPerDay),
     roomOcc: new Uint32Array(roomCount * days),
+    teacherSliceOcc: model.multiSlice ? new Uint32Array(teacherCount * totalSlots) : null,
+    roomSliceOcc: model.multiSlice ? new Uint32Array(roomCount * totalSlots) : null,
+    classSliceGroupOcc: model.multiSlice ? new Uint32Array(model.sliceCount * classCount * totalSlots) : null,
     // Day-load counters
     teacherDayLoad: new Int32Array(teacherCount * days),
     // Cards per (subject, slot) — only maintained for subjects with maxParallel.
@@ -2009,7 +2079,7 @@ function canPlace(model, state, lessonIdx, slot, roomIdx) {
   if (model._wasmEnabled) {
     // The optional AssemblyScript accelerator predates n_9 and class-specific
     // edge masks. Keep these lessons on the complete JS constraint path.
-    if (model.lessonMustFirstLast[lessonIdx] || model.lessonOrderedBefore[lessonIdx] || model.lessonOrderedAfter[lessonIdx]
+    if (model.multiSlice || model.lessonMustFirstLast[lessonIdx] || model.lessonOrderedBefore[lessonIdx] || model.lessonOrderedAfter[lessonIdx]
         || (model.subjectMaxParallel && model.subjectMaxParallel[model.lessonSubject[lessonIdx]] > 0)
         || (model.subjectStartBan && (model.subjectStartBan[model.lessonSubject[lessonIdx]] || model.subjectEndBan[model.lessonSubject[lessonIdx]]))) {
       return _canPlaceJS(model, state, lessonIdx, slot, roomIdx);
@@ -2078,10 +2148,13 @@ function _canPlaceJS(model, state, lessonIdx, slot, roomIdx) {
     if (fixed !== slot) return FAIL.DAY_LOCKED;
   }
 
+  const sliceMask = model.multiSlice ? model.lessonSliceMask[lessonIdx] : 1;
   for (let k = 0; k < teacherCount; k++) {
     const t = model.lessonTeacherFlat[teacherStart + k];
     const td = t * model.days + d;
-    if ((state.teacherOcc[td] & bit) !== 0) return FAIL.TEACHER_CONFLICT;
+    if (model.multiSlice) {
+      if ((state.teacherSliceOcc[t * model.totalSlots + slot] & sliceMask) !== 0) return FAIL.TEACHER_CONFLICT;
+    } else if ((state.teacherOcc[td] & bit) !== 0) return FAIL.TEACHER_CONFLICT;
     if ((model.teacherAvailabilityMask[td] & bit) === 0) return FAIL.TEACHER_UNAVAILABLE;
     const maxDay = model.teacherMaxPerDay[t];
     if (maxDay >= 0 && state.teacherDayLoad[td] >= maxDay) return FAIL.TEACHER_MAX_PER_DAY;
@@ -2114,14 +2187,29 @@ function _canPlaceJS(model, state, lessonIdx, slot, roomIdx) {
     // differ (cross-division share students), or masks intersect within
     // the same division.
     const lessonPacked = model.lessonClassGroupMask[classStart + k];
-    const occPacked = state.classGroupOcc[(cd) * model.periodsPerDay + p];
-    if (occPacked !== 0) {
+    if (model.multiSlice) {
+      const classStride = model.classCount * model.totalSlots;
+      const cSlot = c * model.totalSlots + slot;
       const lessonDiv = lessonPacked & 0xFFFF;
-      const occDiv = occPacked & 0xFFFF;
-      if (lessonDiv === 0xFFFF || occDiv === 0xFFFF || lessonDiv !== occDiv) {
-        return FAIL.CLASS_CONFLICT;
+      for (let sl = 0; sl < model.sliceCount; sl++) {
+        if (((sliceMask >>> sl) & 1) === 0) continue;
+        const occPacked = state.classSliceGroupOcc[sl * classStride + cSlot];
+        if (occPacked !== 0) {
+          const occDiv = occPacked & 0xFFFF;
+          if (lessonDiv === 0xFFFF || occDiv === 0xFFFF || lessonDiv !== occDiv) return FAIL.CLASS_CONFLICT;
+          if (((lessonPacked >>> 16) & (occPacked >>> 16)) !== 0) return FAIL.CLASS_CONFLICT;
+        }
       }
-      if (((lessonPacked >>> 16) & (occPacked >>> 16)) !== 0) return FAIL.CLASS_CONFLICT;
+    } else {
+      const occPacked = state.classGroupOcc[(cd) * model.periodsPerDay + p];
+      if (occPacked !== 0) {
+        const lessonDiv = lessonPacked & 0xFFFF;
+        const occDiv = occPacked & 0xFFFF;
+        if (lessonDiv === 0xFFFF || occDiv === 0xFFFF || lessonDiv !== occDiv) {
+          return FAIL.CLASS_CONFLICT;
+        }
+        if (((lessonPacked >>> 16) & (occPacked >>> 16)) !== 0) return FAIL.CLASS_CONFLICT;
+      }
     }
     const maxDay = model.classMaxPerDay[c];
     if (maxDay >= 0 && state.classDayLoad[cd] >= maxDay) return FAIL.CLASS_MAX_PER_DAY;
@@ -2158,8 +2246,12 @@ function _canPlaceJS(model, state, lessonIdx, slot, roomIdx) {
   }
 
   if (roomIdx >= 0) {
-    const rd = roomIdx * model.days + d;
-    if ((state.roomOcc[rd] & bit) !== 0) return FAIL.ROOM_CONFLICT;
+    if (model.multiSlice) {
+      if ((state.roomSliceOcc[roomIdx * model.totalSlots + slot] & sliceMask) !== 0) return FAIL.ROOM_CONFLICT;
+    } else {
+      const rd = roomIdx * model.days + d;
+      if ((state.roomOcc[rd] & bit) !== 0) return FAIL.ROOM_CONFLICT;
+    }
   }
 
   // Card relations — partner-set checks (n_1 cannot-same-day, n_0
@@ -2363,10 +2455,13 @@ function canPlaceSecond(model, state, lessonIdx, slot, roomIdx) {
   const teacherStart = model.lessonTeacherStart[lessonIdx];
   const teacherCount = model.lessonTeacherCount[lessonIdx];
 
+  const sliceMask = model.multiSlice ? model.lessonSliceMask[lessonIdx] : 1;
   for (let k = 0; k < teacherCount; k++) {
     const t = model.lessonTeacherFlat[teacherStart + k];
     const td = t * model.days + d;
-    if ((state.teacherOcc[td] & bit) !== 0) return FAIL.TEACHER_CONFLICT;
+    if (model.multiSlice) {
+      if ((state.teacherSliceOcc[t * model.totalSlots + slot] & sliceMask) !== 0) return FAIL.TEACHER_CONFLICT;
+    } else if ((state.teacherOcc[td] & bit) !== 0) return FAIL.TEACHER_CONFLICT;
     if ((model.teacherAvailabilityMask[td] & bit) === 0) return FAIL.TEACHER_UNAVAILABLE;
     const maxDay = model.teacherMaxPerDay[t];
     if (maxDay >= 0 && state.teacherDayLoad[td] + 1 >= maxDay) return FAIL.TEACHER_MAX_PER_DAY;
@@ -2382,12 +2477,27 @@ function canPlaceSecond(model, state, lessonIdx, slot, roomIdx) {
       return FAIL.CLASS_BELL_PERIOD_INVALID;
     }
     const lessonPacked = model.lessonClassGroupMask[classStart + k];
-    const occPacked = state.classGroupOcc[(cd) * model.periodsPerDay + p];
-    if (occPacked !== 0) {
+    if (model.multiSlice) {
+      const classStride = model.classCount * model.totalSlots;
+      const cSlot = c * model.totalSlots + slot;
       const lessonDiv = lessonPacked & 0xFFFF;
-      const occDiv = occPacked & 0xFFFF;
-      if (lessonDiv === 0xFFFF || occDiv === 0xFFFF || lessonDiv !== occDiv) return FAIL.CLASS_CONFLICT;
-      if (((lessonPacked >>> 16) & (occPacked >>> 16)) !== 0) return FAIL.CLASS_CONFLICT;
+      for (let sl = 0; sl < model.sliceCount; sl++) {
+        if (((sliceMask >>> sl) & 1) === 0) continue;
+        const occPacked = state.classSliceGroupOcc[sl * classStride + cSlot];
+        if (occPacked !== 0) {
+          const occDiv = occPacked & 0xFFFF;
+          if (lessonDiv === 0xFFFF || occDiv === 0xFFFF || lessonDiv !== occDiv) return FAIL.CLASS_CONFLICT;
+          if (((lessonPacked >>> 16) & (occPacked >>> 16)) !== 0) return FAIL.CLASS_CONFLICT;
+        }
+      }
+    } else {
+      const occPacked = state.classGroupOcc[(cd) * model.periodsPerDay + p];
+      if (occPacked !== 0) {
+        const lessonDiv = lessonPacked & 0xFFFF;
+        const occDiv = occPacked & 0xFFFF;
+        if (lessonDiv === 0xFFFF || occDiv === 0xFFFF || lessonDiv !== occDiv) return FAIL.CLASS_CONFLICT;
+        if (((lessonPacked >>> 16) & (occPacked >>> 16)) !== 0) return FAIL.CLASS_CONFLICT;
+      }
     }
     const maxDay = model.classMaxPerDay[c];
     if (maxDay >= 0 && state.classDayLoad[cd] + 1 >= maxDay) return FAIL.CLASS_MAX_PER_DAY;
@@ -2398,8 +2508,12 @@ function canPlaceSecond(model, state, lessonIdx, slot, roomIdx) {
     }
   }
   if (roomIdx >= 0) {
-    const rd = roomIdx * model.days + d;
-    if ((state.roomOcc[rd] & bit) !== 0) return FAIL.ROOM_CONFLICT;
+    if (model.multiSlice) {
+      if ((state.roomSliceOcc[roomIdx * model.totalSlots + slot] & sliceMask) !== 0) return FAIL.ROOM_CONFLICT;
+    } else {
+      const rd = roomIdx * model.days + d;
+      if ((state.roomOcc[rd] & bit) !== 0) return FAIL.ROOM_CONFLICT;
+    }
   }
 
   // n_0: cannot-follow — check adjacency of the SECOND slot (p) against placed
@@ -2549,11 +2663,15 @@ function applySingle(model, state, lessonIdx, slot, roomIdx) {
   const d = model.slotDay[slot];
   const p = model.slotPeriod[slot];
   const bit = (1 << p) >>> 0;
+  const sliceMask = model.multiSlice ? model.lessonSliceMask[lessonIdx] : 1;
   const teacherStart = model.lessonTeacherStart[lessonIdx];
   const teacherCount = model.lessonTeacherCount[lessonIdx];
   for (let k = 0; k < teacherCount; k++) {
     const t = model.lessonTeacherFlat[teacherStart + k];
     const td = t * model.days + d;
+    if (model.multiSlice) {
+      state.teacherSliceOcc[t * model.totalSlots + slot] = (state.teacherSliceOcc[t * model.totalSlots + slot] | sliceMask) >>> 0;
+    }
     state.teacherOcc[td] = (state.teacherOcc[td] | bit) >>> 0;
     state.teacherDayLoad[td] += 1;
     if (p === model.periodsPerDay - 1) {
@@ -2589,17 +2707,36 @@ function applySingle(model, state, lessonIdx, slot, roomIdx) {
     // defensively keep classGroupOcc unchanged rather than corrupt the
     // encoding by merging across divisions.
     const lessonPacked = model.lessonClassGroupMask[classStart + k];
-    const slotKey = (cd) * model.periodsPerDay + p;
-    const occPacked = state.classGroupOcc[slotKey];
-    if (occPacked === 0) {
-      state.classGroupOcc[slotKey] = lessonPacked;
-    } else {
-      const occDiv = occPacked & 0xFFFF;
+    if (model.multiSlice) {
+      const classStride = model.classCount * model.totalSlots;
+      const cSlot = c * model.totalSlots + slot;
       const lessonDiv = lessonPacked & 0xFFFF;
-      if (lessonDiv === occDiv && occDiv !== 0xFFFF && lessonDiv !== 0xFFFF) {
-        state.classGroupOcc[slotKey] = (occPacked | (lessonPacked & 0xFFFF0000)) >>> 0;
+      for (let sl = 0; sl < model.sliceCount; sl++) {
+        if (((sliceMask >>> sl) & 1) === 0) continue;
+        const sKey = sl * classStride + cSlot;
+        const occPacked = state.classSliceGroupOcc[sKey];
+        if (occPacked === 0) {
+          state.classSliceGroupOcc[sKey] = lessonPacked;
+        } else {
+          const occDiv = occPacked & 0xFFFF;
+          if (lessonDiv === occDiv && occDiv !== 0xFFFF && lessonDiv !== 0xFFFF) {
+            state.classSliceGroupOcc[sKey] = (occPacked | (lessonPacked & 0xFFFF0000)) >>> 0;
+          }
+        }
       }
-      // else: division mismatch or whole-class — leave occupancy as-is.
+    } else {
+      const slotKey = (cd) * model.periodsPerDay + p;
+      const occPacked = state.classGroupOcc[slotKey];
+      if (occPacked === 0) {
+        state.classGroupOcc[slotKey] = lessonPacked;
+      } else {
+        const occDiv = occPacked & 0xFFFF;
+        const lessonDiv = lessonPacked & 0xFFFF;
+        if (lessonDiv === occDiv && occDiv !== 0xFFFF && lessonDiv !== 0xFFFF) {
+          state.classGroupOcc[slotKey] = (occPacked | (lessonPacked & 0xFFFF0000)) >>> 0;
+        }
+        // else: division mismatch or whole-class — leave occupancy as-is.
+      }
     }
     state.classDayLoad[cd] += 1;
     const subjectKey = ((c * model.subjectCount) + subject) * model.days + d;
@@ -2618,6 +2755,9 @@ function applySingle(model, state, lessonIdx, slot, roomIdx) {
     }
   }
   if (roomIdx >= 0) {
+    if (model.multiSlice) {
+      state.roomSliceOcc[roomIdx * model.totalSlots + slot] = (state.roomSliceOcc[roomIdx * model.totalSlots + slot] | sliceMask) >>> 0;
+    }
     const rd = roomIdx * model.days + d;
     state.roomOcc[rd] = (state.roomOcc[rd] | bit) >>> 0;
     if (state.roomSlotOccupant) {
@@ -2639,12 +2779,19 @@ function removeSingle(model, state, lessonIdx, slot, roomIdx) {
   const d = model.slotDay[slot];
   const p = model.slotPeriod[slot];
   const bit = (1 << p) >>> 0;
+  const sliceMask = model.multiSlice ? model.lessonSliceMask[lessonIdx] : 1;
   const teacherStart = model.lessonTeacherStart[lessonIdx];
   const teacherCount = model.lessonTeacherCount[lessonIdx];
   for (let k = 0; k < teacherCount; k++) {
     const t = model.lessonTeacherFlat[teacherStart + k];
     const td = t * model.days + d;
-    state.teacherOcc[td] = (state.teacherOcc[td] & ~bit) >>> 0;
+    if (model.multiSlice) {
+      const rem = (state.teacherSliceOcc[t * model.totalSlots + slot] & ~sliceMask) >>> 0;
+      state.teacherSliceOcc[t * model.totalSlots + slot] = rem;
+      if (rem === 0) state.teacherOcc[td] = (state.teacherOcc[td] & ~bit) >>> 0;
+    } else {
+      state.teacherOcc[td] = (state.teacherOcc[td] & ~bit) >>> 0;
+    }
     state.teacherDayLoad[td] -= 1;
     if (p === model.periodsPerDay - 1) {
       state.teacherLastPeriodCount[t] -= 1;
@@ -2680,19 +2827,41 @@ function removeSingle(model, state, lessonIdx, slot, roomIdx) {
     // same division. Bug-path callers (rollback / materialize that
     // bypass canPlace) silently no-op rather than corrupt state.
     const lessonPacked = model.lessonClassGroupMask[classStart + k];
-    const slotKey = (cd) * model.periodsPerDay + p;
-    const occPacked = state.classGroupOcc[slotKey];
-    const lessonDiv = lessonPacked & 0xFFFF;
-    const occDiv = occPacked & 0xFFFF;
-    if (occPacked !== 0 && occDiv === lessonDiv) {
+    if (model.multiSlice) {
+      const classStride = model.classCount * model.totalSlots;
+      const cSlot = c * model.totalSlots + slot;
+      const lessonDiv = lessonPacked & 0xFFFF;
       const lessonMask = lessonPacked >>> 16;
-      const occMask = occPacked >>> 16;
-      const newMask = occMask & ~lessonMask;
-      if (newMask === 0) {
-        state.classGroupOcc[slotKey] = 0;
-        state.classOcc[cd] = (state.classOcc[cd] & ~bit) >>> 0;
-      } else {
-        state.classGroupOcc[slotKey] = ((occPacked & 0xFFFF) | (newMask << 16)) >>> 0;
+      for (let sl = 0; sl < model.sliceCount; sl++) {
+        if (((sliceMask >>> sl) & 1) === 0) continue;
+        const sKey = sl * classStride + cSlot;
+        const occPacked = state.classSliceGroupOcc[sKey];
+        const occDiv = occPacked & 0xFFFF;
+        if (occPacked !== 0 && occDiv === lessonDiv) {
+          const newMask = (occPacked >>> 16) & ~lessonMask;
+          state.classSliceGroupOcc[sKey] = newMask === 0 ? 0 : (((occPacked & 0xFFFF) | (newMask << 16)) >>> 0);
+        }
+      }
+      let anySlice = false;
+      for (let sl = 0; sl < model.sliceCount; sl++) {
+        if (state.classSliceGroupOcc[sl * classStride + cSlot] !== 0) { anySlice = true; break; }
+      }
+      if (!anySlice) state.classOcc[cd] = (state.classOcc[cd] & ~bit) >>> 0;
+    } else {
+      const slotKey = (cd) * model.periodsPerDay + p;
+      const occPacked = state.classGroupOcc[slotKey];
+      const lessonDiv = lessonPacked & 0xFFFF;
+      const occDiv = occPacked & 0xFFFF;
+      if (occPacked !== 0 && occDiv === lessonDiv) {
+        const lessonMask = lessonPacked >>> 16;
+        const occMask = occPacked >>> 16;
+        const newMask = occMask & ~lessonMask;
+        if (newMask === 0) {
+          state.classGroupOcc[slotKey] = 0;
+          state.classOcc[cd] = (state.classOcc[cd] & ~bit) >>> 0;
+        } else {
+          state.classGroupOcc[slotKey] = ((occPacked & 0xFFFF) | (newMask << 16)) >>> 0;
+        }
       }
     }
     state.classDayLoad[cd] -= 1;
@@ -2712,7 +2881,13 @@ function removeSingle(model, state, lessonIdx, slot, roomIdx) {
   }
   if (roomIdx >= 0) {
     const rd = roomIdx * model.days + d;
-    state.roomOcc[rd] = (state.roomOcc[rd] & ~bit) >>> 0;
+    if (model.multiSlice) {
+      const rem = (state.roomSliceOcc[roomIdx * model.totalSlots + slot] & ~sliceMask) >>> 0;
+      state.roomSliceOcc[roomIdx * model.totalSlots + slot] = rem;
+      if (rem === 0) state.roomOcc[rd] = (state.roomOcc[rd] & ~bit) >>> 0;
+    } else {
+      state.roomOcc[rd] = (state.roomOcc[rd] & ~bit) >>> 0;
+    }
     if (state.roomSlotOccupant) {
       state.roomSlotOccupant[roomIdx * model.totalSlots + slot] = -1;
     }
@@ -4206,6 +4381,93 @@ function advancedRelationPenalty(model, state) {
       continue;
     }
 
+    if (typ === "a_48") {
+      // Max free weeks between cards per year (multi-week analogue of a_20).
+      const byClass = new Map();
+      for (let k = 0; k < rel.lessonIdxs.length; k++) {
+        const i = rel.lessonIdxs[k];
+        if (!state.lessonAssigned[i]) continue;
+        const wm = model.lessonWeekMask ? model.lessonWeekMask[i] : 1;
+        const cs = model.lessonClassStart[i], cc = model.lessonClassCount[i];
+        for (let j = 0; j < cc; j++) {
+          const c = model.lessonClassFlat[cs + j];
+          if (c < 0) continue;
+          byClass.set(c, ((byClass.get(c) || 0) | wm) >>> 0);
+        }
+      }
+      for (const [, wMask] of byClass) {
+        if (!wMask) continue;
+        const first = 31 - Math.clz32(wMask & -wMask);
+        const last = 31 - Math.clz32(wMask);
+        let run = 0;
+        for (let w = first; w <= last; w++) {
+          if ((wMask >>> w) & 1) { run = 0; continue; }
+          run++;
+          if (run > p1) penalty += 1;
+        }
+      }
+      continue;
+    }
+
+    if (typ === "a_57") {
+      // Max weeks/terms on one period: at any (class, day, period), count
+      // distinct (week, term) slices occupied by the relation's lessons.
+      const byClassSlot = new Map();
+      for (let k = 0; k < rel.lessonIdxs.length; k++) {
+        const i = rel.lessonIdxs[k];
+        if (!state.lessonAssigned[i]) continue;
+        const sm = model.lessonSliceMask ? model.lessonSliceMask[i] : 1;
+        const cs = model.lessonClassStart[i], cc = model.lessonClassCount[i];
+        for (const slot of _slotsOfLesson(model, state, i)) {
+          for (let j = 0; j < cc; j++) {
+            const c = model.lessonClassFlat[cs + j];
+            if (c < 0) continue;
+            const key = c * model.totalSlots + slot;
+            byClassSlot.set(key, ((byClassSlot.get(key) || 0) | sm) >>> 0);
+          }
+        }
+      }
+      for (const [, sm] of byClassSlot) {
+        const cnt = popcount32(sm);
+        if (cnt > p1) penalty += cnt - p1;
+      }
+      continue;
+    }
+
+    if (typ === "a_73") {
+      // Max free days between cards per all weeks: unroll (week, day) onto a
+      // linear timeline t = week * days + day across all active weeks.
+      const byClassDays = new Map();
+      const wkCount = model.weekCount || 1;
+      for (let k = 0; k < rel.lessonIdxs.length; k++) {
+        const i = rel.lessonIdxs[k];
+        if (!state.lessonAssigned[i]) continue;
+        const wm = model.lessonWeekMask ? model.lessonWeekMask[i] : 1;
+        const cs = model.lessonClassStart[i], cc = model.lessonClassCount[i];
+        for (const slot of _slotsOfLesson(model, state, i)) {
+          const d = model.slotDay[slot];
+          for (let j = 0; j < cc; j++) {
+            const c = model.lessonClassFlat[cs + j];
+            if (c < 0) continue;
+            let set = byClassDays.get(c);
+            if (!set) byClassDays.set(c, set = new Set());
+            for (let w = 0; w < wkCount; w++) {
+              if ((wm >>> w) & 1) set.add(w * days + d);
+            }
+          }
+        }
+      }
+      for (const [, set] of byClassDays) {
+        if (set.size < 2) continue;
+        const sorted = Array.from(set).sort((a, b) => a - b);
+        for (let idx = 1; idx < sorted.length; idx++) {
+          const gap = sorted[idx] - sorted[idx - 1] - 1;
+          if (gap > p1) penalty += gap - p1;
+        }
+      }
+      continue;
+    }
+
     if (typ === "a_40") {
       // All A lessons before all B lessons within the same day.
       for (const [, e] of masks) {
@@ -4492,6 +4754,8 @@ function buildAssignmentSnapshot(model, assignedArr, slotArr, roomArr) {
       day: model.slotDay[slot],
       period: model.slotPeriod[slot] + 1, // 1-based per DATA_SHAPES
       classroomId: roomArr[i] >= 0 ? model.roomIds[roomArr[i]] : null,
+      ...(l.weeksBits ? { weeks: l.weeksBits } : {}),
+      ...(l.termsBits ? { terms: l.termsBits } : {}),
       teacherId: l.teacherIds[0],
       classIds: l.classIds,
     });
@@ -4851,6 +5115,9 @@ function materializeBestIntoState(model, state) {
   state.classOcc.fill(0);
   if (state.classGroupOcc) state.classGroupOcc.fill(0);
   state.roomOcc.fill(0);
+  if (state.teacherSliceOcc) state.teacherSliceOcc.fill(0);
+  if (state.roomSliceOcc) state.roomSliceOcc.fill(0);
+  if (state.classSliceGroupOcc) state.classSliceGroupOcc.fill(0);
   state.teacherDayLoad.fill(0);
   state.classDayLoad.fill(0);
   if (state.subjectSlotCount) state.subjectSlotCount.fill(0);
@@ -6710,14 +6977,17 @@ export function solve(school, options = {}) {
   {
     const ppd = model.periodsPerDay;
     const days = model.days;
-    const classMask    = new Uint32Array(model.classCount   * days * ppd);
-    const teacherTaken = new Uint8Array (model.teacherCount * model.totalSlots);
-    const roomTaken    = new Uint8Array (model.roomCount    * model.totalSlots);
+    const sc = model.multiSlice ? model.sliceCount : 1;
+    const classStride = model.classCount * days * ppd;
+    const classMask    = new Uint32Array(sc * classStride);
+    const teacherTaken = new Uint32Array(model.teacherCount * model.totalSlots);
+    const roomTaken    = new Uint32Array(model.roomCount    * model.totalSlots);
     for (let i = 0; i < model.lessonCount; i++) {
       if (!globalBest.state.bestLessonAssigned[i]) continue;
       const slot = globalBest.state.bestLessonAssignedSlot[i];
       if (slot < 0) continue;
       const roomIdx = globalBest.state.bestLessonAssignedRoom[i];
+      const sliceMask = model.multiSlice ? model.lessonSliceMask[i] : 1;
       const classStart = model.lessonClassStart[i];
       const classCount = model.lessonClassCount[i];
       const teacherStart = model.lessonTeacherStart[i];
@@ -6751,20 +7021,23 @@ export function solve(school, options = {}) {
         for (let k = 0; k < classCount && !conflict; k++) {
           const c = model.lessonClassFlat[classStart + k];
           const lessonPacked = model.lessonClassGroupMask[classStart + k];
-          const idx = (c * days + d) * ppd + p;
-          const occPacked = classMask[idx];
-          if (occPacked !== 0) {
-            const lessonDiv = lessonPacked & 0xFFFF;
-            const occDiv = occPacked & 0xFFFF;
-            if (lessonDiv === 0xFFFF || occDiv === 0xFFFF || lessonDiv !== occDiv) conflict = true;
-            else if (((lessonPacked >>> 16) & (occPacked >>> 16)) !== 0) conflict = true;
+          const baseIdx = (c * days + d) * ppd + p;
+          const lessonDiv = lessonPacked & 0xFFFF;
+          for (let sl = 0; sl < sc && !conflict; sl++) {
+            if (((sliceMask >>> sl) & 1) === 0) continue;
+            const occPacked = classMask[sl * classStride + baseIdx];
+            if (occPacked !== 0) {
+              const occDiv = occPacked & 0xFFFF;
+              if (lessonDiv === 0xFFFF || occDiv === 0xFFFF || lessonDiv !== occDiv) conflict = true;
+              else if (((lessonPacked >>> 16) & (occPacked >>> 16)) !== 0) conflict = true;
+            }
           }
         }
         for (let k = 0; k < teacherCount && !conflict; k++) {
           const t = model.lessonTeacherFlat[teacherStart + k];
-          if (teacherTaken[t * model.totalSlots + cur]) conflict = true;
+          if ((teacherTaken[t * model.totalSlots + cur] & sliceMask) !== 0) conflict = true;
         }
-        if (!conflict && roomIdx >= 0 && roomTaken[roomIdx * model.totalSlots + cur]) {
+        if (!conflict && roomIdx >= 0 && (roomTaken[roomIdx * model.totalSlots + cur] & sliceMask) !== 0) {
           conflict = true;
         }
       }
@@ -6786,20 +7059,24 @@ export function solve(school, options = {}) {
         for (let k = 0; k < classCount; k++) {
           const c = model.lessonClassFlat[classStart + k];
           const lessonPacked = model.lessonClassGroupMask[classStart + k];
-          const idx = (c * days + d) * ppd + p;
-          const occPacked = classMask[idx];
-          if (occPacked === 0) {
-            classMask[idx] = lessonPacked;
-          } else if ((occPacked & 0xFFFF) !== 0xFFFF) {
-            classMask[idx] = (occPacked | (lessonPacked & 0xFFFF0000)) >>> 0;
+          const baseIdx = (c * days + d) * ppd + p;
+          for (let sl = 0; sl < sc; sl++) {
+            if (((sliceMask >>> sl) & 1) === 0) continue;
+            const idx = sl * classStride + baseIdx;
+            const occPacked = classMask[idx];
+            if (occPacked === 0) {
+              classMask[idx] = lessonPacked;
+            } else if ((occPacked & 0xFFFF) !== 0xFFFF) {
+              classMask[idx] = (occPacked | (lessonPacked & 0xFFFF0000)) >>> 0;
+            }
           }
         }
         for (let k = 0; k < teacherCount; k++) {
           const t = model.lessonTeacherFlat[teacherStart + k];
-          teacherTaken[t * model.totalSlots + cur] = 1;
+          teacherTaken[t * model.totalSlots + cur] = (teacherTaken[t * model.totalSlots + cur] | sliceMask) >>> 0;
         }
         if (roomIdx >= 0) {
-          roomTaken[roomIdx * model.totalSlots + cur] = 1;
+          roomTaken[roomIdx * model.totalSlots + cur] = (roomTaken[roomIdx * model.totalSlots + cur] | sliceMask) >>> 0;
         }
       }
     }
@@ -6820,6 +7097,8 @@ export function solve(school, options = {}) {
         day: d,
         period: p + 1, // periodIdx is 1-based per DATA_SHAPES
         classroomId: roomIdx >= 0 ? model.roomIds[roomIdx] : null,
+        ...(l.weeksBits ? { weeks: l.weeksBits } : {}),
+        ...(l.termsBits ? { terms: l.termsBits } : {}),
         teacherId: l.teacherIds[0],
         classIds: l.classIds,
       });
