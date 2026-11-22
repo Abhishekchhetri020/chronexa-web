@@ -139,7 +139,23 @@ export async function buildAndSolve(school, options = {}) {
         clsOcc.set(c, ['D', div, gkey]);
       }
     }
-    const rooms = L._lessonRoomIds || [];
+    const rooms = (Array.isArray(L.classroomIdsExpanded) && L.classroomIdsExpanded.length)
+      ? L.classroomIdsExpanded
+      : (Array.isArray(L._lessonRoomIds) && L._lessonRoomIds.length)
+        ? L._lessonRoomIds
+        : (L.preferredRoomId ? [L.preferredRoomId] : []);
+    const lIdx = lessonIdxOf.get(L.id);
+    const jmLesson = lIdx != null ? jm.lessons[lIdx] : null;
+    const slices = [];
+    if (jm.multiSlice && lIdx != null && jm.lessonSliceMask) {
+      const sm = jm.lessonSliceMask[lIdx] || 1;
+      for (let sl = 0; sl < jm.sliceCount; sl++) {
+        if ((sm >>> sl) & 1) slices.push(sl);
+      }
+    }
+    if (!slices.length) slices.push(0);
+    const weeks = jmLesson && jmLesson.weeksBits ? jmLesson.weeksBits : null;
+    const terms = jmLesson && jmLesson.termsBits ? jmLesson.termsBits : null;
     const lockedList = lockedCardsByLesson[L.id];
     for (let k = 0; k < ncards; k++) {
       let fixed_day = (k === 0 && L.fixedDay != null) ? (L.fixedDay | 0) : null;
@@ -153,7 +169,8 @@ export async function buildAndSolve(school, options = {}) {
         if (lockedList[k].classroomId) fixed_room = lockedList[k].classroomId;
       }
       cards.push({
-        lesson_id: L.id, lesson_idx: lessonIdxOf.get(L.id), subject, length, teachers, classes, clsOcc, rooms,
+        lesson_id: L.id, lesson_idx: lIdx, subject, length, teachers, classes, clsOcc, rooms,
+        slices, weeks, terms,
         fixed_day, fixed_period, is_locked, fixed_room,
       });
     }
@@ -172,6 +189,10 @@ export async function buildAndSolve(school, options = {}) {
       if (card.fixed_day == null && lockedDaysSet.has(d)) continue;
       // aSc a_32 / a_33 — subject may not start or end on a banned period.
       // a_60 — this lesson may only start inside the relation's window.
+      if (jm.lessonAllowedDays && card.lesson_idx != null) {
+        const dayMask = jm.lessonAllowedDays[card.lesson_idx];
+        if (dayMask && !((dayMask >>> d) & 1)) continue;
+      }
       if (jm.lessonAllowedStart && card.lesson_idx != null) {
         const allowed = jm.lessonAllowedStart[card.lesson_idx];
         if (allowed && !(allowed & ((1 << p) >>> 0))) continue;
@@ -201,8 +222,9 @@ export async function buildAndSolve(school, options = {}) {
           const ti = tIdxOf.get(t);
           if (ti != null) {
             const mask = jm.teacherAvailabilityMask[ti * ndays + d];
+            const p0 = pidx.get(p);
             for (let off = 0; off < card.length; off++) {
-              const bit = (1 << (p + off)) >>> 0;
+              const bit = (1 << ((p0 != null ? p0 : (p - 1)) + off)) >>> 0;
               if ((mask & bit) === 0) {
                 conflict = true;
                 break;
@@ -265,25 +287,27 @@ export async function buildAndSolve(school, options = {}) {
     for (const [skey, avar] of assign[ci]) {
       const s = skey.split(',').map(Number);
       const covered = cover(card, s);
-      for (const ps of covered) {
-        for (const t of card.teachers) {
-          const k = `t|${t}|${ps.join(',')}`;
-          if (!tOcc.has(k)) tOcc.set(k, []);
-          tOcc.get(k).push(avar);
+      for (const sl of card.slices) {
+        for (const ps of covered) {
+          for (const t of card.teachers) {
+            const k = `t|${t}|${ps.join(',')}|s${sl}`;
+            if (!tOcc.has(k)) tOcc.set(k, []);
+            tOcc.get(k).push(avar);
+          }
+          for (const [c, occ] of card.clsOcc) {
+            const k = `c|${c}|${ps.join(',')}|s${sl}`;
+            if (!clsAt.has(k)) clsAt.set(k, []);
+            clsAt.get(k).push([occ, avar]);
+          }
         }
-        for (const [c, occ] of card.clsOcc) {
-          const k = `c|${c}|${ps.join(',')}`;
-          if (!clsAt.has(k)) clsAt.set(k, []);
-          clsAt.get(k).push([occ, avar]);
-        }
-      }
-      if (card.rooms.length) {
-        for (const r of card.rooms) {
-          const yv = yroom.get(`${ci}|${skey}|${r}`);
-          for (const ps of covered) {
-            const k = `r|${r}|${ps.join(',')}`;
-            if (!roomOcc.has(k)) roomOcc.set(k, []);
-            roomOcc.get(k).push(yv);
+        if (card.rooms.length) {
+          for (const r of card.rooms) {
+            const yv = yroom.get(`${ci}|${skey}|${r}`);
+            for (const ps of covered) {
+              const k = `r|${r}|${ps.join(',')}|s${sl}`;
+              if (!roomOcc.has(k)) roomOcc.set(k, []);
+              roomOcc.get(k).push(yv);
+            }
           }
         }
       }
@@ -305,10 +329,12 @@ export async function buildAndSolve(school, options = {}) {
       const card = cards[ci];
       if (!subjCap.has(card.subject)) continue;
       for (const [skey, avar] of assign[ci]) {
-        for (const ps of cover(card, skey.split(',').map(Number))) {
-          const k = `${card.subject}|${ps.join(',')}`;
-          if (!sOcc.has(k)) sOcc.set(k, []);
-          sOcc.get(k).push(avar);
+        for (const sl of card.slices) {
+          for (const ps of cover(card, skey.split(',').map(Number))) {
+            const k = `${card.subject}|${ps.join(',')}|s${sl}`;
+            if (!sOcc.has(k)) sOcc.set(k, []);
+            sOcc.get(k).push(avar);
+          }
         }
       }
     }
@@ -387,12 +413,14 @@ export async function buildAndSolve(school, options = {}) {
   const csd = new Map();
   for (let ci = 0; ci < cards.length; ci++) {
     const card = cards[ci];
-    for (const c of card.classes) {
-      for (const skey of assign[ci].keys()) {
-        const d = Number(skey.split(',')[0]);
-        const k = `${c}|${card.subject}|${d}`;
-        if (!csd.has(k)) csd.set(k, []);
-        csd.get(k).push(assign[ci].get(skey));
+    for (const sl of card.slices) {
+      for (const c of card.classes) {
+        for (const skey of assign[ci].keys()) {
+          const d = Number(skey.split(',')[0]);
+          const k = `${c}|${card.subject}|${d}|s${sl}`;
+          if (!csd.has(k)) csd.set(k, []);
+          csd.get(k).push(assign[ci].get(skey));
+        }
       }
     }
   }
@@ -1488,7 +1516,11 @@ export async function buildAndSolve(school, options = {}) {
     // SchoolData stores one card per session; isLabDouble supplies the span.
     // Emitting the tail as a second card makes the editor render two doubles
     // and warm-starts the next solve with an extra, overlapping session.
-    assignment.push({ lessonId: card.lesson_id, day: d, period: p, classroomId: room });
+    assignment.push({
+      lessonId: card.lesson_id, day: d, period: p, classroomId: room,
+      ...(card.weeks ? { weeks: card.weeks } : {}),
+      ...(card.terms ? { terms: card.terms } : {}),
+    });
     nPlaced++;
   }
 
