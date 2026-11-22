@@ -183,6 +183,26 @@ import "../ribbon/topbar.js";
     src = replaceBlock(src, "classrooms", renderClassroomsBlock(school));
     src = replaceBlock(src, "classes",    renderClassesBlock(school));
     src = replaceBlock(src, "groups",     renderGroupsBlock(school));
+    const wDefs = (school.weeksDefs && school.weeksDefs.length) ? school.weeksDefs : (school.weeks || []);
+    if (wDefs.length) {
+      const wLines = ['  <weeksdefs options="canadd,export:silent" columns="id,weeks,name,short">'];
+      for (const w of wDefs) {
+        const bits = w.bits != null ? w.bits : (w.weeks != null ? w.weeks : "1");
+        wLines.push(`    <weeksdef id="${xmlEscape(w.id)}" name="${xmlEscape(w.name || "")}" short="${xmlEscape(w.short || "")}" weeks="${xmlEscape(bits)}"/>`);
+      }
+      wLines.push("  </weeksdefs>");
+      src = replaceBlock(src, "weeksdefs", wLines.join("\n"));
+    }
+    const tDefs = (school.termsDefs && school.termsDefs.length) ? school.termsDefs : (school.terms || []);
+    if (tDefs.length) {
+      const tLines = ['  <termsdefs options="canadd,export:silent" columns="id,terms,name,short">'];
+      for (const t of tDefs) {
+        const bits = t.bits != null ? t.bits : (t.terms != null ? t.terms : "1");
+        tLines.push(`    <termsdef id="${xmlEscape(t.id)}" name="${xmlEscape(t.name || "")}" short="${xmlEscape(t.short || "")}" terms="${xmlEscape(bits)}"/>`);
+      }
+      tLines.push("  </termsdefs>");
+      src = replaceBlock(src, "termsdefs", tLines.join("\n"));
+    }
     src = replaceBlock(src, "lessons",    renderLessonsBlock(school));
     src = replaceBlock(src, "cards",      renderCardsBlock(school));
 
@@ -255,21 +275,21 @@ import "../ribbon/topbar.js";
     }
     out.push("  </daysdefs>");
 
-    const userWeeksDefs = (school.weeksDefs && school.weeksDefs.length) ? school.weeksDefs : null;
+    const userWeeksDefs = (school.weeksDefs && school.weeksDefs.length) ? school.weeksDefs : ((school.weeks && school.weeks.length) ? school.weeks : null);
     out.push('  <weeksdefs options="canadd,export:silent" columns="id,weeks,name,short">');
     if (userWeeksDefs) {
       for (const w of userWeeksDefs)
-        out.push(`    <weeksdef id="${xmlEscape(w.id)}" name="${xmlEscape(w.name || "")}" short="${xmlEscape(w.short || "")}" weeks="${xmlEscape(w.bits || "1")}"/>`);
+        out.push(`    <weeksdef id="${xmlEscape(w.id)}" name="${xmlEscape(w.name || "")}" short="${xmlEscape(w.short || "")}" weeks="${xmlEscape(w.bits != null ? w.bits : (w.weeks != null ? w.weeks : "1"))}"/>`);
     } else {
       out.push('    <weeksdef id="WEEK_ALL" name="All weeks" short="All" weeks="1"/>');
     }
     out.push("  </weeksdefs>");
 
-    const userTermsDefs = (school.termsDefs && school.termsDefs.length) ? school.termsDefs : null;
+    const userTermsDefs = (school.termsDefs && school.termsDefs.length) ? school.termsDefs : ((school.terms && school.terms.length) ? school.terms : null);
     out.push('  <termsdefs options="canadd,export:silent" columns="id,terms,name,short">');
     if (userTermsDefs) {
       for (const t of userTermsDefs)
-        out.push(`    <termsdef id="${xmlEscape(t.id)}" name="${xmlEscape(t.name || "")}" short="${xmlEscape(t.short || "")}" terms="${xmlEscape(t.bits || "1")}"/>`);
+        out.push(`    <termsdef id="${xmlEscape(t.id)}" name="${xmlEscape(t.name || "")}" short="${xmlEscape(t.short || "")}" terms="${xmlEscape(t.bits != null ? t.bits : (t.terms != null ? t.terms : "1"))}"/>`);
     } else {
       out.push('    <termsdef id="TERM_YR" name="Whole year" short="YR" terms="1"/>');
     }

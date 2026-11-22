@@ -1711,3 +1711,29 @@ html[data-skin="classic"] .chrx-shell .chrx-editor:not(.chrx-editor--focus) .chr
 /* The page error slot is a 10px band even when empty; in the editor it only
    takes space when it actually carries a message. */
 .chrx-shell.is-fullscreen #error-slot:not(:has(*)) { display: none; }
+
+/* E-04: prevent topbar / editor-tools horizontal overflow on 390px mobile viewports */
+@media (max-width: 767px) {
+  .chrx-shell,
+  .chrx-shell .chrx-main,
+  .chrx-shell .chrx-topbar {
+    max-width: 100vw;
+    min-width: 0;
+    box-sizing: border-box;
+    overflow-x: clip;
+  }
+  .chrx-shell .chrx-topbar {
+    flex-wrap: wrap;
+    height: auto;
+    padding: 6px 10px;
+    gap: 6px;
+  }
+  .chrx-shell .chrx-topbar .chrx-crumbs,
+  .chrx-shell .chrx-topbar .chrx-topbar-editor-tools,
+  .chrx-shell .chrx-topbar .chrx-topbar-editor-tools > * {
+    min-width: 0;
+    max-width: 100%;
+    flex-wrap: wrap;
+    margin-left: 0;
+  }
+}
