@@ -39,18 +39,18 @@ import "./state.js";
     { svg: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M3 9h18"/></svg>', label: "Editor",    active: true, on: () => focusEditor() },
     { svg: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>', label: "Reports",   on: () => fire("app:print-preview") },
     { svg: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>', label: "Substitutions", on: () => fire("app:substitutions") },
-    { section: "Entities" },
+    { section: "Basics" },
     { svg: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>', label: "Subjects",   on: () => fire("app:open-entity", { kind: "subjects" }) },
     { svg: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>', label: "Teachers",   on: () => fire("app:open-entity", { kind: "teachers" }) },
     { svg: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>', label: "Classes",    on: () => fire("app:open-entity", { kind: "classes" }) },
     { svg: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>', label: "Rooms",      on: () => fire("app:open-entity", { kind: "classrooms" }) },
     { svg: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', label: "Lessons",    on: () => fire("app:open-entity", { kind: "lessons" }) },
+    { svg: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', label: "Bells",      on: () => fire("app:open-entity", { kind: "bells" }) },
+    { svg: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>', label: "Days",       on: () => fire("app:open-entity", { kind: "days" }) },
+    { section: "Advanced", collapsible: true },
     { svg: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>', label: "Divisions",  on: () => fire("app:open-entity", { kind: "divisions" }) },
     { svg: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>', label: "Grades",     on: () => fire("app:open-entity", { kind: "grades" }) },
     { svg: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>', label: "Students",   on: () => fire("app:open-entity", { kind: "students" }) },
-    { section: "Structure" },
-    { svg: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', label: "Bells",      on: () => fire("app:open-entity", { kind: "bells" }) },
-    { svg: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>', label: "Days",       on: () => fire("app:open-entity", { kind: "days" }) },
     { svg: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01M16 18h.01"/></svg>', label: "Weeks",      on: () => fire("app:open-entity", { kind: "weeks" }) },
     { svg: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>', label: "Terms",      on: () => fire("app:open-entity", { kind: "terms" }) },
     { svg: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>', label: "Buildings",  on: () => fire("app:open-entity", { kind: "buildings" }) },
@@ -73,14 +73,23 @@ import "./state.js";
 
   function buildSidebar() {
     const side = el("aside", { class: "chrx-sidebar", tabindex: "0", "aria-label": "Navigation sidebar" });
+    let container = side;
     for (const item of NAV) {
       if (item.section) {
-        side.appendChild(el("div", { class: "chrx-side-section" }, item.section));
+        if (item.collapsible) {
+          const details = el("details", { class: "chrx-side-group", "data-section": item.section.toLowerCase() });
+          const summary = el("summary", { class: "chrx-side-section chrx-side-section--toggle" }, item.section);
+          details.appendChild(summary);
+          side.appendChild(details);
+          container = details;
+        } else {
+          container = side;
+          side.appendChild(el("div", { class: "chrx-side-section" }, item.section));
+        }
         continue;
       }
       const link = el("a", { class: "chrx-side-link" + (item.active ? " is-active" : ""),
         onclick: (e) => { e.preventDefault(); try { item.on(); } catch (er) { console.error(er); } } });
-      // Support both SVG icons (new) and text icons (legacy)
       const iconSpan = el("span", { class: "chrx-side-link__icon" });
       if (item.svg) {
         iconSpan.innerHTML = item.svg;
@@ -89,7 +98,7 @@ import "./state.js";
       }
       link.appendChild(iconSpan);
       link.appendChild(document.createTextNode(item.label));
-      side.appendChild(link);
+      container.appendChild(link);
     }
     return side;
   }

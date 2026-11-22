@@ -24,7 +24,7 @@ window.I18N = (function () {
     step1Button:     { en: "Choose XML file",                 hi: "फ़ाइल चुनें" },
 
     step2Title:      { en: "School Info",                     hi: "विद्यालय जानकारी" },
-    step2Desc:       { en: "Summary of what was parsed from your XML.",
+    step2Desc:       { en: "School details, calendar, bell schedule, and defaults.",
                        hi: "एक्सएमएल फ़ाइल से प्राप्त जानकारी का सारांश।" },
 
     step3Title:      { en: "Class Grid",                      hi: "कक्षा सूची" },

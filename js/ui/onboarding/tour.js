@@ -119,10 +119,15 @@
 
   function maybeStart() {
     try { if (localStorage.getItem(SEEN_KEY)) return; } catch {}
-    // The landing page now carries its own first-use story. Keep that first
-    // viewport clear; the guided app tour begins only after a school exists.
+    // Do not auto-interrupt first-time users who already have the Get Started
+    // checklist or an open dialog on screen; Tour remains available on demand
+    // via Help -> Take the tour (app:take-tour).
     if (!global.APP || !global.APP.school) return;
-    setTimeout(start, 1500);
+    if ((global.APP.school.lessons || []).length === 0) return;
+    setTimeout(() => {
+      if (document.querySelector("#chrx-no-lessons-overlay, .chrx-tpl-modal, [role='dialog']")) return;
+      start();
+    }, 1500);
   }
 
   function ensureStyles() {

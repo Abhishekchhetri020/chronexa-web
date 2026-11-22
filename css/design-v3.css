@@ -1450,3 +1450,33 @@ body.chrx-editor-dark .chrx-slot:focus-visible{ outline-color:#7dd3fc; }
    editor step keeps its internal scroll. */
 body:has(#step-1:not(.hidden)) .chrx-shell{ height:auto; min-height:100vh; }
 body:has(#step-1:not(.hidden)) .chrx-main{ overflow:visible; height:auto; }
+
+/* Block J2: collapsible Advanced sidebar section */
+.chrx-side-group { margin: 2px 0; }
+.chrx-side-section--toggle {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  user-select: none;
+}
+.chrx-side-section--toggle::-webkit-details-marker { display: none; }
+.chrx-side-section--toggle::after {
+  content: "▸";
+  font-size: 11px;
+  opacity: 0.65;
+  transition: transform 150ms ease;
+}
+.chrx-side-group[open] > .chrx-side-section--toggle::after {
+  transform: rotate(90deg);
+}
+.chrx-hub__navicon svg, .chrx-hub__headicon svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+  color: var(--chrx-fg-secondary, #475569);
+}
+.chrx-hub__navbtn.is-active .chrx-hub__navicon svg {
+  color: var(--chrx-accent, #0d4f54);
+}

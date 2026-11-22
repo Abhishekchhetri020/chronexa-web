@@ -296,6 +296,7 @@ import "./start_screen.js";
   window._chrxShortcuts = toggleShortcutSheet;
 
   // ----- Step navigation ----------------------------------------------------
+  window.showStep = showStep;
   function showStep(n) {
     if (window.APP.step === 1 && n !== 1) {
       window.LandingDemo?.destroy(document.getElementById("landing-demo-mount"));
@@ -413,7 +414,14 @@ import "./start_screen.js";
       case 1:
         if (window.StartScreen && window.StartScreen.render) window.StartScreen.render();
         break;
-      case 2:
+      case 2: {
+        const descEl = document.querySelector('#step-2 [data-i18n="step2Desc"]');
+        if (descEl) {
+          const imported = !!(window.APP?.school?.sourceText || window.APP?.school?._meta?.source === "upload-xml");
+          descEl.textContent = imported
+            ? "School details and schedule imported from your file."
+            : "School details, calendar, bell schedule, and defaults.";
+        }
         // Prefer the multi-pane School Hub (its file docstring calls it
         // "multi-pane page for step-2"); fall back to SchoolInfo if missing.
         if (window.SchoolHub && window.SchoolHub.render) {
@@ -422,6 +430,7 @@ import "./start_screen.js";
           SchoolInfo.render(document.getElementById("step-2-body"));
         }
         break;
+      }
       case 3: ClassGrid.render(document.getElementById("step-3-body")); break;
       case 4: TeacherGrid.render(document.getElementById("step-4-body")); break;
       case 5: RoomGrid.render(document.getElementById("step-5-body")); break;
@@ -597,45 +606,7 @@ import "./start_screen.js";
       };
     });
 
-    // ─── CTA: Build New Timetable ────────────────────────────
-    // CreateNew.createBlank() fires `app:school-loaded`, which the editor
-    // activator listens for and auto-advances to step 6. We then layer the
-    // 5-step wizard walkthrough on top as a modal overlay.
-    const buildBtn = document.getElementById("cta-build-new");
-    if (buildBtn) {
-      buildBtn.onclick = () => {
-        if (window.Tour && window.Tour.end) window.Tour.end();
-        if (window.APP.school && (window.APP.school.teachers.length || window.APP.school.cards.length)) {
-          if (!confirm("A timetable is already loaded. Replace it with a new one?")) return;
-        }
-        // Friendly entry: show school template picker first. If the user picks
-        // "Blank" we fall through to createBlank(); otherwise SchoolTemplates
-        // seeds subjects/bell/classes/teachers/rooms for that school type.
-        if (window.SchoolTemplates && window.SchoolTemplates.showPicker) {
-          window.SchoolTemplates.showPicker((id /*, result */) => {
-            document.querySelectorAll(".needs-school").forEach(b => b.disabled = false);
-            // Wizard walkthrough overlay covers the seeded school
-            if (window.WizardWalkthrough && window.WizardWalkthrough.start) {
-              window.WizardWalkthrough.start();
-            } else {
-              showStep(6);
-            }
-          });
-          if (window.StartScreen && window.StartScreen.upgradeTemplatePicker) {
-            window.StartScreen.upgradeTemplatePicker(document.querySelector(".chrx-tpl-modal"));
-          }
-        } else if (window.CreateNew && window.CreateNew.createBlank) {
-          // Fallback: no template picker loaded (shouldn't happen on live)
-          window.CreateNew.createBlank();
-          document.querySelectorAll(".needs-school").forEach(b => b.disabled = false);
-          if (window.WizardWalkthrough && window.WizardWalkthrough.start) {
-            window.WizardWalkthrough.start();
-          } else {
-            showStep(6);
-          }
-        }
-      };
-    }
+    // #cta-build-new is handled by the single delegated click listener above.
 
     // ─── CTA: Load Demo Seed (bundled GD Goenka sample-school.xml) ──
     // No per-button handler: the delegated listener above already routes

@@ -181,7 +181,7 @@ import "./version_history.js";
       localStorage.setItem(KEY, JSON.stringify(full));
       lastSaveTs = meta.ts;
       adoptedTs = meta.ts;
-      flashIndicator("✓");
+      if (!opts.silent) flashIndicator("✓");
     } catch (e) {
       // Exceeded localStorage quota (e.g. very large XML with sourceText):
       // persist full school in IndexedDB and store a tiny pointer in localStorage.
@@ -190,7 +190,7 @@ import "./version_history.js";
         idbPut(clean).then(() => {
           lastSaveTs = meta.ts;
           adoptedTs = meta.ts;
-          flashIndicator("✓");
+          if (!opts.silent) flashIndicator("✓");
         }).catch((err) => {
           flashIndicator("⚠", "warn");
           console.warn("[autosave] idb fallback failed:", err);
@@ -282,7 +282,9 @@ import "./version_history.js";
     if (!pill) return;
     const reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     pill.style.transition = reduced ? "none" : "opacity 200ms ease,background 200ms ease";
-    pill.textContent = `${prefix} Auto-saved · ${new Date().toLocaleTimeString()}`;
+    pill.textContent = prefix === "↶ Restored"
+      ? "↶ Restored previous session"
+      : `${prefix} Auto-saved · ${new Date().toLocaleTimeString()}`;
     pill.style.background = tone === "warn" ? "#92400e" : "#0f172a";
     pill.style.visibility = "visible";
     pill.style.opacity = "1";
@@ -388,7 +390,7 @@ import "./version_history.js";
     const isDemo = src === "demo-xml" || src === "create-demo";
     currentAutoRestore = !isDemo;
     lastSaveTs = 0;
-    save({ autoRestore: currentAutoRestore });
+    save({ autoRestore: currentAutoRestore, silent: true });
   }
 
   function onSolveApplied() {

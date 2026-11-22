@@ -131,6 +131,8 @@ import "./state.js";
     if (!barEl) return;
     while (barEl.firstChild) barEl.removeChild(barEl.firstChild);
     const idx = loadIndex();
+    barEl.style.display = idx.length > 1 ? "flex" : "none";
+    if (idx.length <= 1) return;
     for (const t of idx) {
       const isActive = t.id === activeId;
       const tab = el("button", {

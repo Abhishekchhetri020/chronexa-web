@@ -486,14 +486,16 @@ window.StartScreen = (function () {
       if (pickerDialog) pickerDialog.finish();
     }
 
-    // Visible dismiss. Reuses the picker's own card class (no new CSS) and
-    // names the consequence, so "cancel" is never a mystery.
+    // Clean footer Cancel button — only mention keeping current school if one is loaded.
+    const foot = document.createElement("div");
+    foot.className = "chrx-tpl-foot";
     const dismiss = document.createElement("button");
     dismiss.type = "button";
-    dismiss.className = "chrx-tpl-card";
-    dismiss.textContent = "✕ Cancel — keep my current school";
+    dismiss.className = "chrx-tpl-cancel";
+    dismiss.textContent = window.APP?.school ? "Cancel (keep current school)" : "Cancel";
     dismiss.addEventListener("click", closePicker);
-    panel.appendChild(dismiss);
+    foot.appendChild(dismiss);
+    panel.appendChild(foot);
 
     root.onclick = (e) => { if (e.target === root) closePicker(); };
 
