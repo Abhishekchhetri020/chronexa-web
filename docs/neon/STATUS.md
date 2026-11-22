@@ -33,3 +33,6 @@
 2026-11-22 20:19 | I | RELEASED | 20261122-p276-accessibility (merge 5e6e91b, live verified)
 2026-11-22 20:19 | I | DONE | 0 critical/serious axe violations across 6 surfaces, 13 dialogs 390px clean, keyboard Generate->Print; 587 unit, 153 e2e (1 skip), 0 failed; docs/neon/BLOCK_I.md written
 2026-11-22 20:22 | P | STARTED | Block P: Generate flow + grid clarity (P1 946 vs 951 data risk first)
+2026-11-22 21:22 | P | RELEASED | 20261122-p277-generate-clarity (merge fe9879c, live verified)
+2026-11-22 21:22 | P | DONE | P1-P6 complete (946 vs 951 fixed, honest progress, plain result, chip=result, clean class grid); 587 unit, 152+2 rechecked e2e (1 skip), 0 failed; docs/neon/BLOCK_P.md + 4 after shots written
+2026-11-22 21:26 | P7 | STARTED | Block P7 live review polish (p278)

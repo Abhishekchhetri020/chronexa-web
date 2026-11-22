@@ -65,7 +65,7 @@ import "../ribbon/topbar.js";
       const r = await fetch("docs/demo_sample-school.xml?v=" + (window.APP_VER || "dev"));
       if (!r.ok) throw new Error("HTTP " + r.status);
       const text = await r.text();
-      const s = await loadFromText(text, "demo_sample-school.xml");
+      const s = await loadFromText(text, "demo_sample-school.xml"); s._isDemo = true; if (!s.schoolName) s.schoolName = "Sample school";
       await applySchool(s);
     } catch (e) { notify("Demo file failed: " + e.message, "error"); console.error(e); }
   }

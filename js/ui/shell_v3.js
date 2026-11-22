@@ -478,7 +478,7 @@ import "./state.js";
   function updateCrumbs() {
     const crumbs = document.getElementById("chrx-crumbs");
     if (!crumbs) return;
-    const name = (APP.school && APP.school.schoolName) || "Untitled";
+    const _rawNm = (APP.school && APP.school.schoolName || "").trim(); const name = (!_rawNm || /^(classic timetable|asc timetables)/i.test(_rawNm)) ? (APP.school && APP.school._isDemo ? "Sample school" : "My school") : _rawNm;
     while (crumbs.firstChild) crumbs.removeChild(crumbs.firstChild);
     crumbs.appendChild(el("span", null, name));
     crumbs.appendChild(el("span", { class: "chrx-crumbs__sep" }, "/"));
@@ -540,9 +540,11 @@ import "./state.js";
   }
 
   global.addEventListener("app:school-loaded", () => { updateCrumbs(); updateSolverPanel(null); });
+  document.addEventListener("app:school-loaded", () => { updateCrumbs(); updateSolverPanel(null); });
   document.addEventListener("step:changed", (e) => {
     const step = e.detail && e.detail.step;
     setEditorWorkspace(step === 6);
+    if (step === 6) updateCrumbs();
   });
   global.addEventListener("app:solver-result", (e) => updateSolverPanel(e.detail));
   global.addEventListener("app:solver-progress", (e) => {
