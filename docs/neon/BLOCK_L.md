@@ -21,3 +21,24 @@
 - `npx vitest run`: **587 / 587 passed** (68 files, 0 failed)
 - `npx vite build`: **succeeded** (`9.73 s`)
 - `npx playwright test --config pw.chrome.config.local.mjs`: **161 passed, 1 skipped** (known real-XML ranker skip), **0 failed** (`16.7 m`)
+
+## Batch L2 (`20261122-p282-l2-ui-polish`)
+
+### What changed
+1. **L1b — Early-click replay & slow-connection notice** (`index.html`, `js/entry/main.js`):
+   - Removed premature `window.__CHRX_READY__ = true` and early-click replay from `js/ui/main.js` (which fired before `school_templates.js` loaded and swallowed `#cta-build-new`).
+   - Added `markReadyAndReplay()` at the end of `js/entry/main.js` (after all entry modules finish evaluating), clearing any pending boot notice timer, removing `#chrx-boot-timeout`, restoring the button label, and replaying the queued CTA click cleanly.
+   - Added `"Loading…"` visual feedback on queued early CTA clicks and a **20-second calm reassurance notice** (`#chrx-boot-timeout`, neutral slate `role="status"`, *"Still loading Chronexa — your click will open as soon as it is ready."*) that starts **only** when a CTA click is actually queued, never sets `__CHRX_READY__` early, and keeps the click queued until boot finishes.
+2. **Dark-mode button contrast without flattening danger buttons** (`css/design-v3.css`, `css/editor-v3.css`):
+   - Added global dark-mode secondary button contrast rules (`.chrx-btn:not(.chrx-btn--primary):not(.chrx-btn--danger)`) and `#editor-toggle-skin` styling so `Try a sample school`, `Test`, and the skin toggle render cleanly on dark surfaces.
+   - Explicitly preserved `.chrx-btn--danger` with high-contrast dark-mode danger styling (`#f87171` text and subtle red border/hover) instead of flattening it to neutral white.
+3. **Playwright E2E coverage & multi-screen dialog screenshot audit** (`e2e/block-l-ui-polish.spec.js`, `docs/neon/ui-shots/l2/`):
+   - Expanded `e2e/block-l-ui-polish.spec.js` to 5 tests: early-click `#cta-build-new` under 4× CPU throttle, early-click `#cta-landing-demo` under 4× CPU throttle, slow **200 KB/s** `Network.emulateNetworkConditions` + early-click `#cta-build-new` (verifying picker opens and `#chrx-boot-timeout` count is 0), empty-school dark-mode contrast & 390 px overflow check, and multi-screen dialog audit (Verification, Advisor, Statistics, Publish, Version History, Lessons).
+   - **Queued for Batch L3 (`p283`)** from visual review of `docs/neon/ui-shots/l2/`:
+     1. Publish timetable dialog in dark mode has hardcoded light card backgrounds (`#fff` / `#f4f7ff` / `#f1f5f9`) causing white-on-white option titles, and `Escape` does not close it.
+     2. Advisor, Statistics, and Version History headings still use serif font + emoji icons (`💡`, `📊`, `🕒`), and Advisor action buttons use bright blue instead of brand teal.
+
+### Full Release Gate (`p282`)
+- `npx vitest run`: **587 / 587 passed** (68 files, 0 failed)
+- `npx vite build`: **succeeded** (`3.60 s`)
+- `npx playwright test --config pw.chrome.config.local.mjs`: **163 passed, 1 skipped** (known real-XML ranker skip), **0 failed** (`11.4 m`)

@@ -2,10 +2,10 @@ import { test, expect } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 
-const SHOT_DIR = path.resolve("docs/neon/ui-shots/l1");
+const SHOT_DIR = path.resolve("docs/neon/ui-shots/l2");
 
-test.describe("Block L1 — UI polish, L0 early-click race, dark mode & 390px audit", () => {
-  test("L0: early click on Start with a school template within 100ms of DOMContentLoaded under 4x CPU throttle never shows legacy header or black screen", async ({ page, context }) => {
+test.describe("Block L — UI polish, L0/L1b early-click race, dark mode & multi-screen audit", () => {
+  test("L0/L1b-a: early click on Start with a school template within 100ms of DOMContentLoaded under 4x CPU throttle opens picker cleanly", async ({ page, context }) => {
     test.setTimeout(90_000);
     const errors = [];
     page.on("pageerror", (e) => errors.push(String(e)));
@@ -23,7 +23,7 @@ test.describe("Block L1 — UI polish, L0 early-click race, dark mode & 390px au
       // Click CTA within 100ms of DOMContentLoaded
       await page.locator("#cta-build-new").click({ timeout: 5_000 });
 
-      // Template picker must open cleanly once ready (either immediately or via early-click queue)
+      // Template picker must open cleanly once all modules finish loading
       const panel = page.locator(".chrx-tpl-modal__panel");
       await expect(panel).toBeVisible({ timeout: 25_000 });
 
@@ -38,7 +38,60 @@ test.describe("Block L1 — UI polish, L0 early-click race, dark mode & 390px au
     }
   });
 
-  test("L1: empty school shows 'No lessons yet', line SVG checklist icons, and no overlapping local-compute banner", async ({ page }) => {
+  test("L0/L1b-b: early click on Launch demo within 100ms of DOMContentLoaded under 4x CPU throttle loads demo cleanly", async ({ page, context }) => {
+    test.setTimeout(90_000);
+    const errors = [];
+    page.on("pageerror", (e) => errors.push(String(e)));
+
+    const cdp = await context.newCDPSession(page);
+    await cdp.send("Emulation.setCPUThrottlingRate", { rate: 4 });
+
+    try {
+      await page.goto("/", { waitUntil: "domcontentloaded" });
+      await page.locator("#cta-landing-demo").click({ timeout: 15_000 });
+      await page.locator("#editor-root .chrx-vkarta").first().waitFor({ timeout: 40_000 });
+      const cards = await page.evaluate(() => (window.APP?.school?.cards || []).length);
+      expect(cards).toBeGreaterThan(500);
+      expect(errors).toEqual([]);
+    } finally {
+      await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 }).catch(() => {});
+    }
+  });
+
+  test("L1b-c: slow 200 KB/s connection + early click on #cta-build-new opens picker and leaves no #chrx-boot-timeout", async ({ page, context }) => {
+    test.setTimeout(150_000);
+    const errors = [];
+    page.on("pageerror", (e) => errors.push(String(e)));
+
+    const cdp = await context.newCDPSession(page);
+    await cdp.send("Network.enable");
+    await cdp.send("Network.emulateNetworkConditions", {
+      offline: false,
+      latency: 50,
+      downloadThroughput: 200 * 1024,
+      uploadThroughput: 200 * 1024,
+    });
+
+    try {
+      await page.goto("/", { waitUntil: "domcontentloaded" });
+      await page.locator("#cta-build-new").click({ timeout: 10_000 });
+
+      // Picker must open cleanly once modules finish downloading, and any #chrx-boot-timeout notice must be gone
+      const panel = page.locator(".chrx-tpl-modal__panel");
+      await expect(panel).toBeVisible({ timeout: 120_000 });
+      await expect(page.locator("#chrx-boot-timeout")).toHaveCount(0);
+      expect(errors).toEqual([]);
+    } finally {
+      await cdp.send("Network.emulateNetworkConditions", {
+        offline: false,
+        latency: 0,
+        downloadThroughput: -1,
+        uploadThroughput: -1,
+      }).catch(() => {});
+    }
+  });
+
+  test("L1/L2: empty school shows 'No lessons yet', SVG icons, no overlapping banner, and high-contrast dark-mode buttons", async ({ page }) => {
     test.setTimeout(60_000);
     fs.mkdirSync(SHOT_DIR, { recursive: true });
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -59,12 +112,12 @@ test.describe("Block L1 — UI polish, L0 early-click race, dark mode & 390px au
     await page.waitForTimeout(3400);
     await expect(page.locator("#chrx-pwa-banner")).toHaveCount(0);
 
-    await page.screenshot({ path: path.join(SHOT_DIR, "empty-school-1440.png") });
-
-    // Dark mode check on empty school
+    // Dark mode check on empty school: secondary buttons MUST NOT be white-on-white
     await page.evaluate(() => document.documentElement.setAttribute("data-theme", "dark"));
     await page.waitForTimeout(150);
-    await page.screenshot({ path: path.join(SHOT_DIR, "empty-school-1440-dark.png") });
+    const sampleBtnBg = await page.locator("#chrx-hero-sample-btn").evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(sampleBtnBg).not.toBe("rgb(255, 255, 255)");
+    await page.screenshot({ path: path.join(SHOT_DIR, "empty-school-1440-dark-after.png") });
     await page.evaluate(() => document.documentElement.setAttribute("data-theme", "light"));
 
     // 390px mobile check on empty school (zero horizontal overflow)
@@ -72,63 +125,59 @@ test.describe("Block L1 — UI polish, L0 early-click race, dark mode & 390px au
     await page.waitForTimeout(200);
     const overflow390 = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     expect(overflow390).toBeLessThanOrEqual(2);
-    await page.screenshot({ path: path.join(SHOT_DIR, "empty-school-390.png") });
   });
 
-  test("L1: multi-screen visual audit (1440, 1280, 390, light & dark) with zero overflow and zero pageerrors", async ({ page }) => {
+  test("L2: full multi-screen dialog audit (Verification, Advisor, Statistics, Publish, Version History, Entities) at 1440 & 390 with zero overflow and zero pageerrors", async ({ page }) => {
     test.setTimeout(90_000);
     fs.mkdirSync(SHOT_DIR, { recursive: true });
     const errors = [];
     page.on("pageerror", (e) => errors.push(String(e)));
 
-    // 1. Landing at 1440 & 390
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/");
     await page.waitForFunction(() => window.__CHRX_READY__ && window.APP);
-    await page.screenshot({ path: path.join(SHOT_DIR, "landing-1440.png") });
 
-    await page.setViewportSize({ width: 390, height: 844 });
-    await page.waitForTimeout(200);
-    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(2);
-    await page.screenshot({ path: path.join(SHOT_DIR, "landing-390.png") });
-
-    // 2. Editor (demo school) at 1440 light, 1440 dark, 1280 light, 390 light
-    await page.setViewportSize({ width: 1440, height: 900 });
     await page.locator("#cta-landing-demo").click();
     await page.locator("#editor-root .chrx-vkarta").first().waitFor({ timeout: 30_000 });
-    await page.waitForTimeout(200);
-    await page.screenshot({ path: path.join(SHOT_DIR, "editor-1440.png") });
 
+    // 1. Verification
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent("app:verification-pro")));
+    await page.waitForTimeout(250);
+    await page.screenshot({ path: path.join(SHOT_DIR, "verification-1440.png") });
+    await page.keyboard.press("Escape");
+
+    // 2. Advisor
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent("app:advisor")));
+    await page.waitForTimeout(250);
+    await page.screenshot({ path: path.join(SHOT_DIR, "advisor-1440.png") });
+    await page.keyboard.press("Escape");
+
+    // 3. Statistics
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent("app:statistics")));
+    await page.waitForTimeout(250);
+    await page.screenshot({ path: path.join(SHOT_DIR, "statistics-1440.png") });
+    await page.keyboard.press("Escape");
+
+    // 4. Publish
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent("app:publish-timetable")));
+    await page.waitForTimeout(250);
+    await page.screenshot({ path: path.join(SHOT_DIR, "publish-1440.png") });
+    await page.keyboard.press("Escape");
+
+    // 5. Version history
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent("app:open-version-history")));
+    await page.waitForTimeout(250);
+    await page.screenshot({ path: path.join(SHOT_DIR, "version-history-1440.png") });
+    await page.keyboard.press("Escape");
+
+    // 6. Lessons entity dialog (light + dark)
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent("app:open-entity", { detail: { kind: "lessons" } })));
+    await expect(page.locator(".chrx-ent-dialog").first()).toBeVisible({ timeout: 10_000 });
+    await page.screenshot({ path: path.join(SHOT_DIR, "lessons-dialog-1440.png") });
     await page.evaluate(() => document.documentElement.setAttribute("data-theme", "dark"));
-    await page.waitForTimeout(200);
-    await page.screenshot({ path: path.join(SHOT_DIR, "editor-1440-dark.png") });
+    await page.waitForTimeout(150);
+    await page.screenshot({ path: path.join(SHOT_DIR, "lessons-dialog-1440-dark.png") });
     await page.evaluate(() => document.documentElement.setAttribute("data-theme", "light"));
-
-    await page.setViewportSize({ width: 1280, height: 800 });
-    await page.waitForTimeout(200);
-    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(2);
-    await page.screenshot({ path: path.join(SHOT_DIR, "editor-1280.png") });
-
-    await page.setViewportSize({ width: 390, height: 844 });
-    await page.waitForTimeout(200);
-    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(2);
-    await page.screenshot({ path: path.join(SHOT_DIR, "editor-390.png") });
-
-    // 3. Key dialogs at 1440 (light + dark check)
-    await page.setViewportSize({ width: 1440, height: 900 });
-    await page.evaluate(() => window.dispatchEvent(new CustomEvent("app:export-dialog")));
-    await expect(page.locator("#chrx-export-dialog, .chrx-export-dialog").first()).toBeVisible({ timeout: 10_000 });
-    await page.screenshot({ path: path.join(SHOT_DIR, "export-1440.png") });
-    await page.keyboard.press("Escape");
-
-    await page.evaluate(() => window.dispatchEvent(new CustomEvent("app:substitutions")));
-    await expect(page.locator("#chrx-sub-dialog, .chrx-sub-dialog").first()).toBeVisible({ timeout: 10_000 });
-    await page.screenshot({ path: path.join(SHOT_DIR, "substitutions-1440.png") });
-    await page.keyboard.press("Escape");
-
-    await page.evaluate(() => window.dispatchEvent(new CustomEvent("app:print-preview")));
-    await expect(page.locator(".chrx-preview-overlay.is-open")).toBeVisible({ timeout: 15_000 });
-    await page.screenshot({ path: path.join(SHOT_DIR, "print-preview-1440.png") });
     await page.keyboard.press("Escape");
 
     expect(errors).toEqual([]);

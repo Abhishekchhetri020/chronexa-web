@@ -226,3 +226,37 @@ import "../ui/io/lazy_cdn.js";
     });
   });
 })();
+
+// L0/L1b: Mark app ready ONLY after every entry module (including SchoolTemplates,
+// OnboardingWiring, ShellV3, and StartScreen) has finished evaluating, then replay
+// any early CTA click queued before boot completed.
+(function () {
+  function markReadyAndReplay() {
+    if (window.__CHRX_BOOT_NOTICE_TIMER__) {
+      clearTimeout(window.__CHRX_BOOT_NOTICE_TIMER__);
+      window.__CHRX_BOOT_NOTICE_TIMER__ = null;
+    }
+    const bootNotice = document.getElementById("chrx-boot-timeout");
+    if (bootNotice) bootNotice.remove();
+    if (window.ShellV3 && !document.getElementById("chrx-shell") && typeof window.ShellV3.mount === "function") {
+      try { window.ShellV3.mount(); } catch (_) {}
+    }
+    window.__CHRX_READY__ = true;
+    const queuedId = window.__CHRX_EARLY_CLICK__;
+    if (queuedId) {
+      if (typeof window.__CHRX_RESTORE_EARLY_BTN__ === "function") {
+        try { window.__CHRX_RESTORE_EARLY_BTN__(); } catch (_) {}
+      }
+      window.__CHRX_EARLY_CLICK__ = null;
+      setTimeout(() => {
+        const el = document.getElementById(queuedId);
+        if (el) el.click();
+      }, 0);
+    }
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", () => setTimeout(markReadyAndReplay, 0), { once: true });
+  } else {
+    setTimeout(markReadyAndReplay, 0);
+  }
+})();

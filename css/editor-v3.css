@@ -1739,14 +1739,14 @@ html[data-skin="classic"] .chrx-shell .chrx-editor:not(.chrx-editor--focus) .chr
 }
 
 /* Block L1: dark-mode button & skin-toggle contrast */
-:root[data-theme="dark"] .chrx-shell .chrx-btn:not(.chrx-btn--primary),
-:root[data-theme="dark"] .chrx-hero .chrx-btn:not(.chrx-btn--primary) {
+:root[data-theme="dark"] .chrx-shell .chrx-btn:not(.chrx-btn--primary):not(.chrx-btn--danger),
+:root[data-theme="dark"] .chrx-hero .chrx-btn:not(.chrx-btn--primary):not(.chrx-btn--danger) {
   background: var(--chrx-bg-tile, #2c2c2e) !important;
   color: var(--chrx-fg, #f5f5f7) !important;
   border-color: var(--chrx-line, rgba(255,255,255,0.14)) !important;
 }
-:root[data-theme="dark"] .chrx-shell .chrx-btn:not(.chrx-btn--primary):hover,
-:root[data-theme="dark"] .chrx-hero .chrx-btn:not(.chrx-btn--primary):hover {
+:root[data-theme="dark"] .chrx-shell .chrx-btn:not(.chrx-btn--primary):not(.chrx-btn--danger):hover,
+:root[data-theme="dark"] .chrx-hero .chrx-btn:not(.chrx-btn--primary):not(.chrx-btn--danger):hover {
   background: #3a3a3c !important;
 }
 :root[data-theme="dark"] .chrx-shell #editor-toggle-skin,
