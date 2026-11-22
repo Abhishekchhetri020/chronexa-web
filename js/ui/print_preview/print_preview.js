@@ -468,6 +468,10 @@ import { checkPage } from "./fit_check.js";
 
   function openPreview() {
     if (!APP.school) { notify("Open a timetable first.", "error"); return; }
+    if (!(APP.school.lessons && APP.school.lessons.length) && !(APP.school.cards && APP.school.cards.length)) {
+      notify("Nothing to print yet — add lessons and build your timetable first.", "warn");
+      return;
+    }
     ensureOverlay();
     const shell = overlay.querySelector(".chrx-preview-shell");
     shell.innerHTML = "";

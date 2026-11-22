@@ -881,8 +881,15 @@ import "./dialog_shell.js";
         { label:null, control:cardPreview },
       ],
       onSave:()=>{
-        if (!draft.subjectId) { fSubj.focus(); return; }
-        if (!draft.classIds.length) { return; }
+        if (!draft.subjectId) {
+          fSubj.focus();
+          window.APP?.toast?.("Choose a subject before saving this lesson.", "warn");
+          return;
+        }
+        if (!draft.classIds.length) {
+          window.APP?.toast?.("Pick at least one class before saving this lesson.", "warn");
+          return;
+        }
 
         // Sync teacher/class sets to draft
         draft.teacherIds = Array.from(teacherSet);
