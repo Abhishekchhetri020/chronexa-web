@@ -1794,4 +1794,50 @@ html[data-skin="classic"] .chrx-shell .chrx-editor:not(.chrx-editor--focus) .chr
     max-width: 100%;
     box-sizing: border-box;
   }
+  .chrx-shell {
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-areas: "topbar" "main" "status" !important;
+  }
+  .chrx-shell .chrx-wordmark { display: none !important; }
+  .chrx-shell:not(.is-side-hidden) .chrx-sidebar {
+    position: fixed;
+    top: 52px;
+    left: 0;
+    bottom: 0;
+    width: 240px;
+    max-width: 80vw;
+    z-index: 60;
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.28);
+  }
+  .chrx-shell .chrx-main {
+    width: 100%;
+    max-width: 100vw;
+    padding-left: 8px;
+    padding-right: 8px;
+    box-sizing: border-box;
+  }
+  .chrx-shell .chrx-focus-boardbar {
+    grid-template-columns: auto minmax(0, 1fr) auto !important;
+    gap: 6px;
+    padding: 8px;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  .chrx-shell .chrx-focus-boardbar__picker,
+  .chrx-shell .chrx-focus-boardbar__picker select {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .chrx-shell .chrx-focus-boardbar__overview {
+    grid-column: 1 / -1;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  .chrx-shell .chrx-overview-bar {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
 }

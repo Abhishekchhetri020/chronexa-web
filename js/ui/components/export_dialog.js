@@ -81,7 +81,7 @@ import "../io/export_png.js";
     },
       el("div", null,
         el("h3", { style: "margin:0;font-size:16px;font-weight:600;color:#f8fafc;font-family:var(--chrx-font-sans,-apple-system,BlinkMacSystemFont,sans-serif);display:flex;align-items:center;gap:8px;" },
-          el("span", null, "📤"),
+          window.ChrxIcons ? window.ChrxIcons.node("export", 16) : null,
           "Export Timetable"),
         el("div", { style: "color:#94a3b8;font-size:12px;margin-top:2px;" },
           school.schoolName || "Chronexa Timetable")),

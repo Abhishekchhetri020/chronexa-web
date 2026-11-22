@@ -176,9 +176,11 @@ const DAYS_SHORT = ["Mon","Tue","Wed","Thu","Fri","Sat"];
       return;
     }
 
-    const safe = (s.schoolName || "chronexa").replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "chronexa";
+    const _raw = (s.schoolName || "").trim();
+    const _isPh = !_raw || /^(classic timetable|asc timetables|untitled|\(school\))/i.test(_raw);
+    const safe = (_isPh ? (s._isDemo ? "Sample-school" : "Chronexa-timetable") : _raw).replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "Chronexa-timetable";
     const scopeSafe = String(scopeLabel).replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "all";
-    const fname = `${safe}-${scopeSafe}.ics`;
+    const fname = `${safe}-${scopeSafe}-${new Date().toISOString().slice(0, 10)}.ics`;
 
     const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
     const url  = URL.createObjectURL(blob);

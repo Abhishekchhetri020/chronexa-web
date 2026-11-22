@@ -313,8 +313,9 @@ import "./backend_client.js";
     const cards    = (school.cards    && school.cards.length)    || c.cards    || 0;
     let conflicts = 0;
     try {
-      if (global.Verifier && typeof global.Verifier.verify === "function") {
-        conflicts = global.Verifier.verify(school).filter((v) => v && v.severity === "hard").length;
+      const VPro = global.VerificationPro || global.VerificationPanelPro;
+      if (VPro && typeof VPro.countHardConflicts === "function") {
+        conflicts = VPro.countHardConflicts(school) || 0;
       }
     } catch (_) {}
     sum.innerHTML = "";

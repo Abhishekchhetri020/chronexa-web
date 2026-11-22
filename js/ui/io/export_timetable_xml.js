@@ -383,9 +383,12 @@ import "../ribbon/topbar.js";
     } else {
       xml = exportSynthesized(school);
     }
-    const base = (school._meta?.sourceFilename || school.schoolName || "chronexa").replace(/\.xml$/i, "");
-    downloadBlob(xml, base + "-export.xml");
-    notify("Exported " + base + "-export.xml");
+    const _raw = (school.schoolName || "").trim();
+    const _isPh = !_raw || /^(classic timetable|asc timetables|untitled|\(school\))/i.test(_raw);
+    const base = (_isPh ? (school._isDemo ? "Sample-school" : "Chronexa-timetable") : _raw).replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "Chronexa-timetable";
+    const fname = `${base}-${new Date().toISOString().slice(0, 10)}-export.xml`;
+    downloadBlob(xml, fname);
+    notify("Exported " + fname);
   }
 
   window.addEventListener("app:export-timetable-xml", exportTimetableXml);
