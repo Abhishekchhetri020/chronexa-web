@@ -115,7 +115,7 @@ import "./planner_model.js";
     const panel = el("div", { class: "chrx-sub-panel" });
 
     panel.appendChild(el("header", { class: "chrx-sub-head" },
-      el("h2", null, "Substitution planner"),
+      el("h2", { style: "font-family:var(--chrx-font-sans,-apple-system,BlinkMacSystemFont,sans-serif);font-weight:700;letter-spacing:-0.02em" }, "Substitution planner"),
       el("nav", { class: "chrx-sub-tabs" },
         el("button", { class: "chrx-sub-tab is-active", "data-tab": "absence",
           onclick: () => renderTab("absence") }, "1. Absent teachers"),

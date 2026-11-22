@@ -802,7 +802,22 @@ import "./start_screen.js";
     wireLang();
     wireXmlUpload();
     applyStaticLabels();
+    if (window.ShellV3 && !document.getElementById("chrx-shell") && typeof window.ShellV3.mount === "function") {
+      try { window.ShellV3.mount(); } catch (_) {}
+    }
     showStep(1);
+    window.__CHRX_READY__ = true;
+    if (window.__CHRX_EARLY_CLICK__) {
+      const queuedId = window.__CHRX_EARLY_CLICK__;
+      window.__CHRX_EARLY_CLICK__ = null;
+      setTimeout(() => {
+        const el = document.getElementById(queuedId);
+        if (el) {
+          el.removeAttribute("aria-busy");
+          el.click();
+        }
+      }, 0);
+    }
   }
 
   function escapeHtml(s) {

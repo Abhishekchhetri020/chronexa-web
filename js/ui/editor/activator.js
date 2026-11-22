@@ -50,6 +50,11 @@ import { lessonMatchesFilter } from "./view_filter.js";
     if (needsSetupHero(APP.school)) {
       renderEmptyHero(editorRoot);
       pendingRoot.innerHTML = `<div class="p-3 text-sm text-slate-500 text-center">Cards will appear here once you add lessons.</div>`;
+      const chip = document.getElementById("editor-unplaced-count");
+      if (chip) {
+        chip.textContent = "No lessons yet";
+        chip.classList.remove("is-pending", "is-conflict");
+      }
       activated = true;
       updatePendingCount();
       return;
@@ -145,12 +150,12 @@ import { lessonMatchesFilter } from "./view_filter.js";
           </header>
           ${readyBanner}
           <div class="chrx-hero__grid chrx-rise-stagger">
-            ${tile("📚", "1", "Subjects",   "Maths, Science, English, …",      "subjects")}
-            ${tile("👨‍🏫", "2", "Teachers",   "Names, abbreviations, colors",    "teachers")}
-            ${tile("👥", "3", "Classes",    "I-A, I-B, VIII-C …",              "classes")}
-            ${tile("🚪", "4", "Classrooms", "Optional · Lab, Library, Hall …", "classrooms", true)}
-            ${tile("📝", "5", "Lessons",    "Who teaches what, how often",     "lessons")}
-            ${tile("⚡", "6", "Generate",   "Auto-place lessons & print",      "_generate")}
+            ${tile('<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>', "1", "Subjects",   "Maths, Science, English, …",      "subjects")}
+            ${tile('<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>', "2", "Teachers",   "Names, abbreviations, colors",    "teachers")}
+            ${tile('<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>', "3", "Classes",    "I-A, I-B, VIII-C …",              "classes")}
+            ${tile('<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>', "4", "Classrooms", "Optional · Lab, Library, Hall …", "classrooms", true)}
+            ${tile('<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>', "5", "Lessons",    "Who teaches what, how often",     "lessons")}
+            ${tile('<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>', "6", "Generate",   "Auto-place lessons & print",      "_generate")}
           </div>
           <form class="chrx-hero-quickadd chrx-fade-in" data-quick-add>
             <strong>Quick add</strong>

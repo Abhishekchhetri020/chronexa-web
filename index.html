@@ -22,6 +22,8 @@
      tags are gone. -->
 <style>
   body.chrx-landing-active { background: #000; }
+  /* L0: Never flash the legacy header or step-tab nav before shell_v3 mounts */
+  body > header, body > nav, .chrx-main > header, .chrx-main > nav { display: none !important; }
 </style>
 
 <!-- Excel + gzip libs for ribbon Export/Snapshot (loaded once) -->
@@ -294,7 +296,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
          doesn't cost the grid vertical space — see relocateEditorTools().
          It stays here as the fallback home if the topbar slot isn't present. -->
     <div id="editor-quick-tools" class="flex items-center gap-1.5 flex-wrap mb-1" style="gap:6px;">
-      <span id="editor-unplaced-count" style="white-space:nowrap;">— unplaced</span>
+      <span id="editor-unplaced-count" style="white-space:nowrap;">No lessons yet</span>
       <button id="editor-lesson-grid" type="button" data-icon="table" title="Open the class × subject lesson matrix"><span class="chrx-tool__label">Lessons</span></button>
       <button id="editor-perspective" type="button" data-icon="rows" title="Rows: class / teacher / room / subject / student / supervision"><span class="chrx-tool__label">By Class</span></button>
       <button id="editor-color-by" type="button" data-icon="palette" title="Card colour: subject / teacher / class / room"><span class="chrx-tool__label">Colour: Subject</span></button>
@@ -370,7 +372,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
 <!-- ─────────────────────── SCRIPTS ─────────────────────── -->
 <!-- Bump APP_VER on every deploy so the browser refetches the JS bundle -->
-<script>window.APP_VER = "20261122-p280-j2-first-run";</script>
+<script>window.APP_VER = "20261122-p281-l1-ui-polish";</script>
 <!-- Nuclear SW migration: if an old cache-first SW is still controlling,
      unregister it and reload to pick up the new network-first SW. -->
 <script>
@@ -553,5 +555,21 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
 <!-- Appearance (light / dark) is wired in js/ui/main.js (v3 studio). -->
 
+<script>
+  // L0: Queue early clicks on landing CTAs before the module bundle & ShellV3 finish booting.
+  (function () {
+    if (window.__CHRX_EARLY_WIRED__) return;
+    window.__CHRX_EARLY_WIRED__ = true;
+    document.addEventListener("click", function (e) {
+      if (window.__CHRX_READY__) return;
+      var btn = e.target && e.target.closest && e.target.closest("#cta-build-new, #cta-landing-demo, [data-closing-demo], #cta-load-demo");
+      if (!btn) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      window.__CHRX_EARLY_CLICK__ = btn.id || "cta-landing-demo";
+      btn.setAttribute("aria-busy", "true");
+    }, true);
+  })();
+</script>
 </body>
 </html>
