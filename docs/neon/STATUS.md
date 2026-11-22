@@ -18,3 +18,6 @@
 2026-11-22 14:05 | C2 | RELEASED 20261122-p271-wasm-multi-week-term | WASM CP-SAT multi-week/term slice support + 0-based availability mask fix (merge 427f227), 587 unit + 141 e2e (1 skip), live=APP_VER = "20261122-p271-wasm-multi-week-term"
 2026-11-22 14:05 | C2 | DONE | Wrote docs/neon/BLOCK_C2.md; REA clean run (435 nodes / 848 edges) in round5/rea_ttonline.json and round5/multi-week-term.md
 2026-11-22 14:30 | E | STARTED | Full QA pass after p266-p271 (E0-E4)
+2026-11-22 15:53 | E | RELEASED 20261122-p272-qa-weeks-terms-mobile | E0 docs tracked + E-03 weeksDefs/termsDefs sync & XML round-trip + E-04 390px mobile overflow fix (merge 56a8524), 587 unit + 143 e2e (1 skip), live=APP_VER = "20261122-p272-qa-weeks-terms-mobile"
+2026-11-22 15:53 | E | DONE | Wrote docs/neon/BLOCK_E.md & logged E-01..E-04 in docs/neon/BUGS.md (E-01/E-02 queued for Block F)
+2026-11-22 17:55 | F | STARTED | F0 reload-after-import persistence + E-01 WASM Phase 2 robustness + E-02 non-negative soft score

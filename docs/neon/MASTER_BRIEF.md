@@ -165,3 +165,17 @@ errors in plain words. Walk it as a stranger and record the time.
 **K. Student/seminar enrolment** (unlocks 12 aSc conditions) — study aSc's behaviour with the `rea`
 connector (read-only), design, implement in steps with tests.
 Out of scope until Abhishek decides: HF/cloud backend deploy, payments/pricing, accounts, legal pages.
+
+## Claude's review of Block E (2026-11-22 ~16:00)
+E-03/E-04 fixes and the 29-card explanation look right; gate re-run by Claude in progress.
+**Priority change:** "reload right after importing LATEST.xml → hasSchool:false" is DATA LOSS for a
+real user (import a school, refresh, it's gone). Fix it FIRST, as **F0**, before E-01/E-02: an imported
+or newly created school must survive reload/close-reopen with no edit. Regression test through the UI.
+
+## Rule (2026-11-22 16:20): commands ONLY through @fleet-shell run_command
+fleet-shell runs without Allow cards. Gemini's built-in folder/shell tool ("Desktop +4") asks Abhishek
+to approve every command and blocked you for 20+ minutes on a simple git checkout. Never use it.
+Correction (16:35): the card came from fleet-shell after all, because the call was sent with
+destructiveHint: true. When calling fleet-shell, leave destructiveHint false/unset. Abhishek chose
+no confirmation cards for fleet-shell; branch, commit, build, test and push are routine here. The
+hard rules above (no force-push, no deploy of the backend, EduPage read-only, no mail) still apply.

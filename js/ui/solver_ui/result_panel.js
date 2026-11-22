@@ -107,10 +107,18 @@ import "./progress_modal.js";  // provides SolverUI.expectedCardCount
       el("div", { class: "csu-result__num" }, fmt(s.hardConflicts)),
       el("div", { class: "csu-result__lbl" }, "hard conflicts"),
     );
+    // E-02: softScore is internally a negated penalty sum (<= 0); display a
+    // clean non-negative penalty count to users.
+    const displayPenalty = (typeof s.softScore === "number" && Number.isFinite(s.softScore))
+      ? Math.max(0, Math.round(s.softScore < 0 ? -s.softScore : s.softScore))
+      : 0;
     refs.soft.append(
-      el("div", { class: "csu-result__num" }, fmt(s.softScore)),
+      el("div", { class: "csu-result__num" }, fmt(displayPenalty)),
       el("div", { class: "csu-result__lbl" }, "soft penalties"),
     );
+    if (s.phase2Note) {
+      refs.soft.title = s.phase2Note;
+    }
   }
 
   function renderPerSlotGrid(result, school) {

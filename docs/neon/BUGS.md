@@ -80,19 +80,21 @@ Audited on built preview (`http://localhost:4173/`) using Playwright + real Chro
 
 ## Block E — Full QA Pass After p266–p271 (2026-11-22)
 
-### E-01 (High — Deferred to Block F per backlog)
+### E-01 (High — FIXED in `20261122-p273-solver-robustness-autosave`)
 - **Title:** WASM CP-SAT `Aborted()` / `Uncaught [object WebAssembly.Exception]` during Phase 2 extended soft optimization on large real school (`LATEST.xml`)
 - **Steps:** Import `~/.mempalace/gdgpsd_data/timetable/LATEST.xml` (66 teachers, 34 classes, 537 lessons, 1,441 schedulable cards / 1,470 period-slots) -> Generate -> keep default (`Best` / `auto`, `best` preset) or `Generate` -> `wasm` (`best` preset) -> wait for Phase 2 (`EXTENDED SOFT: terms added= 69090`).
 - **Expected:** Solver completes Phase 2 (or skips/caps cleanly) with 0 `pageerror`s and 0 `Aborted()` crashes.
 - **Actual:** At ~138s during Phase 2, `cp_sat_runtime.js` logs `Aborted()` and throws `Uncaught [object WebAssembly.Exception]` (4–8 `pageerror` events) before recovering/falling back to deliver `1,441 / 1,441` placed (`0` hard conflicts). Note: at 90s `balanced` preset (`wasm`), Phase 2 did not abort (`1,433 / 1,441` placed, `0` hard conflicts, `0` pageerrors).
-- **Status:** Logged for Block F (`Solver robustness`).
+- **Fix (Block F):** Skipped extended-soft model expansion on large WASM models (`cards.length > 1000` unless `options.extSoft === true`), capped Phase 2 workers to `<= 2` and Phase 2 wall time to `<= 35s` on large models in `js/solver/wasm/cp_sat_solver.mjs`, and attached `stats.phase2Note`.
+- **Verified on `LATEST.xml` (default Generate):** `1,441 / 1,441` placed, `0` unplaced, `0` hard conflicts, `PHASE 1 OPTIMAL (61.74s)` -> `PHASE 2 FEASIBLE (35.03s, 23,016 terms)`, total `116.53s`, `0 pageerror`, `0 Aborted()`.
 
-### E-02 (Medium — Deferred to Block F per backlog)
+### E-02 (Medium — FIXED in `20261122-p273-solver-robustness-autosave`)
 - **Title:** Solver result panel displays large negative "SOFT PENALTIES" values
 - **Steps:** Run Generate on `LATEST.xml` or the Demo school and inspect the result panel tiles.
 - **Expected:** Quality/penalty metric is 0-or-positive (or presented as a clear quality score).
 - **Actual:** Displays `-693,100 SOFT PENALTIES` (`auto` on `LATEST.xml`), `-671,700 SOFT PENALTIES` (`wasm` balanced), `-404,200 SOFT PENALTIES` (`browser` balanced / `cloud` fallback), and `-489,460 SOFT PENALTIES` (demo school).
-- **Status:** Logged for Block F (`Solver robustness`).
+- **Fix (Block F):** Converted internally negated `softScore` (`<= 0`) to a non-negative integer penalty display in `js/ui/solver_ui/result_panel.js` and `js/ui/solver_ui/progress_modal.js` (`33,600 SOFT PENALTIES` on `LATEST.xml`).
+- **Regression test:** `e2e/block-f-regression.spec.js` (`E-02`).
 
 ### E-03 (High — FIXED in `20261122-p272-qa-weeks-terms-mobile`)
 - **Title:** Week/Term patterns created or edited in `EntityWeeks` / `EntityTerms` dialogs do not sync `school.weeksDefs` / `school.termsDefs` and are dropped on template-based aSc XML export
@@ -109,3 +111,11 @@ Audited on built preview (`http://localhost:4173/`) using Playwright + real Chro
 - **Actual (before fix):** `scrollWidth` reached `641px` (`HEADER.chrx-topbar` / `DIV.chrx-topbar-editor-tools` stretched past 390px and `.chrx-ent-dialog` lacked mobile stacking rules).
 - **Fix:** Added `@media (max-width: 640px)` responsive stacking in `css/entities.css` and `@media (max-width: 767px)` `.chrx-shell .chrx-topbar` wrapping + `max-width: 100vw; overflow-x: clip` in `css/editor-v3.css` + `css/editor.css`.
 - **Regression test:** `e2e/block-e-regression.spec.js` (`E-04` — verifies `scrollWidth <= clientWidth + 4` across `EntityClasses`, `EntityWeeks`, `EntityTerms`, `EntityLessons` at `390x844`).
+
+### F0 (High — FIXED in `20261122-p273-solver-robustness-autosave`)
+- **Title:** Reloading immediately after importing or creating a school (with no edits) drops the user to an empty start screen (`hasSchool: false`)
+- **Steps:** Import `LATEST.xml` (or any XML) or create a blank school -> reload the page without making edits.
+- **Expected:** Imported or newly created school is preserved and automatically restored into the editor on reload.
+- **Actual (before fix):** `auto_save.js` never auto-restored on boot (only showed a delayed 1.5s floating card whose Restore button dispatched `app:school-loaded` only on `window`, not `document`) and serialized derived `_idx` into `localStorage` without an IndexedDB quota fallback.
+- **Fix:** Updated `js/ui/components/auto_save.js` to strip derived `_idx`, persist immediately on `app:school-loaded` with an IndexedDB fallback (`chronexa-autosave-v1`) if `localStorage` quota is exceeded, and auto-restore non-demo (imported/created/edited) schools on boot (dispatching `app:school-loaded` on both `window` and `document`). Untouched demo loads still land on the start screen on reload.
+- **Regression tests:** `e2e/block-f-regression.spec.js` (`F0` imported XML + newly created blank school) and standalone `LATEST.xml` reload check (`1,470` cards restored).

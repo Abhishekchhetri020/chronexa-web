@@ -719,6 +719,7 @@ export async function buildAndSolve(school, options = {}) {
   // Deferred: called AFTER phase 1. Phase 1 solves the pure-hard model (soft
   // aux vars/constraints only add propagation load without pruning placement);
   // phase 2 mutates the same model with the floor + soft objective.
+  let phase2Note = null;
   const buildSoftModel = () => {
     if (!soft) return;
     const W_SPREAD = 1000, W_B2B = 200;
@@ -838,7 +839,16 @@ export async function buildAndSolve(school, options = {}) {
     //    no equivalent decision to bias.
     //  - koncitNaraz ("classes end together"): cross-class variance of last
     //    periods — quadratic shape, poor linear fit; revisit if user demand.
-    if (options.extSoft !== false) {
+    // E-01 (Block F): On large schools (>1000 cards), the full extended-soft
+    // family adds ~69k auxiliary terms/constraints that can exhaust Emscripten's
+    // WASM heap during Phase 2 and throw Aborted() / WebAssembly.Exception.
+    // Skip extended-soft cleanly unless explicitly forced, keeping core soft polish.
+    const skipExtSoftForMemory = cards.length > 1000 && options.extSoft !== true;
+    if (skipExtSoftForMemory) {
+      phase2Note = `Large school (${cards.length} cards): used core soft polish to stay within browser memory`;
+      console.error('EXTENDED SOFT: skipped on large model (cards=', cards.length, ') to prevent WASM OOM');
+    }
+    if (options.extSoft !== false && !skipExtSoftForMemory) {
       const S = 20; // JS-weight → CP-SAT-weight scale
       const jw = jm.weights; // Int32Array, indexes match csp_solver softScore
       const W = {
@@ -1471,8 +1481,10 @@ export async function buildAndSolve(school, options = {}) {
     // OPTIMAL leaves more polish time). 0.6 (was 0.9) leaves headroom for
     // the un-metered soft-model build + extraction so the caller's 1.3×
     // watchdog never fires mid-polish.
-    solver2.parameters.maxTimeInSeconds = Math.max(5, (timeLimitSec - elapsed) * 0.6);
-    solver2.parameters.numSearchWorkers = numWorkers;
+    const p2Cap = cards.length > 1000 ? 35 : Infinity;
+    solver2.parameters.maxTimeInSeconds = Math.min(p2Cap, Math.max(5, (timeLimitSec - elapsed) * 0.6));
+    // Cap Phase 2 workers on large models so parallel model clones stay within WASM RAM
+    solver2.parameters.numSearchWorkers = cards.length > 1000 ? Math.min(numWorkers, 2) : numWorkers;
     solver2.parameters.randomSeed = seed;
     let st2 = null;
     try {
@@ -1540,6 +1552,7 @@ export async function buildAndSolve(school, options = {}) {
       cpStatus: status,
       objective: nPlaced,
       wallSec: Math.round(elapsed * 100) / 100,
+      ...(phase2Note ? { phase2Note } : {}),
     },
     violations: [],
   };
