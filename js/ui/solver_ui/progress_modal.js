@@ -171,7 +171,8 @@ import "./backend_client.js";
     const tHard    = tile(tilesKey, "csu-stat-hard",    "Left to place", ic("lesson", 15));
     const tElapsed = tile(tilesKey, "csu-stat-elapsed", "Elapsed time",  ic("clock", 15));
     // Plain-English live details inside collapsible "Show details"
-    const tSoft    = tile(tilesSec, "csu-stat-soft",    "Balance",       ic("layers", 14));
+    const tSoft    = tile(tilesSec, "csu-stat-soft",    "Schedule quality", ic("layers", 14));
+    if (tSoft && tSoft.parentNode) tSoft.parentNode.style.display = "none";
     const tSpeed   = tile(tilesSec, "csu-stat-speed",   "Checks / sec",  ic("play", 14));
     const tIter    = tile(tilesSec, "csu-stat-iter",    "Tries",         ic("refresh", 14));
     const tStuck   = tile(tilesSec, "csu-stat-stuck",   "Current step",  ic("info", 14));

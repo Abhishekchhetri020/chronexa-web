@@ -285,7 +285,9 @@ export async function exportPng(scope = { type: "all" }) {
     tempContainer.remove();
   }
 
-  const base = (school._meta?.sourceFilename || school.schoolName || "chronexa").replace(/\.xml$/i, "").replace(/[^\w.-]+/g, "-");
+  const _raw = (school.schoolName || "").trim();
+  const _isPh = !_raw || /^(classic timetable|asc timetables|untitled|\(school\))/i.test(_raw);
+  const base = (_isPh ? (school._isDemo ? "Sample-school" : "Chronexa-timetable") : _raw).replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "Chronexa-timetable";
   let suffix = "timetable";
   if (scopeType === "class" && scopeId) {
     const c = (school.classes || []).find(x => x.id === scopeId);
@@ -298,7 +300,7 @@ export async function exportPng(scope = { type: "all" }) {
     suffix = (r?.short || r?.name || scopeId).replace(/[^\w.-]+/g, "-");
   }
 
-  const filename = `${base}-${suffix}.png`;
+  const filename = `${base}-${suffix}-${new Date().toISOString().slice(0, 10)}.png`;
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

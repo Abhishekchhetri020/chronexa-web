@@ -164,7 +164,9 @@ ${body}
     const school = APP.school;
     if (!school) { notify("Open a timetable first.", "error"); return; }
     const html = buildHtmlExport(school, scope);
-    const base = (school._meta?.sourceFilename || school.schoolName || "chronexa").replace(/\.xml$/i, "");
+    const _raw = (school.schoolName || "").trim();
+    const _isPh = !_raw || /^(classic timetable|asc timetables|untitled|\(school\))/i.test(_raw);
+    const base = (_isPh ? (school._isDemo ? "Sample-school" : "Chronexa-timetable") : _raw).replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "Chronexa-timetable";
     const scopeType = typeof scope === "string" ? scope : (scope && scope.type) || "all";
     const scopeId = typeof scope === "object" ? scope.id : null;
     let suffix = "";
@@ -175,7 +177,7 @@ ${body}
       const t = (school.teachers || []).find(x => x.id === scopeId);
       suffix = "-" + (t?.short || t?.name || scopeId).replace(/[^\w.-]+/g, "-");
     }
-    const fname = base + suffix + ".html";
+    const fname = `${base}${suffix}-${new Date().toISOString().slice(0, 10)}.html`;
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);

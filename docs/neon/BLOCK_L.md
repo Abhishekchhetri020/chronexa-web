@@ -119,3 +119,27 @@
 - `npx vitest run`: **587 / 587 passed** (68 files, 0 failed)
 - `npx vite build`: **succeeded** (`1.98 s`)
 - `npx playwright test --config pw.chrome.config.local.mjs`: **171 passed, 1 skipped** (known real-XML ranker skip), **0 failed** (`14.3 m`)
+
+## Batch L5 — Output Screens & p285 Leftovers (`20261123-p286-l5-output-screens`)
+
+### What changed
+1. **p285 Leftover (a) — 390 px `"All classes"` zero right-edge overflow (`css/editor-v3.css`):**
+   - Collapsed `.chrx-shell` to single-column (`minmax(0, 1fr)`) under `@media (max-width: 767px)`, turning an open `.chrx-sidebar` into a fixed overlay drawer instead of pushing `.chrx-main` off-screen, and constrained `.chrx-focus-boardbar`, `.chrx-focus-boardbar__overview`, and `.chrx-overview-bar` to `100%` width (`box-sizing: border-box`, `grid-template-columns: auto minmax(0, 1fr) auto`).
+2. **p285 Leftover (b) — Removed unexplained Balance number in Generate `"Show details"` (`js/ui/solver_ui/progress_modal.js`):**
+   - Hid the opaque `#csu-stat-soft` tile so `"Show details"` displays only plain-English progress details (`Current step`, `Tries`, `Checks / sec`, `Current pass`, `Currently placing`, `Currently stuck`).
+3. **p285 Leftover (c) — Real conflict count in Pre-launch & Result (`js/ui/solver_ui/prelaunch_dialog.js`, `js/ui/solver_ui/result_panel.js`):**
+   - Switched both dialogs from the missing `global.Verifier` reference to the real `global.VerificationPro.countHardConflicts(school)`. Pre-launch now shows `"951 currently on the grid, 4 conflicts"`, and Result explains `"Finished in Xs · The 4 earlier conflicts are resolved"` when earlier conflicts are cleared.
+4. **Export filenames & header icon (`js/ui/components/export_dialog.js`, `js/ui/io/export_{excel,csv,ics,html,timetable_xml,png}.js`):**
+   - Replaced `📤` emoji in the Export dialog header with `ChrxIcons.node("export", 16)`.
+   - Standardized all 6 file exporters (`.xlsx`, `.csv`, `.ics`, `.html`, `-export.xml`, `.png`) to include the sanitized school name (never placeholder/source `.xml` names) and ISO date (`YYYY-MM-DD`).
+5. **Dark-mode Print Preview prints crisp white paper (`css/style.css`):**
+   - Added `@media print` overrides for `:root[data-theme="dark"]` on `.chrx-preview-doc`, `.chrx-preview-page`, table headers, breaks, and pivot cells so dark-mode preview always prints white paper with dark ink.
+6. **School Settings immediate persistence (`js/ui/components/school_settings_dialog.js`):**
+   - Called `AutoSave.save({ autoRestore: true })` immediately on save so changes to school name and print defaults survive an immediate page reload.
+7. **E2E tests & screenshots (`e2e/block-l5-output-screens.spec.js`, `docs/neon/ui-shots/l5/`):**
+   - Added `L5-1` (real sidebar click → Export all 6 formats, verifying `bytes > 100`, school name + date in filename, no `📤` emoji), `L5-2` (real sidebar click → Substitutions mark absent → apply cover → dated grid), and `L5-3` (real topbar/sidebar clicks across Generate leftovers, dark-mode Print Preview `@media print` white paper, 390 px `"All classes"` right-edge check, Version History, Publish, and School Settings reload persistence) + 6 screenshots in `docs/neon/ui-shots/l5/`.
+
+### Full Release Gate (`p286`)
+- `npx vitest run`: **587 / 587 passed** (68 files, 0 failed)
+- `npx vite build`: **succeeded** (`5.81 s`)
+- `npx playwright test --config pw.chrome.config.local.mjs`: **174 passed, 1 skipped** (known real-XML ranker skip), **0 failed** (`23.9 m`)

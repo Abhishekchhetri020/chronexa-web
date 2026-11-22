@@ -330,8 +330,12 @@ function need(name) {
   }
 
   function fileName(s, kind) {
-    const base = (s._meta?.sourceFilename || s.schoolName || "chronexa").replace(/\.xml$/i, "");
-    return base + "-" + kind + ".xlsx";
+    const raw = (s && s.schoolName || "").trim();
+    const isPh = !raw || /^(classic timetable|asc timetables|untitled|\(school\))/i.test(raw);
+    const name = isPh ? (s && s._isDemo ? "Sample-school" : "Chronexa-timetable") : raw;
+    const base = name.replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "Chronexa-timetable";
+    const date = new Date().toISOString().slice(0, 10);
+    return `${base}-${kind}-${date}.xlsx`;
   }
 
   window.addEventListener("app:export-excel", (e) => {

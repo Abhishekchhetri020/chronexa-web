@@ -352,3 +352,31 @@ table.preview tr:nth-child(even) { background: var(--chrx-bg-tile); }
    banner (:empty no longer matches) hit-testing stays normal. Mirrors the
    landing rule in landing-redesign.css, which hides it while Start is on. */
 #error-slot:empty { pointer-events: none; }
+
+/* L5: dark-mode print preview prints white paper */
+@media print {
+  :root[data-theme="dark"],
+  :root[data-theme="dark"] body,
+  :root[data-theme="dark"] .chrx-preview-doc,
+  :root[data-theme="dark"] .chrx-preview-page {
+    background: #ffffff !important;
+    color: #111111 !important;
+    border-color: #cbd5e1 !important;
+  }
+  :root[data-theme="dark"] .chrx-preview-th-corner,
+  :root[data-theme="dark"] .chrx-preview-th-day,
+  :root[data-theme="dark"] .chrx-preview-th-period,
+  :root[data-theme="dark"] .chrx-preview-th-break,
+  :root[data-theme="dark"] .chrx-print-th-corner,
+  :root[data-theme="dark"] .chrx-print-th-day,
+  :root[data-theme="dark"] .chrx-print-th-period,
+  :root[data-theme="dark"] .chrx-print-th-break,
+  :root[data-theme="dark"] .chrx-print-td-break {
+    background: #f1f5f9 !important;
+    color: #0f172a !important;
+  }
+  :root[data-theme="dark"] .chrx-pivot-datacell {
+    background: #ffffff !important;
+    color: #0f172a !important;
+  }
+}

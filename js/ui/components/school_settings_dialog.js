@@ -209,6 +209,9 @@ import "../entities/weeks.js";
         if (title) title.textContent = school.schoolName;
         // Fire entity:changed so School Hub refreshes
         document.dispatchEvent(new CustomEvent("entity:changed", { detail: { source: "school-settings-dialog" } }));
+        if (window.AutoSave && typeof window.AutoSave.save === "function") {
+          try { window.AutoSave.save({ autoRestore: true }); } catch (_) {}
+        }
       },
     });
   }

@@ -96,7 +96,7 @@ import "./progress_modal.js";  // provides SolverUI.expectedCardCount
     const solverHard = (result && result.stats && result.stats.hardConflicts) || 0;
     if (!school || !result || !Array.isArray(result.assignment)) return solverHard;
     try {
-      const VPro = global.VerificationPanelPro;
+      const VPro = global.VerificationPro || global.VerificationPanelPro;
       if (VPro && typeof VPro.countHardConflicts === "function") {
         const previewCards = mergePreservedCards(school, assignmentToCards(result.assignment));
         const previewSchool = Object.assign({}, school, { cards: previewCards });
@@ -670,16 +670,23 @@ import "./progress_modal.js";  // provides SolverUI.expectedCardCount
     const durSec = (state.result.stats && state.result.stats.durationMs) ? Math.max(1, Math.round(state.result.stats.durationMs / 1000)) : 0;
     const verifiedHard = computeVerifiedClashes(state.school, state.result);
     let priorConflicts = typeof opts.priorConflicts === "number" ? opts.priorConflicts : -1;
-    if (priorConflicts < 0 && state.school && global.Verifier && typeof global.Verifier.verify === "function") {
+    if (priorConflicts < 0 && state.school) {
       try {
-        priorConflicts = global.Verifier.verify(state.school).filter((v) => v && v.severity === "hard").length;
+        const VPro = global.VerificationPro || global.VerificationPanelPro;
+        if (VPro && typeof VPro.countHardConflicts === "function") {
+          priorConflicts = VPro.countHardConflicts(state.school) || 0;
+        } else {
+          priorConflicts = 0;
+        }
       } catch (_) { priorConflicts = 0; }
     }
     const timePrefix = durSec ? `Finished in ${durSec}s` : "Finished";
     let conflictNote = "";
     if (state.mode !== "test") {
       if (priorConflicts > 0 && verifiedHard === 0) {
-        conflictNote = ` · All ${priorConflicts} previous ${priorConflicts === 1 ? "conflict" : "conflicts"} resolved`;
+        conflictNote = priorConflicts === 1
+          ? " · The earlier conflict is resolved"
+          : ` · The ${priorConflicts} earlier conflicts are resolved`;
       } else if (priorConflicts > verifiedHard && verifiedHard > 0) {
         conflictNote = ` · Conflicts reduced from ${priorConflicts} to ${verifiedHard}`;
       } else if (verifiedHard === 0) {
