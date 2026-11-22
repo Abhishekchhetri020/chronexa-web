@@ -1111,6 +1111,12 @@ window.Editor = (function () {
         });
       }
       const paintChip = () => {
+        if (!S || !(S.lessons || []).length) {
+          elc.textContent = "No lessons yet";
+          elc.classList.remove("is-pending", "is-conflict");
+          elc.title = "Add lessons to build your timetable";
+          return;
+        }
         const fmt = window.VerificationPro && window.VerificationPro.statusChipText;
         let text;
         if (typeof fmt === "function") {

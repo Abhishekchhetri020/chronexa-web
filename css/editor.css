@@ -851,3 +851,15 @@ body.chrx-body--resizing * {
 .chrx-hero__head-actions { margin-top: 12px; display: flex; justify-content: center; gap: 10px; }
 .chrx-hero-tile[data-next="true"] { border-color: var(--chrx-accent, #0b6e73); box-shadow: 0 0 0 2px var(--chrx-accent-bg, rgba(11,110,115,0.14)); }
 .chrx-hero__ready { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 12px 16px; margin-bottom: 16px; border-radius: 10px; background: var(--chrx-accent-soft, rgba(11,110,115,0.08)); border: 1px solid var(--chrx-accent-bg-strong, rgba(11,110,115,0.22)); font-size: 13.5px; color: var(--chrx-fg, #1d1d1f); }
+
+.chrx-hero-tile__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--chrx-accent-bg, rgba(13, 79, 84, 0.08));
+  color: var(--chrx-accent, #0d4f54);
+}
+.chrx-hero-tile__icon svg { display: block; width: 18px; height: 18px; }

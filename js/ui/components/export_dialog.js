@@ -24,7 +24,7 @@ import "../io/export_png.js";
     { id: "ics",   label: "iCalendar (.ics)",        icon: "📆", desc: "Subscribable calendar feed recurring weekly for an academic year." },
     { id: "html",  label: "Standalone Web Page (.html)", icon: "🌐", desc: "Self-contained print-friendly HTML timetable with zero dependencies." },
     { id: "xml",   label: "Classic XML (.xml)",      icon: "📄", desc: "Round-trip XML file compatible with classic timetabling software." },
-    { id: "png",   label: "PNG Image (.png)",         icon: "🖼", desc: "High-resolution timetable image rendered via SVG foreignObject." },
+    { id: "png",   label: "PNG Image (.png)",         icon: "🖼", desc: "High-resolution timetable image ready to share." },
     { id: "pdf",   label: "PDF / Print (.pdf)",      icon: "🖨", desc: "One-click print dialog set up for A4 landscape with zero app chrome." },
   ];
 
@@ -80,7 +80,7 @@ import "../io/export_png.js";
       style: "background:#1e293b;color:#f8fafc;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;",
     },
       el("div", null,
-        el("h3", { style: "margin:0;font-size:16px;font-weight:600;display:flex;align-items:center;gap:8px;" },
+        el("h3", { style: "margin:0;font-size:16px;font-weight:600;color:#f8fafc;font-family:var(--chrx-font-sans,-apple-system,BlinkMacSystemFont,sans-serif);display:flex;align-items:center;gap:8px;" },
           el("span", null, "📤"),
           "Export Timetable"),
         el("div", { style: "color:#94a3b8;font-size:12px;margin-top:2px;" },
@@ -111,8 +111,8 @@ import "../io/export_png.js";
       const isSelected = state.format === fmt.id;
       const card = el("label", {
         "data-testid": `chrx-export-format-${fmt.id}`,
-        style: `display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1.5px solid ${isSelected ? "#2563eb" : "#e2e8f0"};`
-          + `border-radius:8px;background:${isSelected ? "#eff6ff" : "#ffffff"};cursor:pointer;transition:all 0.15s ease;`,
+        style: `display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1.5px solid ${isSelected ? "var(--chrx-accent,#0d4f54)" : "#e2e8f0"};`
+          + `border-radius:8px;background:${isSelected ? "var(--chrx-accent-bg,rgba(13,79,84,0.08))" : "#ffffff"};cursor:pointer;transition:all 0.15s ease;`,
         onclick: (e) => {
           if (state.format !== fmt.id) {
             state.format = fmt.id;
@@ -153,8 +153,8 @@ import "../io/export_png.js";
       const isScopeDisabled = !scopeAllowed && sc.id !== "all";
       const scopeLabel = el("label", {
         "data-testid": `chrx-export-scope-${sc.id}`,
-        style: `display:flex;align-items:center;gap:6px;padding:6px 12px;border:1px solid ${isSelected ? "#2563eb" : "#cbd5e1"};`
-          + `border-radius:6px;background:${isSelected ? "#eff6ff" : "#fff"};cursor:${isScopeDisabled ? "not-allowed" : "pointer"};`
+        style: `display:flex;align-items:center;gap:6px;padding:6px 12px;border:1px solid ${isSelected ? "var(--chrx-accent,#0d4f54)" : "#cbd5e1"};`
+          + `border-radius:6px;background:${isSelected ? "var(--chrx-accent-bg,rgba(13,79,84,0.08))" : "#fff"};cursor:${isScopeDisabled ? "not-allowed" : "pointer"};`
           + `opacity:${isScopeDisabled ? "0.5" : "1"};font-size:13px;font-weight:500;`,
         onclick: (e) => {
           if (!isScopeDisabled && state.scope !== sc.id) {
@@ -244,7 +244,7 @@ import "../io/export_png.js";
         type: "button",
         "data-testid": "chrx-export-submit",
         class: "chrx-btn chrx-btn--primary",
-        style: "padding:8px 20px;border:0;border-radius:6px;background:#2563eb;color:#ffffff;font-size:13px;font-weight:600;cursor:pointer;",
+        style: "padding:8px 20px;border:0;border-radius:6px;background:var(--chrx-accent,#0d4f54);color:#ffffff;font-size:13px;font-weight:600;cursor:pointer;",
         disabled: state.busy ? "disabled" : null,
         onclick: async () => {
           await runExport();

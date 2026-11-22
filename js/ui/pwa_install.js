@@ -26,6 +26,9 @@ import "./state.js";
     if (isStandalone) return; // already installed
     // The published read-only viewer is for teachers/parents, not an app to install.
     if (new URLSearchParams(window.location.search).get("view") === "published") return;
+    // Never overlap the landing page or the empty-school Get Started checklist.
+    if (document.body.classList.contains("chrx-landing-active")) return;
+    if (document.querySelector(".chrx-hero")) return;
 
     const banner = document.createElement("div");
     banner.id = "chrx-pwa-banner";
@@ -41,7 +44,7 @@ import "./state.js";
 
     banner.innerHTML = `
       <div style="display:flex;align-items:start;gap:8px">
-        <span style="font-size:20px;line-height:1">⚡</span>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fde68a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;margin-top:2px" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
         <div style="flex:1">
           <div style="font-weight:600;color:#fde68a">Runs entirely on your computer</div>
           <div style="opacity:.8;font-size:12px;margin-top:2px">
@@ -50,7 +53,7 @@ import "./state.js";
         </div>
         <button id="chrx-pwa-close" style="background:none;border:0;color:#94a3b8;cursor:pointer;font-size:18px;line-height:1;padding:0 4px">×</button>
       </div>
-      ${installable() ? `<button id="chrx-pwa-install" style="background:#10b981;color:white;border:0;padding:6px 12px;border-radius:6px;font-weight:600;cursor:pointer;font-size:13px">📲 Install Chronexa</button>` : ""}
+      ${installable() ? `<button id="chrx-pwa-install" style="background:#10b981;color:white;border:0;padding:6px 12px;border-radius:6px;font-weight:600;cursor:pointer;font-size:13px">Install Chronexa</button>` : ""}
     `;
 
     document.body.appendChild(banner);
@@ -70,7 +73,7 @@ import "./state.js";
         const { outcome } = await deferredPrompt.userChoice;
         deferredPrompt = null;
         if (outcome === "accepted") banner.remove();
-        else installBtn.textContent = "📲 Install Chronexa";
+        else installBtn.textContent = "Install Chronexa";
       };
     }
   }
