@@ -806,18 +806,6 @@ import "./start_screen.js";
       try { window.ShellV3.mount(); } catch (_) {}
     }
     showStep(1);
-    window.__CHRX_READY__ = true;
-    if (window.__CHRX_EARLY_CLICK__) {
-      const queuedId = window.__CHRX_EARLY_CLICK__;
-      window.__CHRX_EARLY_CLICK__ = null;
-      setTimeout(() => {
-        const el = document.getElementById(queuedId);
-        if (el) {
-          el.removeAttribute("aria-busy");
-          el.click();
-        }
-      }, 0);
-    }
   }
 
   function escapeHtml(s) {
