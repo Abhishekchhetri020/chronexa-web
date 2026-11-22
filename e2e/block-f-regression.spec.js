@@ -86,10 +86,10 @@ test.describe("Block F regressions (F0 reload-after-import/create, E-02 non-nega
 
     await loadDemoSchool(page);
     await page.locator("button.chrx-btn--primary", { hasText: "Generate" }).first().click();
-    await page.locator(".chrx-preset-card", { hasText: /fast preview/i }).click();
+    await page.locator(".chrx-preset-card[data-preset='fast']").click();
     await page.locator("#csu-prelaunch-start").click();
 
-    const softTile = page.locator(".csu-result .csu-result__tile").filter({ hasText: /soft penalties/i }).locator(".csu-result__num");
+    const softTile = page.locator(".csu-result .csu-result__tile").filter({ hasText: /quality|soft penalties/i }).locator(".csu-result__num");
     await expect(softTile).toBeVisible({ timeout: 100000 });
     const rawText = ((await softTile.textContent()) || "").trim();
     expect(rawText, `soft penalties should never be negative: "${rawText}"`).not.toMatch(/^[-−]/);

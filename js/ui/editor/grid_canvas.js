@@ -797,8 +797,16 @@ window.Editor = (function () {
     if (perspective === "supervision") {
       return supervisionRowsFor(S);
     }
-    // default = class
-    return S.classes.map(c => ({ key: c.id, label: c.name, sub: "" }));
+    // default = class — hide empty duty-area rows (e.g. "1st Floor", "2nd Floor", "3rd Floor")
+    // that have zero lessons and zero cards when regular classes exist.
+    const usedClassIds = new Set();
+    for (const l of (S.lessons || [])) {
+      for (const cid of (l.classIds || [])) usedClassIds.add(cid);
+    }
+    const isDutyAreaName = (name) => /(floor|duty|corridor|gate|ground|wing|assembly)/i.test(name || "");
+    const filtered = S.classes.filter(c => usedClassIds.has(c.id) || !isDutyAreaName(c.name));
+    const list = filtered.length > 0 ? filtered : S.classes;
+    return list.map(c => ({ key: c.id, label: c.name, sub: "" }));
   }
 
   function html(S, rows, periods, mobileDay, cardLookup) {

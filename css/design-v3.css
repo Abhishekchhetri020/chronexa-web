@@ -546,11 +546,7 @@ input:focus,select:focus,textarea:focus{
    bg-blue-700 / bg-emerald-600 substring in the class attribute (which
    is how the legacy JS toggles state). */
 .chrx-shell .chrx-main > nav:has(button.step-btn){
-  background:rgba(246,241,230,.82);
-  backdrop-filter:blur(20px) saturate(180%);
-  -webkit-backdrop-filter:blur(20px) saturate(180%);
-  border-bottom:1px solid var(--line);
-  box-shadow:none;
+  display:none;
 }
 .chrx-shell .chrx-main > nav:has(button.step-btn) > div{
   max-width:none;
