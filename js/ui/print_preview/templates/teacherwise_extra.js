@@ -20,7 +20,7 @@ import "../../state.js";
     const totalSlots = DAYS.length * periods.length;
 
     const p = page(true);
-    p.appendChild(header("Teacher-wise — extra columns", school.schoolName || ""));
+    p.appendChild(header("Teacher-wise — extra columns", (U.schoolTitle ? U.schoolTitle(school) : "")));
 
     const tbl = el("table", { style: U.tableCSS() });
     const head = el("tr");

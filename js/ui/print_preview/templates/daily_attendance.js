@@ -24,7 +24,7 @@ import "../../state.js";
       for (let d = 0; d < DAYS.length; d++) {
         const p = page(false);
         p.appendChild(header(c.name + " — " + DAYS[d] + " daily attendance",
-          (school.schoolName || "") + " · " + new Date().toLocaleDateString()));
+          (U.schoolTitle ? U.schoolTitle(school) : "") + (U.dateLine && U.dateLine(school) ? " · " + U.dateLine(school) : "")));
 
         // Period strip
         const tbl = el("table", { style: U.tableCSS() });

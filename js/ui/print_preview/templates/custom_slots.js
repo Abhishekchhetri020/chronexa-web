@@ -30,7 +30,7 @@ import "../../state.js";
     return function render(school) {
       const stored = (window.APP.printCustomTemplates || {})[slot];
       const out = [];
-      out.push(el("h1", null, `Custom ${slot} — ${school?.schoolName || ""}`));
+      out.push(el("h1", null, `Custom ${slot} — ${(window.APP?.printTemplateUtils?.schoolTitle ? window.APP.printTemplateUtils.schoolTitle(school) : "")}`));
       if (!stored) {
         out.push(el("p", { style: "color:#64748b;max-width:600px;line-height:1.5" },
           `This custom slot is empty. Open the Cell-style editor from the Print preview ribbon, configure the card layout, then save here. Future opens of this slot will render with your settings.`));

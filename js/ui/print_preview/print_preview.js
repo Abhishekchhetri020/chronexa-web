@@ -1311,6 +1311,10 @@ import { checkPage } from "./fit_check.js";
       detail: { pages: scopePages.length, scope }
     }));
 
+    document.addEventListener("keydown", onKey);
+    const closeAfterPrint = () => closePreview();
+    window.addEventListener("afterprint", closeAfterPrint, { once: true });
+
     try {
       window.print();
     } catch (e) {

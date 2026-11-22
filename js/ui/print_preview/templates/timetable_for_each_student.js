@@ -66,7 +66,7 @@ import "../../state.js";
       const cls = school._idx?.classById?.[st.classId];
       const p = page(false);
       p.appendChild(header(fullName,
-        (cls ? cls.name : "(no class)") + " · " + (school.schoolName || "")));
+        (cls ? cls.name : "(no class)") + " · " + (U.schoolTitle ? U.schoolTitle(school) : "")));
 
       const cards = studentCards(school, st);
       // Bucket by day/period

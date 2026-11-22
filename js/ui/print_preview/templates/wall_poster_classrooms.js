@@ -19,7 +19,7 @@ import "../../state.js";
     const byRoom  = school._idx?.cardsByRoom || {};
 
     const p = page(true);
-    p.appendChild(header("Classrooms wall poster", school.schoolName || ""));
+    p.appendChild(header("Classrooms wall poster", (U.schoolTitle ? U.schoolTitle(school) : "")));
 
     const cols = 1 + DAYS.length * periods.length;
     const grid = el("div", {

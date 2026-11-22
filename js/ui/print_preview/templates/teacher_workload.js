@@ -124,7 +124,7 @@ export function computeTeacherWorkload(school, opts) {
       const chunk = rows.slice(i, i + PER_PAGE);
       const p = page(true);            // landscape: this table is wide
       p.appendChild(header("Teacher workload & contract",
-        (school.schoolName || "") + "  ·  page " + (i / PER_PAGE + 1) +
+        (U.schoolTitle ? U.schoolTitle(school) : "") + "  ·  page " + (i / PER_PAGE + 1) +
         "/" + Math.ceil(rows.length / PER_PAGE)));
 
       const tbl = el("table", { style: U.tableCSS() });

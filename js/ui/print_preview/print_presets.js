@@ -299,17 +299,25 @@ import { entityLabel } from "../../util/entity_label.js";
     return r?.name || entityLabel(r, "abbreviation") || "";
   }
 
+  function safeSchoolTitle(school) {
+    const Pivot = window.APP && window.APP.PrintPivot;
+    const PS = (window.APP && window.APP.printSettings) || {};
+    if (Pivot && typeof Pivot.printTitle === "function") return Pivot.printTitle(school, PS) || "";
+    const raw = (PS.headerText || school?.regName || safeSchoolTitle(school)).trim();
+    return /aSc Timetables|Chron\.?exa/i.test(raw) ? "" : raw;
+  }
+
   function renderClassList(school) {
     const classes = school?.classes || [];
-    const perPage = 28;
+    const perPage = 20;
     const pages = [];
     for (let start = 0; start < Math.max(classes.length, 1); start += perPage) {
       const chunk = classes.slice(start, start + perPage);
       const p = el("div", {
         class: "chrx-preview-page chrx-print-page chrx-pivot-page",
-        style: "background:#fff;color:#111;width:210mm;min-height:297mm;padding:16mm 14mm;box-sizing:border-box;font-family:system-ui",
+        style: "background:#fff;color:#111;width:297mm;min-height:210mm;padding:10mm 12mm;box-sizing:border-box;font-family:system-ui",
       });
-      const schoolName = school?.schoolName || school?.name || "";
+      const schoolName = safeSchoolTitle(school);
       if (schoolName) p.appendChild(el("div", {
         style: "text-align:center;font-weight:600;font-size:13px;margin-bottom:3px",
       }, schoolName));
@@ -367,15 +375,15 @@ import { entityLabel } from "../../util/entity_label.js";
   function renderTeacherList(school) {
     const teachers = (school?.teachers || []).slice().sort((a, b) =>
       entityLabel(a, "abbreviation").localeCompare(entityLabel(b, "abbreviation")));
-    const perPage = 30;
+    const perPage = 20;
     const pages = [];
     for (let start = 0; start < Math.max(teachers.length, 1); start += perPage) {
       const chunk = teachers.slice(start, start + perPage);
       const p = el("div", {
         class: "chrx-preview-page chrx-print-page chrx-pivot-page",
-        style: "background:#fff;color:#111;width:210mm;min-height:297mm;padding:16mm 14mm;box-sizing:border-box;font-family:system-ui",
+        style: "background:#fff;color:#111;width:297mm;min-height:210mm;padding:10mm 12mm;box-sizing:border-box;font-family:system-ui",
       });
-      const schoolName = school?.schoolName || school?.name || "";
+      const schoolName = safeSchoolTitle(school);
       if (schoolName) p.appendChild(el("div", {
         style: "text-align:center;font-weight:600;font-size:13px;margin-bottom:3px",
       }, schoolName));
@@ -448,7 +456,7 @@ import { entityLabel } from "../../util/entity_label.js";
         class: "chrx-preview-page chrx-print-page chrx-pivot-page",
         style: "background:#fff;color:#111;width:297mm;min-height:210mm;padding:12mm;box-sizing:border-box;font-family:system-ui;display:flex;flex-direction:column;gap:6px",
       });
-      const schoolName = school?.schoolName || school?.name || "";
+      const schoolName = safeSchoolTitle(school);
       if (schoolName) p.appendChild(el("div", {
         style: "text-align:center;font-weight:600;font-size:12px",
       }, schoolName));
@@ -619,7 +627,7 @@ import { entityLabel } from "../../util/entity_label.js";
         class: "chrx-preview-page chrx-print-page chrx-pivot-page",
         style: "background:#fff;color:#111;width:297mm;min-height:210mm;padding:12mm;box-sizing:border-box;font-family:system-ui;display:flex;flex-direction:column;gap:6px",
       });
-      const schoolName = school?.schoolName || school?.name || "";
+      const schoolName = safeSchoolTitle(school);
       if (schoolName) p.appendChild(el("div", {
         style: "text-align:center;font-weight:600;font-size:12px",
       }, schoolName));
@@ -736,7 +744,7 @@ import { entityLabel } from "../../util/entity_label.js";
     });
     slip.appendChild(el("div", {
       style: "text-align:center;font-weight:600;font-size:11px;padding-top:4px",
-    }, school?.schoolName || school?.name || ""));
+    }, safeSchoolTitle(school)));
     slip.appendChild(el("div", {
       style: "text-align:center;font-weight:700;font-size:22px;font-family:'Fraunces',serif;font-style:italic;line-height:1.1;padding-bottom:4px",
     }, (dayNames[day] || "Day") + " - " + (cls.name || cls.id || "")));
@@ -798,7 +806,7 @@ import { entityLabel } from "../../util/entity_label.js";
     });
     slip.appendChild(el("div", {
       style: "text-align:center;font-weight:600;font-size:11px;padding-top:4px",
-    }, school?.schoolName || school?.name || ""));
+    }, safeSchoolTitle(school)));
     slip.appendChild(el("div", {
       style: "text-align:center;font-weight:700;font-size:22px;font-family:'Fraunces',serif;font-style:italic;line-height:1.1;padding-bottom:4px",
     }, teacher.name || entityLabel(teacher, "abbreviation") || teacher.id || ""));
@@ -926,7 +934,7 @@ import { entityLabel } from "../../util/entity_label.js";
         class: "chrx-preview-page chrx-print-page chrx-pivot-page",
         style: "background:#fff;color:#111;width:297mm;min-height:210mm;padding:12mm;box-sizing:border-box;font-family:system-ui;display:flex;flex-direction:column;gap:6px",
       });
-      const schoolName = school?.schoolName || school?.name || "";
+      const schoolName = safeSchoolTitle(school);
       if (schoolName) p.appendChild(el("div", {
         style: "text-align:center;font-weight:600;font-size:12px",
       }, schoolName));

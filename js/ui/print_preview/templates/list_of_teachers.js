@@ -14,7 +14,7 @@ import "../../state.js";
   if (!U) return;
   const { el, page, header, footer, emptyPage } = U;
 
-  const PER_PAGE = 30;
+  const PER_PAGE = 18;
 
   function render(school) {
     if (!school || !school.teachers || !school.teachers.length) return [emptyPage("No teachers")];
@@ -27,8 +27,7 @@ import "../../state.js";
       const chunk = teachers.slice(i, i + PER_PAGE);
       const p = page(false);
       p.appendChild(header("List of teachers",
-        (school.schoolName || "") + "  ·  page " + (i / PER_PAGE + 1) +
-        "/" + Math.ceil(teachers.length / PER_PAGE)));
+        [U.schoolTitle(school), "page " + (i / PER_PAGE + 1) + "/" + Math.ceil(teachers.length / PER_PAGE)].filter(Boolean).join("  ·  ")));
 
       const tbl = el("table", { style: U.tableCSS() });
       const tr0 = el("tr");

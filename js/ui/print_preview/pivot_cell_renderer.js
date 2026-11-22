@@ -439,13 +439,21 @@ import { entityLabel } from "./entity_label.js";
   function renderSummaryClassDayCell(cards, report, school) {
     cards = (cards || []).slice();
     const layout = report?._layout || {};
-    const fontPx = layout.summaryDayFontPx || 7.5;
-    const linePx = layout.summaryDayLineHeightPx || 8.6;
+    const tune = cellTuning(report);
+    const fontScale = tune.fontSize / 9.5;
+    const fontPx = Number(((layout.summaryDayFontPx || 7.5) * fontScale).toFixed(2));
+    const linePx = Number(((layout.summaryDayLineHeightPx || 8.6) * fontScale).toFixed(2));
+    const padV = Math.max(1, Math.round(tune.padding * 0.35));
+    const padH = Math.max(1, Math.round(tune.padding * 0.25));
     const periodMode = report.cells === "summary-class-day-period";
     const maxLines = Math.max(1, Math.floor((layout.cellMinHeightPx || 48) / Math.max(6.8, linePx)));
     const cell = el("div", {
       class: "chrx-pivot-cell chrx-pivot-cell--summary-day",
-      style: "width:100%;height:100%;min-height:" + Math.max(18, layout.cellMinHeightPx || 48) + "px;padding:2px 1px;box-sizing:border-box;overflow:hidden;font-family:Arial,sans-serif;font-size:" + fontPx + "px;line-height:" + linePx + "px;text-align:center;display:flex;flex-direction:column;justify-content:center;align-items:center",
+      style: "width:100%;height:100%;min-height:" + Math.max(18, layout.cellMinHeightPx || 48) + "px;padding:" + padV + "px " + padH + "px;box-sizing:border-box;overflow:hidden;font-family:Arial,sans-serif;font-size:" + fontPx + "px;line-height:" + linePx + "px;text-align:center;display:flex;flex-direction:column;justify-content:center;align-items:center" +
+        (tune.theme === "mono" ? ";background:#f3f4f6" : "") +
+        (tune.theme === "neon" ? ";background:#f5f3ff" : "") +
+        (tune.theme === "pastel" ? ";background:#fafcff" : "") +
+        (tune.borderWidth > 0 ? ";border:" + tune.borderWidth + "px solid " + (tune.theme === "neon" ? "#a78bfa" : "#d1d5db") : ""),
     });
     if (!cards.length) return cell;
 
@@ -492,10 +500,17 @@ import { entityLabel } from "./entity_label.js";
   function renderSummaryClassDayPeriodCell(cards, report, school) {
     cards = cards || [];
     const layout = report?._layout || {};
+    const tune = cellTuning(report);
+    const padV = Math.max(1, Math.round(tune.padding * 0.35));
+    const padH = Math.max(1, Math.round(tune.padding * 0.5));
     const minHeight = Math.max(18, layout.cellMinHeightPx || 22);
     const cell = el("div", {
       class: "chrx-pivot-cell chrx-pivot-cell--summary-day",
-      style: "width:100%;height:100%;min-height:" + minHeight + "px;padding:2px 3px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;overflow:hidden;position:relative",
+      style: "width:100%;height:100%;min-height:" + minHeight + "px;padding:" + padV + "px " + padH + "px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;overflow:hidden;position:relative" +
+        (tune.theme === "mono" ? ";background:#f3f4f6" : "") +
+        (tune.theme === "neon" ? ";background:#f5f3ff" : "") +
+        (tune.theme === "pastel" ? ";background:#fafcff" : "") +
+        (tune.borderWidth > 0 ? ";border:" + tune.borderWidth + "px solid " + (tune.theme === "neon" ? "#a78bfa" : "#d1d5db") : ""),
     });
     if (cards.length === 0) return cell;
 
@@ -589,21 +604,51 @@ import { entityLabel } from "./entity_label.js";
       }
     }
 
+    const showSubj = elementStyleFor(report, "subject").enabled !== false;
+    const showTeach = elementStyleFor(report, "teacher").enabled !== false;
+    const showCls = elementStyleFor(report, "class").enabled !== false;
+    const showRoom = elementStyleFor(report, "classroom").enabled !== false;
+    const subjMaxPx = Number(Math.max(6.5, tune.fontSize).toFixed(2));
+    const secMaxPx = Number(Math.max(5.5, tune.fontSize * 0.84).toFixed(2));
+
     // Line 1: Subject (bold, clean)
     const subjText = subjects.join(" / ");
-    if (subjText) {
+    if (showSubj && subjText) {
       const subjDiv = el("div", {
-        style: "font-weight:700;font-size:clamp(6.5px, 12cqi, 9.5px);line-height:1.15;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--chrx-fg, #111)",
+        "data-chrx-el": "subject",
+        style: "font-weight:700;font-size:clamp(6.5px, 12cqi, " + subjMaxPx + "px);line-height:1.15;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--chrx-fg, #111)",
       }, subjText);
       cell.appendChild(subjDiv);
     }
 
-    // Line 2: Secondary info
-    const secText = secondaryList.join(" ");
-    if (secText) {
+    // Line 2: Secondary info (respecting Visible Elements toggles)
+    const secSpans = [];
+    if (isClassRow) {
+      if (showTeach && secondaryList.length > 0 && !secondaryList[0].startsWith("(")) {
+        secSpans.push(el("span", { "data-chrx-el": "teacher" }, secondaryList[0]));
+      }
+      const roomPart = secondaryList.find((x) => x.startsWith("("));
+      if (showRoom && roomPart) {
+        secSpans.push(el("span", { "data-chrx-el": "classroom" }, (secSpans.length ? " " : "") + roomPart));
+      }
+    } else if (isTeacherRow) {
+      if (showCls && secondaryList.length > 0 && !secondaryList[0].startsWith("(")) {
+        secSpans.push(el("span", { "data-chrx-el": "class" }, secondaryList[0]));
+      }
+      const roomPart = secondaryList.find((x) => x.startsWith("("));
+      if (showRoom && roomPart) {
+        secSpans.push(el("span", { "data-chrx-el": "classroom" }, (secSpans.length ? " " : "") + roomPart));
+      }
+    } else if (isRoomRow) {
+      if (showCls && secondaryList.length > 0) {
+        secSpans.push(el("span", { "data-chrx-el": "class" }, secondaryList.join(" ")));
+      }
+    }
+    if (secSpans.length) {
       const secDiv = el("div", {
-        style: "font-size:clamp(5.5px, 10cqi, 8px);line-height:1.1;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--chrx-fg-secondary, #444);margin-top:1px",
-      }, secText);
+        style: "font-size:clamp(5.5px, 10cqi, " + secMaxPx + "px);line-height:1.1;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--chrx-fg-secondary, #444);margin-top:1px",
+      });
+      for (const sp of secSpans) secDiv.appendChild(sp);
       cell.appendChild(secDiv);
     }
 
