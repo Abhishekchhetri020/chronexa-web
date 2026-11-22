@@ -98,7 +98,8 @@ _global.parseTimetableXml = (function () {
     if (!root && !xml.querySelector("lessons") && !xml.querySelector("classes") && !xml.querySelector("teachers")) {
       throw new Error("Not a valid timetable XML file (missing <timetable> data).");
     }
-    const schoolName = root ? (root.getAttribute("displayname") || "") : "";
+    const rawSchoolName = root ? (root.getAttribute("displayname") || "").trim() : "";
+    const schoolName = /^(classic timetable|asc timetables)/i.test(rawSchoolName) ? "" : rawSchoolName;
 
     // --- Days per week (inferred from daysdefs, mirrors Swift port) ------------
     // CLASSIC's daysdefs has one entry per logical day (Mon, Tue, …) plus aggregate

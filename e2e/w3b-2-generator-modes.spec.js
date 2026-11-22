@@ -55,10 +55,9 @@ test.describe("W3b-2 Generator Modes E2E", () => {
         if (await confirmBtn.isVisible()) await confirmBtn.click();
       }
 
-      // Close the result panel
+      // Close the result panel if it did not already auto-close on apply
       const closeBtn = page.locator("#csu-result-close");
-      await expect(closeBtn).toBeVisible();
-      await closeBtn.click();
+      if (await closeBtn.isVisible().catch(() => false)) await closeBtn.click();
       await expect(page.locator(".csu-result")).not.toBeVisible();
       await expect(page.locator(".csu-backdrop.is-open")).toHaveCount(0);
 

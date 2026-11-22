@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, existsSync } from "node:fs";
+import path from "node:path";
 import { loadDemoSchool } from "./helpers.js";
 
 const SHOTS_DIR = "docs/neon/ui-shots/block-p";
@@ -19,10 +20,15 @@ test.describe("Block P — Generate flow & grid clarity", () => {
     const legacyNavVisible = await page.locator(".chrx-shell .chrx-main > nav:has(button.step-btn)").isVisible().catch(() => false);
     expect(legacyNavVisible).toBe(false);
 
-    const gridRowTexts = await page.locator("#editor-root .chrx-row-head").allInnerTexts();
-    expect(gridRowTexts.some((t) => /\b1st Floor\b/i.test(t))).toBe(false);
-    expect(gridRowTexts.some((t) => /\b2nd Floor\b/i.test(t))).toBe(false);
-    expect(gridRowTexts.some((t) => /\b3rd Floor\b/i.test(t))).toBe(false);
+    // P7-3: Empty duty-area rows (1st/2nd/3rd Floor) must be absent from the default all-classes grid
+    const fullGridText = await page.locator("#editor-root .chrx-grid").innerText();
+    expect(fullGridText).not.toMatch(/\b(1st|2nd|3rd)\s+Floor\b/i);
+    // P7-5: Editor header & topbar breadcrumb must show "Sample school", never "Classic Timetable 2012 XML" or "Untitled"
+    const obTitle = (await page.locator("#editor-root .chrx-ob-title").innerText()).trim();
+    expect(obTitle).not.toMatch(/Classic Timetable 2012 XML|Untitled/i);
+    expect(obTitle).toMatch(/Sample school/i);
+    const crumbText = (await page.locator("#chrx-crumbs").innerText()).trim();
+    expect(crumbText).not.toMatch(/Classic Timetable 2012 XML|Untitled/i);
 
     // P3: Open Generate dialog
     await page.locator("button.chrx-btn--primary", { hasText: "Generate" }).first().click();
@@ -92,8 +98,17 @@ test.describe("Block P — Generate flow & grid clarity", () => {
     const clashNumText = await tiles.nth(1).locator(".csu-result__num").innerText();
     const resultClashes = parseInt(clashNumText.replace(/[^0-9]/g, ""), 10);
 
-    const qualityText = await tiles.nth(2).locator(".csu-result__num").innerText();
+    // P7-1: "Undo apply" must be hidden BEFORE applying
+    await expect(page.locator("#csu-result-discard")).toBeHidden();
+
+    // P7-4: Quality tile uses sans-serif UI font (not monospace) AND top reasons are visible without opening Details
+    const qualityNum = tiles.nth(2).locator(".csu-result__num");
+    const qualityText = await qualityNum.innerText();
     expect(qualityText).toMatch(/(Good|Fair|Needs work)\s*\(\d+%\)/);
+    const qualityFont = await qualityNum.evaluate((el) => getComputedStyle(el).fontFamily);
+    expect(qualityFont.toLowerCase()).not.toContain("monospace");
+    await expect(page.locator("#csu-result-reasons")).toBeVisible();
+    expect(await page.locator("#csu-result-reasons li").count()).toBeGreaterThan(0);
 
     const applyBtn = page.locator("#csu-result-apply");
     await expect(applyBtn).toHaveText("Use this timetable");
@@ -101,15 +116,9 @@ test.describe("Block P — Generate flow & grid clarity", () => {
 
     await page.screenshot({ path: `${SHOTS_DIR}/3-result-after.png` });
 
-    // P1: Click "Use this timetable" -> MUST apply in 1 click with ZERO scary "will lose 5 cards" modal
+    // P1 + P7-2: Click "Use this timetable" -> applies in 1 click, ZERO scary modal, and auto-closes the dialog
     await applyBtn.click();
-    await page.waitForTimeout(300);
     await expect(page.locator("#chrx-apply-confirm")).toHaveCount(0);
-
-    // Close result panel if still open, and verify P2 (topbar chip matches resultClashes!)
-    if (await page.locator("#csu-result-close").isVisible().catch(() => false)) {
-      await page.locator("#csu-result-close").click();
-    }
     await expect(res).toBeHidden({ timeout: 5_000 });
     await page.waitForTimeout(400);
 
@@ -122,5 +131,44 @@ test.describe("Block P — Generate flow & grid clarity", () => {
 
     await page.screenshot({ path: `${SHOTS_DIR}/4-grid-after.png` });
     expect(pageErrors).toEqual([]);
+  });
+
+  test("P7-6: mid-run progress modal on real LATEST.xml (Best) shows honest ring=bar and left=total-placed", async ({ page }) => {
+    const latestXml = path.join(process.env.HOME || "", ".mempalace/gdgpsd_data/timetable/LATEST.xml");
+    test.skip(!existsSync(latestXml), "real LATEST.xml not present on this machine");
+    test.setTimeout(90_000);
+    mkdirSync(SHOTS_DIR, { recursive: true });
+    await page.setViewportSize({ width: 1440, height: 900 });
+
+    await page.goto("/");
+    await page.waitForFunction(() => window.APP && window.SolverUI && window.Editor);
+    await page.locator("#xml-file").setInputFiles(latestXml);
+    await page.locator("#editor-root .chrx-vkarta").first().waitFor({ timeout: 30_000 });
+
+    await page.locator("button.chrx-btn--primary", { hasText: "Generate" }).first().click();
+    await expect(page.locator(".csu-prelaunch")).toBeVisible({ timeout: 10_000 });
+    await page.locator(".chrx-preset-card[data-preset='best']").click();
+    await page.locator("#csu-prelaunch-start").click();
+
+    const prog = page.locator(".csu-progress");
+    await expect(prog).toBeVisible({ timeout: 10_000 });
+    await page.waitForTimeout(3500);
+
+    const snap = await page.evaluate(() => {
+      const ring = parseInt((document.querySelector(".csu-ring__pct")?.textContent || "0").replace(/[^0-9]/g, ""), 10);
+      const barW = parseFloat((document.querySelector(".csu-progress .csu-bar__fill")?.style.width || "0").replace("%", ""));
+      const hero = document.querySelector("#csu-placed-hero")?.textContent || "";
+      const leftTxt = (document.querySelector("#csu-stat-hard")?.textContent || "").replace(/[^0-9]/g, "");
+      const detailsOpen = !!document.querySelector("#csu-progress-details")?.open;
+      return { ring, barW, hero, left: leftTxt ? parseInt(leftTxt, 10) : null, detailsOpen };
+    });
+    console.log("P7-6 LATEST.xml progress snap:", JSON.stringify(snap));
+    expect(snap.detailsOpen).toBe(false);
+    expect(Math.abs(snap.ring - Math.round(snap.barW))).toBeLessThanOrEqual(2);
+    await page.screenshot({ path: `${SHOTS_DIR}/2-progress-latest-best.png` });
+
+    // Cancel cleanly so we don't wait 5 minutes
+    await page.locator(".csu-progress button", { hasText: "Cancel" }).click();
+    await expect(prog).toBeHidden({ timeout: 10_000 });
   });
 });

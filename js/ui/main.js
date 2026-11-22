@@ -99,6 +99,8 @@ import "./start_screen.js";
       const blob = new Blob([xmlText], { type: "application/xml" });
       const file = new File([blob], "sample-school.xml", { type: "application/xml" });
       const school = await parseTimetableXml.parseFile(file);
+      school._isDemo = true;
+      if (!school.schoolName) school.schoolName = "Sample school";
       window.APP.school = school;
       if (window.CreateNew && window.CreateNew.ensureColors) window.CreateNew.ensureColors();
       const c = school._meta.counts;

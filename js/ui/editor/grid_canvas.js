@@ -803,7 +803,7 @@ window.Editor = (function () {
     for (const l of (S.lessons || [])) {
       for (const cid of (l.classIds || [])) usedClassIds.add(cid);
     }
-    const isDutyAreaName = (name) => /(floor|duty|corridor|gate|ground|wing|assembly)/i.test(name || "");
+    const isDutyAreaName = (name) => /\b(floor|duty|corridor|gate|ground|wing|assembly)\b/i.test(name || "");
     const filtered = S.classes.filter(c => usedClassIds.has(c.id) || !isDutyAreaName(c.name));
     const list = filtered.length > 0 ? filtered : S.classes;
     return list.map(c => ({ key: c.id, label: c.name, sub: "" }));
@@ -858,8 +858,10 @@ window.Editor = (function () {
 
   function overviewTitle() {
     const school = window.APP.school;
-    const name = school && school.schoolName;
-    return name ? name : "Untitled timetable";
+    const raw = (school && school.schoolName || "").trim();
+    const clean = /^(classic timetable|asc timetables|untitled)/i.test(raw) ? "" : raw;
+    if (clean) return clean;
+    return (school && school._isDemo) ? "Sample school" : "My school";
   }
 
   function isMobileViewport(rootEl) {

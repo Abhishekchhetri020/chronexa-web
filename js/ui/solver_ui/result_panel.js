@@ -115,22 +115,81 @@ import "./progress_modal.js";  // provides SolverUI.expectedCardCount
 
   function collectTopSoftReasons(school, result) {
     const out = [];
+    if (!school || !result || !Array.isArray(result.assignment) || !result.assignment.length) return out;
     try {
-      const VPro = global.VerificationPanelPro;
-      if (VPro && typeof VPro.collectViolations === "function" && school && result && Array.isArray(result.assignment)) {
-        const previewCards = mergePreservedCards(school, assignmentToCards(result.assignment));
-        const previewSchool = Object.assign({}, school, { cards: previewCards });
-        const counts = new Map();
-        for (const v of VPro.collectViolations(previewSchool)) {
-          if (v.severity !== "soft") continue;
-          const label = v.message || v.type || "Minor preference";
-          counts.set(label, (counts.get(label) || 0) + 1);
+      const previewCards = mergePreservedCards(school, assignmentToCards(result.assignment));
+      const lById = new Map((school.lessons || []).map(l => [String(l.id), l]));
+      const sById = new Map((school.subjects || []).map(s => [String(s.id), s.name || s.short || s.id]));
+
+      // 1. Teacher daily idle gaps (2+ free periods between first and last lesson) & 5+ back-to-back
+      const tDayPeriods = new Map();
+      // 2. Same subject scheduled more than once on the same day for a class
+      const cDaySubj = new Map();
+
+      for (const c of previewCards) {
+        const baseId = String(c.lessonId || "").replace(/#\d+$/, "");
+        const l = lById.get(baseId);
+        if (!l) continue;
+        const span = Math.max(1, Number(c.span) || Number(l.periodsPerCard) || 1);
+        for (const tid of (l.teacherIds || [])) {
+          const k = tid + "|" + c.day;
+          let arr = tDayPeriods.get(k);
+          if (!arr) { arr = []; tDayPeriods.set(k, arr); }
+          for (let p = c.period; p < c.period + span; p++) arr.push(p);
         }
-        const sorted = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 3);
-        for (const [msg, n] of sorted) out.push(n > 1 ? `${msg} (${n})` : msg);
+        if (l.subjectId) {
+          for (const cid of (l.classIds || [])) {
+            const k = cid + "|" + c.day + "|" + l.subjectId;
+            cDaySubj.set(k, (cDaySubj.get(k) || 0) + 1);
+          }
+        }
+      }
+
+      const teachersWithGaps = new Set();
+      const teachersLongRun = new Set();
+      for (const [k, periods] of tDayPeriods.entries()) {
+        const uniq = Array.from(new Set(periods)).sort((a, b) => a - b);
+        if (uniq.length < 2) continue;
+        const tid = k.split("|")[0];
+        const gaps = (uniq[uniq.length - 1] - uniq[0] + 1) - uniq.length;
+        if (gaps >= 2) teachersWithGaps.add(tid);
+        let run = 1, maxRun = 1;
+        for (let i = 1; i < uniq.length; i++) {
+          if (uniq[i] === uniq[i - 1] + 1) { run++; if (run > maxRun) maxRun = run; }
+          else run = 1;
+        }
+        if (maxRun >= 5) teachersLongRun.add(tid);
+      }
+
+      const dupSubjClasses = new Map();
+      let totalDupClasses = new Set();
+      for (const [k, cnt] of cDaySubj.entries()) {
+        if (cnt > 1) {
+          const [cid, , sid] = k.split("|");
+          totalDupClasses.add(cid);
+          dupSubjClasses.set(sid, (dupSubjClasses.get(sid) || 0) + 1);
+        }
+      }
+
+      if (teachersWithGaps.size > 0) {
+        const n = teachersWithGaps.size;
+        out.push(`${n} teacher${n === 1 ? " has" : "s have"} 2+ free-period gaps in a day`);
+      }
+      if (totalDupClasses.size > 0) {
+        const topSubj = Array.from(dupSubjClasses.entries()).sort((a, b) => b[1] - a[1])[0];
+        const sName = topSubj ? (sById.get(topSubj[0]) || "A subject") : "A subject";
+        const n = totalDupClasses.size;
+        out.push(`Same subject twice on one day in ${n} class${n === 1 ? "" : "es"} (e.g. ${sName})`);
+      }
+      if (teachersLongRun.size > 0) {
+        const n = teachersLongRun.size;
+        out.push(`${n} teacher${n === 1 ? " has" : "s have"} 5+ back-to-back lessons`);
+      }
+      if (out.length === 0) {
+        out.push("Balanced days with minimal teacher gaps and good subject spread");
       }
     } catch (_) {}
-    return out;
+    return out.slice(0, 3);
   }
 
   function renderHero(result, totalLessons, verifiedHard) {
@@ -160,7 +219,7 @@ import "./progress_modal.js";  // provides SolverUI.expectedCardCount
     const q = qualitySummary(displayPenalty, placedN);
     refs.soft.className = "csu-result__tile " + (q.pct >= 80 ? "csu-result__tile--ok" : (q.pct >= 60 ? "" : "csu-result__tile--warn"));
     refs.soft.append(
-      el("div", { class: "csu-result__num" }, `${q.word} (${q.pct}%)`),
+      el("div", { class: "csu-result__num csu-result__num--word" }, `${q.word} (${q.pct}%)`),
       el("div", { class: "csu-result__lbl" }, "quality"),
     );
     refs.soft.title = s.phase2Note || `Soft score detail: ${fmt(displayPenalty)}`;
@@ -435,6 +494,7 @@ import "./progress_modal.js";  // provides SolverUI.expectedCardCount
     state.discarded = false;
     refs.apply.disabled = true;
     refs.disc.hidden = false;
+    refs.disc.style.display = "";
     refs.disc.disabled = false;
     refs.status.textContent = "Applied to your timetable.";
     refs.status.style.color = "var(--chrx-green)";
@@ -448,6 +508,10 @@ import "./progress_modal.js";  // provides SolverUI.expectedCardCount
     } catch (e) { console.warn("[result_panel] post-apply re-render failed", e); }
     try { window.dispatchEvent(new CustomEvent("app:solve-applied")); } catch {}
     if (state.onApply) try { state.onApply(newCards); } catch (e) { console.error(e); }
+    close();
+    if (typeof global._chrxNotify === "function") {
+      try { global._chrxNotify("Timetable applied — press ⌘Z to undo.", "success"); } catch (_) {}
+    }
   }
 
   function isDestructiveApply() {
@@ -601,6 +665,7 @@ import "./progress_modal.js";  // provides SolverUI.expectedCardCount
     refs.status.style.color = (verifiedHard === 0 && unplacedNm === 0) ? "var(--chrx-green)" : "var(--chrx-amber)";
     refs.apply.disabled = state.mode === "test";
     refs.disc.hidden = true;
+    refs.disc.style.display = "none";
     refs.disc.disabled = true;
     if (refs.gridDetails) refs.gridDetails.open = false;
     renderHero(state.result, totalLessons, verifiedHard);
