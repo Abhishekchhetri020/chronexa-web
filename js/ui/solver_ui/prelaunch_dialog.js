@@ -34,18 +34,24 @@ import "./backend_client.js";
 
   // Generator modes (guaranteed-safe generation modes)
   const GEN_MODES = [
-    { id: "rebuild",      label: "Rebuild",           sub: "May move anything not locked", icon: "↺" },
-    { id: "improve_only", label: "Improve only",      sub: "Keep placed cards; reduce soft penalties", icon: "⚡" },
-    { id: "add_unplaced", label: "Add unplaced only", sub: "Never move placed cards; fill free slots", icon: "＋" },
+    { id: "rebuild",      label: "Rebuild",           sub: "May move anything not locked", icon: "refresh" },
+    { id: "improve_only", label: "Improve only",      sub: "Keep placed lessons; smooth out gaps and conflicts", icon: "sparkle" },
+    { id: "add_unplaced", label: "Add unplaced only", sub: "Never move placed cards; fill free slots", icon: "lesson" },
   ];
 
   // Preset → underlying solver knobs. Conditions values must match the
   // Advanced radio values (draft / relax / strict).
   const PRESETS = [
-    { id: "fast",     label: "Quick",    sub: "~30s · fast draft",      timeLimitSec: 30,  complexity: "normal", conditions: "draft",  icon: "◷" },
-    { id: "balanced", label: "Balanced", sub: "~90s · good balance",    timeLimitSec: 90,  complexity: "large",  conditions: "relax",  icon: "⚖", recommended: true },
-    { id: "best",     label: "Best",     sub: "~5 min · thorough run",  timeLimitSec: 300, complexity: "huge",   conditions: "strict", icon: "★" },
+    { id: "fast",     label: "Quick",    sub: "~30s · fast draft",      timeLimitSec: 30,  complexity: "normal", conditions: "draft",  icon: "clock" },
+    { id: "balanced", label: "Balanced", sub: "~90s · good balance",    timeLimitSec: 90,  complexity: "large",  conditions: "relax",  icon: "layers", recommended: true },
+    { id: "best",     label: "Best",     sub: "~5 min · thorough run",  timeLimitSec: 300, complexity: "huge",   conditions: "strict", icon: "sparkle" },
   ];
+
+  function icNode(name, size) {
+    return (global.ChrxIcons && typeof global.ChrxIcons.node === "function")
+      ? global.ChrxIcons.node(name, size || 15)
+      : "";
+  }
   const PRESET_BY_COMPLEXITY = { normal: "fast", large: "balanced", huge: "best" };
 
   let host, dialog, current;
@@ -111,10 +117,10 @@ import "./backend_client.js";
     const summary = el("div", { class: "csu-dialog__summary", id: "csu-prelaunch-summary" }, "");
 
     // --- Mode: Best first (default), Test demoted to a quiet secondary ----
-    const modeBtnBest = modeButton("best", "★", "Best timetable", "Draft fast, then polish — one click, offline, toward 100%.");
-    const modeBtnGen = modeButton("generate", "✦", "Generate timetable", "Run the solver from scratch and place cards.");
-    const modeBtnImp = modeButton("improve", "⚡", "Improve current schedule", "Keep placements; search outward for improvements.");
-    const modeBtnTest = modeButton("test", "✓", "Test the timetable", "Validate constraints — does not move any card.");
+    const modeBtnBest = modeButton("best", icNode("sparkle", 16), "Best timetable", "Draft fast, then polish — one click, offline, toward 100%.");
+    const modeBtnGen = modeButton("generate", icNode("play", 16), "Generate timetable", "Run the solver from scratch and place cards.");
+    const modeBtnImp = modeButton("improve", icNode("refresh", 16), "Improve current schedule", "Keep placements and smooth out gaps and conflicts.");
+    const modeBtnTest = modeButton("test", icNode("check", 16), "Test the timetable", "Validate constraints — does not move any card.");
     modeBtnTest.classList.add("csu-modebtn--quiet");
     const modeRow = el("div", { class: "csu-mode-row" }, modeBtnBest, modeBtnGen, modeBtnImp, modeBtnTest);
 
@@ -129,7 +135,7 @@ import "./backend_client.js";
         "aria-checked": m.id === "rebuild" ? "true" : "false",
         onclick: () => selectGeneratorMode(m.id),
       },
-        el("div", { class: "chrx-genmode-label" }, (m.icon ? m.icon + " " : "") + m.label),
+        el("div", { class: "chrx-genmode-label" }, m.icon ? icNode(m.icon, 14) : null, " ", m.label),
         el("div", { class: "chrx-genmode-sub" }, m.sub),
       );
       genModeGrid.appendChild(card);
@@ -151,7 +157,7 @@ import "./backend_client.js";
         "aria-checked": p.id === "balanced" ? "true" : "false",
         onclick: () => selectPreset(p.id),
       },
-        el("div", { class: "chrx-preset-label" }, (p.icon ? p.icon + " " : "") + p.label),
+        el("div", { class: "chrx-preset-label" }, icNode(p.icon, 15), " ", p.label),
         el("div", { class: "chrx-preset-sub" }, p.sub),
       );
       if (p.recommended) card.appendChild(el("span", { class: "chrx-preset-badge" }, "Recommended"));
@@ -202,7 +208,7 @@ import "./backend_client.js";
     // --- Actions -------------------------------------------------------------
     const cancelBtn = el("button", { type: "button", class: "chrx-btn csu-btn--ghost", onclick: doCancel }, "Cancel");
     const startBtn  = el("button", { type: "button", class: "chrx-btn chrx-btn--primary", id: "csu-prelaunch-start", onclick: doStart }, "Build timetable");
-    const footNote = el("p", { class: "csu-dialog__foot" }, "Runs privately on your device.");
+    const footNote = el("p", { class: "csu-dialog__foot" }, "Stop any time to keep the best timetable found so far. Cancelling leaves your current timetable unchanged. Runs privately on your device.");
     const actions = el("div", { class: "csu-dialog__actions" }, cancelBtn, startBtn);
 
     dialog.append(titleEl, sub, summary, presetStrip, advanced, actions, footNote);
@@ -301,12 +307,20 @@ import "./backend_client.js";
     const c = (school._meta && school._meta.counts) || {};
     const teachers = (school.teachers && school.teachers.length) || c.teachers || 0;
     const classes  = (school.classes  && school.classes.length)  || c.classes  || 0;
-    const lessons  = (school.lessons  && school.lessons.length)  || c.lessons  || 0;
+    const expected = (global.SolverUI && typeof global.SolverUI.expectedCardCount === "function")
+      ? global.SolverUI.expectedCardCount(school)
+      : ((school.lessons && school.lessons.length) || c.lessons || 0);
     const cards    = (school.cards    && school.cards.length)    || c.cards    || 0;
+    let conflicts = 0;
+    try {
+      if (global.Verifier && typeof global.Verifier.verify === "function") {
+        conflicts = global.Verifier.verify(school).filter((v) => v && v.severity === "hard").length;
+      }
+    } catch (_) {}
     sum.innerHTML = "";
     const chip = (n, label) => {
       const s = el("span", { class: "csu-chip" },
-        el("strong", {}, String(n)), document.createTextNode(" " + label));
+        el("strong", {}, typeof n === "number" ? n.toLocaleString() : String(n)), document.createTextNode(" " + label));
       sum.appendChild(s);
     };
     const rawName = (school.schoolName || "").trim();
@@ -316,8 +330,13 @@ import "./backend_client.js";
     sum.appendChild(name);
     chip(teachers, "teachers");
     chip(classes, "classes");
-    chip(lessons, "lessons");
-    chip(cards, "placed");
+    chip(expected, "lesson periods to place");
+    if (cards > 0) {
+      const gridNote = conflicts > 0
+        ? `currently on the grid, ${conflicts} ${conflicts === 1 ? "conflict" : "conflicts"}`
+        : "currently on the grid";
+      chip(cards, gridNote);
+    }
     const RC = global.SolverUI && global.SolverUI.RunConditions;
     const off = RC ? RC.offCount(school) : 0;
     sum.appendChild(el("button", { type: "button", class: "csu-chip csu-chip--link" + (off ? " is-warn" : ""),

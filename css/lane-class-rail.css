@@ -109,3 +109,7 @@
   flex: 1 1 auto;
   min-width: 0;
 }
+
+@media (max-width: 767px) {
+  .chrx-class-rail { display: none !important; }
+}

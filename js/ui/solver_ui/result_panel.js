@@ -55,7 +55,7 @@ import "./progress_modal.js";  // provides SolverUI.expectedCardCount
       "aria-labelledby": "csu-result-title",
     });
 
-    const title = el("h2", { class: "csu-dialog__title", id: "csu-result-title" }, "Solver finished");
+    const title = el("h2", { class: "csu-dialog__title", id: "csu-result-title" }, "Timetable ready");
     const status = el("div", { class: "csu-result__status", id: "csu-result-status" }, "");
 
     const hero = el("div", { class: "csu-result__hero" });
@@ -79,8 +79,9 @@ import "./progress_modal.js";  // provides SolverUI.expectedCardCount
       onclick: () => global.SolverUI.Relaxed && global.SolverUI.Relaxed.open({
         school: state.school, cards: assignmentToCards(state.result && state.result.assignment) }) }, "Relaxed conditions");
     const disc  = el("button", { type: "button", class: "chrx-btn", onclick: doDiscard, id: "csu-result-discard", hidden: "" }, "Undo apply");
+    const rejectBtn = el("button", { type: "button", class: "chrx-btn", onclick: doReject, id: "csu-result-reject" }, "Discard");
     const closeBtn = el("button", { type: "button", class: "chrx-btn", id: "csu-result-close", onclick: doClose }, "Close");
-    const actions = el("div", { class: "csu-dialog__actions" }, disc, view, relaxedBtn, retry, closeBtn, apply);
+    const actions = el("div", { class: "csu-dialog__actions" }, disc, rejectBtn, view, relaxedBtn, retry, closeBtn, apply);
 
     const diagSection = el("div", { class: "csu-result__diag", id: "csu-result-diag" });
 
@@ -88,7 +89,7 @@ import "./progress_modal.js";  // provides SolverUI.expectedCardCount
     host.appendChild(dlg);
     document.body.appendChild(host);
 
-    refs = { title, status, placed, relax, soft, reasons, grid, gridDetails, diagSection, apply, retry, view, disc, close: closeBtn, relaxedBtn };
+    refs = { title, status, placed, relax, soft, reasons, grid, gridDetails, diagSection, apply, retry, view, disc, reject: rejectBtn, close: closeBtn, relaxedBtn };
   }
 
   function computeVerifiedClashes(school, result) {
@@ -210,7 +211,7 @@ import "./progress_modal.js";  // provides SolverUI.expectedCardCount
     refs.relax.className = "csu-result__tile " + (clashes === 0 ? "csu-result__tile--ok" : "csu-result__tile--bad");
     refs.relax.append(
       el("div", { class: "csu-result__num" }, fmt(clashes)),
-      el("div", { class: "csu-result__lbl" }, clashes === 1 ? "clash" : "clashes"),
+      el("div", { class: "csu-result__lbl" }, clashes === 1 ? "conflict" : "conflicts"),
     );
 
     const displayPenalty = (typeof s.softScore === "number" && Number.isFinite(s.softScore))
@@ -339,9 +340,9 @@ import "./progress_modal.js";  // provides SolverUI.expectedCardCount
 
       // Summary: the whole point — separate "fix the file" from "try again".
       const summary = impossible.length
-        ? `⛔ ${impossible.length} cannot be placed in ANY timetable — these need a file change (free the teacher, add a room, or relax a fixed slot). ` +
+        ? `${impossible.length} cannot be placed in ANY timetable — these need a file change (free the teacher, add a room, or relax a fixed slot). ` +
           (contention.length ? `The other ${contention.length} are contention (a better run may place them).` : "")
-        : `✓ None are impossible — your file is feasible. These ${contention.length} are contention: the solver couldn't fit them in this run. Re-running (or accepting the best of more branches) may place them.`;
+        : `Every lesson can fit on its own — none are blocked by a rule conflict. These ${contention.length} just could not be squeezed in during this run. Running again with a little more time usually places them.`;
       refs.diagSection.appendChild(el("div", { class: "csu-result__diagTip" }, summary));
 
       const list = el("ul", { class: "csu-result__diagList" });
@@ -543,7 +544,7 @@ import "./progress_modal.js";  // provides SolverUI.expectedCardCount
     overlay.innerHTML = ''
       + '<div role="alertdialog" aria-modal="true" style="background:var(--chrx-bg-panel,#fff);color:var(--chrx-fg,#1d1d1f);border-radius:14px;box-shadow:0 24px 64px rgba(15,23,42,.28);padding:24px 26px;max-width:460px;width:calc(100% - 32px);">'
       +   '<h2 style="font-size:17px;font-weight:700;color:var(--chrx-fg,#1d1d1f);margin:0 0 8px;">Replace your current timetable?</h2>'
-      +   `<p style="font-size:13.5px;line-height:1.55;color:var(--chrx-fg-secondary,#515154);margin:0 0 18px;">This run leaves <strong>${lost}</strong> fewer period${lost === 1 ? '' : 's'} placed than your current timetable` + (hard > 0 ? ` and has <strong>${hard} clash${hard === 1 ? '' : 'es'}</strong>` : '') + `. You can still undo after applying.</p>`
+      +   `<p style="font-size:13.5px;line-height:1.55;color:var(--chrx-fg-secondary,#515154);margin:0 0 18px;">This run leaves <strong>${lost}</strong> fewer period${lost === 1 ? '' : 's'} placed than your current timetable` + (hard > 0 ? ` and has <strong>${hard} conflict${hard === 1 ? '' : 's'}</strong>` : '') + `. You can still undo after applying.</p>`
       +   '<div style="display:flex;gap:8px;justify-content:flex-end;">'
       +     '<button type="button" data-cancel class="chrx-btn">Cancel</button>'
       +     '<button type="button" data-confirm class="chrx-btn chrx-btn--primary">Replace anyway</button>'
@@ -619,6 +620,13 @@ import "./progress_modal.js";  // provides SolverUI.expectedCardCount
     if (before > 0 && a.length < before * 0.85) return false;
     return true;
   }
+  function doReject() {
+    if (!state) return;
+    state.discarded = true;
+    close();
+    if (state.onDiscard) try { state.onDiscard(); } catch (e) { console.error(e); }
+    state = null;
+  }
   function doClose() {
     // Implicit-apply: if the solver produced placements and the user
     // didn't explicitly Discard, treat Close as "keep these cards" so
@@ -661,7 +669,26 @@ import "./progress_modal.js";  // provides SolverUI.expectedCardCount
     }
     const durSec = (state.result.stats && state.result.stats.durationMs) ? Math.max(1, Math.round(state.result.stats.durationMs / 1000)) : 0;
     const verifiedHard = computeVerifiedClashes(state.school, state.result);
-    refs.status.textContent = durSec ? `Finished in ${durSec}s` : "Finished";
+    let priorConflicts = typeof opts.priorConflicts === "number" ? opts.priorConflicts : -1;
+    if (priorConflicts < 0 && state.school && global.Verifier && typeof global.Verifier.verify === "function") {
+      try {
+        priorConflicts = global.Verifier.verify(state.school).filter((v) => v && v.severity === "hard").length;
+      } catch (_) { priorConflicts = 0; }
+    }
+    const timePrefix = durSec ? `Finished in ${durSec}s` : "Finished";
+    let conflictNote = "";
+    if (state.mode !== "test") {
+      if (priorConflicts > 0 && verifiedHard === 0) {
+        conflictNote = ` · All ${priorConflicts} previous ${priorConflicts === 1 ? "conflict" : "conflicts"} resolved`;
+      } else if (priorConflicts > verifiedHard && verifiedHard > 0) {
+        conflictNote = ` · Conflicts reduced from ${priorConflicts} to ${verifiedHard}`;
+      } else if (verifiedHard === 0) {
+        conflictNote = " · No conflicts";
+      } else {
+        conflictNote = ` · ${verifiedHard} ${verifiedHard === 1 ? "conflict" : "conflicts"} remaining`;
+      }
+    }
+    refs.status.textContent = timePrefix + conflictNote;
     refs.status.style.color = (verifiedHard === 0 && unplacedNm === 0) ? "var(--chrx-green)" : "var(--chrx-amber)";
     refs.apply.disabled = state.mode === "test";
     refs.disc.hidden = true;

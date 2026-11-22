@@ -869,16 +869,24 @@ import { entityShort } from "../../util/entity_label.js";
     backdrop.className = "chrx-modal-backdrop";
     backdrop.id = "chrx-collision-modal-backdrop";
 
+    const ruleReasons = (validity && Array.isArray(validity.reasons) && validity.reasons.length)
+      ? validity.reasons
+      : ["This slot is marked unavailable for this lesson."];
+    const isRuleOnly = n === 0;
     backdrop.innerHTML = `
       <div class="chrx-collision-popup chrx-collision-menu" role="alertdialog" aria-labelledby="chrx-collision-title">
         <div class="chrx-collision-popup__icon">${window.ChrxIcons ? window.ChrxIcons.svg("warn", 34) : ""}</div>
-        <div class="chrx-collision-popup__title" id="chrx-collision-title">This slot is already taken</div>
-        <p class="chrx-collision-popup__msg">Placing <b>${esc(handName)}</b> on ${esc(whenLabel)} clashes with ${n === 1 ? "one lesson" : n + " lessons"}.</p>
+        <div class="chrx-collision-popup__title" id="chrx-collision-title">${isRuleOnly ? "Cannot place here" : "This slot is already taken"}</div>
+        <p class="chrx-collision-popup__msg">${isRuleOnly
+          ? `Placing <b>${esc(handName)}</b> on ${esc(whenLabel)} is blocked:`
+          : `Placing <b>${esc(handName)}</b> on ${esc(whenLabel)} clashes with ${n === 1 ? "one lesson" : n + " lessons"}.`}</p>
         <div class="chrx-collision-popup__list">
-          ${allColliding.map(c => itemHtml(c, c.day, c.period)).join("")}
+          ${isRuleOnly
+            ? ruleReasons.map(r => `<div class="chrx-collision-popup__item">${esc(typeof r === "string" ? r : (r.text || r.msg || String(r)))}</div>`).join("")
+            : allColliding.map(c => itemHtml(c, c.day, c.period)).join("")}
         </div>
         <div class="chrx-collision-popup__options">
-          <button type="button" class="chrx-collision-popup__option chrx-collision-popup__option--replace" data-act="replace">Move ${n === 1 ? "it" : "them"} to Unplaced and place here</button>
+          ${isRuleOnly ? "" : `<button type="button" class="chrx-collision-popup__option chrx-collision-popup__option--replace" data-act="replace">Move ${n === 1 ? "it" : "them"} to Unplaced and place here</button>`}
           <button type="button" class="chrx-collision-popup__option chrx-collision-popup__option--force" data-act="force">Place anyway</button>
           <button type="button" class="chrx-collision-popup__option chrx-collision-popup__option--cancel" data-act="cancel">Cancel</button>
         </div>
