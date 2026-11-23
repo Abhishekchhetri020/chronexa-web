@@ -36,7 +36,7 @@ export async function runAndApply(school, cfg, onProgress) {
   const algorithm = (cfg && cfg.algorithm) || "browser";
   let source;
   try {
-    source = window.SolverUI.run({ school, options, algorithm });
+    source = window.SolverUI.run({ school, options, algorithm, onFallback: (msg) => log("fallback", msg) });
   } catch (e) {
     return { placed: 0, total, status: "solver threw: " + (e && e.message) };
   }

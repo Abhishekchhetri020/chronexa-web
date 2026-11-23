@@ -112,11 +112,11 @@ import "./backend_client.js";
         bestPlaced = placed;
       }
 
-      console.log(`[multi-branch] Branch ${branchIdx + 1}/${N} done: placed=${placed}, unplaced=${unplaced}, softScore=${softScore}${isBetter ? " ★ NEW BEST" : ""}`);
+      console.debug(`[multi-branch] Branch ${branchIdx + 1}/${N} done: placed=${placed}, unplaced=${unplaced}, softScore=${softScore}${isBetter ? " ★ NEW BEST" : ""}`);
 
       // All branches done → emit the winner
       if (doneCount >= N) {
-        console.log(`[multi-branch] All ${N} branches complete. Best: placed=${bestPlaced}, softScore=${bestScore}`);
+        console.debug(`[multi-branch] All ${N} branches complete. Best: placed=${bestPlaced}, softScore=${bestScore}`);
         sub.emit({ type: "done", result: bestResult });
         cleanup();
       }

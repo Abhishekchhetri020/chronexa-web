@@ -128,7 +128,7 @@ import { applyRunConditions } from "../../solver/run_conditions.js";
     if (global.SolverUI && global.SolverUI.runMultiBranch) {
       const cores = (typeof navigator !== "undefined" && navigator.hardwareConcurrency) || 4;
       const branches = Math.max(2, Math.min(cores, 8));
-      console.log(`[solver] Using multi-branch parallel solving: ${branches} branches`);
+      console.debug(`[solver] Using multi-branch parallel solving: ${branches} branches`);
       return global.SolverUI.runMultiBranch(school, options, branches);
     }
     return runBrowserSingle(school, options);
@@ -190,7 +190,7 @@ import { applyRunConditions } from "../../solver/run_conditions.js";
       } else if (m.type === "progress") {
         sub.emit(m);
       } else if (m.type === "log") {
-        try { console.error("[wasm-cp-sat]", m.line); } catch {}
+        try { console.debug("[wasm-cp-sat]", m.line); } catch {}
       }
     };
     worker.onerror = (e) => finish({ type: "error", message: (e && e.message) || "wasm worker error" });
@@ -568,9 +568,18 @@ import { applyRunConditions } from "../../solver/run_conditions.js";
           });
           return;
         }
-        // Soft fallback to browser worker on cloud failure.
-        const msg = (err && err.message) || String(err);
-        if (onFallback) try { onFallback("cloud failed: " + msg); } catch {}
+        // Soft fallback to browser worker on cloud failure (503, timeout, offline).
+        const rawMsg = (err && err.message) || String(err);
+        const isServiceDown = /503|502|504|Service Unavailable|Failed to fetch|NetworkError|Timeout|Abort/i.test(rawMsg);
+        const plainMsg = isServiceDown
+          ? "The cloud solver is temporarily unavailable — running on your device instead."
+          : "Could not reach the cloud solver — running on your device instead.";
+        try { console.debug("[solver] cloud fallback:", rawMsg); } catch {}
+        if (onFallback) try { onFallback(plainMsg); } catch {}
+        if (typeof global._chrxNotify === "function") {
+          try { global._chrxNotify(plainMsg, "info"); } catch {}
+        }
+        sub.emit({ type: "fallback", message: plainMsg });
         const local = runBrowser(school, options);
         local.subscribe(sub.emit);
         Object.assign(src, local);

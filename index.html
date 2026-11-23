@@ -3,17 +3,33 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Chronexa — Open Timetable Viewer</title>
-<meta name="description" content="A local-first school timetable editor with direct manipulation, conflict guidance, and private in-browser processing.">
+<title>Chronexa — Free School Timetable Maker &amp; Editor</title>
+<meta name="description" content="Free, local-first school timetable maker. Generate clash-free schedules, manage daily substitutions, print clean reports, and export to Excel, PDF, or aSc XML — privately in your browser.">
+<link rel="canonical" href="https://abhishekchhetri020.github.io/chronexa-web/">
+
+<!-- Open Graph & Twitter -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Chronexa">
+<meta property="og:title" content="Chronexa — Free School Timetable Maker &amp; Editor">
+<meta property="og:description" content="Build clash-free school timetables, plan daily substitutions, and print clean reports — privately in your browser with no upload or account.">
+<meta property="og:url" content="https://abhishekchhetri020.github.io/chronexa-web/">
+<meta property="og:image" content="https://abhishekchhetri020.github.io/chronexa-web/assets/icon-512.png">
+<meta property="og:image:width" content="512">
+<meta property="og:image:height" content="512">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Chronexa — Free School Timetable Maker &amp; Editor">
+<meta name="twitter:description" content="Build clash-free school timetables, plan daily substitutions, and print clean reports — privately in your browser.">
+<meta name="twitter:image" content="https://abhishekchhetri020.github.io/chronexa-web/assets/icon-512.png">
 
 <!-- PWA: installable + offline-capable. Solver runs on the user's CPU via Web Workers. -->
 <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#1e3a8a">
+<meta name="theme-color" content="#0d4f54">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Chronexa">
 <link rel="apple-touch-icon" href="assets/icon-192.png">
-<link rel="icon" href="assets/icon-192.png">
+<link rel="icon" type="image/svg+xml" href="assets/icon.svg">
+<link rel="icon" type="image/png" sizes="192x192" href="assets/icon-192.png">
 
 <!-- Styling: Tailwind is compiled at build time (PostCSS plugin — see
      tailwind.config.js); all css/*.css files are imported by
@@ -482,7 +498,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
 <!-- ─────────────────────── SCRIPTS ─────────────────────── -->
 <!-- Bump APP_VER on every deploy so the browser refetches the JS bundle -->
-<script>window.APP_VER = "20261123-p288-m1-feature-audit";</script>
+<script>window.APP_VER = "20261123-p289-m2-ship-polish";</script>
 <!-- Nuclear SW migration: if an old cache-first SW is still controlling,
      unregister it and reload to pick up the new network-first SW. -->
 <script>

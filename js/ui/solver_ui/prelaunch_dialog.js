@@ -42,9 +42,9 @@ import "./backend_client.js";
   // Preset → underlying solver knobs. Conditions values must match the
   // Advanced radio values (draft / relax / strict).
   const PRESETS = [
-    { id: "fast",     label: "Quick",    sub: "~30s · fast draft",      timeLimitSec: 30,  complexity: "normal", conditions: "draft",  icon: "clock" },
-    { id: "balanced", label: "Balanced", sub: "~90s · good balance",    timeLimitSec: 90,  complexity: "large",  conditions: "relax",  icon: "layers", recommended: true },
-    { id: "best",     label: "Best",     sub: "~5 min · thorough run",  timeLimitSec: 300, complexity: "huge",   conditions: "strict", icon: "sparkle" },
+    { id: "fast",     label: "Quick",    sub: "up to 30s · fast draft",      timeLimitSec: 30,  complexity: "normal", conditions: "draft",  icon: "clock" },
+    { id: "balanced", label: "Balanced", sub: "up to 90s · good balance",    timeLimitSec: 90,  complexity: "large",  conditions: "relax",  icon: "layers", recommended: true },
+    { id: "best",     label: "Best",     sub: "up to 5 min · thorough run",  timeLimitSec: 300, complexity: "huge",   conditions: "strict", icon: "sparkle" },
   ];
 
   function icNode(name, size) {

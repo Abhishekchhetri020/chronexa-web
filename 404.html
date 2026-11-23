@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Page not found — Chronexa</title>
+  <meta name="description" content="This page could not be found. Return to Chronexa to build and edit your school timetable.">
+  <meta name="theme-color" content="#0d4f54">
+  <link rel="icon" type="image/svg+xml" href="/chronexa-web/assets/icon.svg">
+  <link rel="icon" type="image/png" href="/chronexa-web/assets/icon-192.png">
+  <style>
+    :root { color-scheme: light dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
+      background: #f4f7f7;
+      color: #0f172a;
+    }
+    @media (prefers-color-scheme: dark) {
+      body { background: #091315; color: #f1f5f9; }
+      .card { background: #102024; border-color: rgba(148, 163, 184, 0.24); }
+      p { color: #cbd5e1; }
+    }
+    .card {
+      max-width: 440px;
+      width: 100%;
+      padding: 32px 28px;
+      border-radius: 16px;
+      background: #ffffff;
+      border: 1px solid rgba(15, 23, 42, 0.1);
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.08);
+      text-align: center;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      background: #0d4f54;
+      color: #ffffff;
+      font-weight: 800;
+      font-size: 20px;
+      margin-bottom: 14px;
+    }
+    h1 { margin: 0 0 8px; font-size: 22px; letter-spacing: -0.02em; }
+    p { margin: 0 0 22px; font-size: 14.5px; line-height: 1.5; color: #475569; }
+    a.btn {
+      display: inline-block;
+      padding: 11px 20px;
+      border-radius: 10px;
+      background: #0d4f54;
+      color: #ffffff;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 14.5px;
+    }
+    a.btn:hover { background: #0a3f43; }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <div class="badge" aria-hidden="true">C</div>
+    <h1>Page not found</h1>
+    <p>That link does not match a Chronexa page. Return to the timetable editor to open your saved work or start a new timetable.</p>
+    <a class="btn" href="/chronexa-web/">Open Chronexa</a>
+  </main>
+</body>
+</html>
