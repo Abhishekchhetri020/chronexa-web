@@ -6644,7 +6644,7 @@ export function solve(school, options = {}) {
   // ML: Initialize learning module for this school structure
   const learning = options.disableLearning ? null : createLearningForSchool(school);
   if (learning && learning.getStats().variablePatterns > 0) {
-    console.log('[SolverLearning] Loaded', learning.getStats());
+    console.debug('[SolverLearning] Loaded', learning.getStats());
   }
 
   // Adaptive restart strategy:

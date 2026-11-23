@@ -618,11 +618,11 @@ import "./start_screen.js";
         return;
       }
     } catch (e) { /* fall through to the normal editor boot */ }
-    console.log("--> [main.js] boot() is executing!");
+    console.debug("[main.js] boot() executing");
     const demoBtnCheck = document.getElementById("cta-load-demo");
     const buildBtnCheck = document.getElementById("cta-build-new");
-    console.log("--> [main.js] cta-load-demo element exists:", !!demoBtnCheck);
-    console.log("--> [main.js] cta-build-new element exists:", !!buildBtnCheck);
+    console.debug("[main.js] cta-load-demo exists:", !!demoBtnCheck);
+    console.debug("[main.js] cta-build-new exists:", !!buildBtnCheck);
 
     document.querySelectorAll(".step-btn").forEach(b => {
       b.onclick = () => {

@@ -69,10 +69,27 @@ import "./state.js";
     // Automatic backups + version history (W3-1): the ribbon's Files menu is
     // hidden inside the editor shell, so the rolling backups need this entry too.
     { svg: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/></svg>', label: "Version history", on: () => fire("app:open-version-history") },
+    { svg: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>', label: "Help & guide", on: () => fire("app:open-help-guide") },
   ];
 
+  let lastSidebarTrigger = null;
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || !lastSidebarTrigger) return;
+    const trigger = lastSidebarTrigger;
+    setTimeout(() => {
+      const openOverlay = document.querySelector(
+        ".chrx-dlg-scrim.is-open, .chrx-modal-scrim.is-open, .chrx-ent-dialog, .chrx-vh-scrim, .chrx-exp-scrim, .chrx-pub-scrim, .chrx-matrix-root, #chrx-help-guide-scrim, [role='dialog']"
+      );
+      if (openOverlay) return;
+      const ae = document.activeElement;
+      if ((!ae || ae === document.body || (ae.classList && ae.classList.contains("chrx-sidebar"))) && trigger.isConnected && trigger.offsetParent !== null) {
+        try { trigger.focus({ preventScroll: true }); } catch {}
+      }
+    }, 30);
+  });
+
   function buildSidebar() {
-    const side = el("aside", { class: "chrx-sidebar", tabindex: "0", "aria-label": "Navigation sidebar" });
+    const side = el("aside", { class: "chrx-sidebar", "aria-label": "Navigation sidebar" });
     let container = side;
     for (const item of NAV) {
       if (item.section) {
@@ -88,8 +105,16 @@ import "./state.js";
         }
         continue;
       }
-      const link = el("a", { class: "chrx-side-link" + (item.active ? " is-active" : ""),
-        onclick: (e) => { e.preventDefault(); try { item.on(); } catch (er) { console.error(er); } } });
+      const link = el("a", {
+        class: "chrx-side-link" + (item.active ? " is-active" : ""),
+        href: "#",
+        onclick: (e) => {
+          e.preventDefault();
+          lastSidebarTrigger = link;
+          try { link.focus({ preventScroll: true }); } catch {}
+          try { item.on(); } catch (er) { console.error(er); }
+        },
+      });
       const iconSpan = el("span", { class: "chrx-side-link__icon" });
       if (item.svg) {
         iconSpan.innerHTML = item.svg;

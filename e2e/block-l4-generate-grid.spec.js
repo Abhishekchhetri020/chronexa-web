@@ -39,7 +39,30 @@ test.describe("Block L4 — Generate flow & Grid polish", () => {
     await page.screenshot({ path: path.join(SHOT_DIR, "generate-dialog-1440-dark.png") });
     await page.evaluate(() => document.documentElement.setAttribute("data-theme", "light"));
 
-    // Pick Best preset so run stays active long enough to inspect & cancel cleanly
+    // Hold the solver "done" event until Cancel is clicked so L4-1 never races a fast (~7s) solve under load.
+    await page.evaluate(() => {
+      const origRun = window.SolverUI.run.bind(window.SolverUI);
+      window.__origSolverRunL4 = origRun;
+      window.SolverUI.run = (spec) => {
+        const src = origRun(spec);
+        let cancelled = false;
+        return {
+          ...src,
+          subscribe(fn) {
+            return src.subscribe((ev) => {
+              if (cancelled) return;
+              if (ev && ev.type === "done") return; // keep progress modal open until Cancel is tested
+              fn(ev);
+            });
+          },
+          cancel() {
+            cancelled = true;
+            window.SolverUI.run = origRun;
+            return src.cancel();
+          },
+        };
+      };
+    });
     await page.locator('.chrx-preset-card[data-preset="best"]').click();
     await page.locator("#csu-prelaunch-start").click();
     await expect(page.locator(".csu-progress")).toBeVisible({ timeout: 10_000 });

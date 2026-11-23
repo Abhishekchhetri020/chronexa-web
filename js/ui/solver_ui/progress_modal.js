@@ -476,6 +476,11 @@ import "./backend_client.js";
   }
   function handleEvent(ev) {
     if (!state || !ev) return;
+    if (ev.type === "fallback") {
+      if (refs.sub && ev.message) refs.sub.textContent = ev.message;
+      state.modeLabel = "this device";
+      return;
+    }
     if (ev.type === "phase") {
       state.phase = ev.phase;
       setPhase(ev.phase);

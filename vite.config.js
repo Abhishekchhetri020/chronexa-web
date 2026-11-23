@@ -35,6 +35,7 @@ const VERBATIM = [
   "js/solver/relation_enforcer.js",
   "assets",
   "manifest.json",
+  "404.html",
   "sample-school.xml",
   "docs/demo_sample-school.xml",
 ];
