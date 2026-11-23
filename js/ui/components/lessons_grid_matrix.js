@@ -296,8 +296,20 @@ import "../ribbon/topbar.js";
       dirty = true;
     }
 
+    const onKeyDown = (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        tryClose();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown, true);
+    const cleanupAndRemove = () => {
+      document.removeEventListener("keydown", onKeyDown, true);
+      root.remove();
+    };
+
     function tryClose() {
-      if (!dirty || confirm("Discard unsaved Lesson Grid changes?")) root.remove();
+      if (!dirty || confirm("Discard unsaved Lesson Grid changes?")) cleanupAndRemove();
     }
 
     function createStream(classId, subjectId, count) {
@@ -746,7 +758,7 @@ import "../ribbon/topbar.js";
       document.dispatchEvent(new CustomEvent("entity:changed", { detail: { entity: "lessons", source: "lesson-grid" } }));
       notify(`Lesson Grid saved · ${cleaned.lessons.length} streams · ${cleaned.cards.length} placed cards.`);
       dirty = false;
-      if (opts?.close !== false) root.remove();
+      if (opts?.close !== false) cleanupAndRemove();
     }
 
     function showPivot(mode) {

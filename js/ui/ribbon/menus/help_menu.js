@@ -28,8 +28,12 @@ import "../../state.js";
       <div class="chrx-dlg__actions">
         <button class="chrx-tb-btn chrx-tb-btn--primary" id="chrx-help-close">Close</button>
       </div>`;
+    dlg.setAttribute("role", "dialog");
+    dlg.setAttribute("aria-modal", "true");
     wrap.appendChild(dlg); document.body.appendChild(wrap);
-    const close = () => wrap.remove();
+    const onKey = (e) => { if (e.key === "Escape") { e.preventDefault(); close(); } };
+    const close = () => { document.removeEventListener("keydown", onKey, true); wrap.remove(); };
+    document.addEventListener("keydown", onKey, true);
     dlg.querySelector("#chrx-help-close").onclick = close;
     wrap.addEventListener("click", (e) => { if (e.target === wrap) close(); });
   }
@@ -52,8 +56,12 @@ import "../../state.js";
       <div class="chrx-dlg__actions">
         <button class="chrx-tb-btn chrx-tb-btn--primary" id="chrx-about-close">Close</button>
       </div>`;
+    dlg.setAttribute("role", "dialog");
+    dlg.setAttribute("aria-modal", "true");
     wrap.appendChild(dlg); document.body.appendChild(wrap);
-    const close = () => wrap.remove();
+    const onKey = (e) => { if (e.key === "Escape") { e.preventDefault(); close(); } };
+    const close = () => { document.removeEventListener("keydown", onKey, true); wrap.remove(); };
+    document.addEventListener("keydown", onKey, true);
     dlg.querySelector("#chrx-about-close").onclick = close;
     wrap.addEventListener("click", (e) => { if (e.target === wrap) close(); });
   }
