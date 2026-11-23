@@ -160,8 +160,13 @@ import "../ribbon/topbar.js";
     const act = el("div", { class: "chrx-dlg__actions" });
     actions.forEach(a => act.appendChild(a));
     dlg.appendChild(act);
+    dlg.setAttribute("role", "dialog");
+    dlg.setAttribute("aria-modal", "true");
     scrim.appendChild(dlg); document.body.appendChild(scrim);
-    scrim.addEventListener("click", (e) => { if (e.target === scrim) scrim.remove(); });
+    const onKey = (e) => { if (e.key === "Escape") { e.preventDefault(); closeScrim(); } };
+    const closeScrim = () => { document.removeEventListener("keydown", onKey, true); scrim.remove(); };
+    document.addEventListener("keydown", onKey, true);
+    scrim.addEventListener("click", (e) => { if (e.target === scrim) closeScrim(); });
     return scrim;
   }
   function promptName(suggest, cb) {

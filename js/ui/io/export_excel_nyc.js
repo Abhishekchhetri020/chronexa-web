@@ -113,8 +113,7 @@ import "../ribbon/topbar.js";
       window.XLSX.utils.book_append_sheet(wb, ws, sanitiseSheetName(t.name || ("Teacher " + t.id), used));
     }
 
-    const fname = (s.schoolName || "school").replace(/[^A-Za-z0-9_-]+/g, "_")
-      + "_NYC_schedule_" + new Date().toISOString().slice(0, 10) + ".xlsx";
+    const fname = schoolSlug(s) + "_NYC_schedule_" + localDateYmd() + ".xlsx";
     window.XLSX.writeFile(wb, fname);
     notify("Exported " + fname + " — " + teachers.length + " teacher sheets.");
   }
